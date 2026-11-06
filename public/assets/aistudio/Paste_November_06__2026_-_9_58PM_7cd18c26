@@ -1,0 +1,683 @@
+# SMARTGRID AI — FULL PLATFORM SPECIFICATION & REACT CODEBASE
+# Prepared for direct ingestion into Google AI Studio (System Instructions / Prompt Ingestion)
+
+This single, comprehensive document bundles the complete project context, design system tokens, screen architectures, and production-ready React (TypeScript + Tailwind CSS) component implementations for **SmartGrid AI**.
+
+---
+
+## 1. System Architecture & Design Foundation
+
+### Brand & Design System: Algorithmic Precision Matrix
+- **Typography:** Space Grotesk (Primary / Display / Body), JetBrains Mono (Telemetry & Metrics)
+- **Palette (Zero-Blue Standard):**
+  - **Surface Canvas:** `#fbf8fc` (Ultra-light lavender neutral)
+  - **Surface Container Lowest:** `#ffffff` (Card background)
+  - **Surface Dim / Borders:** `#ece6ed` / `#dcd9dd`
+  - **Primary Core:** `#3b1e4a` (Deep Algorithmic Plum)
+  - **Secondary / Accent:** `#f27438` / `#c84c16` / `#9c4126` (Warm Terracotta & Ember)
+  - **Success / Equilibrium:** `#18794e` (Pine Green)
+  - **Text High-Contrast:** `#1f1b20` / `#2a1335`
+  - **Text Muted:** `#655d69` / `#7c747f`
+
+---
+
+## 2. Global Navigation Chrome Component: `SmartGridNav.tsx`
+
+```tsx
+import React, { useState } from 'react';
+import { Compass, Sparkles, Menu, X, ChevronDown } from 'lucide-react';
+
+interface SmartGridNavProps {
+  activeRoute?: 'solutions' | 'adaptive-engine' | 'student-voice' | 'generator' | 'timetable';
+  onNavigate?: (route: string) => void;
+}
+
+export const SmartGridNav: React.FC<SmartGridNavProps> = ({ 
+  activeRoute = 'solutions',
+  onNavigate 
+}) => {
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [moreDropdownOpen, setMoreDropdownOpen] = useState(false);
+
+  return (
+    <header className="sticky top-0 z-50 bg-[#fbf8fc]/90 backdrop-blur-md border-b border-[#ece6ed] px-8 py-5 transition-all">
+      <div className="max-w-7xl mx-auto flex items-center justify-between">
+        {/* Brand Wordmark (Cleaned: No subtitle) */}
+        <div 
+          className="flex items-center gap-3 cursor-pointer select-none"
+          onClick={() => onNavigate?.('solutions')}
+        >
+          <div className="w-9 h-9 rounded-xl bg-[#3b1e4a] flex items-center justify-center text-white shadow-sm">
+            <Compass className="w-5 h-5 text-[#f27438]" />
+          </div>
+          <span className="font-bold text-lg tracking-tight text-[#1f1b20] leading-none whitespace-nowrap">
+            SMARTGRID <span className="text-[#f27438]">AI</span>
+          </span>
+        </div>
+
+        {/* Desktop Single-Line Links (32px / gap-8 spacing, subtle active underline) */}
+        <nav className="hidden md:flex items-center gap-8 text-sm font-medium text-[#655d69] whitespace-nowrap">
+          <button 
+            onClick={() => onNavigate?.('solutions')}
+            className={`transition-colors whitespace-nowrap pb-1 ${
+              activeRoute === 'solutions' 
+                ? 'text-[#3b1e4a] font-semibold border-b-2 border-[#3b1e4a]' 
+                : 'hover:text-[#1f1b20]'
+            }`}
+          >
+            Solutions
+          </button>
+          <button 
+            onClick={() => onNavigate?.('adaptive-engine')}
+            className={`transition-colors whitespace-nowrap pb-1 ${
+              activeRoute === 'adaptive-engine' 
+                ? 'text-[#3b1e4a] font-semibold border-b-2 border-[#3b1e4a]' 
+                : 'hover:text-[#1f1b20]'
+            }`}
+          >
+            Adaptive Engine
+          </button>
+          <button 
+            onClick={() => onNavigate?.('student-voice')}
+            className={`transition-colors whitespace-nowrap pb-1 ${
+              activeRoute === 'student-voice' 
+                ? 'text-[#3b1e4a] font-semibold border-b-2 border-[#3b1e4a]' 
+                : 'hover:text-[#1f1b20]'
+            }`}
+          >
+            Student Voice
+          </button>
+
+          {/* More Dropdown */}
+          <div className="relative">
+            <button 
+              onClick={() => setMoreDropdownOpen(!moreDropdownOpen)}
+              className="flex items-center gap-1.5 hover:text-[#1f1b20] transition-colors whitespace-nowrap pb-1"
+            >
+              <span>More</span>
+              <ChevronDown className="w-3.5 h-3.5 text-[#7c747f]" />
+            </button>
+
+            {moreDropdownOpen && (
+              <div className="absolute top-full left-0 mt-2 w-52 bg-white border border-[#ece6ed] rounded-xl shadow-lg py-2 z-50">
+                <button
+                  onClick={() => { onNavigate?.('timetable'); setMoreDropdownOpen(false); }}
+                  className="w-full text-left px-4 py-2.5 text-xs font-semibold text-[#1f1b20] hover:bg-[#f6f2f7] transition-colors"
+                >
+                  Timetable Matrix
+                </button>
+                <button
+                  onClick={() => { onNavigate?.('generator'); setMoreDropdownOpen(false); }}
+                  className="w-full text-left px-4 py-2.5 text-xs font-semibold text-[#1f1b20] hover:bg-[#f6f2f7] transition-colors"
+                >
+                  Generator Studio
+                </button>
+                <button
+                  onClick={() => { setMoreDropdownOpen(false); }}
+                  className="w-full text-left px-4 py-2.5 text-xs font-semibold text-[#655d69] hover:bg-[#f6f2f7] transition-colors"
+                >
+                  Institutional Case Studies
+                </button>
+              </div>
+            )}
+          </div>
+        </nav>
+
+        {/* Consolidated Right Actions: 1 Text Link + 1 Primary Button with rounded-xl */}
+        <div className="hidden md:flex items-center gap-6">
+          <button className="text-xs font-semibold uppercase tracking-wider text-[#3b1e4a] hover:text-[#f27438] transition-colors whitespace-nowrap">
+            Sign In
+          </button>
+          <button 
+            onClick={() => onNavigate?.('generator')}
+            className="flex items-center gap-2 bg-[#9c4126] hover:bg-[#83341d] text-white px-5 py-2.5 rounded-xl text-xs font-semibold tracking-wider uppercase transition-all shadow-sm active:scale-95 whitespace-nowrap"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-[#fbbd9c]" />
+            Portal
+          </button>
+        </div>
+
+        {/* Mobile Hamburger Menu Toggle */}
+        <button 
+          onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+          className="md:hidden text-[#1f1b20] p-1.5 focus:outline-none"
+        >
+          {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+        </button>
+      </div>
+
+      {/* Mobile Drawer */}
+      {mobileMenuOpen && (
+        <div className="md:hidden pt-4 pb-2 border-t border-[#ece6ed] mt-4 space-y-3">
+          <button 
+            onClick={() => { onNavigate?.('solutions'); setMobileMenuOpen(false); }}
+            className="block w-full text-left text-sm font-semibold text-[#1f1b20] py-2"
+          >
+            Solutions
+          </button>
+          <button 
+            onClick={() => { onNavigate?.('adaptive-engine'); setMobileMenuOpen(false); }}
+            className="block w-full text-left text-sm font-semibold text-[#1f1b20] py-2"
+          >
+            Adaptive Engine
+          </button>
+          <button 
+            onClick={() => { onNavigate?.('student-voice'); setMobileMenuOpen(false); }}
+            className="block w-full text-left text-sm font-semibold text-[#1f1b20] py-2"
+          >
+            Student Voice
+          </button>
+          <button 
+            onClick={() => { onNavigate?.('timetable'); setMobileMenuOpen(false); }}
+            className="block w-full text-left text-sm font-semibold text-[#1f1b20] py-2"
+          >
+            Timetable Matrix
+          </button>
+          <div className="pt-2 flex flex-col gap-2">
+            <button className="w-full text-center py-2.5 text-xs font-semibold uppercase tracking-wider text-[#3b1e4a] border border-[#ece6ed] rounded-xl">
+              Sign In
+            </button>
+            <button 
+              onClick={() => { onNavigate?.('generator'); setMobileMenuOpen(false); }}
+              className="w-full bg-[#9c4126] text-white py-2.5 rounded-xl text-xs font-semibold tracking-wider uppercase text-center"
+            >
+              Launch Portal
+            </button>
+          </div>
+        </div>
+      )}
+    </header>
+  );
+};
+```
+
+---
+
+## 3. Screen 1: Public Showcase & Overview (`PublicShowcase.tsx`)
+
+```tsx
+import React from 'react';
+import { ArrowRight, CheckCircle2, ShieldCheck, Zap, Activity } from 'lucide-react';
+import { SmartGridNav } from './SmartGridNav';
+
+export const PublicShowcase: React.FC = () => {
+  return (
+    <div className="min-h-screen bg-[#fbf8fc] text-[#1f1b20] font-sans antialiased">
+      <SmartGridNav activeRoute="solutions" />
+
+      <main className="max-w-7xl mx-auto px-6 lg:px-8 py-14 space-y-24">
+        {/* Centered, Clean Minimal Hero Section */}
+        <section className="text-center max-w-3xl mx-auto space-y-6 pt-4">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#f6f2f7] border border-[#ece6ed] text-[11px] font-mono font-semibold text-[#9c4126] uppercase tracking-wider">
+            <Activity className="w-3.5 h-3.5 text-[#f27438]" />
+            Algorithmic Equilibrium v4.8 • Deterministic Solver
+          </div>
+
+          <h1 className="text-4xl lg:text-5xl font-black text-[#1f1b20] tracking-tight leading-[1.15]">
+            Algorithmic Harmony for Higher Education. Student-Centric Timetables in Minutes.
+          </h1>
+
+          <p className="text-base text-[#655d69] leading-relaxed max-w-2xl mx-auto">
+            SmartGrid AI harmonizes faculty availability, campus room limits, and real-time student commute preferences into rigorously verified, conflict-free semester schedules.
+          </p>
+
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-3">
+            <button className="flex items-center gap-2 bg-[#9c4126] hover:bg-[#83341d] text-white px-7 py-3.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all shadow-md active:scale-95">
+              <Zap className="w-4 h-4 text-[#fbbd9c]" />
+              Experience Live Generation
+            </button>
+            <button className="flex items-center gap-2 bg-white hover:bg-[#f6f2f7] text-[#3b1e4a] border border-[#ece6ed] px-7 py-3.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all shadow-sm">
+              Explore Methodology
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          </div>
+        </section>
+
+        {/* Validation Strip */}
+        <section className="border-y border-[#ece6ed] py-4 grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+          <div className="text-[11px] font-mono uppercase tracking-wider text-[#7c747f]">Oxford Union Validated</div>
+          <div className="text-[11px] font-mono uppercase tracking-wider text-[#7c747f]">FERPA & Title IV Compliant</div>
+          <div className="text-[11px] font-mono uppercase tracking-wider text-[#7c747f]">100% Deterministic Guarantee</div>
+          <div className="text-[11px] font-mono uppercase tracking-wider text-[#7c747f]">Multi-Tier Cohort Synthesis</div>
+        </section>
+
+        {/* The Three Architectural Pillars (Consistent White Container Cards) */}
+        <section className="space-y-8">
+          <div>
+            <span className="text-[11px] font-mono uppercase tracking-widest text-[#9c4126]">Architectural Core</span>
+            <h2 className="text-2xl font-bold text-[#1f1b20] mt-1">Designed for Campus Equilibrium</h2>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            <div className="bg-white border border-[#ece6ed] rounded-xl p-8 shadow-sm space-y-4">
+              <div className="w-10 h-10 rounded-xl bg-[#f6f2f7] flex items-center justify-center text-[#3b1e4a]">
+                <Activity className="w-5 h-5 text-[#f27438]" />
+              </div>
+              <h3 className="text-base font-bold text-[#1f1b20]">Student Preference Weighting</h3>
+              <p className="text-xs text-[#655d69] leading-relaxed">
+                Integrates cohort feedback, commute transit buffers, and circadian learning peaks directly into solver matrices to slash drop rates.
+              </p>
+              <div className="pt-2 text-xs font-mono font-bold text-[#18794e]">92.8% Matrix Alignment</div>
+            </div>
+
+            <div className="bg-white border border-[#ece6ed] rounded-xl p-8 shadow-sm space-y-4">
+              <div className="w-10 h-10 rounded-xl bg-[#f6f2f7] flex items-center justify-center text-[#3b1e4a]">
+                <ShieldCheck className="w-5 h-5 text-[#f27438]" />
+              </div>
+              <h3 className="text-base font-bold text-[#1f1b20]">Real-Time Conflict Arbitration</h3>
+              <p className="text-xs text-[#655d69] leading-relaxed">
+                100% collision-free room, instructor, and lab allocation via high-order polynomial constraint satisfaction across departmental curriculums.
+              </p>
+              <div className="pt-2 text-xs font-mono font-bold text-[#18794e]">0 Active Hard Collisions</div>
+            </div>
+
+            <div className="bg-white border border-[#ece6ed] rounded-xl p-8 shadow-sm space-y-4">
+              <div className="w-10 h-10 rounded-xl bg-[#f6f2f7] flex items-center justify-center text-[#3b1e4a]">
+                <Zap className="w-5 h-5 text-[#f27438]" />
+              </div>
+              <h3 className="text-base font-bold text-[#1f1b20]">Dynamic Campus Analytics</h3>
+              <p className="text-xs text-[#655d69] leading-relaxed">
+                Calculates spatial utilization density, heating and cooling across dormant halls, and transit delays to reduce campus operating overhead.
+              </p>
+              <div className="pt-2 text-xs font-mono font-bold text-[#18794e]">-34.1 MWh Power Saved</div>
+            </div>
+          </div>
+        </section>
+
+        {/* Benchmarked Deployment Metrics */}
+        <section className="bg-white border border-[#ece6ed] rounded-xl p-8 shadow-sm grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+          <div className="lg:col-span-6 space-y-4">
+            <span className="text-[11px] font-mono uppercase tracking-widest text-[#9c4126]">Benchmarked Deployment</span>
+            <h2 className="text-3xl font-extrabold text-[#1f1b20] leading-tight">
+              34,000 Students. 12 Schools. Zero Unresolved Incompatibilities.
+            </h2>
+            <p className="text-xs text-[#655d69] leading-relaxed">
+              Western Polytechnic Institute deployed SmartGrid AI to eliminate 312 recurring cross-department lecture clashes and optimize cohort walking steps.
+            </p>
+            <div className="pt-2">
+              <button className="text-xs font-bold uppercase tracking-wider text-[#9c4126] hover:underline flex items-center gap-1.5">
+                Read Full Institutional Study <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+
+          <div className="lg:col-span-6 grid grid-cols-2 gap-4">
+            <div className="p-5 bg-[#fbf8fc] border border-[#ece6ed] rounded-xl text-center">
+              <div className="text-3xl font-black text-[#1f1b20] font-mono">94%</div>
+              <div className="text-[10px] font-mono uppercase text-[#7c747f] mt-1">Admin Time Saved</div>
+            </div>
+            <div className="p-5 bg-[#fbf8fc] border border-[#ece6ed] rounded-xl text-center">
+              <div className="text-3xl font-black text-[#18794e] font-mono">100%</div>
+              <div className="text-[10px] font-mono uppercase text-[#7c747f] mt-1">Accreditation Match</div>
+            </div>
+            <div className="p-5 bg-[#fbf8fc] border border-[#ece6ed] rounded-xl text-center">
+              <div className="text-3xl font-black text-[#1f1b20] font-mono">99.1%</div>
+              <div className="text-[10px] font-mono uppercase text-[#7c747f] mt-1">Faculty Retention</div>
+            </div>
+            <div className="p-5 bg-[#fbf8fc] border border-[#ece6ed] rounded-xl text-center">
+              <div className="text-3xl font-black text-[#c84c16] font-mono">8.4x</div>
+              <div className="text-[10px] font-mono uppercase text-[#7c747f] mt-1">Permutation Depth</div>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+  );
+};
+```
+
+---
+
+## 4. Screen 2: Timetable Matrix Workspace (`TimetableMatrix.tsx`)
+
+```tsx
+import React, { useState } from 'react';
+import { SmartGridNav } from './SmartGridNav';
+import { Filter, Download, Sparkles, Building, Clock, AlertCircle } from 'lucide-react';
+
+interface ClassItem {
+  id: string;
+  code: string;
+  title: string;
+  room: string;
+  prof: string;
+  cohort: string;
+  accent: 'plum' | 'terracotta' | 'emerald';
+}
+
+const scheduleData: Record<string, Record<string, ClassItem[]>> = {
+  '09:00 - 10:30': {
+    Mon: [{ id: '1', code: 'CS-301', title: 'Data Structures', room: 'Hall B3', prof: 'Dr. Evans', cohort: 'CS-Year2', accent: 'plum' }],
+    Tue: [{ id: '2', code: 'BIO-210', title: 'Cell Genomics', room: 'Lab 4', prof: 'Dr. Zhao', cohort: 'Bio-Year1', accent: 'emerald' }],
+    Wed: [{ id: '3', code: 'CS-301', title: 'Data Structures', room: 'Hall B3', prof: 'Dr. Evans', cohort: 'CS-Year2', accent: 'plum' }],
+    Thu: [{ id: '4', code: 'ENG-102', title: 'Applied Statics', room: 'Quad A', prof: 'Prof. Miller', cohort: 'Eng-Year1', accent: 'terracotta' }],
+    Fri: [{ id: '5', code: 'ARCH-405', title: 'Spatial Studio', room: 'Atrium', prof: 'Dr. Vance', cohort: 'Arch-Year3', accent: 'plum' }]
+  },
+  '11:00 - 12:30': {
+    Mon: [
+      { id: '6', code: 'MATH-204', title: 'Linear Algebra', room: 'Hall A1', prof: 'Dr. Raman', cohort: 'All-STEM', accent: 'plum' },
+      { id: '7', code: 'HUM-110', title: 'Ethics in AI', room: 'Annex 2', prof: 'Dr. Gomez', cohort: 'Arts-Year1', accent: 'terracotta' }
+    ],
+    Tue: [{ id: '8', code: 'CS-412', title: 'Distributed Systems', room: 'Lab 2', prof: 'Dr. Evans', cohort: 'CS-Year4', accent: 'plum' }],
+    Wed: [{ id: '9', code: 'BIO-320', title: 'Biomaterials', room: 'Lab 4', prof: 'Dr. Zhao', cohort: 'Bio-Year3', accent: 'emerald' }],
+    Thu: [{ id: '10', code: 'CS-412', title: 'Distributed Systems', room: 'Lab 2', prof: 'Dr. Evans', cohort: 'CS-Year4', accent: 'plum' }],
+    Fri: [{ id: '11', code: 'MATH-204', title: 'Linear Algebra', room: 'Hall A1', prof: 'Dr. Raman', cohort: 'All-STEM', accent: 'plum' }]
+  },
+  '13:30 - 15:00': {
+    Mon: [{ id: '12', code: 'CHEM-201', title: 'Organic Chemistry', room: 'Chem Lab B', prof: 'Dr. Scott', cohort: 'Bio-Year2', accent: 'emerald' }],
+    Tue: [{ id: '13', code: 'ENG-302', title: 'Fluid Dynamics', room: 'Eng Hall 1', prof: 'Prof. Miller', cohort: 'Eng-Year3', accent: 'terracotta' }],
+    Wed: [{ id: '14', code: 'CHEM-201', title: 'Organic Chemistry', room: 'Chem Lab B', prof: 'Dr. Scott', cohort: 'Bio-Year2', accent: 'emerald' }],
+    Thu: [{ id: '15', code: 'ARCH-405', title: 'Spatial Studio', room: 'Atrium', prof: 'Dr. Vance', cohort: 'Arch-Year3', accent: 'plum' }],
+    Fri: [{ id: '16', code: 'ENG-302', title: 'Fluid Dynamics', room: 'Eng Hall 1', prof: 'Prof. Miller', cohort: 'Eng-Year3', accent: 'terracotta' }]
+  }
+};
+
+export const TimetableMatrix: React.FC = () => {
+  const [selectedCohort, setSelectedCohort] = useState('All');
+  const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
+  const timeSlots = Object.keys(scheduleData);
+
+  return (
+    <div className="min-h-screen bg-[#fbf8fc] text-[#1f1b20] font-sans antialiased">
+      <SmartGridNav activeRoute="timetable" />
+
+      <main className="max-w-7xl mx-auto px-6 lg:px-8 py-8 space-y-6">
+        {/* Workspace Subheader */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-[#ece6ed] pb-4">
+          <div>
+            <div className="text-[11px] font-mono uppercase tracking-widest text-[#9c4126]">
+              Master Schedule Matrix • Term 2 (2025/2026)
+            </div>
+            <h1 className="text-2xl font-black text-[#1f1b20]">Institutional Timetable Matrix</h1>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <button className="flex items-center gap-2 bg-white border border-[#ece6ed] text-[#3b1e4a] px-4 py-2.5 rounded-xl text-xs font-semibold shadow-sm hover:bg-[#f6f2f7]">
+              <Download className="w-3.5 h-3.5" />
+              Export CSV / iCal
+            </button>
+            <button className="flex items-center gap-2 bg-[#9c4126] text-white px-5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider shadow-sm hover:bg-[#83341d]">
+              <Sparkles className="w-3.5 h-3.5 text-[#fbbd9c]" />
+              Run Conflict Sweep
+            </button>
+          </div>
+        </div>
+
+        {/* Filter Pills with rounded-xl */}
+        <div className="flex items-center gap-2 overflow-x-auto py-1">
+          {['All Departments', 'Computer Science', 'Bioengineering', 'Architecture', 'Mechanical Engineering'].map(tag => (
+            <button
+              key={tag}
+              onClick={() => setSelectedCohort(tag)}
+              className={`px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all border ${
+                selectedCohort === tag
+                  ? 'bg-[#3b1e4a] text-white border-[#3b1e4a] shadow-sm'
+                  : 'bg-white text-[#655d69] border-[#ece6ed] hover:border-[#dcd6df]'
+              }`}
+            >
+              {tag}
+            </button>
+          ))}
+        </div>
+
+        {/* Horizontally Scrollable Timetable Grid (Min Col Width 160px) */}
+        <div className="bg-white border border-[#ece6ed] rounded-xl shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[960px] border-collapse text-left">
+              <thead>
+                <tr className="border-b border-[#ece6ed] bg-[#fbf8fc]">
+                  <th className="py-3 px-4 w-36 text-[10px] font-mono uppercase tracking-wider text-[#7c747f]">Time Window</th>
+                  {days.map(day => (
+                    <th key={day} className="py-3 px-4 min-w-[160px] text-xs font-bold text-[#1f1b20] border-l border-[#ece6ed]">
+                      {day}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#ece6ed]">
+                {timeSlots.map(time => (
+                  <tr key={time} className="hover:bg-[#fcfaff]/50">
+                    <td className="py-4 px-4 text-xs font-mono font-medium text-[#655d69] whitespace-nowrap align-top">
+                      {time}
+                    </td>
+                    {days.map(day => {
+                      const classes = scheduleData[time]?.[day] || [];
+                      return (
+                        <td key={day} className="py-3 px-3 min-w-[160px] border-l border-[#ece6ed] align-top">
+                          <div className="space-y-2">
+                            {classes.map(cls => (
+                              <div
+                                key={cls.id}
+                                className={`p-3 rounded-xl border text-xs space-y-1 transition-all ${
+                                  cls.accent === 'plum'
+                                    ? 'bg-[#fcf9fd] border-[#e8dfee] text-[#1f1b20]'
+                                    : cls.accent === 'emerald'
+                                    ? 'bg-[#f4fbf6] border-[#caeed6] text-[#0f5431]'
+                                    : 'bg-[#fff5f0] border-[#fed8c8] text-[#9c4126]'
+                                }`}
+                              >
+                                <div className="font-bold truncate">{cls.code} // {cls.title}</div>
+                                <div className="text-[11px] text-[#7c747f] flex items-center justify-between">
+                                  <span className="truncate max-w-[90px]">{cls.room}</span>
+                                  <span className="font-mono text-[10px]">{cls.prof}</span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Lower Metric Bar */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="bg-white border border-[#ece6ed] rounded-xl p-5 shadow-sm flex items-center gap-4">
+            <Clock className="w-8 h-8 text-[#9c4126] p-1.5 bg-[#fff1ed] rounded-xl" />
+            <div>
+              <div className="text-xs font-bold text-[#1f1b20]">Zero Schedule Collisions</div>
+              <div className="text-[11px] text-[#7c747f]">1,420 lectures synchronized with zero instructor overlap</div>
+            </div>
+          </div>
+          <div className="bg-white border border-[#ece6ed] rounded-xl p-5 shadow-sm flex items-center gap-4">
+            <Building className="w-8 h-8 text-[#3b1e4a] p-1.5 bg-[#f6f2f7] rounded-xl" />
+            <div>
+              <div className="text-xs font-bold text-[#1f1b20]">98.2% Room Utilization</div>
+              <div className="text-[11px] text-[#7c747f]">Cleanroom & lab space allocated during optimal student hours</div>
+            </div>
+          </div>
+          <div className="bg-white border border-[#ece6ed] rounded-xl p-5 shadow-sm flex items-center gap-4">
+            <AlertCircle className="w-8 h-8 text-[#18794e] p-1.5 bg-[#eefcf2] rounded-xl" />
+            <div>
+              <div className="text-xs font-bold text-[#1f1b20]">Deterministic Parity</div>
+              <div className="text-[11px] font-mono text-[#7c747f]">SOLVER_PASS_STABLE // 99.98%</div>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+  );
+};
+```
+
+---
+
+## 5. Screen 3: Generator Studio (`GeneratorStudio.tsx`)
+
+```tsx
+import React, { useState } from 'react';
+import { SmartGridNav } from './SmartGridNav';
+import { Play, RotateCcw, Sliders, Cpu, CheckCircle } from 'lucide-react';
+
+export const GeneratorStudio: React.FC = () => {
+  const [transitWeight, setTransitWeight] = useState(85);
+  const [circadianWeight, setCircadianWeight] = useState(90);
+  const [roomCompaction, setRoomCompaction] = useState(70);
+  const [isSolving, setIsSolving] = useState(false);
+  const [solved, setSolved] = useState(false);
+
+  const handleRun = () => {
+    setIsSolving(true);
+    setTimeout(() => {
+      setIsSolving(false);
+      setSolved(true);
+      setTimeout(() => setSolved(false), 4000);
+    }, 1200);
+  };
+
+  return (
+    <div className="min-h-screen bg-[#fbf8fc] text-[#1f1b20] font-sans antialiased">
+      <SmartGridNav activeRoute="generator" />
+
+      <main className="max-w-4xl mx-auto px-6 lg:px-8 py-10 space-y-10">
+        {/* Step Tracker & Header (Single Column Flow) */}
+        <section className="text-center space-y-3 border-b border-[#ece6ed] pb-8">
+          <div className="text-[11px] font-mono uppercase tracking-widest text-[#9c4126]">
+            Generator Studio // Step 02 of 04
+          </div>
+          <h1 className="text-3xl font-extrabold text-[#1f1b20]">
+            Multi-Objective Combinatorial Optimization
+          </h1>
+          <p className="text-xs text-[#655d69] max-w-lg mx-auto">
+            Fine-tune the mathematical scalar weights passed into the university timetable solver matrix.
+          </p>
+        </section>
+
+        {/* Multi-Objective Constraint Scalars Card */}
+        <section className="bg-white border border-[#ece6ed] rounded-xl p-8 shadow-sm space-y-6">
+          <div className="flex items-center justify-between border-b border-[#ece6ed] pb-3">
+            <span className="text-xs font-bold uppercase tracking-wider text-[#1f1b20] flex items-center gap-2">
+              <Sliders className="w-4 h-4 text-[#9c4126]" />
+              Constraint Scalar Multipliers
+            </span>
+            <span className="text-[11px] font-mono text-[#7c747f]">NORM_RANGE: [0.0 - 1.0]</span>
+          </div>
+
+          {/* Slider 1 */}
+          <div className="space-y-2">
+            <div className="flex justify-between text-xs font-semibold text-[#1f1b20]">
+              <span>Commuter Transit Buffer Importance</span>
+              <span className="font-mono text-[#9c4126]">{transitWeight / 100}</span>
+            </div>
+            <input
+              type="range"
+              min="0"
+              max="100"
+              value={transitWeight}
+              onChange={e => setTransitWeight(Number(e.target.value))}
+              className="w-full h-2 bg-[#ece6ed] rounded-lg appearance-none cursor-pointer accent-[#9c4126]"
+            />
+          </div>
+
+          {/* Slider 2 */}
+          <div className="space-y-2">
+            <div className="flex justify-between text-xs font-semibold text-[#1f1b20]">
+              <span>Circadian Energy & Wake Window Weighting</span>
+              <span className="font-mono text-[#9c4126]">{circadianWeight / 100}</span>
+            </div>
+            <input
+              type="range"
+              min="0"
+              max="100"
+              value={circadianWeight}
+              onChange={e => setCircadianWeight(Number(e.target.value))}
+              className="w-full h-2 bg-[#ece6ed] rounded-lg appearance-none cursor-pointer accent-[#9c4126]"
+            />
+          </div>
+
+          {/* Slider 3 */}
+          <div className="space-y-2">
+            <div className="flex justify-between text-xs font-semibold text-[#1f1b20]">
+              <span>Room Compaction & Facility Conservation</span>
+              <span className="font-mono text-[#9c4126]">{roomCompaction / 100}</span>
+            </div>
+            <input
+              type="range"
+              min="0"
+              max="100"
+              value={roomCompaction}
+              onChange={e => setRoomCompaction(Number(e.target.value))}
+              className="w-full h-2 bg-[#ece6ed] rounded-lg appearance-none cursor-pointer accent-[#9c4126]"
+            />
+          </div>
+        </section>
+
+        {/* Solver Telemetry Card */}
+        <section className="bg-white border border-[#ece6ed] rounded-xl p-8 shadow-sm space-y-4">
+          <div className="flex items-center justify-between border-b border-[#ece6ed] pb-3">
+            <span className="text-xs font-bold uppercase tracking-wider text-[#1f1b20] flex items-center gap-2">
+              <Cpu className="w-4 h-4 text-[#3b1e4a]" />
+              Real-Time Engine Telemetry
+            </span>
+            <span className="text-[11px] font-mono text-[#18794e]">PARITY_OK</span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-center">
+            <div className="p-4 bg-[#fbf8fc] rounded-xl border border-[#ece6ed]">
+              <div className="text-xl font-black font-mono text-[#1f1b20]">4,120</div>
+              <div className="text-[10px] font-mono text-[#7c747f] mt-1">Active Chromosomes</div>
+            </div>
+            <div className="p-4 bg-[#fbf8fc] rounded-xl border border-[#ece6ed]">
+              <div className="text-xl font-black font-mono text-[#9c4126]">1.24 ms</div>
+              <div className="text-[10px] font-mono text-[#7c747f] mt-1">Convergence Time</div>
+            </div>
+            <div className="p-4 bg-[#fbf8fc] rounded-xl border border-[#ece6ed]">
+              <div className="text-xl font-black font-mono text-[#18794e]">99.88%</div>
+              <div className="text-[10px] font-mono text-[#7c747f] mt-1">Pareto Optimality</div>
+            </div>
+          </div>
+        </section>
+
+        {/* Execution Triggers */}
+        <section className="flex items-center justify-end gap-4">
+          <button
+            onClick={() => { setTransitWeight(85); setCircadianWeight(90); setRoomCompaction(70); }}
+            className="flex items-center gap-2 px-5 py-3 rounded-xl border border-[#ece6ed] text-[#3b1e4a] text-xs font-bold uppercase tracking-wider hover:bg-[#f6f2f7]"
+          >
+            <RotateCcw className="w-4 h-4" />
+            Reset Defaults
+          </button>
+          <button
+            onClick={handleRun}
+            disabled={isSolving}
+            className="flex items-center gap-2 bg-[#9c4126] hover:bg-[#83341d] text-white px-7 py-3 rounded-xl text-xs font-bold uppercase tracking-wider shadow-md transition-all active:scale-95 disabled:opacity-75"
+          >
+            {isSolving ? (
+              <>Solving Combinatorics...</>
+            ) : solved ? (
+              <>
+                <CheckCircle className="w-4 h-4 text-[#fbbd9c]" />
+                Optimal Matrix Locked!
+              </>
+            ) : (
+              <>
+                <Play className="w-4 h-4 fill-white" />
+                Dispatch Solver Matrix
+              </>
+            )}
+          </button>
+        </section>
+      </main>
+    </div>
+  );
+};
+```
+
+---
+
+## 6. How to Use in Google AI Studio
+
+1. **System Instructions Window:**
+   - Copy this entire file or paste it directly into the **System Instructions** card in Google AI Studio.
+   - It equips Gemini with the exact domain model, design tokens, component architecture, and styling rules.
+2. **One-Click React Dev Setup:**
+   ```bash
+   npm create vite@latest smartgrid-ai -- --template react-ts
+   cd smartgrid-ai
+   npm install lucide-react tailwindcss @tailwindcss/vite
+   ```
+3. Copy the individual component blocks into your `src/components/` folder for immediate rendering.

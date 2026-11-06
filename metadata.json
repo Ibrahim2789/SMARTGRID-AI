@@ -1,0 +1,6 @@
+{
+  "name": "SmartGrid AI - Algorithmic Campus Equilibrium",
+  "description": "Multi-objective combinatorial timetable solver and campus equilibrium engine harmonizing faculty, rooms, transit buffers, and circadian student preferences.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
