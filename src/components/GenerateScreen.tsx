@@ -243,7 +243,7 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({ onNavigate }) =>
                   Schedule Generated — "{lastResult.scenarioName}"
                 </h2>
                 <p className="text-xs text-[#171717]/80">
-                  All hard constraints satisfied · Zero instructor, room, or student cohort double-bookings.
+                  Individual weekly timetables generated for {store.studentGroups.length} classes/sections · Zero instructor, room, or section double-bookings.
                 </p>
               </div>
             </div>
@@ -253,22 +253,22 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({ onNavigate }) =>
               onClick={() => onNavigate('timetables')}
               className="btn-primary text-xs shrink-0"
             >
-              <span>Open in My Timetable</span>
+              <span>Open Class Timetables</span>
               <ArrowRight className="w-4 h-4" />
             </button>
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
             <div className="p-3.5 rounded-xl bg-white border border-[#E4E2DA]">
-              <div className="text-xs text-[#77766F]">Sections Scheduled</div>
+              <div className="text-xs text-[#77766F]">Sessions Scheduled</div>
               <div className="font-serif-editorial text-2xl text-[#171717] mt-0.5">
                 {lastResult.placedCount}
               </div>
             </div>
             <div className="p-3.5 rounded-xl bg-white border border-[#E4E2DA]">
-              <div className="text-xs text-[#77766F]">Unassigned Sections</div>
+              <div className="text-xs text-[#77766F]">Classes / Sections</div>
               <div className="font-serif-editorial text-2xl text-[#171717] mt-0.5">
-                {lastResult.unplacedCount}
+                {store.studentGroups.length}
               </div>
             </div>
             <div className="p-3.5 rounded-xl bg-white border border-[#E4E2DA]">
@@ -282,6 +282,28 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({ onNavigate }) =>
               <div className="font-serif-editorial text-2xl text-[#171717] mt-0.5">
                 {lastResult.roomUtilization}%
               </div>
+            </div>
+          </div>
+
+          {/* Direct Class / Section Timetable Quick-Switchers */}
+          <div className="pt-3 border-t border-black/10 space-y-2">
+            <div className="text-xs font-semibold text-[#171717]">
+              Inspect Individual Class / Section Timetable:
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {visibleGroups.map(grp => (
+                <button
+                  key={grp.id}
+                  type="button"
+                  onClick={() => {
+                    institutionalStore.setSelectedClassGroupId(grp.id);
+                    onNavigate('timetables');
+                  }}
+                  className="px-2.5 py-1 rounded-lg bg-white hover:bg-[#171717] hover:text-white border border-[#E4E2DA] text-xs font-mono-tabular font-semibold text-[#171717] transition-colors cursor-pointer"
+                >
+                  {grp.code}
+                </button>
+              ))}
             </div>
           </div>
         </div>

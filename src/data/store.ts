@@ -40,16 +40,19 @@ import {
 } from './seedData';
 
 import {
-  largeSampleTerm,
-  largeSampleCampuses,
-  largeSampleBuildings,
-  largeSampleRooms,
-  largeSampleDepartments,
-  largeSamplePrograms,
-  largeSampleCourses,
-  largeSampleInstructors,
-  largeSampleStudentGroups,
-  largeSampleSections,
+  universityTerms,
+  universityCampuses,
+  universityBuildings,
+  universityRooms,
+  universityDepartments,
+  universityPrograms,
+  universityCourses,
+  universityInstructors,
+  universityStudentGroups,
+  universitySections
+} from './universitySampleData';
+
+import {
   largeSampleTimeStructure,
   largeSampleConstraints,
   largeSampleScenario,
@@ -83,6 +86,7 @@ export interface FeedbackPollItem {
 
 export interface InstitutionalDataStore {
   institutionProfile?: InstitutionProfile;
+  selectedClassGroupId?: string;
   terms: AcademicTerm[];
   campuses: Campus[];
   buildings: Building[];
@@ -101,23 +105,23 @@ export interface InstitutionalDataStore {
 }
 
 const defaultInstitutionProfile: InstitutionProfile = {
-  name: 'Western Polytechnic Institute',
-  campusCode: 'WPI-MAIN-01',
-  accreditation: 'Higher Learning Commission (HLC) & ABET',
+  name: 'University of Engineering & Computing',
+  campusCode: 'UEC-MAIN-01',
+  accreditation: 'PEC & NCEAC Accredited Programs (BEE, BCE, BESE, BSCS)',
   registrarName: 'Dr. Katherine Reynolds',
-  registrarEmail: 'k.reynolds@westernpoly.edu',
+  registrarEmail: 'registrar@university.edu',
   autoConflictSweep: true,
-  defaultSessionMinutes: 90,
-  timezone: 'America/New_York (EST/EDT)'
+  defaultSessionMinutes: 50,
+  timezone: 'Asia/Karachi (PKT)'
 };
 
 const defaultFeedbackPolls: FeedbackPollItem[] = [
   {
     id: 'poll-1',
-    title: 'Protect 12:00 – 13:00 Campus Lunch & Recharge Window',
+    title: 'Protect 13:00 – 14:00 University Lunch & Prayer Break Window',
     category: 'Student Wellbeing',
-    description: 'Reserve midday hour across all undergraduate cohorts to prevent back-to-back 5-hour lecture marathons.',
-    targetSlot: '12:00 - 13:00',
+    description: 'Reserve midday hour (1:00 PM – 2:00 PM) across all BEE, BCE, BESE, and BSCS sections with zero lectures or labs.',
+    targetSlot: '13:00 - 14:00',
     votesApprove: 482,
     votesRevise: 34,
     userVote: null,
@@ -127,46 +131,46 @@ const defaultFeedbackPolls: FeedbackPollItem[] = [
   },
   {
     id: 'poll-2',
-    title: 'Minimum 20-Minute Transit Buffer Between North & South Quads',
-    category: 'Campus Transit',
-    description: 'Ensure cohorts moving between Alan Turing Hall and Bioengineering Lab Annex have sufficient walking time.',
-    targetSlot: 'All Transitions',
+    title: 'Friday Afternoon Shift (14:30 – 16:55) for Jummah Prayer Buffer',
+    category: 'Campus Schedule',
+    description: 'Ensure Friday afternoon slots begin at 14:30 (14:30–15:15, 15:20–16:05, 16:10–16:55) across all departments.',
+    targetSlot: 'Fri 14:30 - 16:55',
     votesApprove: 618,
     votesRevise: 41,
     userVote: null,
-    status: 'Active',
-    submittedBy: 'Commuter Student Union',
+    status: 'Implemented',
+    submittedBy: 'Academic Council',
     createdAt: '2026-02-14'
   },
   {
     id: 'poll-3',
-    title: 'Cap Heavy STEM Lab Sessions at 16:00 on Fridays',
-    category: 'Circadian Alertness',
-    description: 'Shift high-precision wet lab and studio modules earlier in the week when cognitive alertness peaks.',
-    targetSlot: 'Fri 15:00 - 17:00',
+    title: 'Keep 3-Hour Continuous Labs within Morning or Afternoon Blocks',
+    category: 'Lab Continuity',
+    description: 'Schedule 3-hour labs continuously (09:00–11:50, 10:00–12:50, or 14:00–16:50) without splitting across lunch.',
+    targetSlot: '3-Hour Labs',
     votesApprove: 356,
-    votesRevise: 89,
+    votesRevise: 29,
     userVote: null,
-    status: 'Active',
-    submittedBy: 'Department of Bioengineering Faculty',
+    status: 'Implemented',
+    submittedBy: 'Engineering Lab Coordinators',
     createdAt: '2026-02-18'
   },
   {
     id: 'poll-4',
-    title: 'Cluster Upper-Division Seminars into Tue/Thu Blocks',
-    category: 'Faculty Research',
-    description: 'Preserve uninterrupted Monday/Wednesday/Friday mornings for principal investigator grant research.',
-    targetSlot: 'Tue / Thu',
-    votesApprove: 214,
-    votesRevise: 28,
+    title: 'Assign Dedicated Home Classrooms per Section (CR-18-IAEC, CR-30-Acad, etc.)',
+    category: 'Room Stability',
+    description: 'Keep theory lectures for each section in its designated home classroom to minimize unnecessary building transit.',
+    targetSlot: 'All Theory Slots',
+    votesApprove: 514,
+    votesRevise: 18,
     userVote: null,
-    status: 'Under Review',
-    submittedBy: 'Faculty Senate Research Council',
+    status: 'Implemented',
+    submittedBy: 'Department Timetable Committees',
     createdAt: '2026-02-20'
   }
 ];
 
-const STORAGE_KEY = 'smartgrid_institutional_data_v4';
+const STORAGE_KEY = 'smartgrid_institutional_data_v5';
 
 function loadInitialData(): InstitutionalDataStore {
   try {
@@ -177,6 +181,7 @@ function loadInitialData(): InstitutionalDataStore {
         if (parsed && parsed.terms && parsed.rooms && parsed.courses) {
           return {
             institutionProfile: parsed.institutionProfile || defaultInstitutionProfile,
+            selectedClassGroupId: parsed.selectedClassGroupId || parsed.studentGroups?.[0]?.id || 'grp-2k24-bee-a',
             feedbackPolls: parsed.feedbackPolls || defaultFeedbackPolls,
             ...parsed
           };
@@ -184,21 +189,22 @@ function loadInitialData(): InstitutionalDataStore {
       }
     }
   } catch (e) {
-    console.warn('Failed to parse stored institutional data, falling back to seed data', e);
+    console.warn('Failed to parse stored institutional data, falling back to university dataset', e);
   }
 
   return {
     institutionProfile: defaultInstitutionProfile,
-    terms: seedTerms,
-    campuses: seedCampuses,
-    buildings: seedBuildings,
-    rooms: seedRooms,
-    departments: seedDepartments,
-    programs: seedPrograms,
-    courses: seedCourses,
-    instructors: seedInstructors,
-    studentGroups: seedStudentGroups,
-    sections: seedSections,
+    selectedClassGroupId: universityStudentGroups[0]?.id || 'grp-2k24-bee-a',
+    terms: universityTerms,
+    campuses: universityCampuses,
+    buildings: universityBuildings,
+    rooms: universityRooms,
+    departments: universityDepartments,
+    programs: universityPrograms,
+    courses: universityCourses,
+    instructors: universityInstructors,
+    studentGroups: universityStudentGroups,
+    sections: universitySections,
     timeStructure: seedTimeStructure,
     constraints: seedConstraintRules,
     scenarios: seedScenarios,
@@ -233,26 +239,35 @@ export const institutionalStore = {
     };
   },
 
+  setSelectedClassGroupId(groupId: string) {
+    currentStore = {
+      ...currentStore,
+      selectedClassGroupId: groupId
+    };
+    notifyListeners();
+  },
+
   resetToDefaults() {
     currentStore = {
       institutionProfile: defaultInstitutionProfile,
-      terms: seedTerms,
-      campuses: seedCampuses,
-      buildings: seedBuildings,
-      rooms: seedRooms,
-      departments: seedDepartments,
-      programs: seedPrograms,
-      courses: seedCourses,
-      instructors: seedInstructors,
-      studentGroups: seedStudentGroups,
-      sections: seedSections,
+      selectedClassGroupId: universityStudentGroups[0]?.id || 'grp-2k24-bee-a',
+      terms: universityTerms,
+      campuses: universityCampuses,
+      buildings: universityBuildings,
+      rooms: universityRooms,
+      departments: universityDepartments,
+      programs: universityPrograms,
+      courses: universityCourses,
+      instructors: universityInstructors,
+      studentGroups: universityStudentGroups,
+      sections: universitySections,
       timeStructure: seedTimeStructure,
       constraints: seedConstraintRules,
       scenarios: seedScenarios,
       auditLogs: seedAuditLogs,
       feedbackPolls: defaultFeedbackPolls
     };
-    this.addAuditLog('restore', 'scenario', 'factory-reset', 'Reset all institutional master data to default baseline.');
+    this.addAuditLog('restore', 'scenario', 'factory-reset', 'Reset all institutional master data to university baseline (BEE, BCE, BESE, BSCS).');
     notifyListeners();
   },
 
@@ -357,27 +372,24 @@ export const institutionalStore = {
 
     currentStore = {
       ...currentStore,
-      terms: mergeSample(currentStore.terms.filter(t => !seedTerms.some(st => st.id === t.id) && !t.is_sample && !t.isSample), [largeSampleTerm]),
-      campuses: mergeSample(currentStore.campuses.filter(c => !seedCampuses.some(sc => sc.id === c.id) && !c.is_sample && !c.isSample), largeSampleCampuses),
-      buildings: mergeSample(currentStore.buildings.filter(b => !seedBuildings.some(sb => sb.id === b.id) && !b.is_sample && !b.isSample), largeSampleBuildings),
-      rooms: mergeSample(realUserRooms, largeSampleRooms),
-      departments: largeSampleDepartments,
-      programs: largeSamplePrograms,
-      courses: mergeSample(realUserCourses, largeSampleCourses),
-      instructors: mergeSample(realUserInstructors, largeSampleInstructors),
-      studentGroups: mergeSample(realUserGroups, largeSampleStudentGroups),
-      sections: mergeSample(realUserSections, largeSampleSections),
+      selectedClassGroupId: universityStudentGroups[0]?.id || 'grp-2k24-bee-a',
+      terms: mergeSample(currentStore.terms.filter(t => !seedTerms.some(st => st.id === t.id) && !t.is_sample && !t.isSample), universityTerms),
+      campuses: mergeSample(currentStore.campuses.filter(c => !seedCampuses.some(sc => sc.id === c.id) && !c.is_sample && !c.isSample), universityCampuses),
+      buildings: mergeSample(currentStore.buildings.filter(b => !seedBuildings.some(sb => sb.id === b.id) && !b.is_sample && !b.isSample), universityBuildings),
+      rooms: mergeSample(realUserRooms, universityRooms),
+      departments: universityDepartments,
+      programs: universityPrograms,
+      courses: mergeSample(realUserCourses, universityCourses),
+      instructors: mergeSample(realUserInstructors, universityInstructors),
+      studentGroups: mergeSample(realUserGroups, universityStudentGroups),
+      sections: mergeSample(realUserSections, universitySections),
       timeStructure: { ...largeSampleTimeStructure, is_sample: true, isSample: true },
       constraints: largeSampleConstraints,
       scenarios: [largeSampleScenario],
       auditLogs: [...currentStore.auditLogs.filter(a => !a.is_sample && !a.isSample), ...largeSampleAuditLogs]
     };
 
-    currentStore.terms = currentStore.terms.map(t =>
-      t.id === largeSampleTerm.id ? { ...t, status: 'active' } : (t.status === 'active' ? { ...t, status: 'archived' } : t)
-    );
-
-    this.addAuditLog('create', 'scenario', 'sample-data', 'Loaded realistic multi-department university dataset.');
+    this.addAuditLog('create', 'scenario', 'sample-data', 'Loaded realistic multi-department university dataset (BEE, BCE, BESE, BSCS).');
     notifyListeners();
   },
 

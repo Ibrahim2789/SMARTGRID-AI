@@ -11,22 +11,19 @@ import {
   Download,
   Sparkles,
   Building,
-  Clock,
   FileText,
   FileSpreadsheet,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Check,
   Layers,
   Search,
   Users,
   User,
   Lock,
-  Calendar as CalendarIcon,
-  CheckCircle2,
-  MapPin,
   Coffee,
-  FlaskConical,
-  BookOpen
+  MapPin
 } from 'lucide-react';
 import { ClassDetailsModal, ClassItem } from './ClassDetailsModal';
 import { jsPDF } from 'jspdf';
@@ -67,9 +64,12 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
 
   const [calendarMode, setCalendarMode] = useState<'week' | 'day' | 'agenda'>('week');
   const [focusedDay, setFocusedDay] = useState<string>('Mon');
-  const [perspective, setPerspective] = useState<'master' | 'cohort' | 'instructor' | 'room'>('master');
+  // Default to 'cohort' (Individual Class/Section Timetable) so each class/section timetable is displayed clearly
+  const [perspective, setPerspective] = useState<'cohort' | 'master' | 'instructor' | 'room'>('cohort');
   const [selectedDeptId, setSelectedDeptId] = useState<string>('all');
-  const [selectedCohortId, setSelectedCohortId] = useState<string>(store.studentGroups[0]?.id || '');
+  const [selectedCohortId, setSelectedCohortId] = useState<string>(
+    store.selectedClassGroupId || store.studentGroups[0]?.id || ''
+  );
   const [selectedInstructorId, setSelectedInstructorId] = useState<string>(store.instructors[0]?.id || '');
   const [selectedRoomId, setSelectedRoomId] = useState<string>(store.rooms[0]?.id || '');
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -81,6 +81,50 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [exportNotice, setExportNotice] = useState<string | null>(null);
   const exportDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Keep selectedCohortId synchronized if store.selectedClassGroupId changes externally
+  useEffect(() => {
+    if (store.selectedClassGroupId && store.studentGroups.some(g => g.id === store.selectedClassGroupId)) {
+      setSelectedCohortId(store.selectedClassGroupId);
+    } else if (!store.studentGroups.some(g => g.id === selectedCohortId) && store.studentGroups[0]) {
+      setSelectedCohortId(store.studentGroups[0].id);
+    }
+  }, [store.selectedClassGroupId, store.studentGroups]);
+
+  const handleSelectCohort = (groupId: string) => {
+    setPerspective('cohort');
+    setSelectedCohortId(groupId);
+    institutionalStore.setSelectedClassGroupId(groupId);
+  };
+
+  // Filter classes/sections by selected department
+  const departmentFilteredGroups = store.studentGroups.filter(g => {
+    if (selectedDeptId === 'all') return true;
+    const prog = store.programs.find(p => p.id === g.programId);
+    return prog?.departmentId === selectedDeptId;
+  });
+
+  const activeGroupIndex = departmentFilteredGroups.findIndex(g => g.id === selectedCohortId);
+  const activeGroupObj =
+    store.studentGroups.find(g => g.id === selectedCohortId) || store.studentGroups[0];
+  const activeGroupProgram = store.programs.find(p => p.id === activeGroupObj?.programId);
+  const activeGroupDept = store.departments.find(d => d.id === activeGroupProgram?.departmentId);
+
+  const handlePrevCohort = () => {
+    if (departmentFilteredGroups.length === 0) return;
+    const prevIdx =
+      activeGroupIndex <= 0 ? departmentFilteredGroups.length - 1 : activeGroupIndex - 1;
+    handleSelectCohort(departmentFilteredGroups[prevIdx].id);
+  };
+
+  const handleNextCohort = () => {
+    if (departmentFilteredGroups.length === 0) return;
+    const nextIdx =
+      activeGroupIndex < 0 || activeGroupIndex >= departmentFilteredGroups.length - 1
+        ? 0
+        : activeGroupIndex + 1;
+    handleSelectCohort(departmentFilteredGroups[nextIdx].id);
+  };
 
   const days = store.timeStructure.workingDays.length > 0
     ? store.timeStructure.workingDays
@@ -112,6 +156,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
   };
 
   const filterClass = (cls: ClassItem) => {
+    // Strictly isolate the selected Class/Section when in 'cohort' mode
     if (perspective === 'cohort' && selectedCohortId) {
       if (cls.studentGroupId !== selectedCohortId) return false;
     }
@@ -121,7 +166,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
     if (perspective === 'room' && selectedRoomId) {
       if (cls.roomId !== selectedRoomId) return false;
     }
-    if (selectedDeptId !== 'all') {
+    if (perspective === 'master' && selectedDeptId !== 'all') {
       if (cls.departmentId && cls.departmentId !== selectedDeptId) return false;
     }
     if (searchQuery.trim()) {
@@ -140,7 +185,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
   const getActiveScopeLabel = () => {
     if (perspective === 'cohort') {
       const g = store.studentGroups.find(x => x.id === selectedCohortId);
-      return g ? `Cohort_${g.code}` : 'Cohort_View';
+      return g ? `Class_${g.code}` : 'Class_Section_View';
     }
     if (perspective === 'instructor') {
       const i = store.instructors.find(x => x.id === selectedInstructorId);
@@ -154,14 +199,14 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
       const d = store.departments.find(x => x.id === selectedDeptId);
       return d ? `Dept_${d.code}` : 'Department';
     }
-    return 'All_Departments';
+    return 'All_Classes_University';
   };
 
-  // Multi-Worksheet Google Sheets (.xlsx) Export
+  // Multi-Worksheet Google Sheets (.xlsx) Export — Weekly Overview + 1 Tab per Class/Section
   const handleExportGoogleSheets = async (scope: 'filtered' | 'all') => {
     try {
       setIsExportingSheets(true);
-      const scopeLabel = scope === 'all' ? 'All_Departments' : getActiveScopeLabel();
+      const scopeLabel = scope === 'all' ? 'All_University_Classes' : getActiveScopeLabel();
       const result = await exportTimetableToGoogleSheetsWorkbook({
         store,
         scheduleData,
@@ -171,7 +216,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
         studentOrUserName: currentUser?.name || 'Academic Schedule'
       });
       setExportNotice(
-        `Exported Google Sheets workbook "${result.fileName}" containing 1 Weekly Overview (with vertically merged 3-hour labs & 1:00–2:00 PM lunch break) + ${result.courseSheetCount} individual course worksheets (${result.totalSessionsCount} sessions). Ready for 1-click import in Google Sheets.`
+        `Exported Google Sheets workbook "${result.fileName}" containing 1 Weekly Overview + ${result.classSheetCount} Class/Section worksheets (with vertically merged 3-hour labs & 1:00–2:00 PM lunch break).`
       );
       setTimeout(() => setExportNotice(null), 7000);
     } catch (err) {
@@ -232,7 +277,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
       'Credits',
       'Room / Facility',
       'Faculty Instructor',
-      'Cohort Track'
+      'Class / Section'
     ];
     const rows = records.map(r => [
       `"${r.day}"`,
@@ -251,7 +296,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
-    const scopeLabel = scope === 'all' ? 'All_Departments' : getActiveScopeLabel();
+    const scopeLabel = scope === 'all' ? 'All_University_Classes' : getActiveScopeLabel();
     link.href = url;
     link.download = `SmartGrid_Timetable_${scopeLabel}_Fall2026.csv`;
     document.body.appendChild(link);
@@ -288,12 +333,12 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
     doc.setFontSize(8);
     doc.setTextColor(119, 118, 111);
     doc.text(
-      `${(activeTerm?.name || 'SPRING 2026').toUpperCase()}   •   50-MIN LECTURES + 10-MIN SHORT BREAKS   •   3-HOUR CONTINUOUS LABS   •   FIXED LUNCH (1:00 – 2:00 PM)`,
+      `${(activeTerm?.name || 'FALL 2026').toUpperCase()}   •   50-MIN LECTURES + 10-MIN SHORT BREAKS   •   3-HOUR CONTINUOUS LABS   •   FIXED LUNCH (1:00 – 2:00 PM)`,
       margin,
       23
     );
 
-    const scopeLabel = scope === 'all' ? 'All Departments' : getActiveScopeLabel().replace(/_/g, ' ');
+    const scopeLabel = scope === 'all' ? 'All University Classes' : getActiveScopeLabel().replace(/_/g, ' ');
     const dateStr = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
     doc.text(`Scope: ${scopeLabel}   •   Generated: ${dateStr}`, pageWidth - margin, 18, { align: 'right' });
 
@@ -328,7 +373,6 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
     let currentY = tableStartY + headerHeight;
 
     UNIVERSITY_SLOTS.forEach(slotMeta => {
-      // Insert Fixed Lunch Break before Slot 5 (2:00 – 2:50 PM)
       if (slotMeta.slotNumber === 5) {
         doc.setFillColor(232, 211, 107);
         doc.setDrawColor(228, 226, 218);
@@ -344,7 +388,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(7.5);
         doc.text(
-          'FIXED UNIVERSITY LUNCH BREAK (1:00 PM – 2:00 PM) — NO LECTURES OR LABS SCHEDULED',
+          'FIXED UNIVERSITY LUNCH & PRAYER BREAK (1:00 PM – 2:00 PM) — NO LECTURES OR LABS SCHEDULED',
           margin + colTimeWidth + 8,
           currentY + 5.8
         );
@@ -399,7 +443,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
       currentY += slotRowHeight;
     });
 
-    const fileLabel = scope === 'all' ? 'All_Departments' : getActiveScopeLabel();
+    const fileLabel = scope === 'all' ? 'All_University_Classes' : getActiveScopeLabel();
     doc.save(`SmartGrid_Timetable_${fileLabel}_Fall2026.pdf`);
 
     setExportNotice(`Exported timetable as landscape PDF (${fileLabel.replace(/_/g, ' ')}).`);
@@ -408,14 +452,22 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
   };
 
   const placedTotal = store.sections.filter(s => s.assignedSlot).length;
-  const labCount = store.sections.filter(
-    s => s.assignedSlot && (s.sessionType === 'Lab' || s.spanSlots === 3 || s.assignedSlot.sessionType === 'Lab')
-  ).length;
-  const lectureCount = placedTotal - labCount;
-  const lockedTotal = store.sections.filter(s => s.isLocked).length;
   const activeTerm = store.terms.find(t => t.status === 'active') || store.terms[0];
   const currentInstructorObj = store.instructors.find(i => i.id === selectedInstructorId);
   const visibleDays = calendarMode === 'day' ? [focusedDay] : days;
+
+  // Compute stats for the currently viewed Class/Section (or full view)
+  const activeFilteredSections = store.sections.filter(s => {
+    if (!s.assignedSlot) return false;
+    if (perspective === 'cohort') return s.studentGroupId === selectedCohortId;
+    if (perspective === 'instructor') return s.instructorId === selectedInstructorId;
+    if (perspective === 'room') return s.assignedSlot.roomId === selectedRoomId;
+    return true;
+  });
+  const activeLabCount = activeFilteredSections.filter(
+    s => s.sessionType === 'Lab' || s.spanSlots === 3 || s.assignedSlot?.sessionType === 'Lab'
+  ).length;
+  const activeLectureCount = activeFilteredSections.length - activeLabCount;
 
   // Precompute 3-hour Continuous Lab vertical spans (`rowSpan={3}`) per visible day
   // Map key: `${day}__${slotNumber}`
@@ -456,7 +508,9 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
 
         const labBlock = getLabBlockByStartPeriod(slotMeta.period);
         const continuousWindow =
-          labItem.continuousTimeLabel || labBlock?.continuousLabel || '9:00 AM – 12:00 PM';
+          labItem.continuousTimeLabel ||
+          labBlock?.continuousLabel ||
+          (day === 'Fri' && slotMeta.slotNumber === 5 ? '2:30 PM – 4:55 PM' : '9:00 AM – 11:50 AM');
 
         labSpanByCell.set(cellKey, {
           labItem,
@@ -468,7 +522,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
   });
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-4">
       {!hideNav && (
         <SmartGridNav
           activeRoute="timetable"
@@ -480,51 +534,50 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
       )}
 
       {/* =========================================================
-          1. CALM EDITORIAL PAGE HEADER & PRIMARY ACTIONS
+          1. COMPACT EDITORIAL HEADER & EXPORT / OPTIMIZE ACTIONS
          ========================================================= */}
-      <header className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 pb-6 border-b border-[#E4E2DA]">
-        <div className="space-y-2">
+      <header className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-3 border-b border-[#E4E2DA]">
+        <div>
           <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-[#77766F]">
-            <span>{activeTerm?.name || 'Fall 2026'}</span>
+            <span>{activeTerm?.name || 'Fall Semester 2026'}</span>
             <span>·</span>
-            <span>{lectureCount} Lectures (50m) & {labCount} Continuous Labs (3h)</span>
+            <span>{store.studentGroups.length} Class Sections</span>
+            <span>·</span>
+            <span>{activeLectureCount} Lectures & {activeLabCount} Continuous 3h Labs</span>
             <span>·</span>
             <span className="text-[#171717] font-semibold">
               {conflicts.length === 0 ? '0 Clashes' : `${conflicts.length} Clashes`}
             </span>
-            {lockedTotal > 0 && (
-              <>
-                <span>·</span>
-                <span>{lockedTotal} Pinned</span>
-              </>
-            )}
           </div>
-          <h1 className="font-serif-editorial text-3xl sm:text-4xl text-[#171717] tracking-tight">
-            My Timetable
+          <h1 className="font-serif-editorial text-2xl sm:text-3xl text-[#171717] tracking-tight mt-0.5">
+            {perspective === 'cohort' && activeGroupObj
+              ? `Class Timetable: ${activeGroupObj.code}`
+              : perspective === 'instructor' && currentInstructorObj
+              ? `Faculty Timetable: ${currentInstructorObj.name}`
+              : perspective === 'room'
+              ? `Room Schedule`
+              : 'University Master Timetable'}
           </h1>
-          <p className="text-sm text-[#77766F] max-w-xl">
-            University hours 9:00 AM – 5:00 PM with a fixed midday lunch break from 1:00 – 2:00 PM. Select any class block to inspect details or reassign its slot.
-          </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3 shrink-0">
-          {/* Prominent Export to Google Sheets Action */}
+        <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+          {/* Prominent Export All Classes to Google Sheets Action */}
           <button
-            onClick={() => handleExportGoogleSheets('filtered')}
+            onClick={() => handleExportGoogleSheets('all')}
             disabled={isExportingSheets}
-            className="px-4 h-10 rounded-xl bg-[#B7F77C] hover:bg-[#a6ec68] border border-[#98DF58] text-[#171717] text-xs font-semibold inline-flex items-center gap-2 transition-colors cursor-pointer"
-            title="Export multi-worksheet Google Sheets (.xlsx) with Weekly Overview and individual Course tabs"
+            className="px-3.5 h-9 rounded-xl bg-[#B7F77C] hover:bg-[#a6ec68] border border-[#98DF58] text-[#171717] text-xs font-semibold inline-flex items-center gap-2 transition-colors cursor-pointer"
+            title="Export Google Sheets (.xlsx) with Weekly Overview + 1 separate worksheet per Class/Section"
           >
             <FileSpreadsheet className="w-4 h-4 text-[#171717]" />
             <span>{isExportingSheets ? 'Preparing Sheets...' : 'Export to Google Sheets'}</span>
           </button>
 
-          {/* Additional Export Dropdown Menu (CSV / PDF / Full Master Sheets) */}
+          {/* Additional Export Dropdown Menu */}
           <div className="relative" ref={exportDropdownRef}>
             <button
               onClick={() => setShowExportMenu(!showExportMenu)}
-              className="btn-secondary text-xs h-10 px-3.5"
-              title="More export options (CSV, PDF, Full Campus Google Sheets)"
+              className="btn-secondary text-xs h-9 px-3"
+              title="More export options (CSV, PDF, Current Class or All Classes Google Sheets)"
             >
               <Download className="w-3.5 h-3.5" />
               <span>Export</span>
@@ -533,48 +586,39 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
 
             {showExportMenu && (
               <div className="absolute right-0 mt-2 w-80 bg-white border border-[#E4E2DA] rounded-2xl shadow-xl z-50 py-2">
-                <div className="px-4 py-2.5 border-b border-[#E4E2DA]">
+                <div className="px-4 py-2 border-b border-[#E4E2DA]">
                   <div className="text-[11px] font-semibold uppercase tracking-wider text-[#77766F]">
-                    Export Active View
+                    Google Sheets Workbook (.xlsx)
                   </div>
                   <div className="text-xs text-[#171717] mt-0.5">
-                    Scope: <span className="font-semibold">{getActiveScopeLabel().replace(/_/g, ' ')}</span>
+                    Weekly Overview + 1 Worksheet per Class/Section
                   </div>
                 </div>
 
                 <div className="p-2 space-y-1">
                   <button
-                    onClick={() => handleExportGoogleSheets('filtered')}
-                    className="w-full text-left px-3 py-2.5 rounded-xl text-xs flex items-start gap-2.5 bg-[#B7F77C]/35 hover:bg-[#B7F77C]/60 transition-colors cursor-pointer text-[#171717]"
+                    onClick={() => handleExportGoogleSheets('all')}
+                    className="w-full text-left px-3 py-2 rounded-xl text-xs flex items-start gap-2.5 bg-[#B7F77C]/35 hover:bg-[#B7F77C]/60 transition-colors cursor-pointer text-[#171717]"
                   >
                     <FileSpreadsheet className="w-4 h-4 text-[#171717] mt-0.5 shrink-0" />
                     <div>
-                      <div className="font-semibold">Export to Google Sheets (.xlsx)</div>
+                      <div className="font-semibold">All Classes Google Sheets (.xlsx)</div>
                       <div className="text-[11px] text-[#77766F]">
-                        Weekly Overview (merged 3h labs) + 1 tab per course
+                        Weekly Overview + {store.studentGroups.length} Class/Section tabs
                       </div>
                     </div>
                   </button>
 
                   <button
-                    onClick={() => handleExportCSV('filtered')}
-                    className="w-full text-left px-3 py-2.5 rounded-xl text-xs flex items-start gap-2.5 hover:bg-[#F7F6EF] transition-colors cursor-pointer text-[#171717]"
+                    onClick={() => handleExportGoogleSheets('filtered')}
+                    className="w-full text-left px-3 py-2 rounded-xl text-xs flex items-start gap-2.5 hover:bg-[#F7F6EF] transition-colors cursor-pointer text-[#171717]"
                   >
                     <FileSpreadsheet className="w-4 h-4 text-[#171717] mt-0.5 shrink-0" />
                     <div>
-                      <div className="font-semibold">Export Current View (.csv)</div>
-                      <div className="text-[11px] text-[#77766F]">Flat comma-separated schedule table</div>
-                    </div>
-                  </button>
-
-                  <button
-                    onClick={() => handleExportPDF('filtered')}
-                    className="w-full text-left px-3 py-2.5 rounded-xl text-xs flex items-start gap-2.5 hover:bg-[#F7F6EF] transition-colors cursor-pointer text-[#171717]"
-                  >
-                    <FileText className="w-4 h-4 text-[#171717] mt-0.5 shrink-0" />
-                    <div>
-                      <div className="font-semibold">Export Current View (.pdf)</div>
-                      <div className="text-[11px] text-[#77766F]">Official A4 landscape schedule document</div>
+                      <div className="font-semibold">Active Class / Filter (.xlsx)</div>
+                      <div className="text-[11px] text-[#77766F]">
+                        Scope: {getActiveScopeLabel().replace(/_/g, ' ')}
+                      </div>
                     </div>
                   </button>
                 </div>
@@ -582,40 +626,26 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
                 <div className="mx-2 my-1 border-t border-[#E4E2DA]" />
 
                 <div className="p-2 space-y-1">
-                  <div className="px-2 text-[10px] font-semibold uppercase tracking-wider text-[#77766F]">
-                    Full Campus Master Export
-                  </div>
                   <button
-                    onClick={() => handleExportGoogleSheets('all')}
-                    className="w-full text-left px-3 py-2 rounded-xl text-xs flex items-center justify-between hover:bg-[#F7F6EF] transition-colors cursor-pointer text-[#171717]"
-                  >
-                    <span className="flex items-center gap-2 font-medium">
-                      <FileSpreadsheet className="w-3.5 h-3.5" />
-                      <span>All Courses Google Sheets (.xlsx)</span>
-                    </span>
-                    <span className="text-[10px] font-mono-tabular text-[#77766F]">Multi-Tab</span>
-                  </button>
-
-                  <button
-                    onClick={() => handleExportCSV('all')}
-                    className="w-full text-left px-3 py-2 rounded-xl text-xs flex items-center justify-between hover:bg-[#F7F6EF] transition-colors cursor-pointer text-[#171717]"
-                  >
-                    <span className="flex items-center gap-2 font-medium">
-                      <Layers className="w-3.5 h-3.5" />
-                      <span>All Departments (CSV)</span>
-                    </span>
-                    <span className="text-[10px] font-mono-tabular text-[#77766F]">{placedTotal} secs</span>
-                  </button>
-
-                  <button
-                    onClick={() => handleExportPDF('all')}
+                    onClick={() => handleExportPDF('filtered')}
                     className="w-full text-left px-3 py-2 rounded-xl text-xs flex items-center justify-between hover:bg-[#F7F6EF] transition-colors cursor-pointer text-[#171717]"
                   >
                     <span className="flex items-center gap-2 font-medium">
                       <FileText className="w-3.5 h-3.5" />
-                      <span>All Departments (PDF)</span>
+                      <span>Export Active View (.pdf)</span>
                     </span>
                     <span className="text-[10px] font-mono-tabular text-[#77766F]">Landscape</span>
+                  </button>
+
+                  <button
+                    onClick={() => handleExportCSV('filtered')}
+                    className="w-full text-left px-3 py-2 rounded-xl text-xs flex items-center justify-between hover:bg-[#F7F6EF] transition-colors cursor-pointer text-[#171717]"
+                  >
+                    <span className="flex items-center gap-2 font-medium">
+                      <Layers className="w-3.5 h-3.5" />
+                      <span>Export Active View (.csv)</span>
+                    </span>
+                    <span className="text-[10px] font-mono-tabular text-[#77766F]">CSV</span>
                   </button>
                 </div>
               </div>
@@ -625,7 +655,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
           <button
             onClick={handleRunSweep}
             disabled={isSweeping}
-            className="btn-primary text-xs h-10 px-4"
+            className="btn-primary text-xs h-9 px-3.5"
           >
             <Sparkles className={`w-3.5 h-3.5 ${isSweeping ? 'animate-spin' : ''}`} />
             <span>{isSweeping ? 'Optimizing...' : 'Re-Optimize'}</span>
@@ -635,58 +665,38 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
 
       {/* Feedback Notices */}
       {sweepNotice && (
-        <div className="px-5 py-3.5 sf-pastel-lime rounded-xl text-xs font-medium flex items-center gap-2.5">
+        <div className="px-4 py-2.5 sf-pastel-lime rounded-xl text-xs font-medium flex items-center gap-2">
           <Check className="w-4 h-4 text-[#171717] shrink-0" />
           <span>{sweepNotice}</span>
         </div>
       )}
 
       {exportNotice && (
-        <div className="px-5 py-4 sf-pastel-cyan rounded-xl text-xs font-medium flex items-start gap-2.5">
+        <div className="px-4 py-3 sf-pastel-cyan rounded-xl text-xs font-medium flex items-start gap-2.5">
           <Check className="w-4 h-4 text-[#171717] shrink-0 mt-0.5" />
-          <div className="space-y-1">
+          <div>
             <div className="font-semibold text-[#171717]">{exportNotice}</div>
             <div className="text-[11px] text-[#171717]/80">
-              Open the downloaded .xlsx workbook in Google Drive / Google Sheets to view the formatted Weekly Overview (with vertically merged 3-hour labs) and individual course sheets.
+              Open the downloaded .xlsx file in Google Drive / Google Sheets to inspect the Weekly Overview and every individual Class/Section worksheet.
             </div>
           </div>
         </div>
       )}
 
       {/* =========================================================
-          2. CLEAN TIMETABLE CONTROLS & FILTERS
+          2. CLASS / SECTION TIMETABLE SWITCHER & VIEW CONTROLS
          ========================================================= */}
-      <div className="sf-card-white p-5 space-y-4">
-        <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4">
-          <div className="flex flex-wrap items-center gap-3">
-            {/* Day / Week / Agenda Switcher */}
-            <div className="inline-flex items-center p-1 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA]">
-              {[
-                { id: 'week' as const, label: 'Week' },
-                { id: 'day' as const, label: 'Day' },
-                { id: 'agenda' as const, label: 'Agenda' }
-              ].map(mode => (
-                <button
-                  key={mode.id}
-                  onClick={() => setCalendarMode(mode.id)}
-                  className={`px-3.5 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
-                    calendarMode === mode.id
-                      ? 'bg-[#171717] text-white'
-                      : 'text-[#77766F] hover:text-[#171717]'
-                  }`}
-                >
-                  {mode.label}
-                </button>
-              ))}
-            </div>
-
-            {/* Perspective Tabs */}
+      <div className="sf-card-white p-3.5 space-y-3">
+        {/* Top Row: Perspective Switcher + Department Filter + Search + Calendar Mode */}
+        <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Perspective Tabs: Class/Section (Default) | All Classes | Faculty | Room */}
             <div className="inline-flex flex-wrap items-center p-1 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA]">
               {[
-                { id: 'master' as const, label: 'All Courses', icon: Layers },
-                { id: 'cohort' as const, label: 'Cohort', icon: Users },
-                { id: 'instructor' as const, label: 'Faculty', icon: User },
-                { id: 'room' as const, label: 'Room', icon: Building }
+                { id: 'cohort' as const, label: 'By Class / Section', icon: Users },
+                { id: 'master' as const, label: 'University Overview', icon: Layers },
+                { id: 'instructor' as const, label: 'By Faculty', icon: User },
+                { id: 'room' as const, label: 'By Room / Lab', icon: Building }
               ].map(tab => {
                 const Icon = tab.icon;
                 const active = perspective === tab.id;
@@ -695,9 +705,9 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
                     key={tab.id}
                     type="button"
                     onClick={() => setPerspective(tab.id)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer ${
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
                       active
-                        ? 'bg-white text-[#171717] border border-[#E4E2DA]'
+                        ? 'bg-[#171717] text-white'
                         : 'text-[#77766F] hover:text-[#171717]'
                     }`}
                   >
@@ -708,44 +718,61 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
               })}
             </div>
 
-            {perspective === 'master' && (
-              <select
-                value={selectedDeptId}
-                onChange={e => setSelectedDeptId(e.target.value)}
-                className="input-field h-9 w-auto text-xs font-medium"
-              >
-                <option value="all">All Departments ({placedTotal})</option>
-                {store.departments.map(dept => (
-                  <option key={dept.id} value={dept.id}>
-                    {dept.name} ({dept.code})
-                  </option>
-                ))}
-              </select>
-            )}
-
-            {perspective === 'cohort' && (
-              <select
-                value={selectedCohortId}
-                onChange={e => setSelectedCohortId(e.target.value)}
-                className="input-field h-9 w-auto text-xs font-medium"
-              >
-                {store.studentGroups.map(g => (
-                  <option key={g.id} value={g.id}>
-                    Cohort: {g.code} — {g.name}
-                  </option>
-                ))}
-              </select>
+            {/* Department Filter Pills (BEE, BCE, BESE, BSCS) */}
+            {(perspective === 'cohort' || perspective === 'master') && (
+              <div className="inline-flex flex-wrap items-center p-1 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA]">
+                <button
+                  type="button"
+                  onClick={() => setSelectedDeptId('all')}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
+                    selectedDeptId === 'all'
+                      ? 'bg-white text-[#171717] font-semibold border border-[#E4E2DA]'
+                      : 'text-[#77766F] hover:text-[#171717]'
+                  }`}
+                >
+                  All Depts ({store.studentGroups.length})
+                </button>
+                {store.departments.map(dept => {
+                  const deptCount = store.studentGroups.filter(g => {
+                    const p = store.programs.find(pr => pr.id === g.programId);
+                    return p?.departmentId === dept.id;
+                  }).length;
+                  return (
+                    <button
+                      key={dept.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedDeptId(dept.id);
+                        const firstInDept = store.studentGroups.find(g => {
+                          const p = store.programs.find(pr => pr.id === g.programId);
+                          return p?.departmentId === dept.id;
+                        });
+                        if (firstInDept && perspective === 'cohort') {
+                          handleSelectCohort(firstInDept.id);
+                        }
+                      }}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
+                        selectedDeptId === dept.id
+                          ? 'bg-white text-[#171717] font-semibold border border-[#E4E2DA]'
+                          : 'text-[#77766F] hover:text-[#171717]'
+                      }`}
+                    >
+                      {dept.code} ({deptCount})
+                    </button>
+                  );
+                })}
+              </div>
             )}
 
             {perspective === 'instructor' && (
               <select
                 value={selectedInstructorId}
                 onChange={e => setSelectedInstructorId(e.target.value)}
-                className="input-field h-9 w-auto text-xs font-medium"
+                className="input-field h-8 w-auto text-xs font-medium py-1"
               >
                 {store.instructors.map(i => (
                   <option key={i.id} value={i.id}>
-                    Faculty: {i.name}
+                    Faculty: {i.name} ({i.title})
                   </option>
                 ))}
               </select>
@@ -755,26 +782,46 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
               <select
                 value={selectedRoomId}
                 onChange={e => setSelectedRoomId(e.target.value)}
-                className="input-field h-9 w-auto text-xs font-medium"
+                className="input-field h-8 w-auto text-xs font-medium py-1"
               >
                 {store.rooms.map(r => (
                   <option key={r.id} value={r.id}>
-                    Room: {r.code} ({r.capacity} seats)
+                    {r.type === 'lab' ? 'Lab' : 'Room'}: {r.code} ({r.capacity} seats)
                   </option>
                 ))}
               </select>
             )}
           </div>
 
-          {/* Search & Day Selector */}
-          <div className="flex flex-wrap items-center gap-3">
+          {/* Right Controls: Week/Day/Agenda + Search */}
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="inline-flex items-center p-1 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA]">
+              {[
+                { id: 'week' as const, label: 'Week' },
+                { id: 'day' as const, label: 'Day' },
+                { id: 'agenda' as const, label: 'Agenda' }
+              ].map(mode => (
+                <button
+                  key={mode.id}
+                  onClick={() => setCalendarMode(mode.id)}
+                  className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
+                    calendarMode === mode.id
+                      ? 'bg-[#171717] text-white'
+                      : 'text-[#77766F] hover:text-[#171717]'
+                  }`}
+                >
+                  {mode.label}
+                </button>
+              ))}
+            </div>
+
             {calendarMode === 'day' && (
               <div className="inline-flex items-center gap-1 bg-[#F7F6EF] p-1 rounded-xl border border-[#E4E2DA]">
                 {days.map(d => (
                   <button
                     key={d}
                     onClick={() => setFocusedDay(d)}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-medium cursor-pointer ${
+                    className={`px-2 py-1 rounded-lg text-xs font-medium cursor-pointer ${
                       focusedDay === d
                         ? 'bg-[#171717] text-white'
                         : 'text-[#77766F] hover:text-[#171717]'
@@ -786,29 +833,116 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
               </div>
             )}
 
-            <div className="relative min-w-[220px]">
-              <Search className="w-3.5 h-3.5 text-[#77766F] absolute left-3 top-2.5" />
+            <div className="relative min-w-[185px]">
+              <Search className="w-3.5 h-3.5 text-[#77766F] absolute left-2.5 top-2" />
               <input
                 type="text"
-                placeholder="Search course or room..."
+                placeholder="Filter course, prof, room..."
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
-                className="input-field h-9 pl-8 pr-3 text-xs"
+                className="input-field h-8 pl-8 pr-2.5 text-xs"
               />
             </div>
           </div>
         </div>
+
+        {/* Dedicated Individual Class / Section Selector Strip */}
+        {perspective === 'cohort' && (
+          <div className="pt-2.5 border-t border-[#E4E2DA] space-y-2.5">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-2.5">
+              {/* Active Class / Section Identity Banner */}
+              <div className="flex flex-wrap items-center gap-2.5">
+                <div className="inline-flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={handlePrevCohort}
+                    className="w-7 h-7 rounded-lg bg-[#F7F6EF] hover:bg-[#EDEAE0] border border-[#E4E2DA] flex items-center justify-center text-[#171717] cursor-pointer"
+                    title="Previous Class/Section"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                  <select
+                    value={selectedCohortId}
+                    onChange={e => handleSelectCohort(e.target.value)}
+                    className="input-field h-8 w-auto text-xs font-bold bg-[#B8EEEE]/45 border-[#95DFDF] text-[#171717] py-1 px-2.5"
+                  >
+                    {departmentFilteredGroups.map(g => (
+                      <option key={g.id} value={g.id}>
+                        {g.code} — {g.name} {g.homeRoom ? `[${g.homeRoom}]` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={handleNextCohort}
+                    className="w-7 h-7 rounded-lg bg-[#F7F6EF] hover:bg-[#EDEAE0] border border-[#E4E2DA] flex items-center justify-center text-[#171717] cursor-pointer"
+                    title="Next Class/Section"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {activeGroupObj && (
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-[#77766F]">
+                    <span className="px-2 py-0.5 rounded-md bg-[#F7F6EF] border border-[#E4E2DA] text-[#171717] font-medium">
+                      {activeGroupDept?.name || 'Engineering & Computing'}
+                    </span>
+                    {activeGroupObj.homeRoom && (
+                      <span className="px-2 py-0.5 rounded-md bg-[#B8F2E6]/60 border border-[#93DEC9] text-[#171717] font-mono-tabular font-semibold inline-flex items-center gap-1">
+                        <MapPin className="w-3 h-3" />
+                        <span>Home Room: {activeGroupObj.homeRoom}</span>
+                      </span>
+                    )}
+                    <span className="font-mono-tabular text-[11px]">
+                      {activeLectureCount} Lectures + {activeLabCount} Labs (3h)
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              <div className="text-[11px] text-[#77766F]">
+                Showing individual timetable for <strong className="text-[#171717]">{activeGroupObj?.code}</strong> only · Click any section pill below to switch
+              </div>
+            </div>
+
+            {/* Quick-Switch Class/Section Pills */}
+            <div className="flex flex-wrap items-center gap-1.5">
+              {departmentFilteredGroups.map(grp => {
+                const isSelected = grp.id === selectedCohortId;
+                return (
+                  <button
+                    key={grp.id}
+                    type="button"
+                    onClick={() => handleSelectCohort(grp.id)}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-mono-tabular transition-colors cursor-pointer ${
+                      isSelected
+                        ? 'bg-[#171717] text-white font-bold shadow-xs'
+                        : 'bg-[#F7F6EF] hover:bg-[#EDEAE0] text-[#171717] border border-[#E4E2DA] font-medium'
+                    }`}
+                  >
+                    {grp.code}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* =========================================================
-          3. WEEKLY / DAILY CALENDAR OR AGENDA VIEW
+          3. ZERO-SCROLL WEEKLY TIMETABLE GRID OR AGENDA VIEW
          ========================================================= */}
       {calendarMode === 'agenda' ? (
-        <div className="sf-card-white p-6 sm:p-7 space-y-5">
-          <h2 className="font-serif-editorial text-2xl text-[#171717]">
-            Course Agenda
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="sf-card-white p-5 space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="font-serif-editorial text-xl text-[#171717]">
+              Course Agenda — {perspective === 'cohort' && activeGroupObj ? activeGroupObj.code : 'All Scheduled Sessions'}
+            </h2>
+            <span className="text-xs text-[#77766F] font-mono-tabular">
+              {activeFilteredSections.length} scheduled blocks
+            </span>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
             {days.flatMap(day =>
               UNIVERSITY_SLOTS.flatMap(slotMeta =>
                 (scheduleData[slotMeta.period]?.[day] || [])
@@ -824,7 +958,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
                         key={`${day}-${slotMeta.period}-${cls.id}`}
                         onClick={() => setSelectedClass(cls)}
                         style={{ backgroundColor: pastel.bg, borderColor: pastel.border }}
-                        className="p-5 rounded-2xl border text-[#171717] cursor-pointer hover:-translate-y-0.5 transition-transform space-y-2.5"
+                        className="p-4 rounded-xl border text-[#171717] cursor-pointer hover:-translate-y-0.5 transition-transform space-y-2"
                       >
                         <div className="flex items-center justify-between text-xs">
                           <span className="font-mono-tabular font-semibold text-[#171717]/80">
@@ -834,11 +968,11 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
                             {day} · {timeWindow}
                           </span>
                         </div>
-                        <div className="font-serif-editorial text-lg leading-snug">
+                        <div className="font-serif-editorial text-base leading-snug">
                           {cls.title}
                         </div>
-                        <div className="flex items-center justify-between text-xs text-[#171717]/75 pt-2 border-t border-black/10">
-                          <span>{cls.room}</span>
+                        <div className="flex items-center justify-between text-xs text-[#171717]/75 pt-1.5 border-t border-black/10">
+                          <span className="font-mono-tabular font-medium">{cls.room}</span>
                           <span>{cls.prof}</span>
                         </div>
                       </div>
@@ -850,200 +984,222 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
         </div>
       ) : (
         <div className="sf-card-white overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[900px] border-collapse text-left">
-              <thead>
-                <tr className="border-b border-[#E4E2DA] bg-[#F7F6EF]">
-                  <th className="py-4 px-5 w-44 text-xs font-medium text-[#77766F]">
-                    Time & Break
-                  </th>
-                  {visibleDays.map(day => (
-                    <th
-                      key={day}
-                      className="py-4 px-5 min-w-[180px] text-base font-serif-editorial text-[#171717] border-l border-[#E4E2DA]"
-                    >
-                      {day}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[#E4E2DA]">
-                {UNIVERSITY_SLOTS.map(slotMeta => {
-                  const time = slotMeta.period;
-                  const isFirstAfternoon = slotMeta.slotNumber === 5;
-
-                  return (
-                    <React.Fragment key={slotMeta.slotNumber}>
-                      {/* Fixed University Lunch Break Row (1:00 PM – 2:00 PM) */}
-                      {isFirstAfternoon && (
-                        <tr className="bg-[#F7F6EF] border-y border-[#E4E2DA]">
-                          <td className="py-3.5 px-5 border-r border-[#E4E2DA] align-middle">
-                            <div className="text-xs font-mono-tabular font-semibold text-[#171717]">
-                              1:00 – 2:00 PM
-                            </div>
-                            <div className="text-[11px] text-[#77766F] mt-0.5">
-                              Lunch Break
-                            </div>
-                          </td>
-                          <td
-                            colSpan={visibleDays.length}
-                            className="py-3.5 px-6 text-center align-middle"
-                          >
-                            <div className="inline-flex items-center gap-2 text-xs font-medium text-[#77766F]">
-                              <Coffee className="w-3.5 h-3.5 text-[#171717]" />
-                              <span className="text-[#171717] font-semibold">
-                                Lunch Break (1:00 PM – 2:00 PM)
-                              </span>
-                              <span>· No classes scheduled</span>
-                            </div>
-                          </td>
-                        </tr>
+          {/* Notice: w-full table-fixed with NO horizontal or vertical scrollbars */}
+          <table className="w-full table-fixed border-collapse text-left">
+            <thead>
+              <tr className="border-b border-[#E4E2DA] bg-[#F7F6EF]">
+                <th className="py-2.5 px-2.5 w-[112px] lg:w-[126px] text-[11px] font-semibold text-[#77766F]">
+                  Time & Break
+                </th>
+                {visibleDays.map(day => (
+                  <th
+                    key={day}
+                    className="py-2.5 px-2.5 text-sm font-serif-editorial text-[#171717] border-l border-[#E4E2DA]"
+                  >
+                    <div className="flex items-center justify-between gap-1">
+                      <span>{day}</span>
+                      {day === 'Fri' && (
+                        <span className="text-[10px] font-sans font-mono-tabular font-normal text-[#77766F]">
+                          PM: 14:30–16:55
+                        </span>
                       )}
+                    </div>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[#E4E2DA]">
+              {UNIVERSITY_SLOTS.map(slotMeta => {
+                const time = slotMeta.period;
+                const isFirstAfternoon = slotMeta.slotNumber === 5;
 
-                      {/* Regular Hourly Slot Row */}
-                      <tr>
-                        {/* Left Column: Lecture Time + Subtle Short Break */}
-                        <td className="py-4 px-5 text-xs font-mono-tabular text-[#171717] whitespace-nowrap align-top bg-[#F7F6EF]/40">
-                          <div className="font-semibold text-[12.5px] text-[#171717]">
-                            {slotMeta.period}
+                return (
+                  <React.Fragment key={slotMeta.slotNumber}>
+                    {/* Fixed University Lunch & Prayer Break Row (1:00 PM – 2:00 PM) */}
+                    {isFirstAfternoon && (
+                      <tr className="bg-[#F7F6EF] border-y border-[#E4E2DA]">
+                        <td className="py-1.5 px-2.5 border-r border-[#E4E2DA] align-middle bg-[#E8D36B]/35">
+                          <div className="text-[11px] font-mono-tabular font-bold text-[#171717]">
+                            1:00 – 2:00 PM
                           </div>
-                          <div className="text-[11px] text-[#77766F] mt-1">
-                            Short break {slotMeta.shortBreak}
+                          <div className="text-[10px] text-[#77766F]">
+                            Lunch & Prayer
                           </div>
                         </td>
+                        <td
+                          colSpan={visibleDays.length}
+                          className="py-1.5 px-4 text-center align-middle"
+                        >
+                          <div className="inline-flex items-center gap-2 text-[11px] font-medium text-[#77766F]">
+                            <Coffee className="w-3.5 h-3.5 text-[#171717]" />
+                            <span className="text-[#171717] font-semibold">
+                              University Lunch & Prayer Break (1:00 PM – 2:00 PM)
+                            </span>
+                            <span className="hidden sm:inline">· Fixed university-wide break (no classes scheduled)</span>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
 
-                        {/* Day Cells */}
-                        {visibleDays.map(day => {
-                          const cellKey = `${day}__${slotMeta.slotNumber}`;
+                    {/* Regular Hourly Slot Row — Compact to fit entire 9 AM – 5 PM day without vertical scrolling */}
+                    <tr>
+                      {/* Left Column: Lecture Time + Short Break */}
+                      <td className="py-1.5 px-2.5 text-[11px] font-mono-tabular text-[#171717] align-top bg-[#F7F6EF]/40">
+                        <div className="font-semibold text-[11.5px] text-[#171717] leading-tight">
+                          {slotMeta.period}
+                        </div>
+                        <div className="text-[10px] text-[#77766F] mt-0.5 leading-tight">
+                          Break {slotMeta.shortBreak.replace(' AM', '').replace(' PM', '')}
+                        </div>
+                      </td>
 
-                          // Skip cell if covered by a 3-hour continuous Lab above
-                          if (skippedCells.has(cellKey)) {
-                            return null;
-                          }
+                      {/* Day Cells */}
+                      {visibleDays.map(day => {
+                        const cellKey = `${day}__${slotMeta.slotNumber}`;
 
-                          const labSpanInfo = labSpanByCell.get(cellKey);
+                        // Skip cell if covered by a 3-hour continuous Lab above
+                        if (skippedCells.has(cellKey)) {
+                          return null;
+                        }
 
-                          // Render a 3-Hour Continuous Lab cell (`rowSpan={3}`)
-                          if (labSpanInfo) {
-                            const { labItem, concurrentItems, continuousWindow } = labSpanInfo;
-                            const pastel = getCoursePastel(labItem.code);
+                        const labSpanInfo = labSpanByCell.get(cellKey);
 
-                            return (
-                              <td
-                                key={day}
-                                rowSpan={3}
-                                className="p-3 min-w-[180px] border-l border-[#E4E2DA] align-stretch bg-white"
-                              >
-                                <div className="h-full flex flex-col gap-2">
-                                  <div
-                                    onClick={() => setSelectedClass(labItem)}
-                                    style={{
-                                      backgroundColor: pastel.bg,
-                                      borderColor: pastel.border
-                                    }}
-                                    className="flex-1 min-h-[220px] p-4 rounded-2xl border text-xs text-[#171717] flex flex-col justify-between transition-transform hover:-translate-y-0.5 cursor-pointer"
-                                  >
-                                    <div className="space-y-2">
-                                      <div className="flex items-center justify-between gap-2">
-                                        <span className="font-mono-tabular text-[11px] font-semibold text-[#171717]/80 flex items-center gap-1">
-                                          {labItem.code}
-                                          {labItem.isLocked && <Lock className="w-3 h-3" />}
-                                        </span>
-                                        <span className="text-[10.5px] font-medium px-2 py-0.5 rounded-md bg-white/80 text-[#171717]">
-                                          Lab · 3h
-                                        </span>
-                                      </div>
-
-                                      <div className="font-serif-editorial text-base leading-snug text-[#171717]">
-                                        {labItem.title}
-                                      </div>
-                                    </div>
-
-                                    <div className="space-y-1.5 pt-3 border-t border-black/10 text-[11.5px]">
-                                      <div className="font-mono-tabular font-medium text-[#171717]">
-                                        {continuousWindow}
-                                      </div>
-                                      <div className="text-[#171717]/75 flex items-center justify-between">
-                                        <span className="font-mono-tabular">{labItem.room}</span>
-                                        {concurrentItems.length > 0 && (
-                                          <span className="text-[10.5px]">
-                                            +{concurrentItems.length} more
-                                          </span>
-                                        )}
-                                      </div>
-                                    </div>
-                                  </div>
-                                </div>
-                              </td>
-                            );
-                          }
-
-                          // Standard 1-Slot (50-Minute Lecture) Cell
-                          const classes = (scheduleData[time]?.[day] || []).filter(filterClass);
-                          const isInstructorBlackedOut =
-                            perspective === 'instructor' &&
-                            currentInstructorObj?.unavailableSlots.some(
-                              u => u.day === day && u.timeSlot === time
-                            );
+                        // Render a 3-Hour Continuous Lab cell (`rowSpan={3}`)
+                        if (labSpanInfo) {
+                          const { labItem, concurrentItems, continuousWindow } = labSpanInfo;
+                          const pastel = getCoursePastel(labItem.code);
 
                           return (
                             <td
                               key={day}
-                              className="p-3 min-w-[180px] border-l border-[#E4E2DA] align-top"
+                              rowSpan={3}
+                              className="p-1.5 border-l border-[#E4E2DA] align-stretch bg-white"
                             >
-                              <div className="space-y-2">
-                                {isInstructorBlackedOut && (
-                                  <div className="p-3 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] text-[11px] text-[#77766F] text-center">
-                                    Unavailable
+                              <div
+                                onClick={() => setSelectedClass(labItem)}
+                                style={{
+                                  backgroundColor: pastel.bg,
+                                  borderColor: pastel.border
+                                }}
+                                className="h-full p-2.5 rounded-xl border text-[#171717] flex flex-col justify-between transition-transform hover:-translate-y-0.5 cursor-pointer"
+                              >
+                                <div className="space-y-1">
+                                  <div className="flex items-center justify-between gap-1">
+                                    <span className="font-mono-tabular text-[10.5px] font-bold text-[#171717]/85 flex items-center gap-1 truncate">
+                                      {labItem.code}
+                                      {labItem.isLocked && <Lock className="w-2.5 h-2.5 shrink-0" />}
+                                    </span>
+                                    <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-white/85 text-[#171717] shrink-0">
+                                      Lab · 3h
+                                    </span>
                                   </div>
-                                )}
 
-                                {classes.map(cls => {
-                                  const pastel = getCoursePastel(cls.code);
-                                  const isLab = cls.sessionType === 'Lab' || cls.spanSlots === 3;
-                                  return (
-                                    <div
-                                      key={cls.id}
-                                      onClick={() => setSelectedClass(cls)}
-                                      style={{
-                                        backgroundColor: pastel.bg,
-                                        borderColor: pastel.border
-                                      }}
-                                      className="p-3.5 rounded-xl border text-xs text-[#171717] space-y-2 transition-transform hover:-translate-y-0.5 cursor-pointer"
-                                    >
-                                      <div>
-                                        <div className="flex items-center justify-between gap-1.5 text-[11px] text-[#171717]/75 font-mono-tabular">
-                                          <span className="flex items-center gap-1">
-                                            {cls.code}
-                                            {cls.isLocked && <Lock className="w-3 h-3" />}
-                                          </span>
-                                          <span>{isLab ? 'Lab' : 'Lecture'}</span>
-                                        </div>
-                                        <div className="font-semibold text-[13px] leading-snug text-[#171717] mt-0.5 line-clamp-1">
-                                          {cls.title}
-                                        </div>
-                                      </div>
+                                  <div className="font-serif-editorial text-xs sm:text-[13px] font-semibold leading-snug text-[#171717] line-clamp-2">
+                                    {labItem.title}
+                                  </div>
 
-                                      <div className="text-[11px] font-mono-tabular text-[#171717]/80 flex items-center justify-between pt-1.5 border-t border-black/10">
-                                        <span>{slotMeta.period}</span>
-                                        <span className="font-medium truncate max-w-[85px]">
-                                          {cls.room}
-                                        </span>
-                                      </div>
-                                    </div>
-                                  );
-                                })}
+                                  <div className="text-[10.5px] text-[#171717]/85 truncate">
+                                    {labItem.prof}
+                                  </div>
+                                </div>
+
+                                <div className="space-y-1 pt-1.5 border-t border-black/10 text-[10.5px]">
+                                  <div className="font-mono-tabular font-semibold text-[#171717] truncate">
+                                    {continuousWindow}
+                                  </div>
+                                  <div className="text-[#171717]/85 flex items-center justify-between gap-1">
+                                    <span className="font-mono-tabular font-medium truncate">
+                                      {labItem.room}
+                                    </span>
+                                    {perspective === 'master' && concurrentItems.length > 0 ? (
+                                      <span className="text-[10px] px-1 rounded bg-white/70 shrink-0">
+                                        +{concurrentItems.length}
+                                      </span>
+                                    ) : (
+                                      <span className="text-[10px] text-[#171717]/70 truncate">
+                                        {labItem.cohort}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
                               </div>
                             </td>
                           );
-                        })}
-                      </tr>
-                    </React.Fragment>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                        }
+
+                        // Standard 1-Slot (50-Minute Lecture) Cell
+                        const classes = (scheduleData[time]?.[day] || []).filter(filterClass);
+                        const isInstructorBlackedOut =
+                          perspective === 'instructor' &&
+                          currentInstructorObj?.unavailableSlots.some(
+                            u => u.day === day && u.timeSlot === time
+                          );
+
+                        const visibleItems = classes.slice(0, 1);
+                        const extraCount = classes.length - visibleItems.length;
+
+                        return (
+                          <td
+                            key={day}
+                            className="p-1.5 border-l border-[#E4E2DA] align-top"
+                          >
+                            {isInstructorBlackedOut && (
+                              <div className="p-1.5 rounded-lg bg-[#F7F6EF] border border-[#E4E2DA] text-[10px] text-[#77766F] text-center">
+                                Unavailable
+                              </div>
+                            )}
+
+                            {visibleItems.map(cls => {
+                              const pastel = getCoursePastel(cls.code);
+                              const isLab = cls.sessionType === 'Lab' || cls.spanSlots === 3;
+                              return (
+                                <div
+                                  key={cls.id}
+                                  onClick={() => setSelectedClass(cls)}
+                                  style={{
+                                    backgroundColor: pastel.bg,
+                                    borderColor: pastel.border
+                                  }}
+                                  className="p-2 rounded-xl border text-[#171717] space-y-1 transition-transform hover:-translate-y-0.5 cursor-pointer"
+                                >
+                                  <div className="flex items-center justify-between gap-1 text-[10px] text-[#171717]/80 font-mono-tabular">
+                                    <span className="font-bold flex items-center gap-1 truncate">
+                                      {cls.code}
+                                      {cls.isLocked && <Lock className="w-2.5 h-2.5 shrink-0" />}
+                                    </span>
+                                    <span className="px-1 py-0.2 rounded bg-white/65 text-[#171717] font-medium shrink-0">
+                                      {isLab ? 'Lab' : 'Lec'}
+                                    </span>
+                                  </div>
+
+                                  <div className="font-semibold text-[11.5px] leading-tight text-[#171717] truncate">
+                                    {cls.title}
+                                  </div>
+
+                                  <div className="text-[10px] text-[#171717]/80 flex items-center justify-between gap-1 pt-0.5 border-t border-black/10">
+                                    <span className="truncate">{cls.prof}</span>
+                                    <span className="font-mono-tabular font-semibold shrink-0">
+                                      {cls.room}
+                                    </span>
+                                  </div>
+
+                                  {perspective === 'master' && extraCount > 0 && (
+                                    <div className="text-[9.5px] font-mono-tabular font-semibold text-[#171717]/75 bg-white/60 rounded px-1.5 py-0.5 text-center">
+                                      +{extraCount} more class sections
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  </React.Fragment>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       )}
 

@@ -260,10 +260,11 @@ export interface StudentGroup extends BaseEntity {
   id: string;
   programId: string;
   name: string;
-  code: string; // e.g. 'BSCS-3A' or 'BSCS Sem 3 - A'
+  code: string; // e.g. '2K24-BEE-A' or '2K25-BSCS-A'
   year: number; // 1, 2, 3, 4
   semester?: number; // 1 to 8
-  section?: string; // 'A', 'B', 'C'
+  section?: string; // 'A', 'B', 'C', 'D', 'E'
+  homeRoom?: string; // e.g. 'CR-18-IAEC'
   size: number;
   sharedCourseIds: string[];
 }

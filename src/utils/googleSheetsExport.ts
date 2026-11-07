@@ -3,6 +3,7 @@ import { InstitutionalDataStore } from '../data/store';
 import { ClassItem } from '../components/ClassDetailsModal';
 import {
   UNIVERSITY_SLOTS,
+  StudentGroup,
   getLabBlockByStartPeriod
 } from '../types/institutional';
 
@@ -24,7 +25,7 @@ function getCourseArgb(code: string) {
 
 function sanitizeWorksheetName(rawName: string, usedNames: Set<string>): string {
   // Remove invalid Excel/Google Sheets characters: \ / ? * : [ ]
-  const cleaned = rawName.replace(/[\\/?*:[\]]/g, '').trim() || 'Course';
+  const cleaned = rawName.replace(/[\\/?*:[\]]/g, '').trim() || 'Class Section';
   let candidate = cleaned.slice(0, 31);
   let counter = 2;
   while (usedNames.has(candidate.toLowerCase())) {
@@ -42,141 +43,35 @@ const DAY_FULL_LABELS: Record<string, string> = {
   Wed: 'Wednesday',
   Thu: 'Thursday',
   Fri: 'Friday',
-  Sat: 'Saturday'
+  Sat: 'Saturday',
+  Sun: 'Sunday'
 };
 
 export interface GoogleSheetsExportResult {
   fileName: string;
-  courseSheetCount: number;
+  classSheetCount: number;
   totalSessionsCount: number;
 }
 
-export async function exportTimetableToGoogleSheetsWorkbook(params: {
-  store: InstitutionalDataStore;
+function populateWeeklyGridOnWorksheet(params: {
+  worksheet: ExcelJS.Worksheet;
+  days: string[];
   scheduleData: Record<string, Record<string, ClassItem[]>>;
-  filterClass: (cls: ClassItem) => boolean;
-  scope: 'filtered' | 'all';
-  scopeLabel: string;
-  studentOrUserName?: string;
-}): Promise<GoogleSheetsExportResult> {
-  const { store, scheduleData, filterClass, scope, scopeLabel, studentOrUserName } = params;
-
-  const workbook = new ExcelJS.Workbook();
-  workbook.creator = 'SmartGrid AI — University Scheduling Platform';
-  workbook.created = new Date();
-  workbook.modified = new Date();
-
-  const activeTerm = store.terms.find(t => t.status === 'active') || store.terms[0];
-  const termName = activeTerm?.name || 'Spring 2026';
-  const institutionName = store.institutionProfile?.name || 'Western Polytechnic Institute';
-  const days = store.timeStructure.workingDays.length > 0
-    ? store.timeStructure.workingDays
-    : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
-
-  const usedSheetNames = new Set<string>();
-
-  // Collect all scheduled items in scope
-  const allScheduledItems: ClassItem[] = [];
-  days.forEach(day => {
-    UNIVERSITY_SLOTS.forEach(slotMeta => {
-      const cellItems = (scheduleData[slotMeta.period]?.[day] || []).filter(
-        cls => scope === 'all' || filterClass(cls)
-      );
-      cellItems.forEach(item => {
-        allScheduledItems.push(item);
-      });
-    });
-  });
-
-  // ============================================================================
-  // WORKSHEET 1: WEEKLY OVERVIEW
-  // ============================================================================
-  const overviewTitle = sanitizeWorksheetName('Weekly Overview', usedSheetNames);
-  const overviewSheet = workbook.addWorksheet(overviewTitle, {
-    views: [{ state: 'frozen', xSplit: 1, ySplit: 5 }],
-    pageSetup: {
-      paperSize: 9,
-      orientation: 'landscape',
-      fitToPage: true,
-      fitToWidth: 1,
-      fitToHeight: 1
-    }
-  });
-
-  // Configure Column Widths
-  overviewSheet.columns = [
-    { key: 'slotCol', width: 30 },
-    ...days.map((d, idx) => ({ key: `day_${idx}`, width: 32 }))
-  ];
-
+  itemPredicate: (cls: ClassItem) => boolean;
+  isSingleClassSheet: boolean;
+}) {
+  const { worksheet, days, scheduleData, itemPredicate, isSingleClassSheet } = params;
   const totalCols = days.length + 1;
 
-  // Row 1: Main Title Banner
-  const titleRow = overviewSheet.addRow([
-    `${institutionName.toUpperCase()} — SMARTGRID AI WEEKLY TIMETABLE`
-  ]);
-  overviewSheet.mergeCells(1, 1, 1, totalCols);
-  titleRow.height = 32;
-  titleRow.getCell(1).font = {
-    name: 'Arial',
-    size: 14,
-    bold: true,
-    color: { argb: 'FFFFFFFF' }
-  };
-  titleRow.getCell(1).fill = {
-    type: 'pattern',
-    pattern: 'solid',
-    fgColor: { argb: 'FF171717' }
-  };
-  titleRow.getCell(1).alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
-
-  // Row 2: Subtitle / Student & Academic Metadata
-  const metaRow = overviewSheet.addRow([
-    `Semester: ${termName}   |   Scope: ${scopeLabel.replace(/_/g, ' ')}   |   Prepared For: ${
-      studentOrUserName || 'Academic Cohort Schedule'
-    }   |   Operating Hours: 9:00 AM – 5:00 PM (Fixed Lunch: 1:00 PM – 2:00 PM)`
-  ]);
-  overviewSheet.mergeCells(2, 1, 2, totalCols);
-  metaRow.height = 22;
-  metaRow.getCell(1).font = {
-    name: 'Arial',
-    size: 10,
-    bold: false,
-    color: { argb: 'FF171717' }
-  };
-  metaRow.getCell(1).fill = {
-    type: 'pattern',
-    pattern: 'solid',
-    fgColor: { argb: 'FFEDEAE0' }
-  };
-  metaRow.getCell(1).alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
-
-  // Row 3: Session Rules Legend Bar
-  const rulesRow = overviewSheet.addRow([
-    'University Scheduling Rules:  • Regular Lecture = 50 mins + 10m Short Break   • Laboratory Session = 3 Hours Continuous (3 consecutive hourly cycles, no internal breaks)   • Fixed Lunch Break = 1:00 PM – 2:00 PM'
-  ]);
-  overviewSheet.mergeCells(3, 1, 3, totalCols);
-  rulesRow.height = 20;
-  rulesRow.getCell(1).font = {
-    name: 'Arial',
-    size: 9,
-    italic: true,
-    color: { argb: 'FF57564F' }
-  };
-  rulesRow.getCell(1).fill = {
-    type: 'pattern',
-    pattern: 'solid',
-    fgColor: { argb: 'FFF7F6EF' }
-  };
-  rulesRow.getCell(1).alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
-
-  // Row 4: Spacer Row
-  const spacerRow = overviewSheet.addRow([]);
-  spacerRow.height = 8;
-
-  // Row 5: Table Header Row (Time / Slot + Days)
-  const headerValues = ['TIME SLOT & SESSION', ...days.map(d => (DAY_FULL_LABELS[d] || d).toUpperCase())];
-  const headerRow = overviewSheet.addRow(headerValues);
+  // Table Header Row (Time / Slot + Days)
+  const headerValues = [
+    'TIME SLOT & SESSION',
+    ...days.map(d => {
+      const base = (DAY_FULL_LABELS[d] || d).toUpperCase();
+      return d === 'Fri' ? `${base} (FRI SHIFT 14:30)` : base;
+    })
+  ];
+  const headerRow = worksheet.addRow(headerValues);
   headerRow.height = 28;
   headerRow.eachCell((cell, colNumber) => {
     cell.font = {
@@ -204,7 +99,6 @@ export async function exportTimetableToGoogleSheetsWorkbook(params: {
   });
 
   // Track which (slotNumber, dayIndex) cells are covered by a 3-hour Lab vertical merge
-  // Map key: `${slotNumber}_${dIdx}`
   const coveredByMerge = new Set<string>();
   const pendingLabMerges: Array<{
     startRowNumber: number;
@@ -213,14 +107,18 @@ export async function exportTimetableToGoogleSheetsWorkbook(params: {
     cls: ClassItem;
   }> = [];
 
-  // Map slotNumber (1..7) to its Excel row number so we can merge 3 consecutive lecture rows accurately
-  const slotToExcelRow = new Map<number, number>();
-
   const renderSlotRow = (slotMeta: (typeof UNIVERSITY_SLOTS)[number]) => {
-    const rowLabel = `Slot ${slotMeta.slotNumber} (${slotMeta.session})\n${slotMeta.period}\nShort Break: ${slotMeta.shortBreak}`;
-    const row = overviewSheet.addRow([rowLabel]);
+    const friNote =
+      slotMeta.slotNumber === 5
+        ? '\n(Fri: 2:30 – 3:15 PM)'
+        : slotMeta.slotNumber === 6
+        ? '\n(Fri: 3:20 – 4:05 PM)'
+        : slotMeta.slotNumber === 7
+        ? '\n(Fri: 4:10 – 4:55 PM)'
+        : '';
+    const rowLabel = `Slot ${slotMeta.slotNumber} (${slotMeta.session})\n${slotMeta.period}${friNote}\nShort Break: ${slotMeta.shortBreak}`;
+    const row = worksheet.addRow([rowLabel]);
     const currentRowNum = row.number;
-    slotToExcelRow.set(slotMeta.slotNumber, currentRowNum);
     row.height = 68;
 
     // Style Time Column (Col 1)
@@ -254,7 +152,6 @@ export async function exportTimetableToGoogleSheetsWorkbook(params: {
       const colNum = dIdx + 2;
       const cell = row.getCell(colNum);
 
-      // Default border & background for empty slot
       cell.border = {
         top: { style: 'thin', color: { argb: 'FFE4E2DA' } },
         bottom: { style: 'thin', color: { argb: 'FFE4E2DA' } },
@@ -268,13 +165,10 @@ export async function exportTimetableToGoogleSheetsWorkbook(params: {
       };
 
       if (coveredByMerge.has(`${slotMeta.slotNumber}_${dIdx}`)) {
-        // This cell will be merged with the starting Lab row above
         return;
       }
 
-      const cellClasses = (scheduleData[slotMeta.period]?.[day] || []).filter(
-        cls => scope === 'all' || filterClass(cls)
-      );
+      const cellClasses = (scheduleData[slotMeta.period]?.[day] || []).filter(itemPredicate);
 
       if (cellClasses.length === 0) {
         cell.value = '';
@@ -284,18 +178,20 @@ export async function exportTimetableToGoogleSheetsWorkbook(params: {
       // Prioritize a 3-hour continuous Lab if one starts in this slot
       const labItem = cellClasses.find(c => c.sessionType === 'Lab' || c.spanSlots === 3);
       if (labItem && slotMeta.slotNumber <= 5) {
-        // Mark the next 2 slots in the same session as covered by this 3-hour lab
         coveredByMerge.add(`${slotMeta.slotNumber + 1}_${dIdx}`);
         coveredByMerge.add(`${slotMeta.slotNumber + 2}_${dIdx}`);
 
         const labBlock = getLabBlockByStartPeriod(slotMeta.period);
         const continuousWindow =
-          labItem.continuousTimeLabel || labBlock?.continuousLabel || '3 Hours Continuous';
+          labItem.continuousTimeLabel ||
+          labBlock?.continuousLabel ||
+          (day === 'Fri' && slotMeta.slotNumber === 5 ? '2:30 PM – 4:55 PM' : '3 Hours Continuous');
 
         const otherLecturesCount = cellClasses.length - 1;
-        const extraNote = otherLecturesCount > 0 ? `\n(+${otherLecturesCount} other section)` : '';
+        const extraNote = !isSingleClassSheet && otherLecturesCount > 0 ? `\n(+${otherLecturesCount} other section)` : '';
+        const cohortTag = isSingleClassSheet ? '' : ` · Class: ${labItem.cohort}`;
 
-        cell.value = `${labItem.code} — ${labItem.title}\n[LAB · 3 HOURS CONTINUOUS]\n${continuousWindow} (No Internal Breaks)\nInstructor: ${labItem.prof}\nLab Room: ${labItem.room} · Cohort: ${labItem.cohort}${extraNote}`;
+        cell.value = `${labItem.title} (${labItem.code})\n[LAB · 3 HOURS CONTINUOUS]\n${continuousWindow} (180 mins · No Internal Breaks)\nInstructor: ${labItem.prof}\nLaboratory: ${labItem.room}${cohortTag}${extraNote}`;
 
         const pastel = getCourseArgb(labItem.code);
         cell.fill = {
@@ -315,7 +211,6 @@ export async function exportTimetableToGoogleSheetsWorkbook(params: {
           wrapText: true
         };
 
-        // Record vertical merge across 3 consecutive slot rows (currentRowNum .. currentRowNum + 2)
         pendingLabMerges.push({
           startRowNumber: currentRowNum,
           endRowNumber: currentRowNum + 2,
@@ -323,18 +218,26 @@ export async function exportTimetableToGoogleSheetsWorkbook(params: {
           cls: labItem
         });
       } else {
-        // Regular 50-minute Lecture(s)
         const primary = cellClasses[0];
         const pastel = getCourseArgb(primary.code);
+        const timeText =
+          day === 'Fri' && slotMeta.slotNumber === 5
+            ? '2:30 – 3:15 PM'
+            : day === 'Fri' && slotMeta.slotNumber === 6
+            ? '3:20 – 4:05 PM'
+            : day === 'Fri' && slotMeta.slotNumber === 7
+            ? '4:10 – 4:55 PM'
+            : slotMeta.period;
 
-        if (cellClasses.length === 1) {
-          cell.value = `${primary.code} — ${primary.title}\n[LECTURE · 50 MINS] ${slotMeta.period}\nInstructor: ${primary.prof}\nRoom: ${primary.room} · Cohort: ${primary.cohort}`;
+        if (isSingleClassSheet || cellClasses.length === 1) {
+          const cohortSuffix = isSingleClassSheet ? '' : ` · Class: ${primary.cohort}`;
+          cell.value = `${primary.title} (${primary.code})\n[LECTURE · 50 MINS] ${timeText}\nInstructor: ${primary.prof}\nRoom: ${primary.room}${cohortSuffix}`;
         } else {
-          const summaryLines = cellClasses.slice(0, 2).map(
-            c => `${c.code} (${c.sessionType || 'Lecture'}) — ${c.title}\n${c.prof} · ${c.room} [${c.cohort}]`
+          const summaryLines = cellClasses.slice(0, 3).map(
+            c => `[${c.cohort}] ${c.title} (${c.code})\n${c.prof} · ${c.room}`
           );
-          if (cellClasses.length > 2) {
-            summaryLines.push(`+${cellClasses.length - 2} additional scheduled sections`);
+          if (cellClasses.length > 3) {
+            summaryLines.push(`+${cellClasses.length - 3} more class sections`);
           }
           cell.value = summaryLines.join('\n────────────\n');
         }
@@ -347,7 +250,7 @@ export async function exportTimetableToGoogleSheetsWorkbook(params: {
         cell.font = {
           name: 'Arial',
           size: 9,
-          bold: false,
+          bold: isSingleClassSheet,
           color: { argb: 'FF171717' }
         };
         cell.alignment = {
@@ -365,14 +268,14 @@ export async function exportTimetableToGoogleSheetsWorkbook(params: {
     renderSlotRow(slotMeta);
   });
 
-  // Render Prominent Fixed University Lunch Break Row (1:00 PM – 2:00 PM)
-  const lunchRow = overviewSheet.addRow([
-    '1:00 PM – 2:00 PM\nFIXED LUNCH BREAK',
-    'UNIVERSITY-WIDE FIXED LUNCH BREAK (1:00 PM – 2:00 PM) — NO LECTURES OR LABS SCHEDULED'
+  // Render Prominent Fixed University Lunch & Prayer Break Row (1:00 PM – 2:00 PM)
+  const lunchRow = worksheet.addRow([
+    '1:00 PM – 2:00 PM\nLUNCH & PRAYER BREAK',
+    'FIXED UNIVERSITY LUNCH & PRAYER BREAK (1:00 PM – 2:00 PM) — NO LECTURES OR LABS SCHEDULED'
   ]);
   const lunchRowNum = lunchRow.number;
-  overviewSheet.mergeCells(lunchRowNum, 2, lunchRowNum, totalCols);
-  lunchRow.height = 38;
+  worksheet.mergeCells(lunchRowNum, 2, lunchRowNum, totalCols);
+  lunchRow.height = 36;
 
   const lunchTimeCell = lunchRow.getCell(1);
   lunchTimeCell.font = {
@@ -430,9 +333,9 @@ export async function exportTimetableToGoogleSheetsWorkbook(params: {
     renderSlotRow(slotMeta);
   });
 
-  // Execute all vertical merges for 3-hour Continuous Labs now that rows exist
+  // Execute all vertical merges for 3-hour Continuous Labs
   pendingLabMerges.forEach(mergeItem => {
-    overviewSheet.mergeCells(
+    worksheet.mergeCells(
       mergeItem.startRowNumber,
       mergeItem.colNumber,
       mergeItem.endRowNumber,
@@ -440,7 +343,7 @@ export async function exportTimetableToGoogleSheetsWorkbook(params: {
     );
     const pastel = getCourseArgb(mergeItem.cls.code);
     for (let r = mergeItem.startRowNumber; r <= mergeItem.endRowNumber; r++) {
-      const mergedCell = overviewSheet.getRow(r).getCell(mergeItem.colNumber);
+      const mergedCell = worksheet.getRow(r).getCell(mergeItem.colNumber);
       mergedCell.border = {
         top: { style: 'medium', color: { argb: pastel.borderArgb } },
         bottom: { style: 'medium', color: { argb: pastel.borderArgb } },
@@ -449,65 +352,165 @@ export async function exportTimetableToGoogleSheetsWorkbook(params: {
       };
     }
   });
+}
 
-  // Add Footer Legend on Weekly Overview
-  overviewSheet.addRow([]);
-  const footerLegendRow = overviewSheet.addRow([
-    'SESSION LEGEND:   [LECTURE · 50 MINS] occupies 1 hourly slot followed by a 10-minute short break.   [LAB · 3 HOURS CONTINUOUS] spans 3 vertically merged hourly slots (9:00 AM–12:00 PM, 10:00 AM–1:00 PM, or 2:00 PM–5:00 PM) with no internal break.'
+export async function exportTimetableToGoogleSheetsWorkbook(params: {
+  store: InstitutionalDataStore;
+  scheduleData: Record<string, Record<string, ClassItem[]>>;
+  filterClass: (cls: ClassItem) => boolean;
+  scope: 'filtered' | 'all';
+  scopeLabel: string;
+  studentOrUserName?: string;
+}): Promise<GoogleSheetsExportResult> {
+  const { store, scheduleData, filterClass, scope, scopeLabel } = params;
+
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = 'SmartGrid AI — University Scheduling Platform';
+  workbook.created = new Date();
+  workbook.modified = new Date();
+
+  const activeTerm = store.terms.find(t => t.status === 'active') || store.terms[0];
+  const termName = activeTerm?.name || 'Fall Semester 2026';
+  const institutionName = store.institutionProfile?.name || 'University of Engineering & Computing';
+  const days = store.timeStructure.workingDays.length > 0
+    ? store.timeStructure.workingDays
+    : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
+
+  const usedSheetNames = new Set<string>();
+
+  // Collect all scheduled items
+  const allScheduledItems: ClassItem[] = [];
+  days.forEach(day => {
+    UNIVERSITY_SLOTS.forEach(slotMeta => {
+      const cellItems = (scheduleData[slotMeta.period]?.[day] || []).filter(
+        cls => scope === 'all' || filterClass(cls)
+      );
+      cellItems.forEach(item => {
+        allScheduledItems.push(item);
+      });
+    });
+  });
+
+  // ============================================================================
+  // WORKSHEET 1: WEEKLY OVERVIEW (MASTER UNIVERSITY TIMETABLE)
+  // ============================================================================
+  const overviewTitle = sanitizeWorksheetName('Weekly Overview', usedSheetNames);
+  const overviewSheet = workbook.addWorksheet(overviewTitle, {
+    views: [{ state: 'frozen', xSplit: 1, ySplit: 5 }],
+    pageSetup: {
+      paperSize: 9,
+      orientation: 'landscape',
+      fitToPage: true,
+      fitToWidth: 1,
+      fitToHeight: 1
+    }
+  });
+
+  overviewSheet.columns = [
+    { key: 'slotCol', width: 30 },
+    ...days.map((d, idx) => ({ key: `day_${idx}`, width: 34 }))
+  ];
+
+  const totalCols = days.length + 1;
+
+  // Row 1: Main Title Banner
+  const titleRow = overviewSheet.addRow([
+    `${institutionName.toUpperCase()} — WEEKLY UNIVERSITY TIMETABLE OVERVIEW`
   ]);
-  overviewSheet.mergeCells(footerLegendRow.number, 1, footerLegendRow.number, totalCols);
-  footerLegendRow.height = 22;
-  footerLegendRow.getCell(1).font = {
+  overviewSheet.mergeCells(1, 1, 1, totalCols);
+  titleRow.height = 32;
+  titleRow.getCell(1).font = {
     name: 'Arial',
-    size: 9,
+    size: 14,
     bold: true,
+    color: { argb: 'FFFFFFFF' }
+  };
+  titleRow.getCell(1).fill = {
+    type: 'pattern',
+    pattern: 'solid',
+    fgColor: { argb: 'FF171717' }
+  };
+  titleRow.getCell(1).alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
+
+  // Row 2: Subtitle / Academic Metadata
+  const metaRow = overviewSheet.addRow([
+    `Semester: ${termName}   |   Scope: ${scopeLabel.replace(/_/g, ' ')}   |   University Hours: 9:00 AM – 5:00 PM (Lunch & Prayer Break: 1:00 PM – 2:00 PM)`
+  ]);
+  overviewSheet.mergeCells(2, 1, 2, totalCols);
+  metaRow.height = 22;
+  metaRow.getCell(1).font = {
+    name: 'Arial',
+    size: 10,
+    bold: false,
     color: { argb: 'FF171717' }
   };
-  footerLegendRow.getCell(1).fill = {
+  metaRow.getCell(1).fill = {
+    type: 'pattern',
+    pattern: 'solid',
+    fgColor: { argb: 'FFEDEAE0' }
+  };
+  metaRow.getCell(1).alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
+
+  // Row 3: Session Rules Legend Bar
+  const rulesRow = overviewSheet.addRow([
+    'University Rules:  • Regular Lecture = 50 mins + 10m Short Break   • Laboratory = 3 Hours Continuous (vertically merged across 3 slots)   • Individual Class/Section Timetables follow in separate worksheets'
+  ]);
+  overviewSheet.mergeCells(3, 1, 3, totalCols);
+  rulesRow.height = 20;
+  rulesRow.getCell(1).font = {
+    name: 'Arial',
+    size: 9,
+    italic: true,
+    color: { argb: 'FF57564F' }
+  };
+  rulesRow.getCell(1).fill = {
     type: 'pattern',
     pattern: 'solid',
     fgColor: { argb: 'FFF7F6EF' }
   };
-  footerLegendRow.getCell(1).alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
+  rulesRow.getCell(1).alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
 
-  // ============================================================================
-  // WORKSHEETS 2..N: ONE SEPARATE WORKSHEET FOR EVERY INDIVIDUAL COURSE
-  // ============================================================================
-  // Group scheduled sessions by course code
-  const sessionsByCourse = new Map<
-    string,
-    {
-      code: string;
-      title: string;
-      departmentName: string;
-      credits: number;
-      sessions: ClassItem[];
-    }
-  >();
+  // Row 4: Spacer
+  const spacerRow = overviewSheet.addRow([]);
+  spacerRow.height = 8;
 
-  allScheduledItems.forEach(item => {
-    const existing = sessionsByCourse.get(item.code);
-    if (existing) {
-      existing.sessions.push(item);
-    } else {
-      sessionsByCourse.set(item.code, {
-        code: item.code,
-        title: item.title,
-        departmentName: item.departmentName || 'Academic Department',
-        credits: item.credits || 4,
-        sessions: [item]
-      });
-    }
+  // Populate Weekly Grid on Worksheet 1
+  populateWeeklyGridOnWorksheet({
+    worksheet: overviewSheet,
+    days,
+    scheduleData,
+    itemPredicate: cls => scope === 'all' || filterClass(cls),
+    isSingleClassSheet: false
   });
 
-  const dayOrder: Record<string, number> = { Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+  // ============================================================================
+  // WORKSHEETS 2..N: ONE SEPARATE WORKSHEET FOR EACH CLASS / SECTION (StudentGroup)
+  // ============================================================================
+  // Determine which classes/sections to include:
+  // Always include every StudentGroup that has at least 1 scheduled session in scope (or all studentGroups if scope === 'all')
+  const groupsToExport: StudentGroup[] = store.studentGroups.filter(grp => {
+    const hasSessionsInScope = allScheduledItems.some(item => item.studentGroupId === grp.id);
+    if (scope === 'all') {
+      const hasAnySessions = store.sections.some(s => s.studentGroupId === grp.id && s.assignedSlot);
+      return hasAnySessions || hasSessionsInScope;
+    }
+    return hasSessionsInScope;
+  });
 
-  sessionsByCourse.forEach(courseEntry => {
-    // Use course title (or Code - Title) for worksheet tab name, sanitized & unique <= 31 chars
-    const desiredTabName = `${courseEntry.title} (${courseEntry.code})`;
-    const sheetName = sanitizeWorksheetName(desiredTabName, usedSheetNames);
-    const courseSheet = workbook.addWorksheet(sheetName, {
-      views: [{ state: 'frozen', xSplit: 0, ySplit: 9 }],
+  // Fallback: if filtering narrowed to 0 groups, export all groups with scheduled sessions
+  const finalGroups =
+    groupsToExport.length > 0
+      ? groupsToExport
+      : store.studentGroups.filter(grp => store.sections.some(s => s.studentGroupId === grp.id && s.assignedSlot));
+
+  finalGroups.forEach(group => {
+    const prog = store.programs.find(p => p.id === group.programId);
+    const dept = store.departments.find(d => d.id === prog?.departmentId);
+
+    // Tab Name: e.g. "2K24-BEE-A" or "BSCS - Section A" (<= 31 chars)
+    const sheetName = sanitizeWorksheetName(group.code, usedSheetNames);
+    const classSheet = workbook.addWorksheet(sheetName, {
+      views: [{ state: 'frozen', xSplit: 1, ySplit: 5 }],
       pageSetup: {
         paperSize: 9,
         orientation: 'landscape',
@@ -517,148 +520,159 @@ export async function exportTimetableToGoogleSheetsWorkbook(params: {
       }
     });
 
-    courseSheet.columns = [
-      { key: 'day', width: 16 },
-      { key: 'sessionType', width: 22 },
-      { key: 'startTime', width: 16 },
-      { key: 'endTime', width: 16 },
-      { key: 'duration', width: 28 },
-      { key: 'instructor', width: 26 },
-      { key: 'room', width: 24 }
+    classSheet.columns = [
+      { key: 'slotCol', width: 30 },
+      ...days.map((d, idx) => ({ key: `day_${idx}`, width: 34 }))
     ];
 
-    const pastel = getCourseArgb(courseEntry.code);
-    const instructorsList = Array.from(new Set(courseEntry.sessions.map(s => s.prof))).join(', ');
-    const cohortsList = Array.from(new Set(courseEntry.sessions.map(s => s.cohort))).join(', ');
-    const hasLecture = courseEntry.sessions.some(s => s.sessionType !== 'Lab' && s.spanSlots !== 3);
-    const hasLab = courseEntry.sessions.some(s => s.sessionType === 'Lab' || s.spanSlots === 3);
-    const courseTypeSummary =
-      hasLecture && hasLab
-        ? 'Combined Regular Lectures (50m) + 3-Hour Continuous Lab'
-        : hasLab
-        ? '3-Hour Continuous Laboratory / Studio'
-        : 'Regular Academic Lecture (50m)';
+    // Row 1: Class / Section Banner
+    const classBanner = classSheet.addRow([
+      `CLASS / SECTION TIMETABLE: ${group.code} — ${group.name.toUpperCase()}`
+    ]);
+    classSheet.mergeCells(1, 1, 1, totalCols);
+    classBanner.height = 30;
+    classBanner.getCell(1).font = {
+      name: 'Arial',
+      size: 13,
+      bold: true,
+      color: { argb: 'FFFFFFFF' }
+    };
+    classBanner.getCell(1).fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FF171717' }
+    };
+    classBanner.getCell(1).alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
 
-    // Course Header Banner
-    const cBanner = courseSheet.addRow([`${courseEntry.code} — ${courseEntry.title.toUpperCase()}`]);
-    courseSheet.mergeCells(1, 1, 1, 7);
-    cBanner.height = 30;
-    cBanner.getCell(1).font = { name: 'Arial', size: 13, bold: true, color: { argb: 'FF171717' } };
-    cBanner.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: pastel.argb } };
-    cBanner.getCell(1).alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
+    // Row 2: Class / Section Metadata Bar
+    const classMeta = classSheet.addRow([
+      `Department: ${dept?.name || 'Engineering & Computing'} (${dept?.code || prog?.code || ''})   |   Semester: ${
+        group.semester ? `Semester ${group.semester}` : `Year ${group.year}`
+      }   |   Section: ${group.section || group.code}   |   Home Room: ${
+        group.homeRoom || 'Designated Classroom'
+      }   |   Term: ${termName}`
+    ]);
+    classSheet.mergeCells(2, 1, 2, totalCols);
+    classMeta.height = 22;
+    classMeta.getCell(1).font = {
+      name: 'Arial',
+      size: 10,
+      bold: true,
+      color: { argb: 'FF171717' }
+    };
+    classMeta.getCell(1).fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FFB8EEEE' }
+    };
+    classMeta.getCell(1).alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
 
-    // Course Metadata Grid (Rows 2..6)
-    const metaRowsData: Array<[string, string, string, string]> = [
-      ['Course Name:', courseEntry.title, 'Course Code:', courseEntry.code],
-      ['Instructor(s):', instructorsList, 'Semester:', termName],
-      ['Section / Cohort:', cohortsList, 'Credits:', `${courseEntry.credits} Credit Hours`],
-      ['Course Type:', courseTypeSummary, 'Department:', courseEntry.departmentName]
-    ];
+    // Row 3: Operating Hours & Lab Rule Note
+    const classRules = classSheet.addRow([
+      'Morning Session: 9:00 AM – 1:00 PM (Slots 1–4)   •   Fixed Lunch & Prayer Break: 1:00 PM – 2:00 PM   •   Afternoon Session: 2:00 PM – 5:00 PM (Fri Afternoon: 2:30 PM – 4:55 PM)   •   3-Hour Labs Merged Vertically'
+    ]);
+    classSheet.mergeCells(3, 1, 3, totalCols);
+    classRules.height = 19;
+    classRules.getCell(1).font = {
+      name: 'Arial',
+      size: 9,
+      italic: true,
+      color: { argb: 'FF57564F' }
+    };
+    classRules.getCell(1).fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FFF7F6EF' }
+    };
+    classRules.getCell(1).alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
 
-    metaRowsData.forEach(pair => {
-      const r = courseSheet.addRow([pair[0], pair[1], '', pair[2], pair[3], '', '']);
-      courseSheet.mergeCells(r.number, 2, r.number, 3);
-      courseSheet.mergeCells(r.number, 5, r.number, 7);
-      r.height = 20;
+    // Row 4: Spacer
+    const classSpacer = classSheet.addRow([]);
+    classSpacer.height = 8;
 
-      [1, 4].forEach(colIdx => {
-        const lblCell = r.getCell(colIdx);
-        lblCell.font = { name: 'Arial', size: 9.5, bold: true, color: { argb: 'FF57564F' } };
-        lblCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF7F6EF' } };
-        lblCell.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
-      });
-
-      [2, 5].forEach(colIdx => {
-        const valCell = r.getCell(colIdx);
-        valCell.font = { name: 'Arial', size: 9.5, bold: true, color: { argb: 'FF171717' } };
-        valCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFFFF' } };
-        valCell.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
-      });
+    // Populate this Class/Section's complete Weekly Timetable Grid (with vertically merged 3-hour labs!)
+    populateWeeklyGridOnWorksheet({
+      worksheet: classSheet,
+      days,
+      scheduleData,
+      itemPredicate: cls => cls.studentGroupId === group.id,
+      isSingleClassSheet: true
     });
 
-    courseSheet.addRow([]); // Row 6 spacer
-
-    const sectionTitleRow = courseSheet.addRow([
-      'WEEKLY COURSE SCHEDULE (LECTURES & CONTINUOUS 3-HOUR LABS)'
+    // Add a clean Course & Faculty Summary Table below the weekly grid for this Class/Section
+    classSheet.addRow([]);
+    const summaryHeaderBanner = classSheet.addRow([
+      `ASSIGNED COURSES, INSTRUCTORS & LABORATORIES FOR ${group.code}`
     ]);
-    courseSheet.mergeCells(sectionTitleRow.number, 1, sectionTitleRow.number, 7);
-    sectionTitleRow.height = 22;
-    sectionTitleRow.getCell(1).font = { name: 'Arial', size: 10, bold: true, color: { argb: 'FF171717' } };
-    sectionTitleRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEDEAE0' } };
-    sectionTitleRow.getCell(1).alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
+    classSheet.mergeCells(summaryHeaderBanner.number, 1, summaryHeaderBanner.number, totalCols);
+    summaryHeaderBanner.height = 24;
+    summaryHeaderBanner.getCell(1).font = {
+      name: 'Arial',
+      size: 10,
+      bold: true,
+      color: { argb: 'FF171717' }
+    };
+    summaryHeaderBanner.getCell(1).fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FFEDEAE0' }
+    };
+    summaryHeaderBanner.getCell(1).alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
 
-    // Table Column Headers (Row 9)
-    const tableHeader = courseSheet.addRow([
-      'Day',
-      'Session Type',
-      'Start Time',
-      'End Time',
-      'Duration',
-      'Instructor',
-      'Room'
+    const summaryColRow = classSheet.addRow([
+      'Course Code',
+      'Course Name',
+      'Session Type & Duration',
+      'Day & Time Window',
+      'Instructor Name',
+      'Room / Laboratory'
     ]);
-    tableHeader.height = 26;
-    tableHeader.eachCell(cell => {
+    summaryColRow.height = 24;
+    summaryColRow.eachCell(cell => {
       cell.font = { name: 'Arial', size: 9.5, bold: true, color: { argb: 'FFFFFFFF' } };
-      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF171717' } };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF292929' } };
       cell.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
-      cell.border = {
-        top: { style: 'thin', color: { argb: 'FF171717' } },
-        bottom: { style: 'medium', color: { argb: 'FF171717' } },
-        left: { style: 'thin', color: { argb: 'FF363636' } },
-        right: { style: 'thin', color: { argb: 'FF363636' } }
-      };
     });
 
-    // Sort course sessions by Day then Slot
-    const sortedSessions = [...courseEntry.sessions].sort((a, b) => {
-      const dA = dayOrder[a.day || 'Mon'] || 99;
-      const dB = dayOrder[b.day || 'Mon'] || 99;
-      if (dA !== dB) return dA - dB;
-      const sA = UNIVERSITY_SLOTS.findIndex(s => s.period === a.time);
-      const sB = UNIVERSITY_SLOTS.findIndex(s => s.period === b.time);
-      return sA - sB;
+    const classItems: ClassItem[] = [];
+    days.forEach(d => {
+      UNIVERSITY_SLOTS.forEach(s => {
+        const matches = (scheduleData[s.period]?.[d] || []).filter(c => c.studentGroupId === group.id);
+        matches.forEach(m => classItems.push(m));
+      });
     });
 
-    sortedSessions.forEach(sess => {
-      const isLab = sess.sessionType === 'Lab' || sess.spanSlots === 3;
-      const slotMeta = UNIVERSITY_SLOTS.find(s => s.period === sess.time);
-      const labBlock = isLab ? getLabBlockByStartPeriod(sess.time || '') : undefined;
+    classItems.forEach(item => {
+      const isLab = item.sessionType === 'Lab' || item.spanSlots === 3;
+      const labBlock = isLab ? getLabBlockByStartPeriod(item.time || '') : undefined;
+      const timeWindow = isLab
+        ? (item.continuousTimeLabel || labBlock?.continuousLabel || item.time || '')
+        : (item.time || '');
+      const durationLabel = isLab
+        ? 'Lab · 3 Hours Continuous (180 mins)'
+        : 'Lecture · 50 mins (+ 10m Break)';
 
-      const startTime = isLab
-        ? (labBlock?.startTime || slotMeta?.startTime || '9:00 AM')
-        : (slotMeta?.startTime || '9:00 AM');
-      const endTime = isLab
-        ? (labBlock?.endTime || '12:00 PM')
-        : (slotMeta?.lectureEndTime || '9:50 AM');
-      const durationText = isLab
-        ? '3 Hours Continuous (180 mins · No Internal Breaks)'
-        : '50 mins (+ 10m Short Break)';
-
-      const dataRow = courseSheet.addRow([
-        DAY_FULL_LABELS[sess.day || 'Mon'] || sess.day || 'Monday',
-        isLab ? 'Lab (Continuous)' : 'Lecture',
-        startTime,
-        endTime,
-        durationText,
-        sess.prof,
-        `${sess.room} (${sess.cohort})`
+      const r = classSheet.addRow([
+        item.code,
+        item.title,
+        durationLabel,
+        `${DAY_FULL_LABELS[item.day || 'Mon'] || item.day} · ${timeWindow}`,
+        item.prof,
+        item.room
       ]);
-      dataRow.height = 24;
-
-      dataRow.eachCell((cell, colNumber) => {
+      r.height = 22;
+      const pastel = getCourseArgb(item.code);
+      r.eachCell((cell, colNumber) => {
         cell.font = {
           name: 'Arial',
-          size: 9.5,
-          bold: colNumber === 1 || colNumber === 2,
+          size: 9,
+          bold: colNumber === 1 || (colNumber === 3 && isLab),
           color: { argb: 'FF171717' }
         };
         cell.fill = {
           type: 'pattern',
           pattern: 'solid',
-          fgColor: {
-            argb: colNumber === 2 && isLab ? pastel.argb : 'FFFFFFFF'
-          }
+          fgColor: { argb: colNumber === 1 || (colNumber === 3 && isLab) ? pastel.argb : 'FFFFFFFF' }
         };
         cell.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
         cell.border = {
@@ -679,7 +693,7 @@ export async function exportTimetableToGoogleSheetsWorkbook(params: {
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   const cleanScope = scopeLabel.replace(/[^a-zA-Z0-9_-]/g, '_');
-  const fileName = `SmartGrid_GoogleSheets_Timetable_${cleanScope}.xlsx`;
+  const fileName = `SmartGrid_ClassTimetables_${cleanScope}.xlsx`;
   link.href = url;
   link.download = fileName;
   document.body.appendChild(link);
@@ -689,7 +703,7 @@ export async function exportTimetableToGoogleSheetsWorkbook(params: {
 
   return {
     fileName,
-    courseSheetCount: sessionsByCourse.size,
+    classSheetCount: finalGroups.length,
     totalSessionsCount: allScheduledItems.length
   };
 }

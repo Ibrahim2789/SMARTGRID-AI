@@ -1,0 +1,819 @@
+2. Electrical Engineering (BEE)
+Sheet: 2K23-EE15 — 7th Semester (2K23-BEE)
+Course & Faculty Allocation:
+
+OTM-455 | Engineering Project Management (H&S, 2+0 Cr, Contact: 2.0): Dr. Muhammad Yousaf (ABCD)
+
+EE-498 | Final Year Design Project-1 (ECE, 0+2 Cr, Contact: 6.0)
+
+EE-423 | Embedded System Design (Gp-01) (ECE, 3+1 Cr, Elective, Contact: 6.0): Dr. Wajid Mumtaz | Lab: Muhammad Adnan
+
+CS-471 | Machine Learning (Gp-01) (ECE, 3+1 Cr, Elective): Mr. Munadi Ahmad Sial | Lab: Quindeel Fatima
+
+EE-321 | Computer Architecture & Organization (Gp-01) (ECE, 3+1 Cr, Elective): Mr. Muhammad Ali | Lab: TBD (LE-02)
+
+EE-447 | Analog IC Design (ECE, 3+1 Cr, Elective): Dr. Saman Fatima | Lab: Fazal e Haq
+
+EE-423 | Embedded System Design (Gp-02) (ECE, 3+1 Cr, Elective, Contact: 6.0): Dr. Shahzad Younis | Lab: Muhammad Adnan
+
+CS-471 | Machine Learning (Gp-02) (ECE, 3+1 Cr, Elective): Mr. Munadi Ahmad Sial | Lab: Quindeel Fatima
+
+CS-477 | Computer Vision (Gp-02) (ECE, 3+1 Cr, Elective): Dr. Tauseef Ur Rehman | Lab: Tehniyat Siddiqui
+
+EE-321 | Computer Architecture & Organization (Gp-02) (ECE, 3+1 Cr, Elective): Mr. Muhammad Ali | Lab: TBD (LE-02)
+
+CS-471 | Machine Learning (Gp-03) (ECE, 3+1 Cr, Elective, Contact: 6.0): Dr. Neelma Naz | Lab: Quindeel Fatima
+
+CS-477 | Computer Vision (Gp-01) (ECE, 3+1 Cr, Elective): Dr. Tauseef Ur Rehman | Lab: Tehniyat Siddiqui
+
+EE-410 | Digital IC Design (1x) (ECE, 3+1 Cr, Elective): Dr. Usman Zabit | Lab: Muhammad Adnan
+
+EE-461 | Power System Analysis and Design (1x) (ECE, 3+0 Cr, Elective, Contact: 3.0): Dr. Kamran Zeb
+
+EE-451 | Mobile Communications Systems (Gp-02) (ECE, 3+0 Cr, Elective): Dr. Muhammad Saad Zia
+
+EE-451 | Mobile Communications Systems (Gp-01) (ECE, 3+0 Cr, Elective, Contact: 3.0): Dr. Syed Ali Hassan
+
+Total Contact Hours: 32.0
+
+Weekly Schedule (Shared Elective Blocks across Sections A, B, C, D):
+
+Monday:
+
+0900–1050: Sec A: Engineering Project Management (CR-27-Acad) | Sec B: Makeup/Library/Industrial Visit | Sec C & D: Makeup/Library Period
+
+1100–1250: Embedded System Design (Gp-01) (CR-27-Acad) / Machine Learning (Gp-01) (CR-28-Acad) / Computer Architecture & Organization (Gp-01) (CR-29-Acad) / Analog IC Design (Lecture Hall-PG)
+
+1400–1550: Embedded System Design (Gp-02) (CR-27-Acad) / Machine Learning (Gp-02) (CR-28-Acad) / Computer Vision (Gp-02) (CR-29-Acad) / Computer Architecture & Organization (Gp-02) (CR-31-Acad)
+
+1600–1650: Power System Analysis and Design (1x) (CR-27-Acad) / Mobile Communications Systems (Gp-02) (CR-28-Acad)
+
+Tuesday:
+
+0900–1050: Machine Learning (Gp-03) (CR-27-Acad) / Computer Vision (Gp-01) (CR-28-Acad) / Digital IC Design (1x) (CR-29-Acad)
+
+1100–1150: Embedded System Design (Gp-01) (CR-27-Acad) / Machine Learning (Gp-01) (CR-28-Acad) / Computer Architecture & Organization (Gp-01) (CR-29-Acad) / Analog IC Design (CR-31-Acad)
+
+1200–1250: Embedded System Design (Gp-02) (CR-27-Acad) / Machine Learning (Gp-02) (CR-28-Acad) / Computer Vision (Gp-02) (CR-29-Acad) / Computer Architecture & Organization (Gp-02) (CR-31-Acad)
+
+1400–1450: Mobile Communications Systems (Gp-01) (CR-27-Acad)
+
+1500–1650: Power System Analysis and Design (1x) (CR-27-Acad) / Mobile Communications Systems (Gp-02) (CR-28-Acad)
+
+Wednesday:
+
+0900–1050: Sec B: Engineering Project Management (CR-27-Acad) | Sec A, C, D: Makeup/Library/Industrial Visit
+
+1100–1250: Mobile Communications Systems (Gp-01) (CR-27-Acad)
+
+1400–1650: Machine Learning (Lab-Gp-03) (CL-08-PG) / Computer Vision (Lab-Gp-01) (CL-09-SMRIMMS) / Digital IC Design (Lab-1x) (CL-10-Acad)
+
+Thursday:
+
+0900–1150: Embedded System Design (Lab-Gp-02) (Embedded Systems Lab-PG) / Machine Learning (Lab-Gp-02) (CL-08-PG) / Computer Vision (Lab-Gp-02) (CL-09-SMRIMMS) / Computer Architecture & Organization (Lab-Gp-02) (Control Systems Lab-UG)
+
+1200–1250: Machine Learning (Gp-03) (CR-23-Acad) / Computer Vision (Gp-01) (CR-28-Acad) / Digital IC Design (1x) (CR-29-Acad)
+
+1400–1650: Embedded System Design (Lab-Gp-01) (Embedded Systems Lab-PG) / Machine Learning (Lab-Gp-01) (CL-08-PG) / Computer Architecture & Organization (Lab-Gp-01) (Control System Lab-UG) / Analog IC Design (Lab-1x) (NCDC Lab-SINES)
+
+Friday:
+
+0900–1050: Sec C: Engineering Project Management (CR-27-Acad) | Sec A, B, D: Makeup/Library/FYDP-I
+
+1100–1250: Sec D: Engineering Project Management (CR-29-Acad) | Sec A, B, C: Makeup/Library/FYDP-I
+
+1430–1655: All Sections: Makeup Slot/Library Period/FYDP-I
+
+Sheet: 2K24-EE16 — 5th Semester (2K24-BEE)
+Course & Faculty Allocation:
+
+EE-260 | Electrical Machines (ECE, 3+1 Cr, Contact: 6.0): Dr. Fida Muhammad Khan (AB), Dr. Farid Gul (C), Dr. Sherjeel Mehmood Baig (D) | Lab: Mughees Ahmed (ACD), Yasir Rizwan (B)
+
+OHS-101 | Occupational Health and Safety (ECE, 1+0 Cr, Contact: 1.0): Dr. Syed Rafay Hussain (AB), Mr. Habeel Ahmed (CD)
+
+EE-326 | Probability & Statistics for Engineers (H&S, 3+0 Cr, Contact: 3.0): Ms. Ansar Shehzadi (A), Dr. Azad Akhtar Siddiqui (BC), Dr. Bilal Ahmed (D)
+
+EE-232 | Signals and Systems (ECE, 3+1 Cr, Contact: 6.0): Dr. Tassawar Kazmi (AC), Dr. Huma Ghafoor (B), Dr. Salman Abdul Ghafoor (D) | Lab: TBD (LE-01) (ABCD)
+
+EE-344 | Wave Propagation and Antennas (ECE, 3+1 Cr, Contact: 6.0): Mr. Ahsan Azhar (AB), Dr. Mustafa Tahseen (C), Dr. Wasif Tanveer (D) | Lab: Yasir Rizwan (ABCD)
+
+Total Credits / Contact Hours: 13+4 | 22.0
+
+2K24-BEE-A (Home Room: CR-18-IAEC):
+
+Mon: 0900–0950 Prob & Stats | 1000–1050 OHS | 1100–1250 Signals & Systems | 1400–1650 Makeup/Library/Industrial Visit
+
+Tue: 0900–0950 Prob & Stats | 1000–1250 Electrical Machines (Lab) (EMS Lab-UG) | 1400–1550 Wave Propagation & Antennas | 1600–1650 Signals & Systems
+
+Wed: 0900–0950 Electrical Machines (CR-16-IAEC) | 1000–1250 Wave Propagation & Antennas (Lab) (MDA Lab-SMRIMMS) | 1400–1650 Makeup/Library
+
+Thu: 0900–0950 Prob & Stats | 1000–1150 Electrical Machines | 1200–1250 Wave Propagation & Antennas | 1400–1650 Signals & Systems (Lab) (DSP & Comm Lab-UG)
+
+Fri: 0900–1655 Makeup Slot/Library Period
+
+2K24-BEE-B (Home Room: CR-18-IAEC):
+
+Mon: 0900–1050 Prob & Stats (CR-17-IAEC) | 1100–1150 OHS (CR-17-IAEC) | 1200–1250 Makeup/Library | 1400–1550 Wave Propagation & Antennas | 1600–1650 Makeup/Library
+
+Tue: 0900–0950 Makeup/Library | 1000–1150 Signals & Systems | 1200–1250 Wave Propagation & Antennas | 1400–1650 Electrical Machines (Lab) (EMS Lab-UG)
+
+Wed: 0900–0950 Signals & Systems | 1000–1150 Electrical Machines | 1200–1250 Prob & Stats | 1400–1650 Wave Propagation & Antennas (Lab) (MDA Lab-SMRIMMS)
+
+Thu: 0900–0950 Electrical Machines (CR-16-IAEC) | 1000–1250 Signals & Systems (Lab) (DSP & Comm Lab-UG) | 1400–1650 Makeup/Library/Industrial Visit
+
+Fri: 0900–1655 Makeup Slot/Library Period
+
+2K24-BEE-C (Home Room: CR-19-IAEC):
+
+Mon: 0900–0950 Makeup/Library | 1000–1050 Signals & Systems | 1100–1150 Electrical Machines | 1200–1250 Prob & Stats | 1400–1650 Wave Propagation & Antennas (Lab) (MDA Lab-SMRIMMS)
+
+Tue: 0900–1150 Signals & Systems (Lab) (DSP & Comm Lab-UG) | 1200–1250 OHS (CR-16-IAEC) | 1400–1650 Makeup/Library/Industrial Visit
+
+Wed: 0900–0950 Makeup/Library | 1000–1150 Signals & Systems | 1200–1250 Wave Propagation & Antennas | 1400–1550 Prob & Stats | 1600–1650 Makeup/Library
+
+Thu: 0900–1050 Electrical Machines | 1100–1250 Wave Propagation & Antennas | 1400–1650 Electrical Machines (Lab) (EMS Lab-UG)
+
+Fri: 0900–1655 Makeup Slot/Library Period
+
+2K24-BEE-D (Home Room: CR-19-IAEC):
+
+Mon: 0900–0950 Makeup/Library | 1000–1250 Wave Propagation & Antennas (Lab) (MDA Lab-SMRIMMS) | 1400–1450 Electrical Machines | 1500–1550 Signals & Systems | 1600–1650 Makeup/Library
+
+Tue: 0900–0950 Wave Propagation & Antennas | 1000–1050 OHS | 1100–1250 Electrical Machines | 1400–1650 Signals & Systems (Lab) (DSP & Comm Lab-UG)
+
+Wed: 0900–1050 Makeup/Library | 1100–1250 Wave Propagation & Antennas (CR-17-IAEC) | 1400–1450 Prob & Stats (CR-17-IAEC) | 1500–1650 Signals & Systems (CR-17-IAEC)
+
+Thu: 0900–0950 Makeup/Library | 1000–1250 Electrical Machines (Lab) (EMS Lab-UG) | 1400–1450 Makeup/Library | 1500–1650 Prob & Stats
+
+Fri: 0900–0950 Makeup/Library | 1000–1250 Makeup/Library/Industrial Visit | 1430–1655 Makeup/Library
+
+Sheet: 2K25-EE17 — 3rd Semester (2K25-BEE)
+Course & Faculty Allocation:
+
+CS-250 | Data Structures & Algorithms (ECE, 3+1 Cr, Contact: 6.0): Dr. Attique Dawood (ABC), Dr. Sadiq Amin (D) | Lab: Fazal e Haq (ABCD)
+
+EE-221 | Digital Logic Design (ECE, 3+1 Cr, Contact: 6.0): Mr. Arshad Nazir (ABC), Dr. Nauman Anwar Baig (D) | Lab: Rafia Ahmad (ABC), Mughees Ahmed (D)
+
+EE-215 | Electronic Devices & Circuits (ECE, 3+1 Cr, Contact: 6.0): Dr. Muhammad Moazzam Ali (A), Dr. Umsan Khan (B), Dr. Kamran Zeb (CD) | Lab: Waqas Mohiyuddin (AB), Tehniyat Siddiqui (CD)
+
+CS-371 | Artificial Intelligence (ECE, 3+0 Cr, Contact: 3.0): Dr. Arbab Latif (AB), Dr. Sajjad Hussain (CD)
+
+MATH-234 | Multivariable Calculus (H&S, 3+0 Cr, Contact: 3.0): Dr. Khursheed Muhammad (ABC), Dr. Azad Akhtar Siddiqui (D)
+
+Total Credits / Contact Hours: 15+3 | 24.0
+
+2K25-BEE-A (Home Room: CR-30-Acad Block):
+
+Mon: 0900–0950 Makeup/Library | 1000–1250 DLD (Lab) (Digital Systems Lab-I-UG) | 1400–1550 Multivariable Calculus | 1600–1650 EDC
+
+Tue: 0900–1050 DSA | 1100–1150 DLD | 1200–1250 Multivariable Calculus | 1400–1550 EDC | 1600–1650 Makeup/Library
+
+Wed: 0900–0950 Makeup/Library | 1000–1250 Makeup/Library/Industrial Visit | 1400–1650 Makeup/Library
+
+Thu: 0900–1050 AI | 1100–1150 DSA | 1200–1250 DLD | 1400–1650 EDC (Lab) (Advanced Electronics Lab-IAEC)
+
+Fri: 0900–0950 AI | 1000–1250 DSA (Lab) (CL-10-Acad) | 1430–1515 DLD | 1520–1655 Makeup/Library
+
+2K25-BEE-B (Home Room: CR-30-Acad Block):
+
+Mon: 0900–1050 EDC | 1100–1250 DSA | 1400–1650 DLD (Lab) (Digital Systems Lab-I-UG)
+
+Tue: 0900–0950 Makeup/Library | 1000–1150 AI (CR-26-Acad) | 1200–1250 Makeup/Library | 1400–1450 DLD (CR-26-Acad) | 1500–1650 Multivariable Calculus (CR-26-Acad)
+
+Wed: 0900–0950 Makeup/Library | 1000–1250 Makeup/Library/Industrial Visit | 1400–1650 Makeup/Library
+
+Thu: 0900–0950 EDC (CR-28-Acad) | 1000–1250 EDC (Lab) (Advanced Electronics Lab-IAEC) | 1400–1450 DLD | 1500–1550 DSA | 1600–1650 Makeup/Library
+
+Fri: 0900–0950 Makeup/Library | 1000–1050 AI | 1100–1150 DLD | 1200–1250 Multivariable Calculus | 1430–1655 DSA (Lab) (CL-10-Acad)
+
+2K25-BEE-C (Home Room: CR-31-Acad Block):
+
+Mon: 0900–1150 DSA (Lab) (CL-10-Acad) | 1200–1250 Multivariable Calculus | 1400–1650 EDC (Lab) (Advanced Electronics Lab-IAEC)
+
+Tue: 0900–1150 DLD (Lab) (Digital Systems Lab-I-UG) | 1200–1250 DLD (CR-26-Acad) | 1400–1550 DSA | 1600–1650 Makeup/Library
+
+Wed: 0900–1250 Makeup/Library | 1400–1650 Makeup/Library/Industrial Visit
+
+Thu: 0900–1050 AI | 1100–1150 DLD | 1200–1250 DSA | 1400–1550 EDC | 1600–1650 Makeup/Library
+
+Fri: 0900–0950 Makeup/Library | 1000–1150 Multivariable Calculus | 1200–1250 DLD | 1430–1515 EDC | 1520–1605 AI | 1610–1655 Makeup/Library
+
+2K25-BEE-D (Home Room: CR-32-Acad Block):
+
+Mon: 0900–0950 Makeup/Library | 1000–1250 EDC (Lab) (Advanced Electronics Lab-IAEC) | 1400–1650 DSA (Lab) (CL-10-Acad)
+
+Tue: 0900–1050 DSA | 1100–1250 DLD | 1400–1650 DLD (Lab) (Digital Systems Lab-I-UG)
+
+Wed: 0900–1250 Makeup/Library | 1400–1650 Makeup/Library/Industrial Visit
+
+Thu: 0900–0950 DSA | 1000–1050 Multivariable Calculus | 1100–1250 EDC | 1400–1550 AI | 1600–1650 Makeup/Library
+
+Fri: 0900–1050 Multivariable Calculus | 1100–1150 DLD | 1200–1250 EDC | 1430–1515 AI | 1520–1655 Makeup/Library
+
+Sheet: 2K26-EE18 — 1st Semester (2K26-BEE)
+Course & Faculty Allocation:
+
+CS-117 | Applications of ICT (FoC, 2+1 Cr, Contact: 5.0): Dr. Javeria Ahmed (AB), Dr. Taha Ali (CD) | Lab: Quindeel Fatima (A), Ijaz Alam Khan (BC), TBD (LE-02) (D)
+
+PHY-102 | Applied Physics (H&S, 2+1 Cr, Contact: 5.0): Dr. Imran Malik (ABCD)
+
+MATH-101 | Calculus and Analytical Geometry (H&S, 3+0 Cr, Contact: 3.0): Dr. Iftikhar Ahmad Rana (A), Dr. Muhammad Arshad Siddiqui (B), Dr. Imran Shahzad (CD)
+
+ME-109 | Engineering Drawing (ECE, 0+2 Cr, Contact: 6.0): Mr. Ibrahim Khan (AB), Ms. Amna Perveen (CD) | Lab: Mr. Ibrahim Khan (AB), Ms. Amna Perveen (CD)
+
+HU-131 | Understanding of Quran-I (H&S, 0+1 Cr, Contact: 3.0): Mr. Salman Mushtaq (ACD), Mr. Muhammad Siddique (B)
+
+HU-114 | Functional English (H&S, 3+0 Cr, Contact: 3.0): Dr. Neelma Riaz (AB), Ms. Hina Yousaf (C), Dr. Samia Tahir (D)
+
+EE-111 | Linear Circuit Analysis (ECE, 3+1 Cr, Contact: 6.0): Mr. Habeel Ahmed (AB), Mr. Ahsan Azhar (C), Dr. Latif Anjum (D) | Lab: TBD (LE-02) (A), Tehreem Javed (BCD)
+
+Total Credits / Contact Hours: 13+6 | 31.0
+
+2K26-BEE-A (Home Room: CR-06-UG Block):
+
+Mon: 0900–0950 Makeup/Library | 1000–1250 LCA (Lab) (Basic Electronics Lab-PG) | 1400–1650 Engineering Drawing (Lab) (CL-09-SMRIMMS)
+
+Tue: 0900–0950 Makeup/Library/Industrial Visit | 1000–1050 Student Advisory Session | 1100–1150 Functional English | 1200–1250 Calculus & Analytical Geometry | 1400–1650 Engineering Drawing (Lab) (MDA Lab-SMRIMMS)
+
+Wed: 0900–1150 Applications of ICT (Lab) (CL-07-PG) | 1200–1250 Functional English (CR-13-UG) | 1400–1650 Understanding of Quran-I
+
+Thu: 0900–0950 Applied Physics | 1000–1150 LCA | 1200–1250 Functional English | 1400–1650 Applied Physics (Lab) (Physics Lab-02 SNS)
+
+Fri: 0900–0950 Makeup/Library | 1000–1050 LCA | 1100–1250 Applications of ICT | 1430–1515 Applied Physics | 1520–1655 Calculus & Analytical Geometry
+
+2K26-BEE-B (Home Room: CR-06-UG Block):
+
+Mon: 0900–1150 Engineering Drawing (Lab) (CL-09-SMRIMMS) | 1200–1250 Functional English | 1400–1650 LCA (Lab) (Basic Electronics Lab-PG)
+
+Tue: 0900–1150 Engineering Drawing (Lab) (MDA Lab-SMRIMMS) | 1200–1250 Student Advisory Session | 1400–1450 Functional English | 1500–1650 Calculus & Analytical Geometry
+
+Wed: 0900–0950 Applied Physics | 1000–1050 Functional English | 1100–1250 LCA | 1400–1650 Applications of ICT (Lab) (CL-07-PG)
+
+Thu: 0900–0950 Makeup/Library | 1000–1250 Applied Physics (Lab) (Physics Lab-01 SNS) | 1400–1550 Applications of ICT | 1600–1650 Makeup/Library/Industrial Visit
+
+Fri: 0900–1150 Understanding of Quran-I (CR-05-UG) | 1200–1250 LCA (CR-05-UG) | 1430–1515 Calculus & Analytical Geometry (CR-05-UG) | 1520–1605 Applied Physics (CR-05-UG) | 1610–1655 Makeup/Library
+
+2K26-BEE-C (Home Room: CR-07-UG Block):
+
+Mon: 0900–1050 LCA | 1100–1150 Functional English | 1200–1250 Applied Physics | 1400–1450 Student Advisory Session | 1500–1650 Calculus & Analytical Geometry
+
+Tue: 0900–1150 Applications of ICT (Lab) (CL-07-PG) | 1200–1250 Calculus & Analytical Geometry | 1400–1650 Engineering Drawing (Lab) (CL-09-SMRIMMS)
+
+Wed: 0900–1050 Applications of ICT | 1100–1150 LCA | 1200–1250 Functional English | 1400–1450 Applied Physics | 1500–1550 Makeup/Library/Industrial Visit | 1600–1650 Makeup/Library
+
+Thu: 0900–0950 Makeup/Library | 1000–1250 Applied Physics (Lab) (Physics Lab-02 SNS) | 1400–1650 LCA (Lab) (Basic Electronics Lab-PG)
+
+Fri: 0900–1150 Engineering Drawing (Lab) (MDA Lab-SMRIMMS) | 1200–1250 Functional English (CR-18-IAEC) | 1430–1655 Understanding of Quran-I (CR-08-UG)
+
+2K26-BEE-D (Home Room: CR-07-UG Block):
+
+Mon: 0900–1050 Applications of ICT (CR-03-UG) | 1100–1150 Applied Physics (CR-03-UG) | 1200–1250 Functional English (CR-03-UG) | 1400–1450 Calculus & Analytical Geometry (CR-03-UG) | 1500–1550 LCA (CR-03-UG) | 1600–1650 Student Advisory Session
+
+Tue: 0900–1150 Engineering Drawing (Lab) (CL-09-SMRIMMS) | 1200–1250 Functional English (CR-02-UG) | 1400–1550 Calculus & Analytical Geometry | 1600–1650 Makeup/Library/Industrial Visit
+
+Wed: 0900–0950 Makeup/Library | 1000–1150 LCA (CR-08-UG) | 1200–1250 Functional English (CR-08-UG) | 1400–1650 Applications of ICT (Lab) (CL-01-UG)
+
+Thu: 0900–1150 LCA (Lab) (Basic Electronics Lab-PG) | 1200–1250 Applied Physics | 1400–1650 Applied Physics (Lab) (Physics Lab-01 SNS)
+
+Fri: 0900–0950 Makeup/Library | 1000–1250 Understanding of Quran-I (CR-08-UG) | 1430–1655 Engineering Drawing (Lab) (MDA Lab-SMRIMMS)
+
+3. Computer Engineering (BCE)
+Sheet: 2K25-CE1 — 3rd Semester (2K25-BCE-A)
+Course & Faculty Allocation:
+
+MATH-161 | Discrete Mathematics (H&S, 3+0 Cr, Contact: 3.0): Dr. Saira Zainab
+
+CS-212 | Object Oriented Programming (FoC, 3+1 Cr, Contact: 6.0): Mr. Waqas Ahmed | Lab: Ijaz Alam Khan
+
+EC-220 | Computer System Architecture (ECE, 3+1 Cr, Contact: 6.0): Dr. Muhammad Taimoor | Lab: Tehreem Javed
+
+EE-215 | Electronic Devices and Circuits (ECE, 3+1 Cr, Contact: 6.0): Dr. Ahmed Naeem | Lab: Syeda Fatima Sajid
+
+ENGL-104 | Expository Writing (H&S, 3+0 Cr, Contact: 3.0): Dr. Neelma Riaz
+
+Total Credits / Contact Hours: 15+3 | 24.0
+
+2K25-BCE-A (Home Room: CR-34-Acad Block):
+
+Mon: 0900–1050 Computer System Architecture | 1100–1150 Expository Writing | 1200–1250 OOP | 1400–1650 OOP (Lab) (CL-08-PG)
+
+Tue: 0900–0950 Discrete Mathematics | 1000–1050 Expository Writing | 1100–1250 OOP | 1400–1650 EDC (Lab) (Advanced Electronics Lab-IAEC)
+
+Wed: 0900–0950 Computer System Architecture | 1000–1250 Computer System Architecture (Lab) (Control Systems Lab-UG) | 1400–1550 EDC | 1600–1650 Makeup/Library
+
+Thu: 0900–1050 Makeup/Library | 1100–1150 Expository Writing | 1200–1250 EDC | 1400–1550 Discrete Mathematics | 1600–1650 Makeup/Library
+
+Fri: 0900–0950 Makeup/Library | 1000–1250 Makeup/Library/Industrial Visit | 1430–1655 Makeup/Library
+
+Sheet: 2k26-CE2 — 1st Semester (2K26-BCE-A)
+Course & Faculty Allocation:
+
+CS-117 | Applications of ICT (FoC, 2+1 Cr, Contact: 5.0): Dr. Sadiq Amin | Lab: Ijaz Alam Khan
+
+PHY-102 | Applied Physics (H&S, 2+1 Cr, Contact: 5.0): Dr. Sidra Shafiq
+
+MATH-101 | Calculus and Analytical Geometry (H&S, 3+0 Cr, Contact: 3.0): Dr. Abdul Haleem Hamid
+
+HU-131 | Understanding of Quran-I (H&S, 0+1 Cr, Contact: 3.0): Mr. Muhammad Usman Ghani
+
+HU-114 | Functional English (H&S, 3+0 Cr, Contact: 3.0): Ms. Ayesha Habib
+
+EE-111 | Linear Circuit Analysis (ECE, 3+1 Cr, Contact: 6.0): Dr. Nosherwan Shoaib | Lab: Tehreem Javed
+
+OHS-101 | Occupational Health and Safety (ECE, 1+0 Cr, Contact: 1.0): Mr. Muhammad Ali
+
+Total Credits / Contact Hours: 14+4 | 26.0
+
+2K26-BCE-A (Home Room: CR-13-UG Block):
+
+Mon: 0900–1150 Applications of ICT (Lab) (CL-02-UG) | 1200–1250 Functional English (CR-08-UG) | 1400–1650 Makeup/Library/Industrial Visit
+
+Tue: 0900–0950 Makeup/Library | 1000–1050 OHS | 1100–1150 Applied Physics | 1200–1250 LCA | 1400–1450 Functional English | 1500–1650 Applications of ICT
+
+Wed: 0900–0950 Makeup/Library | 1000–1250 Applied Physics (Lab) (Physics Lab-01 SNS) | 1400–1650 LCA (Lab) (Basic Electronics Lab-PG)
+
+Thu: 0900–0950 Functional English | 1000–1050 Applied Physics | 1100–1250 LCA | 1400–1450 Student Advisory Session | 1500–1650 Calculus & Analytical Geometry
+
+Fri: 0900–1150 Makeup/Library | 1200–1250 Calculus & Analytical Geometry | 1430–1655 Understanding of Quran-I
+
+4. Software Engineering (BESE)
+Sheet: 2K23-SE14  — 7th Semester (2K23-BESE)
+Course & Faculty Allocation:
+
+CS-335 | Internet of Things (FoC, 3+0 Cr, Contact: 3.0): Dr. Fatima Abdullah (AB)
+
+CS-484 | Information Security (FoC, 3+0 Cr, Contact: 3.0): Dr. Muhammad Ashraf (AB)
+
+ECO-130 | Engineering Economics (H&S, 2+0 Cr, Contact: 2.0): Dr. Muhammad Yousaf (AB)
+
+CS-405 | Deep Learning (1x) (FoC, 3+1 Cr, Elective, Contact: 6.0): Dr. Muhammad Daud Abdullah Asif | Lab: Areeba Rameen
+
+CS-368 | Reinforcement Learning (1x) (FoC, 3+1 Cr, Elective, Combined with CS & SE): Dr. Zuhair Zafar | Lab: Yousra Nadeem
+
+CS-365 | Virtual and Augmented Reality (1x) (FoC, 3+1 Cr, Elective, Contact: 6.0, Combined with CS & SE): Dr. Shahzad Rasool | Lab: Moeed Ahmed
+
+SE-498 | Final Year Design Project-1 (FoC, 0+2 Cr, Contact: 6.0)
+
+Total Contact Hours: 26.0 (Note: Students take one among the listed electives)
+
+2K23-BESE-A (Home Room: CR-09-UG Block):
+
+Mon: 0900–1050 Internet of Things | 1100–1250 Deep Learning (1x) (CR-09-UG) / Reinforcement Learning (1x) (CR-10-UG) | 1400–1550 Information Security | 1600–1650 Makeup/Library
+
+Tue: 0900–0950 Makeup/Library | 1000–1050 Information Security | 1100–1150 Virtual & Augmented Reality (1x) (CR-09-UG) | 1200–1250 Deep Learning (1x) (CR-09-UG) / Reinforcement Learning (1x) (CR-10-UG) | 1400–1650 Makeup/Library/Industrial Visit
+
+Wed: 0900–1050 Virtual & Augmented Reality (1x) (CR-09-UG) | 1100–1150 Internet of Things | 1200–1250 Makeup/Library | 1400–1550 Engineering Economics | 1600–1650 Makeup/Library
+
+Thu: 0900–1650 Makeup Slot/Library Period/FYDP-I
+
+Fri: 0900–0950 Makeup/Library | 1000–1250 Virtual & Augmented Reality (1x) (Lab) (CL-09-SMRIMMS) | 1430–1655 Deep Learning (1x) (Lab) (CL-04-UG) / Reinforcement Learning (1x) (Lab) (CL-08-PG)
+
+2K23-BESE-B (Home Room: CR-10-UG Block):
+
+Mon: 0900–1050 Information Security | 1100–1250 Deep Learning (1x) (CR-09-UG) / Reinforcement Learning (1x) (CR-10-UG) | 1400–1550 Engineering Economics | 1600–1650 Makeup/Library
+
+Tue: 0900–0950 Information Security | 1000–1050 Makeup/Library | 1100–1150 Virtual & Augmented Reality (1x) (CR-09-UG) | 1200–1250 Deep Learning (1x) (CR-09-UG) / Reinforcement Learning (1x) (CR-10-UG) | 1400–1550 Internet of Things | 1600–1650 Makeup/Library
+
+Wed: 0900–1050 Virtual & Augmented Reality (1x) (CR-09-UG) | 1100–1150 Makeup/Library | 1200–1250 Internet of Things (CR-09-UG) | 1400–1650 Makeup/Library/Industrial Visit
+
+Thu: 0900–1650 Makeup Slot/Library Period/FYDP-I
+
+Fri: 0900–0950 Makeup/Library | 1000–1250 Virtual & Augmented Reality (1x) (Lab) (CL-09-SMRIMMS) | 1430–1655 Deep Learning (1x) (Lab) (CL-04-UG) / Reinforcement Learning (1x) (Lab) (CL-08-PG)
+
+Sheet: 2K24-SE15  — 5th Semester (2K24-BESE)
+Course & Faculty Allocation:
+
+SE-315 | Cloud Computing (FoC, 2+1 Cr, Contact: 5.0): Dr. Ayesha Maqbool (AB) | Lab: Sundas Dawood (AB)
+
+CS-336 | Embedded Systems (ECE, 2+1 Cr, Contact: 5.0): Dr. Muhammad Jameel Nawaz (A), Mr. Huzaifah Abbas (B) | Lab: Muhammad Adnan (AB)
+
+HRM-441 | Human Resource Management (H&S, 2+0 Cr, Contact: 2.0): Mr. Waseem Ahmed (AB)
+
+SE-314 | Software Construction (FoC, 2+1 Cr, Contact: 5.0): Dr. Sidra Sultana (AB) | Lab: Aftab Farooq (AB)
+
+FIN-100 | Principle of Accounting (H&S, 3+0 Cr, Contact: 3.0): Dr. Ehsan ul Hassan (AB)
+
+CS-344 | Web Engineering (FoC, 3+1 Cr, Contact: 6.0): Ms. Naema Asif (A), Dr. Muhammad Khuram Shahzad (B) | Lab: Ayesha Asif (AB)
+
+Total Credits / Contact Hours: 14+4 | 26.0
+
+2K24-BESE-A (Home Room: CR-21-SMRIMMS):
+
+Mon: 0900–0950 Cloud Computing | 1000–1050 HRM | 1100–1250 Principle of Accounting | 1400–1650 Makeup/Library/Industrial Visit
+
+Tue: 0900–1050 Software Construction | 1100–1150 Cloud Computing | 1200–1250 Web Engineering | 1400–1550 Embedded Systems | 1600–1650 Makeup/Library
+
+Wed: 0900–0950 Makeup/Library | 1000–1050 HRM | 1100–1150 Makeup/Library | 1200–1250 Web Engineering | 1400–1650 Cloud Computing (Lab) (CL-04-UG)
+
+Thu: 0900–0950 Web Engineering (CR-07-UG) | 1000–1250 Web Engineering (Lab) (CL-04-UG) | 1400–1650 Makeup/Library
+
+Fri: 0900–1150 Software Construction (Lab) (CL-02-UG) | 1200–1250 Principle of Accounting (CR-15-UG) | 1430–1655 Embedded Systems (Lab) (Embedded Systems Lab-PG)
+
+2K24-BESE-B (Home Room: CR-22-SMRIMMS):
+
+Mon: 0900–0950 Makeup/Library | 1000–1050 Cloud Computing | 1100–1150 HRM | 1200–1250 Makeup/Library | 1400–1550 Principle of Accounting | 1600–1650 Makeup/Library
+
+Tue: 0900–0950 Makeup/Library | 1000–1050 Cloud Computing | 1100–1250 Embedded Systems | 1400–1650 Makeup/Library/Industrial Visit
+
+Wed: 0900–0950 HRM (CR-21-SMRIMMS) | 1000–1250 Cloud Computing (Lab) (CL-04-UG) | 1400–1550 Web Engineering | 1600–1650 Makeup/Library
+
+Thu: 0900–0950 Makeup/Library | 1000–1150 Software Construction | 1200–1250 Web Engineering | 1400–1650 Web Engineering (Lab) (CL-04-UG)
+
+Fri: 0900–0950 Principle of Accounting (CR-08-UG) | 1000–1250 Embedded Systems (Lab) (Embedded Systems Lab-PG) | 1430–1655 Software Construction (Lab) (CL-02-UG)
+
+Sheet: 2K25-SE16 — 3rd Semester (2K25-BESE)
+Course & Faculty Allocation:
+
+EE-353 | Computer Networks (ECE, 3+1 Cr, Contact: 6.0): Mr. Ali Hassan (AB) | Lab: Rafia Ahmad (AB)
+
+CS-250 | Data Structures & Algorithms (FoC, 3+1 Cr, Contact: 6.0): Dr. Faisal Shafait (AB) | Lab: Hamza Fayyaz (AB)
+
+CS-220 | Database Systems (FoC, 3+1 Cr, Contact: 6.0): Dr. Muhammad Bilal Ali (A), Ms. Mehwish Kiran (B) | Lab: Areeba Munir (AB)
+
+MATH-232 | Complex Variables and Transforms (H&S, 3+0 Cr, Contact: 3.0): Mr. Saeed Afzal (AB)
+
+SE-200 | Software Engineering (FoC, 3+0 Cr, Contact: 3.0): Dr. Mehvish Rashid (AB)
+
+Total Credits / Contact Hours: 15+3 | 24.0
+
+2K25-BESE-A (Home Room: CR-23-Acad Block):
+
+Mon: 0900–0950 Makeup/Library | 1000–1150 Computer Networks | 1200–1250 Database Systems | 1400–1650 Database Systems (Lab) (CL-11-Acad)
+
+Tue: 0900–1050 Makeup/Library | 1100–1250 DSA (Lecture Hall-PG) | 1400–1550 Software Engineering (CR-16-IAEC) | 1600–1650 Makeup/Library
+
+Wed: 0900–0950 DSA (Lecture Hall-PG) | 1000–1050 Complex Variables & Transforms (Lecture Hall-PG) | 1100–1150 Makeup/Library | 1200–1250 Software Engineering (CR-16-IAEC) | 1400–1650 Computer Networks (Lab) (CL-11-Acad)
+
+Thu: 0900–0950 Makeup/Library | 1000–1050 Complex Variables & Transforms | 1100–1150 Computer Networks | 1200–1250 Makeup/Library | 1400–1550 Database Systems (CR-27-Acad) | 1600–1650 Makeup/Library
+
+Fri: 0900–1150 DSA (Lab) (CL-11-Acad) | 1200–1250 Complex Variables & Transforms | 1430–1655 Makeup/Library/Industrial Visit
+
+2K25-BESE-B (Home Room: CR-23-Acad Block):
+
+Mon: 0900–0950 Complex Variables & Transforms | 1000–1250 Database Systems (Lab) (CL-11-Acad) | 1400–1550 Software Engineering (CR-16-IAEC) | 1600–1650 Makeup/Library
+
+Tue: 0900–1050 Database Systems (Lecture Hall-PG) | 1100–1250 DSA (Lecture Hall-PG) | 1400–1650 Makeup/Library
+
+Wed: 0900–0950 DSA (Lecture Hall-PG) | 1000–1250 Computer Networks (Lab) (CL-11-Acad) | 1400–1450 Software Engineering (CR-16-IAEC) | 1500–1650 Makeup/Library
+
+Thu: 0900–0950 Complex Variables & Transforms (CR-26-Acad) | 1000–1050 Computer Networks (CR-26-Acad) | 1100–1150 Makeup/Library | 1200–1250 Database Systems (CR-26-Acad) | 1400–1650 Makeup/Library/Industrial Visit
+
+Fri: 0900–1050 Computer Networks | 1100–1150 Complex Variables & Transforms | 1200–1250 Makeup/Library | 1430–1655 DSA (Lab) (CL-11-Acad)
+
+Sheet: 2K26-SE17 — 1st Semester (2K26-BESE)
+Course & Faculty Allocation:
+
+CS-117 | Applications of ICT (FoC, 2+1 Cr, Contact: 5.0): Mr. Saud Kamran (AB) | Lab: Ayesha Asif (AB)
+
+PHY-102 | Applied Physics (H&S, 2+1 Cr, Contact: 5.0): Dr. Sidra Shafiq (AB)
+
+MATH-101 | Calculus and Analytical Geometry (H&S, 3+0 Cr, Contact: 3.0): Dr. Zafar Ali (AB)
+
+HU-101 | Islamic Studies (H&S, 2+0 Cr, Contact: 2.0): Dr. Ammar Ahmed (AB)
+
+HU-131 | Understanding of Quran-I (H&S, 0+1 Cr, Contact: 3.0): Mr. Muhammad Siddique (AB)
+
+CS-110 | Fundamentals of Computer Programming (FoC, 3+1 Cr, Contact: 6.0): Dr. Momina Moetesum (A), Dr. Hashir Moheed Kiyani (B) | Lab: Sundas Dawood (A), Nadeem Nawaz (B)
+
+HU-127 | Ideology and Constitution of Pakistan (H&S, 2+0 Cr, Contact: 2.0): Dr. Sobia Jamil (AB)
+
+Total Credits / Contact Hours: 14+4 | 26.0
+
+2K26-BESE-A (Home Room: CR-14-UG Block):
+
+Mon: 0900–0950 Makeup/Library | 1000–1250 Applications of ICT (Lab) (CL-01-UG) | 1400–1550 Applied Physics | 1600–1650 Makeup/Library
+
+Tue: 0900–0950 Makeup/Library | 1000–1150 Islamic Studies | 1200–1250 Makeup/Library | 1400–1650 Understanding of Quran-I (CR-08-UG)
+
+Wed: 0900–0950 Makeup/Library | 1000–1250 Applied Physics (Lab) (Physics Lab-02 SNS) | 1400–1550 Ideology & Constitution of Pakistan | 1600–1650 Calculus & Analytical Geometry
+
+Thu: 0900–1050 FCP | 1100–1250 Applications of ICT | 1400–1450 Student Advisory Session | 1500–1650 Calculus & Analytical Geometry
+
+Fri: 0900–0950 FCP (CR-13-UG) | 1000–1250 FCP (Lab) (CL-01-UG) | 1430–1655 Makeup/Library/Industrial Visit
+
+2K26-BESE-B (Home Room: CR-15-UG Block):
+
+Mon: 0900–1050 Applied Physics | 1100–1250 Islamic Studies | 1400–1650 Applications of ICT (Lab) (CL-01-UG)
+
+Tue: 0900–0950 Makeup/Library | 1000–1250 Applied Physics (Lab) (Physics Lab-01 SNS) | 1400–1550 Applications of ICT | 1600–1650 Makeup/Library
+
+Wed: 0900–0950 Makeup/Library | 1000–1150 Ideology & Constitution of Pakistan | 1200–1250 Student Advisory Session | 1400–1550 Calculus & Analytical Geometry | 1600–1650 Makeup/Library
+
+Thu: 0900–0950 Makeup/Library | 1000–1250 Understanding of Quran-I (CR-08-UG) | 1400–1450 Calculus & Analytical Geometry | 1500–1650 FCP
+
+Fri: 0900–1050 Makeup/Library/Industrial Visit | 1100–1150 FCP (CR-13-UG) | 1200–1250 Makeup/Library | 1430–1655 FCP (Lab) (CL-01-UG)
+
+5. Computer Science (BSCS)
+Sheet: 2K23-CS13  — 7th Semester (2K23-BSCS)
+Course & Faculty Allocation:
+
+CS-251 | Design & Analysis of Algorithms (FoC, 3+0 Cr, Contact: 3.0): Dr. Adnan Rashid (ABC), Ms. Maryam Sajjad (DE)
+
+MGT-271 | Entrepreneurship (FoC, 2+0 Cr, Contact: 2.0): Mr. Maajid Maqbool (ABC), Ms. Sara Sultana (DE)
+
+HU-202 | Technical & Business Writing (H&S, 3+0 Cr, Contact: 3.0): Dr. Samia Tahir (AB), Ms. Ayesha Habib (CDE)
+
+HU-107 | Pakistan Studies (H&S, 2+0 Cr, Contact: 2.0): Dr. Sobia Jamil (ABC), Ms. Momina Khan (DE)
+
+CS-365 | Virtual and Augmented Reality (1x) (FoC, 3+1 Cr, Elective, Contact: 6.0, Combined with CS & SE): Dr. Shahzad Rasool | Lab: Moeed Ahmed
+
+CS-417 | Large Language Model (Gp-01) (FoC, 2+1 Cr, Elective): Dr. Naima Altaf | Lab: Alishba Zulfiqar
+
+CS-420 | Introduction to Quantum Computing (1x) (FoC, 2+1 Cr, Elective): Dr. Madiha Khalid | Lab: Ayesha Asif
+
+CS-417 | Large Language Model (Gp-02) (FoC, 2+1 Cr, Elective, Contact: 6.0): Dr. Naima Altaf | Lab: Alishba Zulfiqar
+
+CS-417 | Large Language Model (Gp-03) (FoC, 2+1 Cr, Elective): TBD | Lab: Sundas Dawood
+
+CS-368 | Reinforcement Learning (1x) (FoC, 3+1 Cr, Elective, Combined with CS & SE): Dr. Zuhair Zafar | Lab: Yousra Nadeem
+
+CS-498 | Final Year Design Project-1 (FoC, 0+2 Cr, Contact: 6.0)
+
+Total Contact Hours: 28.0 (Note: Students take one among the listed electives)
+
+Shared Elective Blocks (All Sections A, B, C, D, E):
+
+Mon 1100–1250: LLM (Gp-02) (CR-11-UG) / LLM (Gp-03) (CR-14-UG) / Reinforcement Learning (1x) (CR-10-UG)
+
+Mon 1400–1550: LLM (Gp-01) (CR-15-UG) / Intro to Quantum Computing (1x) (CR-12-UG)
+
+Tue 1100–1150: Virtual & Augmented Reality (1x) (CR-09-UG)
+
+Tue 1200–1250: Reinforcement Learning (1x) (CR-10-UG)
+
+Wed 0900–1050: Virtual & Augmented Reality (1x) (CR-09-UG)
+
+Fri 1000–1250: VAR (1x) (Lab) (CL-09-SMRIMMS) / Intro to Quantum Computing (1x) (Lab) (CL-04-UG) / LLM (Gp-01) (Lab) (CL-03-PG)
+
+Fri 1430–1655: LLM (Gp-02) (Lab) (CL-09-SMRIMMS) / LLM (Gp-03) (Lab) (CL-03-UG) / Reinforcement Learning (1x) (Lab) (CL-08-PG)
+
+Section-Specific Core Courses:
+
+2K23-BSCS-A:
+
+Mon: 1000–1050 TBW (CR-11-UG)
+
+Tue: 0900–0950 TBW (CR-05-UG) | 1000–1050 DAA (CR-05-UG) | 1400–1450 Entrepreneurship (CR-14-UG)
+
+Wed: 1100–1150 DAA (CR-14-UG) | 1200–1250 Entrepreneurship (CR-14-UG)
+
+Thu: 0900–0950 DAA (CR-11-UG) | 1000–1150 Pakistan Studies (CR-11-UG) | 1200–1250 TBW (CR-11-UG) | 1400–1650 Makeup/Library/Industrial Visit
+
+2K23-BSCS-B:
+
+Mon: 0900–0950 TBW (CR-11-UG)
+
+Tue: 0900–0950 DAA (CR-11-UG) | 1000–1050 TBW (CR-11-UG) | 1400–1550 Pakistan Studies (CR-03-UG)
+
+Wed: 1100–1150 Entrepreneurship (CR-13-UG) | 1400–1450 DAA (CR-03-UG)
+
+Thu: 1000–1050 DAA (CR-07-UG) | 1100–1150 TBW (CR-07-UG) | 1200–1250 Entrepreneurship (CR-01-UG) | 1400–1650 Makeup/Library/Industrial Visit
+
+2K23-BSCS-C (Home Room: CR-02-UG Block):
+
+Mon: 0900–0950 TBW
+
+Tue: 1000–1050 TBW | 1400–1450 DAA | 1500–1550 Entrepreneurship
+
+Wed: 1200–1250 DAA (CR-11-UG) | 1400–1450 TBW | 1500–1650 Makeup/Library/Industrial Visit
+
+Thu: 1100–1150 Entrepreneurship (CR-15-UG) | 1200–1250 DAA (CR-15-UG) | 1400–1550 Pakistan Studies
+
+2K23-BSCS-D:
+
+Mon: 1000–1050 TBW (CR-02-UG)
+
+Tue: 0900–1050 Pakistan Studies (CR-07-UG)
+
+Wed: 1100–1150 Entrepreneurship (CR-01-UG) | 1200–1250 TBW (CR-01-UG) | 1400–1550 DAA (CR-13-UG)
+
+Thu: 1000–1050 DAA (CR-12-UG) | 1100–1150 Entrepreneurship (CR-12-UG) | 1200–1250 TBW (CR-12-UG) | 1400–1650 Makeup/Library/Industrial Visit
+
+2K23-BSCS-E (Home Room: Lecture Hall-PG Block):
+
+Mon: 0900–1050 Pakistan Studies (CR-06-UG)
+
+Tue: 0900–0950 TBW (CR-02-UG)
+
+Wed: 1100–1150 TBW | 1200–1250 DAA | 1400–1650 Makeup/Library/Industrial Visit
+
+Thu: 0900–1050 Entrepreneurship | 1100–1250 DAA | 1400–1450 TBW
+
+Sheet: 2K24-CS14  — 5th Semester (2K24-BSCS)
+Course & Faculty Allocation:
+
+CS-339 | Computer Architecture (ECE, 2+1 Cr, Contact: 5.0): Mr. Waqas Ahmed (AB), Dr. Muhammad Taimoor (CD) | Lab: Maryam Riaz (ABCD)
+
+CS-366 | Data Visualization (FoC, 2+1 Cr, Contact: 5.0): Dr. Gibrail Islam (ABC), Dr. Arham Muslim (D) | Lab: Ayesha Naeem (ABCD)
+
+CS-337 | HCI & Computer Graphics (FoC, 2+1 Cr, Contact: 5.0): Dr. Farzana Jabeen (ABC), Ms. Ayesha Kanwal (D) | Lab: Aftab Farooq (ABCD)
+
+MGT-164 | Introduction to Management (H&S, 2+0 Cr, Contact: 2.0): Dr. Ehsan ul Hassan (ABD), Dr. Tahira Anwar Lashari (C)
+
+CS-245 | Machine Learning (FoC, 2+1 Cr, Contact: 5.0): Dr. Muhammad Imran Malik (A), Dr. Muhammad Naseer Bajwa (BC), Dr. Junaid Younas (D) | Lab: Iram Tariq Bhatti (ABCD)
+
+CS-333 | Operating Systems (FoC, 2+1 Cr, Contact: 5.0): Mr. Taufique ur Rehman (ABC), Dr. Rabia Mumtaz (D) | Lab: Nadeem Nawaz (ABC), Yousra Nadeem (D)
+
+Total Credits / Contact Hours: 12+5 | 27.0
+
+2K24-BSCS-A (Home Room: CR-36-Acad Block):
+
+Mon: 0900–1050 Makeup/Library | 1100–1150 Operating Systems | 1200–1250 Makeup/Library | 1400–1650 Data Visualization (Lab) (CL-05-UG)
+
+Tue: 0900–1150 HCI & Computer Graphics (Lab) (CL-05-UG) | 1200–1250 Operating Systems (CR-05-UG) | 1400–1450 Makeup/Library | 1500–1650 Data Visualization
+
+Wed: 0900–0950 HCI & Computer Graphics | 1000–1250 Operating Systems (Lab) (CL-05-UG) | 1400–1650 Computer Architecture (Lab) (Digital Systems-II-Acad)
+
+Thu: 0900–1050 Intro to Management | 1100–1250 Computer Architecture | 1400–1650 Machine Learning (Lab) (CL-05-UG)
+
+Fri: 0900–0950 Makeup/Library | 1000–1050 HCI & Computer Graphics (CR-14-UG) | 1100–1250 Machine Learning (CR-14-UG) | 1430–1655 Makeup/Library/Industrial Visit
+
+2K24-BSCS-B (Home Room: CR-36-Acad Block):
+
+Mon: 0900–1150 Data Visualization (Lab) (CL-05-UG) | 1200–1250 Operating Systems | 1400–1650 Makeup/Library/Industrial Visit
+
+Tue: 0900–1050 Machine Learning | 1100–1250 Data Visualization | 1400–1650 HCI & Computer Graphics (Lab) (CL-05-UG)
+
+Wed: 0900–0950 Makeup/Library | 1000–1050 HCI & Computer Graphics | 1100–1250 Computer Architecture | 1400–1650 Operating Systems (Lab) (CL-05-UG)
+
+Thu: 0900–0950 Makeup/Library | 1000–1250 Machine Learning (Lab) (CL-05-UG) | 1400–1450 Operating Systems | 1500–1650 Intro to Management
+
+Fri: 0900–0950 HCI & Computer Graphics (CR-14-UG) | 1000–1250 Computer Architecture (Lab) (Digital Systems-II-Acad) | 1430–1655 Makeup/Library
+
+2K24-BSCS-C (Home Room: CR-35-Acad Block):
+
+Mon: 0900–1050 Makeup/Library | 1100–1250 Machine Learning | 1400–1650 Operating Systems (Lab) (CL Lab-04-UG)
+
+Tue: 0900–0950 Makeup/Library | 1000–1050 Operating Systems | 1100–1250 Computer Architecture | 1400–1650 Data Visualization (Lab) (CL-02-UG)
+
+Wed: 0900–1150 HCI & Computer Graphics (Lab) (CL-01-UG) | 1200–1250 HCI & Computer Graphics (CR-15-UG) | 1400–1550 Data Visualization | 1600–1650 Makeup/Library
+
+Thu: 0900–1150 Computer Architecture (Lab) (Digital Systems-II-Acad) | 1200–1250 Operating Systems (CR-09-UG) | 1400–1650 Makeup/Library/Industrial Visit
+
+Fri: 0900–0950 Makeup/Library | 1000–1150 Intro to Management | 1200–1250 HCI & Computer Graphics | 1430–1655 Machine Learning (Lab) (CL-05-UG)
+
+2K24-BSCS-D (Home Room: CR-35-Acad Block):
+
+Mon: 0900–0950 Makeup/Library | 1000–1250 Operating Systems (Lab) (CL-04-UG) | 1400–1550 Computer Architecture | 1600–1650 Makeup/Library
+
+Tue: 0900–0950 Makeup/Library | 1000–1250 Data Visualization (CL-02-UG) | 1400–1550 Machine Learning | 1600–1650 Makeup/Library
+
+Wed: 0900–1050 Intro to Management | 1100–1250 HCI & Computer Graphics | 1400–1650 HCI & Computer Graphics (Lab) (CL-03-UG)
+
+Thu: 0900–1050 Data Visualization | 1100–1250 Operating Systems | 1400–1650 Computer Architecture (Lab) (Digital Systems-II-Acad)
+
+Fri: 0900–0950 Makeup/Library | 1000–1250 Machine Learning (Lab) (CL-05-UG) | 1430–1655 Makeup/Library/Industrial Visit
+
+Sheet: 2K25-CS15  — 3rd Semester (2K25-BSCS)
+Course & Faculty Allocation:
+
+CS-272 | Artificial Intelligence (FoC, 2+1 Cr, Contact: 5.0): Dr. Mehwish Awan (ABC), Dr. Sohail Iqbal (DE) | Lab: Hafiz Arsalan Ramzan (ABC), Shakeela Bibi (DE)
+
+EE-347 | Computer Networks (FoC, 2+1 Cr, Contact: 5.0): Dr. Muhammad Khuram Shahzad (A), Ms. Mobeena Shahzad (B), Ms. Maryam Sajjad (C), Dr. Sarosh Tahir (D), Dr. Fatima Abdullah (E) | Lab: Syed Muhammad Ali Musa (ABC), Hafiz Arsalan Ramzan (DE)
+
+CS-250 | Data Structures & Algorithms (FoC, 3+1 Cr, Contact: 6.0): Dr. Aimal Tariq Rextin (A), Dr. Qaiser Riaz (BC), Dr. Sara Tariq Sheikh (DE) | Lab: Hamza Fayyaz (ABC), Urooj Akmal (DE)
+
+CS-353 | Information Security (FoC, 2+1 Cr, Contact: 5.0): Ms. Ayesha Kanwal (AB), Dr. Hasan Tahir Butt (C), Dr. Mehdi Hussain (DE) | Lab: Moeed Ahmed (ABCDE)
+
+HU-101 | Islamic Studies (H&S, 2+0 Cr, Contact: 2.0): Mr. Muhammad Mujahid Farid (ABCDE)
+
+MATH-361 | Probability and Statistics (H&S, 3+0 Cr, Contact: 3.0): Ms. Ansar Shehzadi (ABC), Dr. Hina Munir Dutt (D), Dr. Bilal Ahmed (E)
+
+Total Credits / Contact Hours: 14+4 | 26.0
+
+2K25-BSCS-A (Home Room: CR-24-Acad Block):
+
+Mon: 0900–0950 Makeup/Library | 1000–1250 DSA (Lab) (CL-12-Acad) | 1400–1550 Information Security | 1600–1650 Makeup/Library
+
+Tue: 0900–0950 Makeup/Library | 1000–1150 AI | 1200–1250 Probability & Statistics | 1400–1650 Computer Networks (Lab) (CL-10-Acad)
+
+Wed: 0900–0950 Makeup/Library | 1000–1050 Probability & Statistics | 1100–1250 Computer Networks | 1400–1550 Islamic Studies | 1600–1650 Makeup/Library
+
+Thu: 0900–1150 Information Security (Lab) (CL-11-Acad) | 1200–1250 Probability & Statistics | 1400–1550 DSA (CR-35-Acad) | 1600–1650 Makeup/Library
+
+Fri: 0900–0950 DSA (CR-35-Acad) | 1000–1250 AI (Lab) (CL-07-PG) | 1430–1655 Makeup/Library/Industrial Visit
+
+2K25-BSCS-B (Home Room: CR-24-Acad Block):
+
+Mon: 0900–1050 Computer Networks | 1100–1150 Probability & Statistics | 1200–1250 DSA | 1400–1650 DSA (Lab) (CL-12-Acad)
+
+Tue: 0900–0950 Makeup/Library | 1000–1250 Computer Networks (Lab) (CL-10-Acad) | 1400–1550 Information Security | 1600–1650 Makeup/Library
+
+Wed: 0900–0950 Makeup/Library | 1000–1150 AI (CR-28-Acad) | 1200–1250 Probability & Statistics (CR-28-Acad) | 1400–1650 Makeup/Library/Industrial Visit
+
+Thu: 0900–1050 Islamic Studies | 1100–1150 Probability & Statistics | 1200–1250 Makeup/Library | 1400–1650 Information Security (Lab) (CL-11-Acad)
+
+Fri: 0900–1050 Makeup/Library | 1100–1250 DSA | 1430–1655 AI (Lab) (CL-07-PG)
+
+2K25-BSCS-C (Home Room: CR-25-Acad Block):
+
+Mon: 0900–0950 Makeup/Library | 1000–1150 DSA | 1200–1250 Probability & Statistics | 1400–1650 Information Security (Lab) (CL-03-UG)
+
+Tue: 0900–1050 Islamic Studies | 1100–1150 Probability & Statistics | 1200–1250 Makeup/Library | 1400–1650 Makeup/Library/Industrial Visit
+
+Wed: 0900–0950 Probability & Statistics (CR-28-Acad) | 1000–1250 DSA (Lab) (CL-10-Acad) | 1400–1550 AI | 1600–1650 Makeup/Library
+
+Thu: 0900–0950 Makeup/Library | 1000–1250 AI (Lab) (CL-10-Acad) | 1400–1550 Information Security | 1600–1650 Makeup/Library
+
+Fri: 0900–0950 Makeup/Library | 1000–1050 DSA | 1100–1250 Computer Networks | 1430–1655 Computer Networks (Lab) (CL-12-Acad)
+
+2K25-BSCS-D (Home Room: CR-25-Acad Block):
+
+Mon: 0900–0950 Makeup/Library | 1000–1250 Information Security (Lab) (CL-03-UG) | 1400–1450 Probability & Statistics | 1500–1650 DSA
+
+Tue: 0900–1050 Makeup/Library | 1100–1150 Probability & Statistics (CR-23-Acad) | 1200–1250 Makeup/Library | 1400–1550 AI (CR-29-Acad) | 1600–1650 Makeup/Library
+
+Wed: 0900–0950 DSA | 1000–1050 Probability & Statistics | 1100–1250 Islamic Studies | 1400–1650 Computer Networks (Lab) (CL-06-PG)
+
+Thu: 0900–1050 Computer Networks | 1100–1250 Information Security | 1400–1650 AI (Lab) (CL-10-Acad)
+
+Fri: 0900–0950 Makeup/Library | 1000–1250 DSA (Lab) (CL-12-Acad) | 1430–1655 Makeup/Library/Industrial Visit
+
+2K25-BSCS-E (Home Room: CR-26-Acad Block):
+
+Mon: 0900–1050 DSA | 1100–1250 AI | 1400–1650 Makeup/Library/Industrial Visit
+
+Tue: 0900–0950 Computer Networks (CR-14-UG) | 1000–1250 Computer Networks (Lab) (CL-06-PG) | 1400–1650 DSA (Lab) (CL-11-Acad)
+
+Wed: 0900–1150 Information Security (Lab) (CL-06-PG) | 1200–1250 DSA | 1400–1450 Computer Networks | 1500–1650 Probability & Statistics
+
+Thu: 0900–0950 Makeup/Library | 1000–1250 AI (Lab) (CL-07-PG) | 1400–1450 Probability & Statistics | 1500–1650 Makeup/Library
+
+Fri: 0900–1050 Islamic Studies | 1100–1250 Information Security | 1430–1655 Makeup/Library
+
+Sheet: 2K26-CS16 — 1st Semester (2K26-BSCS)
+Course & Faculty Allocation:
+
+CS-117 | Applications of ICT (FoC, 2+1 Cr, Contact: 5.0): Ms. Mehwish Kiran (AB), Dr. Junaid Younas (C), Ms. Kashaf Raheem (DE) | Lab: Ijaz Alam Khan (A), Syeda Fatima Sajid (BDE), Syed Muhammad Ali Musa (C)
+
+CS-1XX | Quantitative Reasoning-I (H&S, 3+0 Cr, Contact: 3.0): Mr. Saeed Afzal (AB), Dr. Atifa Kanwal (C), Dr. Farkhanda Afzal (DE)
+
+CS-110 | Fundamentals of Computer Programming (FoC, 3+1 Cr, Contact: 6.0): Mr. Jaudat Mamoon (ABC), Dr. Shah Khalid (DE) | Lab: Areeba Munir (AB), Sundas Dawood (C), Shakeela Bibi (DE)
+
+HU-131 | Understanding of Quran-I (H&S, 0+1 Cr, Contact: 3.0): Mr. Muhammad Siddique (AC), Mr. Salman Mushtaq (BD), Dr. Syeda Uzma (E)
+
+MATH-101 | Calculus & Analytical Geometry (H&S, 3+0 Cr, Contact: 3.0): Dr. Ibrar Hussain (ABC), Dr. Atifa Kanwal (DE)
+
+MATH-125 | Discrete Structures (H&S, 3+0 Cr, Contact: 3.0): Dr. Quanita Kiran (AB), Dr. Saira Zainab (CDE)
+
+Total Credits / Contact Hours: 14+3 | 23.0
+
+2K26-BSCS-A (Home Room: CR-01-UG Block):
+
+Mon: 0900–1050 FCP | 1100–1150 Quantitative Reasoning-I | 1200–1250 Student Advisory Session | 1400–1650 Makeup/Library/Industrial Visit
+
+Tue: 0900–0950 Makeup/Library | 1000–1050 Calculus & Analytical Geometry | 1100–1150 FCP | 1200–1250 Discrete Structures | 1400–1650 Applications of ICT (Lab) (CL-01-UG)
+
+Wed: 0900–0950 Calculus & Analytical Geometry (CR-02-UG) | 1000–1250 FCP (Lab) (CL-02-UG) | 1400–1450 Quantitative Reasoning-I | 1500–1650 Makeup/Library
+
+Thu: 0900–0950 Discrete Structures | 1000–1050 Calculus & Analytical Geometry | 1100–1150 Quantitative Reasoning-I | 1200–1250 Makeup/Library | 1400–1650 Understanding of Quran-I (CR-08-UG)
+
+Fri: 0900–1050 Applications of ICT | 1100–1150 Discrete Structures | 1200–1655 Makeup/Library
+
+2K26-BSCS-B (Home Room: CR-02-UG Block):
+
+Mon: 0900–1050 Makeup/Library | 1100–1150 FCP | 1200–1250 Quantitative Reasoning-I | 1400–1650 Understanding of Quran-I (CR-08-UG)
+
+Tue: 0900–0950 Calculus & Analytical Geometry (CR-01-UG) | 1000–1250 Applications of ICT (Lab) (CL-01-UG) | 1400–1450 Discrete Structures (CR-01-UG) | 1500–1550 Student Advisory Session | 1600–1650 Makeup/Library
+
+Wed: 0900–1050 Makeup/Library | 1100–1150 Calculus & Analytical Geometry | 1200–1250 Quantitative Reasoning-I | 1400–1650 FCP (Lab) (CL-02-UG)
+
+Thu: 0900–1050 Applications of ICT | 1100–1150 Calculus & Analytical Geometry | 1200–1250 Discrete Structures | 1400–1650 Makeup/Library/Industrial Visit
+
+Fri: 0900–0950 Quantitative Reasoning-I | 1000–1150 FCP | 1200–1250 Discrete Structures | 1430–1655 Makeup/Library
+
+2K26-BSCS-C (Home Room: CR-03-UG Block):
+
+Mon: 0900–1150 Makeup/Library | 1200–1250 Quantitative Reasoning-I (CR-01-UG) | 1400–1650 Applications of ICT (Lab) (CL-07-UG)
+
+Tue: 0900–1050 FCP | 1100–1150 Calculus & Analytical Geometry | 1200–1250 Makeup/Library | 1400–1650 FCP (Lab) (CL-04-UG)
+
+Wed: 0900–0950 Makeup/Library | 1000–1050 Calculus & Analytical Geometry | 1100–1150 Quantitative Reasoning-I | 1200–1250 Discrete Structures | 1400–1650 Understanding of Quran-I (CR-08-UG)
+
+Thu: 0900–0950 Calculus & Analytical Geometry | 1000–1050 Quantitative Reasoning-I | 1100–1150 Discrete Structures | 1200–1250 Student Advisory Session | 1400–1650 Makeup/Library/Industrial Visit
+
+Fri: 0900–0950 FCP | 1000–1050 Discrete Structures | 1100–1250 Applications of ICT | 1430–1655 Makeup/Library
+
+2K26-BSCS-D (Home Room: CR-04-UG Block):
+
+Mon: 0900–1150 Understanding of Quran-I (CR-08-UG) | 1200–1250 Makeup/Library | 1400–1450 Quantitative Reasoning-I | 1500–1550 Calculus & Analytical Geometry | 1600–1650 Student Advisory Session
+
+Tue: 0900–1150 FCP (Lab) (CL-04-UG) | 1200–1250 Discrete Structures | 1400–1650 Makeup/Library/Industrial Visit
+
+Wed: 0900–1050 Makeup/Library | 1100–1150 Discrete Structures (CR-10-UG) | 1200–1250 Makeup/Library | 1400–1450 FCP | 1500–1650 Applications of ICT
+
+Thu: 0900–0950 Calculus & Analytical Geometry | 1000–1150 Quantitative Reasoning-I | 1200–1250 Discrete Structures | 1400–1650 Applications of ICT (CL-02-UG)
+
+Fri: 0900–0950 Calculus & Analytical Geometry | 1000–1050 Makeup/Library | 1100–1250 FCP | 1430–1655 Makeup/Library
+
+2K26-BSCS-E (Home Room: CR-04-UG Block):
+
+Mon: 0900–0950 Calculus & Analytical Geometry | 1000–1050 Makeup/Library | 1100–1250 Quantitative Reasoning-I | 1400–1650 Makeup/Library/Industrial Visit
+
+Tue: 0900–1050 Applications of ICT | 1100–1150 Discrete Structures | 1200–1250 Makeup/Library | 1400–1650 FCP (Lab) (CL-07-PG)
+
+Wed: 0900–0950 Makeup/Library | 1000–1050 Discrete Structures | 1100–1250 FCP | 1400–1650 Understanding of Quran-I (CR-10-UG)
+
+Thu: 0900–1150 Applications of ICT (Lab) (CL-01-UG) | 1200–1250 Calculus & Analytical Geometry (CR-03-UG) | 1400–1450 Quantitative Reasoning-I (CR-05-UG) | 1500–1550 Student Advisory Session | 1600–1650 NPO Orientation Session (24 Sep 2026)
+
+Fri: 0900–0950 FCP (CR-15-UG) | 1000–1050 Calculus & Analytical Geometry (CR-15-UG) | 1100–1150 Discrete Structures (CR-15-UG) | `1200
