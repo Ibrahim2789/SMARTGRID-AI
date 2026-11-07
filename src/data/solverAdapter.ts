@@ -1,5 +1,10 @@
 import { ClassItem } from '../components/ClassDetailsModal';
 import { InstitutionalDataStore } from './store';
+import {
+  UNIVERSITY_PERIODS,
+  getLabBlockByStartPeriod,
+  getCoveredPeriodsForAssignment
+} from '../types/institutional';
 
 export function getDepartmentBlockClass(code: string): string {
   const upper = code.toUpperCase();
@@ -24,7 +29,7 @@ export function buildMatrixSchedule(store: InstitutionalDataStore): {
   const scheduleData: Record<string, Record<string, ClassItem[]>> = {};
   const periods = store.timeStructure.periods.length > 0
     ? store.timeStructure.periods
-    : ['09:00 - 10:30', '11:00 - 12:30', '13:30 - 15:00', '15:30 - 17:00'];
+    : UNIVERSITY_PERIODS;
   const days = store.timeStructure.workingDays.length > 0
     ? store.timeStructure.workingDays
     : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
@@ -37,6 +42,10 @@ export function buildMatrixSchedule(store: InstitutionalDataStore): {
   });
 
   const conflicts: Array<{ id: string; description: string; day: string; time: string }> = [];
+
+  // Track room and instructor occupancy across all covered slots (including 3-hour continuous labs)
+  const occupiedRoomByDaySlot = new Map<string, { secId: string; code: string; roomCode: string }>();
+  const occupiedProfByDaySlot = new Map<string, { secId: string; code: string; profName: string }>();
 
   store.sections.forEach(sec => {
     if (!sec.assignedSlot) return;
@@ -64,27 +73,51 @@ export function buildMatrixSchedule(store: InstitutionalDataStore): {
     const profName = instructor?.name || 'Staff Faculty';
     const cohortCode = group?.code || 'All-STEM';
 
-    // Conflict detection: room double-booking
-    const existingInRoom = scheduleData[timeSlot][day].find(item => item.room === roomCode);
-    if (existingInRoom) {
-      conflicts.push({
-        id: `conflict-room-${sec.id}-${existingInRoom.id}`,
-        description: `Room ${roomCode} double-booked: ${code} and ${existingInRoom.code}`,
-        day,
-        time: timeSlot
-      });
-    }
+    const isLab =
+      sec.sessionType === 'Lab' ||
+      sec.spanSlots === 3 ||
+      sec.assignedSlot.sessionType === 'Lab' ||
+      sec.assignedSlot.spanSlots === 3 ||
+      sec.sectionNumber.toLowerCase().includes('lab');
 
-    // Conflict detection: instructor double-booking
-    const existingForProf = scheduleData[timeSlot][day].find(item => item.prof === profName);
-    if (existingForProf) {
-      conflicts.push({
-        id: `conflict-prof-${sec.id}-${existingForProf.id}`,
-        description: `Instructor ${profName} scheduled twice at ${day} ${timeSlot}`,
-        day,
-        time: timeSlot
-      });
-    }
+    const spanSlots = isLab ? 3 : 1;
+    const sessionType: 'Lecture' | 'Lab' = isLab ? 'Lab' : 'Lecture';
+    const labBlockMeta = isLab ? getLabBlockByStartPeriod(timeSlot) : undefined;
+    const continuousTimeLabel = isLab
+      ? (sec.assignedSlot.continuousTimeLabel || labBlockMeta?.continuousLabel || '9:00 AM – 12:00 PM')
+      : undefined;
+
+    const coveredPeriods = getCoveredPeriodsForAssignment(timeSlot, spanSlots);
+    let hasConflict = false;
+
+    coveredPeriods.forEach(covPeriod => {
+      const slotKey = `${day}__${covPeriod}`;
+      const existingRoom = occupiedRoomByDaySlot.get(`${slotKey}__${roomCode}`);
+      if (existingRoom && existingRoom.secId !== sec.id) {
+        hasConflict = true;
+        conflicts.push({
+          id: `conflict-room-${sec.id}-${existingRoom.secId}-${covPeriod}`,
+          description: `Room ${roomCode} double-booked: ${code} and ${existingRoom.code}`,
+          day,
+          time: covPeriod
+        });
+      } else {
+        occupiedRoomByDaySlot.set(`${slotKey}__${roomCode}`, { secId: sec.id, code, roomCode });
+      }
+
+      const existingProf = occupiedProfByDaySlot.get(`${slotKey}__${profName}`);
+      if (existingProf && existingProf.secId !== sec.id) {
+        hasConflict = true;
+        conflicts.push({
+          id: `conflict-prof-${sec.id}-${existingProf.secId}-${covPeriod}`,
+          description: `Instructor ${profName} scheduled twice at ${day} ${covPeriod}`,
+          day,
+          time: covPeriod
+        });
+      } else {
+        occupiedProfByDaySlot.set(`${slotKey}__${profName}`, { secId: sec.id, code, profName });
+      }
+    });
 
     const capacity = room?.capacity || 40;
     const enrolled = sec.expectedEnrollment || group?.size || 30;
@@ -101,21 +134,20 @@ export function buildMatrixSchedule(store: InstitutionalDataStore): {
       studentGroupId: group?.id,
       departmentId: dept?.id,
       departmentName: dept?.name || 'General Sciences',
+      sectionNumber: sec.sectionNumber,
       capacity,
       enrolled,
       time: timeSlot,
       day,
-      type: course?.requiredRoomType === 'lab'
-        ? 'Laboratory'
-        : course?.requiredRoomType === 'studio'
-        ? 'Studio'
-        : course?.requiredRoomType === 'seminar'
-        ? 'Recitation'
-        : 'Lecture',
+      type: isLab ? 'Lab' : 'Lecture',
+      sessionType,
+      spanSlots,
+      durationMinutes: isLab ? 180 : 50,
+      continuousTimeLabel,
       credits: course?.creditHours || 3,
       accent: getDepartmentAccent(code),
       isLocked: sec.isLocked,
-      constraintStatus: existingInRoom || existingForProf ? 'Soft Penalty Resolved' : 'Optimal'
+      constraintStatus: hasConflict ? 'Soft Penalty Resolved' : 'Optimal'
     };
 
     scheduleData[timeSlot][day].push(classItem);

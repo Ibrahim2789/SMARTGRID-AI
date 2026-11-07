@@ -546,9 +546,9 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({ onNavigate }) =>
               </label>
               <div className="grid grid-cols-3 gap-2">
                 {[
-                  { id: 'morning' as const, label: 'Morning Focus', sub: '08:00 – 13:00' },
-                  { id: 'balanced' as const, label: 'Balanced Day', sub: '09:00 – 16:00' },
-                  { id: 'afternoon' as const, label: 'Afternoon Start', sub: '11:00 – 18:00' }
+                  { id: 'morning' as const, label: 'Morning Session', sub: '9:00 AM – 1:00 PM' },
+                  { id: 'balanced' as const, label: 'Full University Day', sub: '9:00 AM – 5:00 PM' },
+                  { id: 'afternoon' as const, label: 'Afternoon Session', sub: '2:00 PM – 5:00 PM' }
                 ].map(opt => (
                   <button
                     key={opt.id}

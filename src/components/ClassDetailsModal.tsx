@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, Clock, MapPin, User, Users, CheckCircle, Lock, Unlock, ArrowRightLeft, Check } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { institutionalStore, useInstitutionalData } from '../data/store';
-import { DayOfWeek } from '../types/institutional';
+import { DayOfWeek, VALID_CONTINUOUS_LAB_BLOCKS, getLabBlockByStartPeriod } from '../types/institutional';
 
 export interface ClassItem {
   id: string;
@@ -16,11 +16,16 @@ export interface ClassItem {
   studentGroupId?: string;
   departmentId?: string;
   departmentName?: string;
+  sectionNumber?: string;
   capacity?: number;
   enrolled?: number;
   time?: string;
   day?: string;
-  type?: 'Lecture' | 'Laboratory' | 'Studio' | 'Recitation';
+  type?: 'Lecture' | 'Lab' | 'Laboratory' | 'Studio' | 'Recitation';
+  sessionType?: 'Lecture' | 'Lab';
+  spanSlots?: number; // 1 for 50m Lecture, 3 for 3h continuous Lab
+  durationMinutes?: number; // 50 or 180
+  continuousTimeLabel?: string; // e.g., '9:00 AM – 12:00 PM' or '2:00 PM – 5:00 PM'
   credits?: number;
   accent: 'plum' | 'terracotta' | 'emerald';
   isLocked?: boolean;
@@ -52,7 +57,7 @@ export const ClassDetailsModal: React.FC<ClassDetailsModalProps> = ({
       const validDays = store.timeStructure.workingDays;
       const initialDay = validDays.includes(classItem.day as DayOfWeek) ? (classItem.day as DayOfWeek) : (validDays[0] || 'Mon');
       setSelectedDay(initialDay);
-      setSelectedPeriod(classItem.time || store.timeStructure.periods[0] || '09:00 - 10:30');
+      setSelectedPeriod(classItem.time || store.timeStructure.periods[0] || '9:00 – 9:50 AM');
       const matchedRoom = store.rooms.find(r => r.id === classItem.roomId || r.code === classItem.room);
       setSelectedRoomId(matchedRoom?.id || store.rooms[0]?.id || '');
     }
@@ -63,6 +68,10 @@ export const ClassDetailsModal: React.FC<ClassDetailsModalProps> = ({
   const isStoreBacked = store.sections.some(s => s.id === classItem.id);
   const currentSec = store.sections.find(s => s.id === classItem.id);
   const isLocked = currentSec ? Boolean(currentSec.isLocked) : Boolean(classItem.isLocked);
+  const isLab = classItem.sessionType === 'Lab' || classItem.spanSlots === 3;
+  const displayTimeWindow = isLab
+    ? (classItem.continuousTimeLabel || getLabBlockByStartPeriod(classItem.time || '')?.continuousLabel || classItem.time)
+    : (classItem.time || '9:00 – 9:50 AM');
 
   const handleSaveSlotChange = () => {
     if (!isStoreBacked) return;
@@ -72,7 +81,8 @@ export const ClassDetailsModal: React.FC<ClassDetailsModalProps> = ({
       roomId: selectedRoomId
     });
     const newRoom = store.rooms.find(r => r.id === selectedRoomId);
-    setSavedNotice(`Rescheduled to ${selectedDay} · ${selectedPeriod} in ${newRoom?.code || 'selected room'}`);
+    const labWindow = isLab ? (getLabBlockByStartPeriod(selectedPeriod)?.continuousLabel || selectedPeriod) : selectedPeriod;
+    setSavedNotice(`Rescheduled to ${selectedDay} · ${labWindow} in ${newRoom?.code || 'selected room'}`);
     setIsReassigning(false);
     setTimeout(() => {
       onClose();
@@ -110,8 +120,14 @@ export const ClassDetailsModal: React.FC<ClassDetailsModalProps> = ({
               <span className="font-mono-tabular font-semibold px-2 py-0.5 rounded bg-[#B8EEEE] text-[#171717]">
                 {classItem.code}
               </span>
-              <span className="px-2 py-0.5 rounded bg-white border border-[#E4E2DA] text-[#171717] font-medium">
-                {classItem.type || 'Lecture'}
+              <span
+                className={`px-2 py-0.5 rounded border font-semibold ${
+                  isLab
+                    ? 'bg-[#F2D8FA] border-[#DFB9EC] text-[#171717]'
+                    : 'bg-white border-[#E4E2DA] text-[#171717]'
+                }`}
+              >
+                {isLab ? 'Lab (3 Hours Continuous)' : 'Lecture (50 Mins)'}
               </span>
               <span className="font-mono-tabular">{classItem.credits || 4} credits</span>
               {isLocked && (
@@ -151,20 +167,28 @@ export const ClassDetailsModal: React.FC<ClassDetailsModalProps> = ({
             <div className="p-3.5 bg-[#F7F6EF] rounded-xl border border-[#E4E2DA] space-y-1">
               <div className="text-xs text-[#77766F] flex items-center gap-1.5">
                 <Clock className="w-3.5 h-3.5 text-[#171717]" />
-                <span>Assigned Window</span>
+                <span>{isLab ? 'Continuous 3h Lab Window' : 'Assigned Lecture Slot'}</span>
               </div>
               <div className="text-xs font-mono-tabular font-semibold text-[#171717]">
-                {classItem.day ? `${classItem.day} · ` : ''}{classItem.time || '09:00 - 10:30'}
+                {classItem.day ? `${classItem.day} · ` : ''}{displayTimeWindow}
+              </div>
+              <div className="text-[10.5px] text-[#77766F]">
+                {isLab
+                  ? '3 consecutive hourly cycles · No internal breaks'
+                  : '50-min lecture + 10-min short break'}
               </div>
             </div>
 
             <div className="p-3.5 bg-[#F7F6EF] rounded-xl border border-[#E4E2DA] space-y-1">
               <div className="text-xs text-[#77766F] flex items-center gap-1.5">
                 <MapPin className="w-3.5 h-3.5 text-[#171717]" />
-                <span>Campus Room</span>
+                <span>Campus Room / Lab</span>
               </div>
               <div className="text-xs font-mono-tabular font-semibold text-[#171717]">
                 {classItem.room}
+              </div>
+              <div className="text-[10.5px] text-[#77766F]">
+                {isLab ? 'Certified Laboratory / Studio' : 'Academic Lecture Hall'}
               </div>
             </div>
 
@@ -224,15 +248,23 @@ export const ClassDetailsModal: React.FC<ClassDetailsModalProps> = ({
                   </div>
 
                   <div>
-                    <label className="block text-[11px] font-medium text-[#77766F] mb-1">Time Period</label>
+                    <label className="block text-[11px] font-medium text-[#77766F] mb-1">
+                      {isLab ? '3-Hour Lab Window' : 'Lecture Slot (50m)'}
+                    </label>
                     <select
                       value={selectedPeriod}
                       onChange={e => setSelectedPeriod(e.target.value)}
                       className="input-field h-9 text-xs font-mono-tabular"
                     >
-                      {store.timeStructure.periods.map(p => (
-                        <option key={p} value={p}>{p}</option>
-                      ))}
+                      {isLab
+                        ? VALID_CONTINUOUS_LAB_BLOCKS.map(b => (
+                            <option key={b.startPeriod} value={b.startPeriod}>
+                              {b.continuousLabel} ({b.session})
+                            </option>
+                          ))
+                        : store.timeStructure.periods.map(p => (
+                            <option key={p} value={p}>{p}</option>
+                          ))}
                     </select>
                   </div>
 

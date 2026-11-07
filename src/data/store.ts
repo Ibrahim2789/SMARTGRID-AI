@@ -15,7 +15,11 @@ import {
   TimetableScenario, 
   AuditLogEntry,
   DayOfWeek,
-  SectionSlotAssignment
+  SectionSlotAssignment,
+  UNIVERSITY_PERIODS,
+  VALID_CONTINUOUS_LAB_BLOCKS,
+  getLabBlockByStartPeriod,
+  getCoveredPeriodsForAssignment
 } from '../types/institutional';
 
 import {
@@ -162,7 +166,7 @@ const defaultFeedbackPolls: FeedbackPollItem[] = [
   }
 ];
 
-const STORAGE_KEY = 'smartgrid_institutional_data_v3';
+const STORAGE_KEY = 'smartgrid_institutional_data_v4';
 
 function loadInitialData(): InstitutionalDataStore {
   try {
@@ -638,30 +642,47 @@ export const institutionalStore = {
     let createdCount = 0;
     const newSections: Section[] = [...currentStore.sections];
 
-    // Ensure every course has at least 1 section mapped to a matching cohort & instructor
+    // Ensure every course has appropriate Lecture and (if applicable) 3-hour Continuous Lab sections
     currentStore.courses.forEach((course, idx) => {
       const existingForCourse = newSections.filter(s => s.courseId === course.id);
       if (existingForCourse.length === 0) {
-        // Find matching instructor in same department or fallback
         const matchingInst = currentStore.instructors.find(i => i.departmentId === course.departmentId) ||
           currentStore.instructors[idx % currentStore.instructors.length];
-        // Find matching student group or fallback
         const matchingGroup = currentStore.studentGroups.find(g => {
           const prog = currentStore.programs.find(p => p.id === g.programId);
           return prog?.departmentId === course.departmentId;
         }) || currentStore.studentGroups[idx % currentStore.studentGroups.length];
 
         if (matchingInst && matchingGroup) {
+          // 1) Create regular 50-minute lecture section
           newSections.push({
-            id: `sec-auto-${Date.now()}-${idx}`,
+            id: `sec-auto-lec-${Date.now()}-${idx}`,
             courseId: course.id,
             termId: activeTerm.id,
-            sectionNumber: '01',
+            sectionNumber: '01-Lec',
             expectedEnrollment: Math.min(matchingGroup.size, 45),
             instructorId: matchingInst.id,
-            studentGroupId: matchingGroup.id
+            studentGroupId: matchingGroup.id,
+            sessionType: 'Lecture',
+            spanSlots: 1
           });
           createdCount++;
+
+          // 2) If course requires laboratory or studio sessions, also create a 3-hour continuous Lab section
+          if ((course.labHours > 0 || course.requiredRoomType === 'lab' || course.requiredRoomType === 'studio') && idx < 12) {
+            newSections.push({
+              id: `sec-auto-lab-${Date.now()}-${idx}`,
+              courseId: course.id,
+              termId: activeTerm.id,
+              sectionNumber: '01-Lab',
+              expectedEnrollment: Math.min(matchingGroup.size, 35),
+              instructorId: matchingInst.id,
+              studentGroupId: matchingGroup.id,
+              sessionType: 'Lab',
+              spanSlots: 3
+            });
+            createdCount++;
+          }
         }
       }
     });
@@ -671,13 +692,13 @@ export const institutionalStore = {
         ...currentStore,
         sections: newSections
       };
-      this.addAuditLog('create', 'section', 'auto-sync', `Auto-generated ${createdCount} curriculum sections for unmapped courses.`);
+      this.addAuditLog('create', 'section', 'auto-sync', `Auto-generated ${createdCount} curriculum sections (50m lectures & 3h continuous labs).`);
       notifyListeners();
     }
     return createdCount;
   },
 
-  // 8. Real Combinatorial Solver Engine
+  // 8. Real Combinatorial Solver Engine (University 9 AM - 5 PM Grid + 3h Continuous Labs)
   runTimetableSolver(options?: {
     termId?: string;
     departmentId?: string;
@@ -690,7 +711,6 @@ export const institutionalStore = {
     roomUtilization: number;
     scenario: TimetableScenario;
   } {
-    // First ensure any newly created courses have sections
     this.autoGenerateMissingSections();
 
     const days = currentStore.timeStructure.workingDays.length > 0
@@ -698,11 +718,10 @@ export const institutionalStore = {
       : (['Mon', 'Tue', 'Wed', 'Thu', 'Fri'] as DayOfWeek[]);
     const periods = currentStore.timeStructure.periods.length > 0
       ? currentStore.timeStructure.periods
-      : ['09:00 - 10:30', '11:00 - 12:30', '13:30 - 15:00', '15:30 - 17:00'];
+      : UNIVERSITY_PERIODS;
 
     const groupFilter = options?.selectedGroupIds ? new Set(options.selectedGroupIds) : null;
 
-    // Separate locked/out-of-scope sections from sections to solve
     const sectionsToSolve: Section[] = [];
     const fixedSections: Section[] = [];
 
@@ -719,25 +738,30 @@ export const institutionalStore = {
       }
     });
 
+    const isSectionLab = (sec: Section): boolean => {
+      if (sec.sessionType === 'Lab' || sec.spanSlots === 3) return true;
+      if (sec.assignedSlot?.sessionType === 'Lab' || sec.assignedSlot?.spanSlots === 3) return true;
+      if (sec.sectionNumber.toLowerCase().includes('lab')) return true;
+      return false;
+    };
+
     // Sort sections by constraint tightness:
-    // 1. Lab / studio courses first
+    // 1. 3-Hour Continuous Labs first (since they require 3 consecutive free cycles)
     // 2. Larger enrollment first
     sectionsToSolve.sort((a, b) => {
-      const cA = currentStore.courses.find(c => c.id === a.courseId);
-      const cB = currentStore.courses.find(c => c.id === b.courseId);
-      const isSpecialA = cA?.requiredRoomType === 'lab' || cA?.requiredRoomType === 'studio' ? 1 : 0;
-      const isSpecialB = cB?.requiredRoomType === 'lab' || cB?.requiredRoomType === 'studio' ? 1 : 0;
-      if (isSpecialA !== isSpecialB) return isSpecialB - isSpecialA;
+      const labA = isSectionLab(a) ? 1 : 0;
+      const labB = isSectionLab(b) ? 1 : 0;
+      if (labA !== labB) return labB - labA;
       return (b.expectedEnrollment || 30) - (a.expectedEnrollment || 30);
     });
 
-    // Track occupancy maps: key = `${day}__${period}`
+    // Track occupancy maps across individual hourly cycles: key = `${day}__${period}`
     const usedRooms = new Map<string, Set<string>>();
     const usedInstructors = new Map<string, Set<string>>();
     const usedGroups = new Map<string, Set<string>>();
     const groupDailyLoad = new Map<string, number>(); // `${groupId}__${day}` -> count
 
-    const markSlot = (day: DayOfWeek, period: string, roomId: string, instId: string, groupId: string) => {
+    const markSingleSlot = (day: DayOfWeek, period: string, roomId: string, instId: string, groupId: string) => {
       const key = `${day}__${period}`;
       if (!usedRooms.has(key)) usedRooms.set(key, new Set());
       if (!usedInstructors.has(key)) usedInstructors.set(key, new Set());
@@ -749,11 +773,18 @@ export const institutionalStore = {
       groupDailyLoad.set(dayKey, (groupDailyLoad.get(dayKey) || 0) + 1);
     };
 
+    const markCoveredSlots = (day: DayOfWeek, startPeriod: string, spanSlots: number, roomId: string, instId: string, groupId: string) => {
+      const covered = getCoveredPeriodsForAssignment(startPeriod, spanSlots);
+      covered.forEach(p => markSingleSlot(day, p, roomId, instId, groupId));
+    };
+
     fixedSections.forEach(sec => {
       if (sec.assignedSlot) {
-        markSlot(
+        const span = sec.assignedSlot.spanSlots || sec.spanSlots || (isSectionLab(sec) ? 3 : 1);
+        markCoveredSlots(
           sec.assignedSlot.day,
           sec.assignedSlot.timeSlot,
+          span,
           sec.assignedSlot.roomId,
           sec.instructorId,
           sec.studentGroupId
@@ -765,14 +796,15 @@ export const institutionalStore = {
     let placedCount = fixedSections.length;
     let unplacedCount = 0;
 
-    // Assign each section in scope
     sectionsToSolve.forEach((sec, secIdx) => {
       const course = currentStore.courses.find(c => c.id === sec.courseId);
       const instructor = currentStore.instructors.find(i => i.id === sec.instructorId);
-      const reqType = course?.requiredRoomType || 'lecture';
+      const isLab = isSectionLab(sec);
+      const reqType = isLab
+        ? (course?.requiredRoomType === 'studio' ? 'studio' : 'lab')
+        : (course?.requiredRoomType === 'seminar' ? 'seminar' : 'lecture');
       const minCap = sec.expectedEnrollment || 25;
 
-      // Candidate rooms: prefer exact type & sufficient capacity, then fallback
       const exactRooms = currentStore.rooms.filter(
         r => r.isAvailable !== false && r.type === reqType && r.capacity >= minCap
       );
@@ -786,72 +818,140 @@ export const institutionalStore = {
         ? exactRooms
         : (typeRooms.length > 0 ? typeRooms : (capRooms.length > 0 ? capRooms : currentStore.rooms));
 
-      // Sort candidate rooms by closest fit capacity (room compaction)
       const sortedRooms = [...candidateRooms].sort((a, b) => a.capacity - b.capacity);
-
-      // Build candidate (day, period) pairs scored by soft preferences
-      const slotCandidates: Array<{ day: DayOfWeek; period: string; score: number }> = [];
-      days.forEach((day, dIdx) => {
-        periods.forEach((period, pIdx) => {
-          let score = 100;
-          // Spread across days for the cohort
-          const currentLoadOnDay = groupDailyLoad.get(`${sec.studentGroupId}__${day}`) || 0;
-          score -= currentLoadOnDay * 25;
-          // Circadian preference: mid-day slots slightly preferred for heavy courses
-          if (pIdx === 1 || pIdx === 2) score += 10;
-          // Deterministic rotation offset so classes distribute evenly across the week
-          score += ((secIdx + dIdx * 3 + pIdx * 2) % 11);
-          slotCandidates.push({ day, period, score });
-        });
-      });
-
-      slotCandidates.sort((a, b) => b.score - a.score);
 
       let assigned: SectionSlotAssignment | undefined = undefined;
 
-      for (const slot of slotCandidates) {
-        const key = `${slot.day}__${slot.period}`;
+      if (isLab) {
+        // 3-Hour Continuous Lab: must occupy one of VALID_CONTINUOUS_LAB_BLOCKS (3 consecutive slots, never crossing 1-2 PM lunch)
+        const labCandidates: Array<{ day: DayOfWeek; blockIdx: number; score: number }> = [];
+        days.forEach((day, dIdx) => {
+          VALID_CONTINUOUS_LAB_BLOCKS.forEach((block, bIdx) => {
+            let score = 100;
+            const currentLoadOnDay = groupDailyLoad.get(`${sec.studentGroupId}__${day}`) || 0;
+            score -= currentLoadOnDay * 20;
+            score += ((secIdx + dIdx * 3 + bIdx * 5) % 13);
+            labCandidates.push({ day, blockIdx: bIdx, score });
+          });
+        });
+        labCandidates.sort((a, b) => b.score - a.score);
 
-        // Check instructor availability blackout
-        const isBlackedOut = instructor?.unavailableSlots.some(
-          u => u.day === slot.day && u.timeSlot === slot.period
-        );
-        if (isBlackedOut) continue;
+        for (const cand of labCandidates) {
+          const block = VALID_CONTINUOUS_LAB_BLOCKS[cand.blockIdx];
+          const covered = block.coveredPeriods;
 
-        // Check instructor collision
-        if (usedInstructors.get(key)?.has(sec.instructorId)) continue;
+          const isBlackedOut = instructor?.unavailableSlots.some(
+            u => u.day === cand.day && covered.includes(u.timeSlot)
+          );
+          if (isBlackedOut) continue;
 
-        // Check student group collision
-        if (usedGroups.get(key)?.has(sec.studentGroupId)) continue;
+          const instBusy = covered.some(p => usedInstructors.get(`${cand.day}__${p}`)?.has(sec.instructorId));
+          if (instBusy) continue;
 
-        // Find available room
-        const freeRoom = sortedRooms.find(r => !usedRooms.get(key)?.has(r.id));
-        if (freeRoom) {
-          assigned = {
-            day: slot.day,
-            timeSlot: slot.period,
-            roomId: freeRoom.id,
-            durationMinutes: currentStore.timeStructure.periodLengthMinutes || 90
-          };
-          markSlot(slot.day, slot.period, freeRoom.id, sec.instructorId, sec.studentGroupId);
-          break;
+          const groupBusy = covered.some(p => usedGroups.get(`${cand.day}__${p}`)?.has(sec.studentGroupId));
+          if (groupBusy) continue;
+
+          const freeRoom = sortedRooms.find(r =>
+            covered.every(p => !usedRooms.get(`${cand.day}__${p}`)?.has(r.id))
+          );
+
+          if (freeRoom) {
+            assigned = {
+              day: cand.day,
+              timeSlot: block.startPeriod,
+              roomId: freeRoom.id,
+              durationMinutes: 180,
+              sessionType: 'Lab',
+              spanSlots: 3,
+              continuousTimeLabel: block.continuousLabel
+            };
+            markCoveredSlots(cand.day, block.startPeriod, 3, freeRoom.id, sec.instructorId, sec.studentGroupId);
+            break;
+          }
         }
-      }
 
-      // Fallback if strict constraints left it unplaced: relax cohort or blackout check to find any free room
-      if (!assigned && sortedRooms.length > 0) {
+        // Fallback for 3-hour lab if cohort schedule is very dense
+        if (!assigned && sortedRooms.length > 0) {
+          for (const cand of labCandidates) {
+            const block = VALID_CONTINUOUS_LAB_BLOCKS[cand.blockIdx];
+            const covered = block.coveredPeriods;
+            const freeRoom = sortedRooms.find(r =>
+              covered.every(p => !usedRooms.get(`${cand.day}__${p}`)?.has(r.id))
+            );
+            const instBusy = covered.some(p => usedInstructors.get(`${cand.day}__${p}`)?.has(sec.instructorId));
+            if (freeRoom && !instBusy) {
+              assigned = {
+                day: cand.day,
+                timeSlot: block.startPeriod,
+                roomId: freeRoom.id,
+                durationMinutes: 180,
+                sessionType: 'Lab',
+                spanSlots: 3,
+                continuousTimeLabel: block.continuousLabel
+              };
+              markCoveredSlots(cand.day, block.startPeriod, 3, freeRoom.id, sec.instructorId, sec.studentGroupId);
+              break;
+            }
+          }
+        }
+      } else {
+        // Regular 50-minute Lecture: occupies 1 hourly scheduling cycle
+        const slotCandidates: Array<{ day: DayOfWeek; period: string; score: number }> = [];
+        days.forEach((day, dIdx) => {
+          periods.forEach((period, pIdx) => {
+            let score = 100;
+            const currentLoadOnDay = groupDailyLoad.get(`${sec.studentGroupId}__${day}`) || 0;
+            score -= currentLoadOnDay * 25;
+            if (pIdx <= 3) score += 8; // Morning preference for lectures
+            score += ((secIdx + dIdx * 3 + pIdx * 2) % 11);
+            slotCandidates.push({ day, period, score });
+          });
+        });
+
+        slotCandidates.sort((a, b) => b.score - a.score);
+
         for (const slot of slotCandidates) {
           const key = `${slot.day}__${slot.period}`;
+
+          const isBlackedOut = instructor?.unavailableSlots.some(
+            u => u.day === slot.day && u.timeSlot === slot.period
+          );
+          if (isBlackedOut) continue;
+
+          if (usedInstructors.get(key)?.has(sec.instructorId)) continue;
+          if (usedGroups.get(key)?.has(sec.studentGroupId)) continue;
+
           const freeRoom = sortedRooms.find(r => !usedRooms.get(key)?.has(r.id));
-          if (freeRoom && !usedInstructors.get(key)?.has(sec.instructorId)) {
+          if (freeRoom) {
             assigned = {
               day: slot.day,
               timeSlot: slot.period,
               roomId: freeRoom.id,
-              durationMinutes: currentStore.timeStructure.periodLengthMinutes || 90
+              durationMinutes: 50,
+              sessionType: 'Lecture',
+              spanSlots: 1
             };
-            markSlot(slot.day, slot.period, freeRoom.id, sec.instructorId, sec.studentGroupId);
+            markSingleSlot(slot.day, slot.period, freeRoom.id, sec.instructorId, sec.studentGroupId);
             break;
+          }
+        }
+
+        if (!assigned && sortedRooms.length > 0) {
+          for (const slot of slotCandidates) {
+            const key = `${slot.day}__${slot.period}`;
+            const freeRoom = sortedRooms.find(r => !usedRooms.get(key)?.has(r.id));
+            if (freeRoom && !usedInstructors.get(key)?.has(sec.instructorId)) {
+              assigned = {
+                day: slot.day,
+                timeSlot: slot.period,
+                roomId: freeRoom.id,
+                durationMinutes: 50,
+                sessionType: 'Lecture',
+                spanSlots: 1
+              };
+              markSingleSlot(slot.day, slot.period, freeRoom.id, sec.instructorId, sec.studentGroupId);
+              break;
+            }
           }
         }
       }
@@ -867,7 +967,13 @@ export const institutionalStore = {
 
     const newSections = currentStore.sections.map(sec => {
       if (updatedAssignments.has(sec.id)) {
-        return { ...sec, assignedSlot: updatedAssignments.get(sec.id) };
+        const assigned = updatedAssignments.get(sec.id);
+        return {
+          ...sec,
+          sessionType: assigned?.sessionType || sec.sessionType || 'Lecture',
+          spanSlots: assigned?.spanSlots || sec.spanSlots || 1,
+          assignedSlot: assigned
+        };
       }
       return sec;
     });
@@ -957,7 +1063,43 @@ export const institutionalStore = {
   updateSectionSlot(sectionId: string, slot?: { day: DayOfWeek; timeSlot: string; roomId: string }) {
     currentStore = {
       ...currentStore,
-      sections: currentStore.sections.map(s => s.id === sectionId ? { ...s, assignedSlot: slot } : s)
+      sections: currentStore.sections.map(s => {
+        if (s.id !== sectionId) return s;
+        if (!slot) return { ...s, assignedSlot: undefined };
+
+        const isLab = s.sessionType === 'Lab' || s.spanSlots === 3 || s.assignedSlot?.sessionType === 'Lab' || s.assignedSlot?.spanSlots === 3;
+        if (isLab) {
+          const matchedLabBlock = getLabBlockByStartPeriod(slot.timeSlot) || VALID_CONTINUOUS_LAB_BLOCKS[0];
+          return {
+            ...s,
+            sessionType: 'Lab',
+            spanSlots: 3,
+            assignedSlot: {
+              day: slot.day,
+              timeSlot: matchedLabBlock.startPeriod,
+              roomId: slot.roomId,
+              durationMinutes: 180,
+              sessionType: 'Lab',
+              spanSlots: 3,
+              continuousTimeLabel: matchedLabBlock.continuousLabel
+            }
+          };
+        }
+
+        return {
+          ...s,
+          sessionType: 'Lecture',
+          spanSlots: 1,
+          assignedSlot: {
+            day: slot.day,
+            timeSlot: slot.timeSlot,
+            roomId: slot.roomId,
+            durationMinutes: 50,
+            sessionType: 'Lecture',
+            spanSlots: 1
+          }
+        };
+      })
     };
     this.addAuditLog(
       'update',

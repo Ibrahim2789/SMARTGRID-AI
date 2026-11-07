@@ -48,7 +48,27 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
   children
 }) => {
   const storeSnapshot = useInstitutionalData();
-  const [secondaryOpen, setSecondaryOpen] = useState(true);
+  const [secondaryOpen, setSecondaryOpen] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem('smartgrid_sidebar_collapsed');
+      return saved !== 'true';
+    } catch {
+      return true;
+    }
+  });
+
+  const handleToggleSidebar = () => {
+    setSecondaryOpen(prev => {
+      const next = !prev;
+      try {
+        localStorage.setItem('smartgrid_sidebar_collapsed', String(!next));
+      } catch {
+        // Ignore storage errors
+      }
+      return next;
+    });
+  };
+
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
     resources: true,
@@ -231,13 +251,31 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
         className="hidden md:flex flex-col items-center justify-between w-[72px] bg-[#171717] text-white py-4 shrink-0 select-none z-30 border-r border-[#242424]"
         aria-label="Primary icon navigation"
       >
-        <div className="flex flex-col items-center gap-5 w-full">
+        <div className="flex flex-col items-center gap-3.5 w-full">
           <button
             onClick={() => onNavigate('home')}
             title="SmartGrid Workspace"
             className="w-10 h-10 rounded-xl bg-[#FFFFFF] text-[#171717] flex items-center justify-center font-serif-editorial text-xl tracking-tight cursor-pointer hover:scale-105 transition-transform"
           >
             S
+          </button>
+
+          {/* Top Sidebar Collapse / Expand Toggle */}
+          <button
+            onClick={handleToggleSidebar}
+            title={secondaryOpen ? 'Collapse sidebar' : 'Expand sidebar'}
+            aria-label={secondaryOpen ? 'Collapse sidebar' : 'Expand sidebar'}
+            className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors cursor-pointer ${
+              !secondaryOpen
+                ? 'bg-[#2E2E2E] text-[#B8EEEE] hover:bg-[#383838]'
+                : 'text-[#9E9D96] hover:text-white hover:bg-[#242424]'
+            }`}
+          >
+            {secondaryOpen ? (
+              <PanelLeftClose className="w-[18px] h-[18px]" />
+            ) : (
+              <PanelLeftOpen className="w-[18px] h-[18px]" />
+            )}
           </button>
 
           <div className="w-7 h-[1px] bg-[#2E2E2E]" />
@@ -271,8 +309,9 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
 
         <div className="flex flex-col items-center gap-2.5 w-full px-2">
           <button
-            onClick={() => setSecondaryOpen(prev => !prev)}
-            title={secondaryOpen ? 'Collapse workspace sidebar' : 'Expand workspace sidebar'}
+            onClick={handleToggleSidebar}
+            title={secondaryOpen ? 'Collapse sidebar' : 'Expand sidebar'}
+            aria-label={secondaryOpen ? 'Collapse sidebar' : 'Expand sidebar'}
             className="w-10 h-10 rounded-xl flex items-center justify-center text-[#9E9D96] hover:text-white hover:bg-[#242424] transition-colors cursor-pointer"
           >
             {secondaryOpen ? (
@@ -311,16 +350,21 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
       {/* =========================================================
           2. SECOND SIDEBAR: ~256px Charcoal Workspace Drawer (#292929)
          ========================================================= */}
-      {secondaryOpen && (
-        <aside
-          className="hidden md:flex flex-col w-[256px] bg-[#292929] text-[#EAE8E1] shrink-0 select-none border-r border-[#1F1F1F] z-20"
-          aria-label="Academic workspace navigation"
-        >
-          {/* Academic Context Selector */}
-          <div className="p-3.5 border-b border-[#363636] relative">
+      <aside
+        className={`hidden md:flex flex-col bg-[#292929] text-[#EAE8E1] shrink-0 select-none z-20 transition-all duration-200 ease-in-out overflow-hidden ${
+          secondaryOpen
+            ? 'w-[256px] opacity-100 border-r border-[#1F1F1F]'
+            : 'w-0 opacity-0 border-r-0 pointer-events-none'
+        }`}
+        aria-label="Academic workspace navigation"
+        aria-hidden={!secondaryOpen}
+      >
+        <div className="w-[256px] flex flex-col h-full">
+          {/* Academic Context Selector + Top Collapse Control */}
+          <div className="p-3.5 border-b border-[#363636] relative flex items-center gap-2">
             <button
               onClick={() => setTermDropdownOpen(prev => !prev)}
-              className="w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl bg-[#333333] hover:bg-[#3A3A3A] transition-colors text-left cursor-pointer"
+              className="flex-1 min-w-0 flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl bg-[#333333] hover:bg-[#3A3A3A] transition-colors text-left cursor-pointer"
             >
               <div className="min-w-0">
                 <div className="text-[11px] font-medium uppercase tracking-wider text-[#A6A49D] truncate">
@@ -332,6 +376,15 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
                 </div>
               </div>
               <ChevronDown className="w-4 h-4 text-[#A6A49D] shrink-0" />
+            </button>
+
+            <button
+              onClick={handleToggleSidebar}
+              title="Collapse sidebar"
+              aria-label="Collapse sidebar"
+              className="w-9 h-9 rounded-xl bg-[#333333] hover:bg-[#3E3E3E] text-[#C2C0B8] hover:text-white flex items-center justify-center shrink-0 transition-colors cursor-pointer"
+            >
+              <PanelLeftClose className="w-4 h-4" />
             </button>
 
             {termDropdownOpen && (
@@ -582,8 +635,8 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
               </button>
             </div>
           </div>
-        </aside>
-      )}
+        </div>
+      </aside>
 
       {/* =========================================================
           3. CENTRAL CONTENT AREA + MOBILE BAR

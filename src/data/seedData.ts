@@ -802,8 +802,8 @@ export const seedInstructors: Instructor[] = [
     maxConsecutiveHours: 3,
     preferredDays: ['Mon', 'Wed', 'Thu'],
     unavailableSlots: [
-      { day: 'Tue', timeSlot: '09:00 - 10:30', reason: 'Department Senate Committee' },
-      { day: 'Fri', timeSlot: '13:30 - 15:00', reason: 'NSF Grant Research Colloquium' }
+      { day: 'Tue', timeSlot: '9:00 – 9:50 AM', reason: 'Department Senate Committee' },
+      { day: 'Fri', timeSlot: '2:00 – 2:50 PM', reason: 'NSF Grant Research Colloquium' }
     ]
   },
   {
@@ -816,7 +816,7 @@ export const seedInstructors: Instructor[] = [
     maxConsecutiveHours: 3,
     preferredDays: ['Mon', 'Tue', 'Wed'],
     unavailableSlots: [
-      { day: 'Thu', timeSlot: '09:00 - 10:30', reason: 'Industry Advisory Board' }
+      { day: 'Thu', timeSlot: '9:00 – 9:50 AM', reason: 'Industry Advisory Board' }
     ]
   },
   {
@@ -829,7 +829,7 @@ export const seedInstructors: Instructor[] = [
     maxConsecutiveHours: 3,
     preferredDays: ['Tue', 'Thu', 'Fri'],
     unavailableSlots: [
-      { day: 'Mon', timeSlot: '13:30 - 15:00', reason: 'Lab Supervision' }
+      { day: 'Mon', timeSlot: '2:00 – 2:50 PM', reason: 'Lab Supervision' }
     ]
   },
   {
@@ -842,8 +842,8 @@ export const seedInstructors: Instructor[] = [
     maxConsecutiveHours: 3,
     preferredDays: ['Tue', 'Wed', 'Thu'],
     unavailableSlots: [
-      { day: 'Mon', timeSlot: '09:00 - 10:30', reason: 'Vivarium Protocol Review' },
-      { day: 'Fri', timeSlot: '11:00 - 12:30', reason: 'Biosafety Committee' }
+      { day: 'Mon', timeSlot: '9:00 – 9:50 AM', reason: 'Vivarium Protocol Review' },
+      { day: 'Fri', timeSlot: '11:00 – 11:50 AM', reason: 'Biosafety Committee' }
     ]
   },
   {
@@ -856,7 +856,7 @@ export const seedInstructors: Instructor[] = [
     maxConsecutiveHours: 4,
     preferredDays: ['Mon', 'Wed', 'Fri'],
     unavailableSlots: [
-      { day: 'Tue', timeSlot: '13:30 - 15:00', reason: 'Hazardous Waste Safety Audit' }
+      { day: 'Tue', timeSlot: '2:00 – 2:50 PM', reason: 'Hazardous Waste Safety Audit' }
     ]
   },
   {
@@ -869,7 +869,7 @@ export const seedInstructors: Instructor[] = [
     maxConsecutiveHours: 3,
     preferredDays: ['Mon', 'Tue', 'Thu'],
     unavailableSlots: [
-      { day: 'Wed', timeSlot: '11:00 - 12:30', reason: 'Clinic Consultations' }
+      { day: 'Wed', timeSlot: '11:00 – 11:50 AM', reason: 'Clinic Consultations' }
     ]
   },
   {
@@ -882,8 +882,8 @@ export const seedInstructors: Instructor[] = [
     maxConsecutiveHours: 3,
     preferredDays: ['Tue', 'Thu', 'Fri'],
     unavailableSlots: [
-      { day: 'Mon', timeSlot: '11:00 - 12:30', reason: 'Deans Council' },
-      { day: 'Wed', timeSlot: '09:00 - 10:30', reason: 'ABET Accreditation Prep' }
+      { day: 'Mon', timeSlot: '11:00 – 11:50 AM', reason: 'Deans Council' },
+      { day: 'Wed', timeSlot: '9:00 – 9:50 AM', reason: 'ABET Accreditation Prep' }
     ]
   },
   {
@@ -896,7 +896,7 @@ export const seedInstructors: Instructor[] = [
     maxConsecutiveHours: 3,
     preferredDays: ['Mon', 'Wed', 'Fri'],
     unavailableSlots: [
-      { day: 'Thu', timeSlot: '13:30 - 15:00', reason: 'Wind Tunnel Calibration' }
+      { day: 'Thu', timeSlot: '2:00 – 2:50 PM', reason: 'Wind Tunnel Calibration' }
     ]
   },
   {
@@ -909,7 +909,7 @@ export const seedInstructors: Instructor[] = [
     maxConsecutiveHours: 3,
     preferredDays: ['Mon', 'Tue', 'Thu'],
     unavailableSlots: [
-      { day: 'Fri', timeSlot: '09:00 - 10:30', reason: 'RoboSub Student Mentorship' }
+      { day: 'Fri', timeSlot: '9:00 – 9:50 AM', reason: 'RoboSub Student Mentorship' }
     ]
   },
   {
@@ -922,7 +922,7 @@ export const seedInstructors: Instructor[] = [
     maxConsecutiveHours: 4,
     preferredDays: ['Tue', 'Thu', 'Fri'],
     unavailableSlots: [
-      { day: 'Mon', timeSlot: '09:00 - 10:30', reason: 'Urban Planning Commission' }
+      { day: 'Mon', timeSlot: '9:00 – 9:50 AM', reason: 'Urban Planning Commission' }
     ]
   },
   {
@@ -935,7 +935,7 @@ export const seedInstructors: Instructor[] = [
     maxConsecutiveHours: 3,
     preferredDays: ['Mon', 'Wed', 'Fri'],
     unavailableSlots: [
-      { day: 'Thu', timeSlot: '11:00 - 12:30', reason: 'Design Jury Review' }
+      { day: 'Thu', timeSlot: '11:00 – 11:50 AM', reason: 'Design Jury Review' }
     ]
   },
   {
@@ -948,7 +948,7 @@ export const seedInstructors: Instructor[] = [
     maxConsecutiveHours: 3,
     preferredDays: ['Mon', 'Tue', 'Wed'],
     unavailableSlots: [
-      { day: 'Fri', timeSlot: '13:30 - 15:00', reason: 'Field Site Inspections' }
+      { day: 'Fri', timeSlot: '2:00 – 2:50 PM', reason: 'Field Site Inspections' }
     ]
   },
   {
@@ -961,7 +961,7 @@ export const seedInstructors: Instructor[] = [
     maxConsecutiveHours: 3,
     preferredDays: ['Mon', 'Wed', 'Fri'],
     unavailableSlots: [
-      { day: 'Tue', timeSlot: '11:00 - 12:30', reason: 'Math Olympiad Coordination' }
+      { day: 'Tue', timeSlot: '11:00 – 11:50 AM', reason: 'Math Olympiad Coordination' }
     ]
   },
   {
@@ -974,7 +974,7 @@ export const seedInstructors: Instructor[] = [
     maxConsecutiveHours: 3,
     preferredDays: ['Tue', 'Thu', 'Fri'],
     unavailableSlots: [
-      { day: 'Wed', timeSlot: '13:30 - 15:00', reason: 'Biostatistics Consulting' }
+      { day: 'Wed', timeSlot: '2:00 – 2:50 PM', reason: 'Biostatistics Consulting' }
     ]
   },
   {
@@ -987,7 +987,7 @@ export const seedInstructors: Instructor[] = [
     maxConsecutiveHours: 3,
     preferredDays: ['Mon', 'Wed', 'Fri'],
     unavailableSlots: [
-      { day: 'Tue', timeSlot: '09:00 - 10:30', reason: 'Institutional Review Board' }
+      { day: 'Tue', timeSlot: '9:00 – 9:50 AM', reason: 'Institutional Review Board' }
     ]
   }
 ];
@@ -1095,34 +1095,24 @@ export const seedStudentGroups: StudentGroup[] = [
 ];
 
 export const seedSections: Section[] = [
-  // Term 2 (Spring 2026) active sections - mapped directly to the matrix schedule
+  // CS-301 (Data Structures & Algorithms): 2 regular 50m lectures + 1 continuous 3-hour Lab
   {
     id: 'sec-1',
     courseId: 'course-cs-301',
     termId: 'term-2026-spring',
-    sectionNumber: '01',
+    sectionNumber: '01-Lec',
     expectedEnrollment: 58,
     instructorId: 'inst-evans',
     studentGroupId: 'cohort-cs-y2',
+    sessionType: 'Lecture',
+    spanSlots: 1,
     assignedSlot: {
       day: 'Mon',
-      timeSlot: '09:00 - 10:30',
-      roomId: 'room-hall-b3'
-    },
-    isLocked: true
-  },
-  {
-    id: 'sec-2',
-    courseId: 'course-bio-210',
-    termId: 'term-2026-spring',
-    sectionNumber: '01',
-    expectedEnrollment: 32,
-    instructorId: 'inst-zhao',
-    studentGroupId: 'cohort-bio-y1',
-    assignedSlot: {
-      day: 'Tue',
-      timeSlot: '09:00 - 10:30',
-      roomId: 'room-lab-4'
+      timeSlot: '9:00 – 9:50 AM',
+      roomId: 'room-hall-b3',
+      durationMinutes: 50,
+      sessionType: 'Lecture',
+      spanSlots: 1
     },
     isLocked: true
   },
@@ -1130,179 +1120,127 @@ export const seedSections: Section[] = [
     id: 'sec-3',
     courseId: 'course-cs-301',
     termId: 'term-2026-spring',
-    sectionNumber: '02',
+    sectionNumber: '02-Lec',
     expectedEnrollment: 58,
     instructorId: 'inst-evans',
     studentGroupId: 'cohort-cs-y2',
+    sessionType: 'Lecture',
+    spanSlots: 1,
     assignedSlot: {
       day: 'Wed',
-      timeSlot: '09:00 - 10:30',
-      roomId: 'room-hall-b3'
+      timeSlot: '9:00 – 9:50 AM',
+      roomId: 'room-hall-b3',
+      durationMinutes: 50,
+      sessionType: 'Lecture',
+      spanSlots: 1
     },
     isLocked: false
   },
+  {
+    id: 'sec-cs301-lab',
+    courseId: 'course-cs-301',
+    termId: 'term-2026-spring',
+    sectionNumber: '01-Lab',
+    expectedEnrollment: 38,
+    instructorId: 'inst-evans',
+    studentGroupId: 'cohort-cs-y2',
+    sessionType: 'Lab',
+    spanSlots: 3,
+    assignedSlot: {
+      day: 'Fri',
+      timeSlot: '9:00 – 9:50 AM',
+      roomId: 'room-lab-2',
+      durationMinutes: 180,
+      sessionType: 'Lab',
+      spanSlots: 3,
+      continuousTimeLabel: '9:00 AM – 12:00 PM'
+    },
+    isLocked: true
+  },
+
+  // BIO-210 (Cell Genomics & Recombinant DNA): 1 regular lecture + 1 continuous 3-hour Lab (Tue Morning 9:00 AM – 12:00 PM)
+  {
+    id: 'sec-2',
+    courseId: 'course-bio-210',
+    termId: 'term-2026-spring',
+    sectionNumber: '01-Lab',
+    expectedEnrollment: 32,
+    instructorId: 'inst-zhao',
+    studentGroupId: 'cohort-bio-y2',
+    sessionType: 'Lab',
+    spanSlots: 3,
+    assignedSlot: {
+      day: 'Tue',
+      timeSlot: '9:00 – 9:50 AM',
+      roomId: 'room-lab-4',
+      durationMinutes: 180,
+      sessionType: 'Lab',
+      spanSlots: 3,
+      continuousTimeLabel: '9:00 AM – 12:00 PM'
+    },
+    isLocked: true
+  },
+  {
+    id: 'sec-bio210-lec1',
+    courseId: 'course-bio-210',
+    termId: 'term-2026-spring',
+    sectionNumber: '01-Lec',
+    expectedEnrollment: 32,
+    instructorId: 'inst-zhao',
+    studentGroupId: 'cohort-bio-y2',
+    sessionType: 'Lecture',
+    spanSlots: 1,
+    assignedSlot: {
+      day: 'Fri',
+      timeSlot: '12:00 – 12:50 PM',
+      roomId: 'room-aud-100',
+      durationMinutes: 50,
+      sessionType: 'Lecture',
+      spanSlots: 1
+    },
+    isLocked: false
+  },
+
+  // ENG-102 (Applied Engineering Statics): Regular 50m Lecture
   {
     id: 'sec-4',
     courseId: 'course-eng-102',
     termId: 'term-2026-spring',
-    sectionNumber: '01',
+    sectionNumber: '01-Lec',
     expectedEnrollment: 70,
     instructorId: 'inst-miller',
     studentGroupId: 'cohort-eng-y1',
+    sessionType: 'Lecture',
+    spanSlots: 1,
     assignedSlot: {
       day: 'Thu',
-      timeSlot: '09:00 - 10:30',
-      roomId: 'room-quad-a'
+      timeSlot: '12:00 – 12:50 PM',
+      roomId: 'room-quad-a',
+      durationMinutes: 50,
+      sessionType: 'Lecture',
+      spanSlots: 1
     },
     isLocked: true
   },
+
+  // ARCH-405 (Spatial Studio): Lecture + 3-hour Afternoon Lab/Studio (2:00 PM – 5:00 PM)
   {
     id: 'sec-5',
     courseId: 'course-arch-405',
     termId: 'term-2026-spring',
-    sectionNumber: '01',
+    sectionNumber: '01-Lec',
     expectedEnrollment: 30,
     instructorId: 'inst-vance',
     studentGroupId: 'cohort-arch-y3',
-    assignedSlot: {
-      day: 'Fri',
-      timeSlot: '09:00 - 10:30',
-      roomId: 'room-atrium'
-    },
-    isLocked: false
-  },
-  {
-    id: 'sec-6',
-    courseId: 'course-math-204',
-    termId: 'term-2026-spring',
-    sectionNumber: '01',
-    expectedEnrollment: 110,
-    instructorId: 'inst-raman',
-    studentGroupId: 'cohort-all-stem',
-    assignedSlot: {
-      day: 'Mon',
-      timeSlot: '11:00 - 12:30',
-      roomId: 'room-hall-a1'
-    },
-    isLocked: true
-  },
-  {
-    id: 'sec-7',
-    courseId: 'course-hum-110',
-    termId: 'term-2026-spring',
-    sectionNumber: '01',
-    expectedEnrollment: 35,
-    instructorId: 'inst-gomez',
-    studentGroupId: 'cohort-arts-y1',
-    assignedSlot: {
-      day: 'Mon',
-      timeSlot: '11:00 - 12:30',
-      roomId: 'room-annex-2'
-    },
-    isLocked: false
-  },
-  {
-    id: 'sec-8',
-    courseId: 'course-cs-412',
-    termId: 'term-2026-spring',
-    sectionNumber: '01',
-    expectedEnrollment: 40,
-    instructorId: 'inst-evans',
-    studentGroupId: 'cohort-cs-y4',
+    sessionType: 'Lecture',
+    spanSlots: 1,
     assignedSlot: {
       day: 'Tue',
-      timeSlot: '11:00 - 12:30',
-      roomId: 'room-lab-2'
-    },
-    isLocked: true
-  },
-  {
-    id: 'sec-9',
-    courseId: 'course-bio-320',
-    termId: 'term-2026-spring',
-    sectionNumber: '01',
-    expectedEnrollment: 30,
-    instructorId: 'inst-zhao',
-    studentGroupId: 'cohort-bio-y3',
-    assignedSlot: {
-      day: 'Wed',
-      timeSlot: '11:00 - 12:30',
-      roomId: 'room-lab-4'
-    },
-    isLocked: false
-  },
-  {
-    id: 'sec-10',
-    courseId: 'course-cs-412',
-    termId: 'term-2026-spring',
-    sectionNumber: '02',
-    expectedEnrollment: 40,
-    instructorId: 'inst-evans',
-    studentGroupId: 'cohort-cs-y4',
-    assignedSlot: {
-      day: 'Thu',
-      timeSlot: '11:00 - 12:30',
-      roomId: 'room-lab-2'
-    },
-    isLocked: false
-  },
-  {
-    id: 'sec-11',
-    courseId: 'course-math-204',
-    termId: 'term-2026-spring',
-    sectionNumber: '02',
-    expectedEnrollment: 110,
-    instructorId: 'inst-raman',
-    studentGroupId: 'cohort-all-stem',
-    assignedSlot: {
-      day: 'Fri',
-      timeSlot: '11:00 - 12:30',
-      roomId: 'room-hall-a1'
-    },
-    isLocked: false
-  },
-  {
-    id: 'sec-12',
-    courseId: 'course-chem-201',
-    termId: 'term-2026-spring',
-    sectionNumber: '01',
-    expectedEnrollment: 36,
-    instructorId: 'inst-scott',
-    studentGroupId: 'cohort-bio-y2',
-    assignedSlot: {
-      day: 'Mon',
-      timeSlot: '13:30 - 15:00',
-      roomId: 'room-chem-lab-b'
-    },
-    isLocked: true
-  },
-  {
-    id: 'sec-13',
-    courseId: 'course-eng-302',
-    termId: 'term-2026-spring',
-    sectionNumber: '01',
-    expectedEnrollment: 55,
-    instructorId: 'inst-miller',
-    studentGroupId: 'cohort-eng-y3',
-    assignedSlot: {
-      day: 'Tue',
-      timeSlot: '13:30 - 15:00',
-      roomId: 'room-eng-hall-1'
-    },
-    isLocked: true
-  },
-  {
-    id: 'sec-14',
-    courseId: 'course-chem-201',
-    termId: 'term-2026-spring',
-    sectionNumber: '02',
-    expectedEnrollment: 36,
-    instructorId: 'inst-scott',
-    studentGroupId: 'cohort-bio-y2',
-    assignedSlot: {
-      day: 'Wed',
-      timeSlot: '13:30 - 15:00',
-      roomId: 'room-chem-lab-b'
+      timeSlot: '12:00 – 12:50 PM',
+      roomId: 'room-arch-hall',
+      durationMinutes: 50,
+      sessionType: 'Lecture',
+      spanSlots: 1
     },
     isLocked: false
   },
@@ -1310,103 +1248,326 @@ export const seedSections: Section[] = [
     id: 'sec-15',
     courseId: 'course-arch-405',
     termId: 'term-2026-spring',
-    sectionNumber: '02',
+    sectionNumber: '01-Lab',
     expectedEnrollment: 30,
     instructorId: 'inst-vance',
     studentGroupId: 'cohort-arch-y3',
+    sessionType: 'Lab',
+    spanSlots: 3,
     assignedSlot: {
       day: 'Thu',
-      timeSlot: '13:30 - 15:00',
-      roomId: 'room-atrium'
-    },
-    isLocked: false
-  },
-  {
-    id: 'sec-16',
-    courseId: 'course-eng-302',
-    termId: 'term-2026-spring',
-    sectionNumber: '02',
-    expectedEnrollment: 55,
-    instructorId: 'inst-miller',
-    studentGroupId: 'cohort-eng-y3',
-    assignedSlot: {
-      day: 'Fri',
-      timeSlot: '13:30 - 15:00',
-      roomId: 'room-eng-hall-1'
+      timeSlot: '2:00 – 2:50 PM',
+      roomId: 'room-atrium',
+      durationMinutes: 180,
+      sessionType: 'Lab',
+      spanSlots: 3,
+      continuousTimeLabel: '2:00 PM – 5:00 PM'
     },
     isLocked: false
   },
 
-  // Additional sections ready for generation & validation testing
+  // MATH-204 (Linear Algebra & Matrix Decompositions): 2 Regular 50m Lectures
   {
-    id: 'sec-17',
-    courseId: 'course-cs-101',
+    id: 'sec-6',
+    courseId: 'course-math-204',
     termId: 'term-2026-spring',
-    sectionNumber: '01',
-    expectedEnrollment: 65,
-    instructorId: 'inst-chen',
-    studentGroupId: 'cohort-cs-y1',
-    assignedSlot: undefined
+    sectionNumber: '01-Lec',
+    expectedEnrollment: 110,
+    instructorId: 'inst-raman',
+    studentGroupId: 'cohort-all-stem',
+    sessionType: 'Lecture',
+    spanSlots: 1,
+    assignedSlot: {
+      day: 'Mon',
+      timeSlot: '10:00 – 10:50 AM',
+      roomId: 'room-hall-a1',
+      durationMinutes: 50,
+      sessionType: 'Lecture',
+      spanSlots: 1
+    },
+    isLocked: true
   },
+  {
+    id: 'sec-11',
+    courseId: 'course-math-204',
+    termId: 'term-2026-spring',
+    sectionNumber: '02-Lec',
+    expectedEnrollment: 110,
+    instructorId: 'inst-raman',
+    studentGroupId: 'cohort-all-stem',
+    sessionType: 'Lecture',
+    spanSlots: 1,
+    assignedSlot: {
+      day: 'Wed',
+      timeSlot: '10:00 – 10:50 AM',
+      roomId: 'room-hall-a1',
+      durationMinutes: 50,
+      sessionType: 'Lecture',
+      spanSlots: 1
+    },
+    isLocked: false
+  },
+
+  // HUM-110 (Ethics in AI, Data & Automated Society): Regular 50m Lecture
+  {
+    id: 'sec-7',
+    courseId: 'course-hum-110',
+    termId: 'term-2026-spring',
+    sectionNumber: '01-Lec',
+    expectedEnrollment: 35,
+    instructorId: 'inst-gomez',
+    studentGroupId: 'cohort-arts-y1',
+    sessionType: 'Lecture',
+    spanSlots: 1,
+    assignedSlot: {
+      day: 'Mon',
+      timeSlot: '11:00 – 11:50 AM',
+      roomId: 'room-annex-2',
+      durationMinutes: 50,
+      sessionType: 'Lecture',
+      spanSlots: 1
+    },
+    isLocked: false
+  },
+
+  // CS-412 (Distributed Systems & Cloud Consensus): 2 Regular Lectures + 1 Continuous 3-Hour Lab
+  {
+    id: 'sec-8',
+    courseId: 'course-cs-412',
+    termId: 'term-2026-spring',
+    sectionNumber: '01-Lec',
+    expectedEnrollment: 40,
+    instructorId: 'inst-evans',
+    studentGroupId: 'cohort-cs-y4',
+    sessionType: 'Lecture',
+    spanSlots: 1,
+    assignedSlot: {
+      day: 'Mon',
+      timeSlot: '12:00 – 12:50 PM',
+      roomId: 'room-hall-b3',
+      durationMinutes: 50,
+      sessionType: 'Lecture',
+      spanSlots: 1
+    },
+    isLocked: true
+  },
+  {
+    id: 'sec-10',
+    courseId: 'course-cs-412',
+    termId: 'term-2026-spring',
+    sectionNumber: '02-Lec',
+    expectedEnrollment: 40,
+    instructorId: 'inst-evans',
+    studentGroupId: 'cohort-cs-y4',
+    sessionType: 'Lecture',
+    spanSlots: 1,
+    assignedSlot: {
+      day: 'Wed',
+      timeSlot: '12:00 – 12:50 PM',
+      roomId: 'room-hall-b3',
+      durationMinutes: 50,
+      sessionType: 'Lecture',
+      spanSlots: 1
+    },
+    isLocked: false
+  },
+  {
+    id: 'sec-cs412-lab',
+    courseId: 'course-cs-412',
+    termId: 'term-2026-spring',
+    sectionNumber: '01-Lab',
+    expectedEnrollment: 40,
+    instructorId: 'inst-evans',
+    studentGroupId: 'cohort-cs-y4',
+    sessionType: 'Lab',
+    spanSlots: 3,
+    assignedSlot: {
+      day: 'Tue',
+      timeSlot: '2:00 – 2:50 PM',
+      roomId: 'room-lab-6',
+      durationMinutes: 180,
+      sessionType: 'Lab',
+      spanSlots: 3,
+      continuousTimeLabel: '2:00 PM – 5:00 PM'
+    },
+    isLocked: true
+  },
+
+  // BIO-320 (Biomaterials & Tissue Scaffolding): Regular Lecture
+  {
+    id: 'sec-9',
+    courseId: 'course-bio-320',
+    termId: 'term-2026-spring',
+    sectionNumber: '01-Lec',
+    expectedEnrollment: 30,
+    instructorId: 'inst-zhao',
+    studentGroupId: 'cohort-bio-y3',
+    sessionType: 'Lecture',
+    spanSlots: 1,
+    assignedSlot: {
+      day: 'Wed',
+      timeSlot: '11:00 – 11:50 AM',
+      roomId: 'room-sem-105',
+      durationMinutes: 50,
+      sessionType: 'Lecture',
+      spanSlots: 1
+    },
+    isLocked: false
+  },
+
+  // CHEM-201 (Organic Chemistry & Spectroscopic Synthesis): 1 Continuous 3-Hour Lab + 1 Regular Lecture
+  {
+    id: 'sec-12',
+    courseId: 'course-chem-201',
+    termId: 'term-2026-spring',
+    sectionNumber: '01-Lab',
+    expectedEnrollment: 36,
+    instructorId: 'inst-scott',
+    studentGroupId: 'cohort-bio-y2',
+    sessionType: 'Lab',
+    spanSlots: 3,
+    assignedSlot: {
+      day: 'Mon',
+      timeSlot: '2:00 – 2:50 PM',
+      roomId: 'room-chem-lab-b',
+      durationMinutes: 180,
+      sessionType: 'Lab',
+      spanSlots: 3,
+      continuousTimeLabel: '2:00 PM – 5:00 PM'
+    },
+    isLocked: true
+  },
+  {
+    id: 'sec-14',
+    courseId: 'course-chem-201',
+    termId: 'term-2026-spring',
+    sectionNumber: '01-Lec',
+    expectedEnrollment: 36,
+    instructorId: 'inst-scott',
+    studentGroupId: 'cohort-bio-y2',
+    sessionType: 'Lecture',
+    spanSlots: 1,
+    assignedSlot: {
+      day: 'Fri',
+      timeSlot: '2:00 – 2:50 PM',
+      roomId: 'room-aud-100',
+      durationMinutes: 50,
+      sessionType: 'Lecture',
+      spanSlots: 1
+    },
+    isLocked: false
+  },
+
+  // ENG-302 (Fluid Dynamics): 1 Regular Lecture + 1 Continuous 3-Hour Lab
+  {
+    id: 'sec-13',
+    courseId: 'course-eng-302',
+    termId: 'term-2026-spring',
+    sectionNumber: '01-Lec',
+    expectedEnrollment: 55,
+    instructorId: 'inst-miller',
+    studentGroupId: 'cohort-eng-y3',
+    sessionType: 'Lecture',
+    spanSlots: 1,
+    assignedSlot: {
+      day: 'Fri',
+      timeSlot: '3:00 – 3:50 PM',
+      roomId: 'room-eng-hall-1',
+      durationMinutes: 50,
+      sessionType: 'Lecture',
+      spanSlots: 1
+    },
+    isLocked: true
+  },
+  {
+    id: 'sec-eng302-lab',
+    courseId: 'course-eng-302',
+    termId: 'term-2026-spring',
+    sectionNumber: '01-Lab',
+    expectedEnrollment: 28,
+    instructorId: 'inst-almansoor',
+    studentGroupId: 'cohort-eng-y3',
+    sessionType: 'Lab',
+    spanSlots: 3,
+    assignedSlot: {
+      day: 'Wed',
+      timeSlot: '2:00 – 2:50 PM',
+      roomId: 'room-fluid-lab',
+      durationMinutes: 180,
+      sessionType: 'Lab',
+      spanSlots: 3,
+      continuousTimeLabel: '2:00 PM – 5:00 PM'
+    },
+    isLocked: false
+  },
+
+  // CS-201 (Computer Architecture & Systems Programming): Regular Lecture + 3-Hour Continuous Lab
   {
     id: 'sec-18',
     courseId: 'course-cs-201',
     termId: 'term-2026-spring',
-    sectionNumber: '01',
+    sectionNumber: '01-Lec',
     expectedEnrollment: 40,
     instructorId: 'inst-hopper',
     studentGroupId: 'cohort-cs-y2',
-    assignedSlot: undefined
+    sessionType: 'Lecture',
+    spanSlots: 1,
+    assignedSlot: {
+      day: 'Fri',
+      timeSlot: '4:00 – 4:50 PM',
+      roomId: 'room-hall-b3',
+      durationMinutes: 50,
+      sessionType: 'Lecture',
+      spanSlots: 1
+    },
+    isLocked: false
   },
   {
-    id: 'sec-19',
-    courseId: 'course-bio-110',
+    id: 'sec-cs201-lab',
+    courseId: 'course-cs-201',
     termId: 'term-2026-spring',
-    sectionNumber: '01',
-    expectedEnrollment: 45,
-    instructorId: 'inst-jenkins',
-    studentGroupId: 'cohort-bio-y1',
-    assignedSlot: undefined
-  },
-  {
-    id: 'sec-20',
-    courseId: 'course-eng-101',
-    termId: 'term-2026-spring',
-    sectionNumber: '01',
-    expectedEnrollment: 45,
-    instructorId: 'inst-kim',
-    studentGroupId: 'cohort-eng-y1',
-    assignedSlot: undefined
+    sectionNumber: '01-Lab',
+    expectedEnrollment: 40,
+    instructorId: 'inst-hopper',
+    studentGroupId: 'cohort-cs-y2',
+    sessionType: 'Lab',
+    spanSlots: 3,
+    assignedSlot: {
+      day: 'Thu',
+      timeSlot: '9:00 – 9:50 AM',
+      roomId: 'room-lab-2',
+      durationMinutes: 180,
+      sessionType: 'Lab',
+      spanSlots: 3,
+      continuousTimeLabel: '9:00 AM – 12:00 PM'
+    },
+    isLocked: false
   }
 ];
 
 export const seedTimeStructure: TimeStructure = {
   id: 'standard-campus-grid',
-  name: 'Standard University Undergraduate Grid',
+  name: 'University Standard 9:00 AM – 5:00 PM Academic Grid',
   workingDays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'],
-  periodLengthMinutes: 90,
-  dayStartTime: '08:30',
+  periodLengthMinutes: 50,
+  dayStartTime: '09:00',
   dayEndTime: '17:00',
   periods: [
-    '09:00 - 10:30',
-    '11:00 - 12:30',
-    '13:30 - 15:00',
-    '15:15 - 16:45'
+    '9:00 – 9:50 AM',
+    '10:00 – 10:50 AM',
+    '11:00 – 11:50 AM',
+    '12:00 – 12:50 PM',
+    '2:00 – 2:50 PM',
+    '3:00 – 3:50 PM',
+    '4:00 – 4:50 PM'
   ],
   breaks: [
     {
       id: 'break-lunch',
-      name: 'Midday Lunch & Inter-Campus Transit',
-      startTime: '12:30',
-      endTime: '13:30',
+      name: 'Fixed University Lunch Break (1:00 PM – 2:00 PM)',
+      startTime: '13:00',
+      endTime: '14:00',
       days: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']
-    },
-    {
-      id: 'break-friday-prayer',
-      name: 'Friday Quiet & Community Block',
-      startTime: '12:00',
-      endTime: '13:30',
-      days: ['Fri']
     }
   ]
 };
@@ -1427,7 +1588,7 @@ export const seedConstraintRules: ConstraintRule[] = [
     id: 'rule-hard-no-room-clash',
     code: 'HC-02',
     name: 'No Room Double-Booking',
-    description: 'A room cannot host two separate courses simultaneously.',
+    description: 'A room cannot host two separate courses simultaneously across lectures or 3-hour labs.',
     kind: 'hard',
     enabled: true,
     weight: 100,
@@ -1456,8 +1617,8 @@ export const seedConstraintRules: ConstraintRule[] = [
   {
     id: 'rule-hard-room-type-match',
     code: 'HC-05',
-    name: 'Laboratory & Studio Room Type Match',
-    description: 'Courses with specialized facility requirements (Lab/Studio) must be allocated to certified room types.',
+    name: '3-Hour Continuous Lab & Facility Enforcement',
+    description: 'Laboratory sessions occupy 3 continuous hourly cycles (9:00 AM–12:00 PM, 10:00 AM–1:00 PM, or 2:00 PM–5:00 PM) without crossing the 1:00–2:00 PM lunch break.',
     kind: 'hard',
     enabled: true,
     weight: 100,
@@ -1478,8 +1639,8 @@ export const seedConstraintRules: ConstraintRule[] = [
   {
     id: 'rule-soft-commuter-transit',
     code: 'SC-01',
-    name: 'Commuter Transit Buffer Weight',
-    description: 'Ensures minimum 30-minute buffer when consecutive classes are in non-adjacent buildings or cross-campus.',
+    name: 'Short Break & Transit Buffer Weight',
+    description: 'Preserves 10-minute short breaks between 50-minute lectures and respects the fixed 1:00 PM – 2:00 PM university lunch break.',
     kind: 'soft',
     enabled: true,
     weight: 85,
@@ -1489,7 +1650,7 @@ export const seedConstraintRules: ConstraintRule[] = [
     id: 'rule-soft-circadian',
     code: 'SC-02',
     name: 'Circadian Alertness Curve Alignment',
-    description: 'Prioritizes high-cognition theoretical lectures (Math, CS Theory) into peak morning periods (09:00-12:30).',
+    description: 'Prioritizes high-cognition theoretical lectures (Math, CS Theory) into morning session slots (9:00 AM – 1:00 PM).',
     kind: 'soft',
     enabled: true,
     weight: 90,
@@ -1531,8 +1692,8 @@ export const seedScenarios: TimetableScenario[] = [
   {
     id: 'scenario-baseline-2026',
     termId: 'term-2026-spring',
-    name: 'Master Schedule Baseline v1.0',
-    version: '1.0.0',
+    name: 'Master Schedule Baseline v2.0 (9 AM – 5 PM Grid)',
+    version: '2.0.0',
     status: 'published',
     createdAt: '2026-01-08T09:00:00Z',
     updatedAt: '2026-01-10T16:30:00Z',
@@ -1544,45 +1705,11 @@ export const seedScenarios: TimetableScenario[] = [
       instructorSatisfaction: 96.2,
       studentTransitScore: 94.7
     },
-    assignments: {
-      'sec-1': { day: 'Mon', timeSlot: '09:00 - 10:30', roomId: 'room-hall-b3' },
-      'sec-2': { day: 'Tue', timeSlot: '09:00 - 10:30', roomId: 'room-lab-4' },
-      'sec-3': { day: 'Wed', timeSlot: '09:00 - 10:30', roomId: 'room-hall-b3' },
-      'sec-4': { day: 'Thu', timeSlot: '09:00 - 10:30', roomId: 'room-quad-a' },
-      'sec-5': { day: 'Fri', timeSlot: '09:00 - 10:30', roomId: 'room-atrium' },
-      'sec-6': { day: 'Mon', timeSlot: '11:00 - 12:30', roomId: 'room-hall-a1' },
-      'sec-7': { day: 'Mon', timeSlot: '11:00 - 12:30', roomId: 'room-annex-2' },
-      'sec-8': { day: 'Tue', timeSlot: '11:00 - 12:30', roomId: 'room-lab-2' },
-      'sec-9': { day: 'Wed', timeSlot: '11:00 - 12:30', roomId: 'room-lab-4' },
-      'sec-10': { day: 'Thu', timeSlot: '11:00 - 12:30', roomId: 'room-lab-2' },
-      'sec-11': { day: 'Fri', timeSlot: '11:00 - 12:30', roomId: 'room-hall-a1' },
-      'sec-12': { day: 'Mon', timeSlot: '13:30 - 15:00', roomId: 'room-chem-lab-b' },
-      'sec-13': { day: 'Tue', timeSlot: '13:30 - 15:00', roomId: 'room-eng-hall-1' },
-      'sec-14': { day: 'Wed', timeSlot: '13:30 - 15:00', roomId: 'room-chem-lab-b' },
-      'sec-15': { day: 'Thu', timeSlot: '13:30 - 15:00', roomId: 'room-atrium' },
-      'sec-16': { day: 'Fri', timeSlot: '13:30 - 15:00', roomId: 'room-eng-hall-1' }
-    }
-  },
-  {
-    id: 'scenario-candidate-opt-b',
-    termId: 'term-2026-spring',
-    name: 'Compact Energy Optimization Candidate (Variant B)',
-    version: '1.1.0-draft',
-    status: 'draft',
-    createdAt: '2026-02-01T14:15:00Z',
-    updatedAt: '2026-02-02T11:20:00Z',
-    author: 'Automated Solver Dispatch',
-    metrics: {
-      clashCount: 0,
-      satisfactionScore: 99.95,
-      roomUtilizationPercent: 92.1,
-      instructorSatisfaction: 97.5,
-      studentTransitScore: 98.2
-    },
-    assignments: {
-      'sec-1': { day: 'Mon', timeSlot: '09:00 - 10:30', roomId: 'room-hall-b3' },
-      'sec-2': { day: 'Tue', timeSlot: '09:00 - 10:30', roomId: 'room-lab-4' }
-    }
+    assignments: Object.fromEntries(
+      seedSections
+        .filter(s => Boolean(s.assignedSlot))
+        .map(s => [s.id, s.assignedSlot!])
+    )
   }
 ];
 

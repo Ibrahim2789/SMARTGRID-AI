@@ -1400,23 +1400,23 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
                     {[
                       {
                         id: 'morning' as const,
-                        title: 'Morning Scholar',
-                        window: '08:00 – 13:00',
-                        desc: 'Prioritize core lectures in early morning slots',
+                        title: 'Morning Session (Slots 1–4)',
+                        window: '9:00 AM – 1:00 PM',
+                        desc: 'Prioritize 50m lectures & 3h labs before 1:00 PM lunch',
                         bg: 'sf-pastel-cyan'
                       },
                       {
                         id: 'midday' as const,
-                        title: 'Balanced Midday',
-                        window: '10:00 – 15:30',
-                        desc: 'Avoid 8 AM starts and late evening sessions',
+                        title: 'Balanced Day (9 AM – 5 PM)',
+                        window: '10:00 AM – 4:00 PM',
+                        desc: 'Evenly distribute sessions across morning & afternoon',
                         bg: 'sf-pastel-lavender'
                       },
                       {
                         id: 'afternoon' as const,
-                        title: 'Afternoon Specialist',
-                        window: '12:00 – 17:30',
-                        desc: 'Concentrate labs and seminars after noon',
+                        title: 'Afternoon Session (Slots 5–7)',
+                        window: '2:00 PM – 5:00 PM',
+                        desc: 'Concentrate 3-hour labs and seminars after 2:00 PM',
                         bg: 'sf-pastel-mint'
                       }
                     ].map(opt => (

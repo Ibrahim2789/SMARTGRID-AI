@@ -515,12 +515,33 @@ export function generateLargeSampleSections(): Section[] {
   const sections: Section[] = [];
   const days: DayOfWeek[] = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
 
-  // Start times that avoid the 13:00 - 14:00 lunch break:
-  // Morning slots: 09:00 - 10:30, 09:30 - 11:00, 10:30 - 12:00, 11:00 - 12:30
-  // Afternoon slots: 14:00 - 15:30, 14:30 - 16:00, 15:30 - 17:00
-  const morningSlots = ['09:00 - 10:30', '10:30 - 12:00', '11:00 - 12:30'];
-  const afternoonSlots = ['14:00 - 15:30', '15:30 - 17:00', '14:30 - 16:00'];
-  const allValidSlots = [...morningSlots, ...afternoonSlots];
+  const allValidSlots = [
+    '9:00 – 9:50 AM',
+    '10:00 – 10:50 AM',
+    '11:00 – 11:50 AM',
+    '12:00 – 12:50 PM',
+    '2:00 – 2:50 PM',
+    '3:00 – 3:50 PM',
+    '4:00 – 4:50 PM'
+  ];
+
+  const validLabBlocks = [
+    {
+      startPeriod: '9:00 – 9:50 AM',
+      coveredPeriods: ['9:00 – 9:50 AM', '10:00 – 10:50 AM', '11:00 – 11:50 AM'],
+      continuousLabel: '9:00 AM – 12:00 PM'
+    },
+    {
+      startPeriod: '10:00 – 10:50 AM',
+      coveredPeriods: ['10:00 – 10:50 AM', '11:00 – 11:50 AM', '12:00 – 12:50 PM'],
+      continuousLabel: '10:00 AM – 1:00 PM'
+    },
+    {
+      startPeriod: '2:00 – 2:50 PM',
+      coveredPeriods: ['2:00 – 2:50 PM', '3:00 – 3:50 PM', '4:00 – 4:50 PM'],
+      continuousLabel: '2:00 PM – 5:00 PM'
+    }
+  ];
 
   // Map of instructors to department courses
   const instructorByDept: Record<string, string[]> = {
@@ -538,7 +559,7 @@ export function generateLargeSampleSections(): Section[] {
   const studioList = largeSampleRooms.filter(r => r.type === 'studio');
   const seminarList = largeSampleRooms.filter(r => r.type === 'seminar');
 
-  // Track room and instructor bookings to ensure zero clashes
+  // Track room and instructor bookings to ensure zero clashes across all covered hourly slots
   const bookedRoomSlots = new Set<string>(); // key: `${roomId}_${day}_${slot}`
   const bookedInstructorSlots = new Set<string>(); // key: `${instructorId}_${day}_${slot}`
   const bookedGroupSlots = new Set<string>(); // key: `${groupId}_${day}_${slot}`
@@ -546,41 +567,27 @@ export function generateLargeSampleSections(): Section[] {
   let secCounter = 1;
 
   largeSampleStudentGroups.forEach((group, gIdx) => {
+    let cohortLabCount = 0;
+
     group.sharedCourseIds.forEach((courseId, cIdx) => {
       const course = largeSampleCourses.find(c => c.id === courseId);
       if (!course) return;
 
-      // Select instructor
       const deptInstructors = instructorByDept[course.departmentId] || instructorByDept['dept-cs'];
       const instructorId = deptInstructors[(cIdx + gIdx) % deptInstructors.length];
 
-      // Pick suitable room based on type and capacity
-      let candidateRooms = lectureRoomsList.filter(r => r.capacity >= group.size);
-      if (course.requiredRoomType === 'lab') {
-        if (course.code.startsWith('CS') || course.code.startsWith('SE') || course.code.startsWith('AI') || course.code.startsWith('DS')) {
-          candidateRooms = compLabList.filter(r => r.capacity >= group.size - 15);
-        } else if (course.code.startsWith('EE') || course.code.startsWith('EL')) {
-          candidateRooms = elecLabList.filter(r => r.capacity >= group.size - 15);
-        } else if (course.code.startsWith('PH') || course.code.startsWith('CH')) {
-          candidateRooms = physLabList.filter(r => r.capacity >= group.size - 15);
-        }
-      } else if (course.requiredRoomType === 'studio') {
-        candidateRooms = studioList;
-      } else if (course.requiredRoomType === 'seminar') {
-        candidateRooms = seminarList;
+      // 1) Schedule Regular 50-minute Lecture Session
+      let lectureRooms = lectureRoomsList.filter(r => r.capacity >= group.size);
+      if (course.requiredRoomType === 'seminar') {
+        lectureRooms = seminarList.length > 0 ? seminarList : lectureRoomsList;
       }
+      if (lectureRooms.length === 0) lectureRooms = lectureRoomsList;
 
-      if (candidateRooms.length === 0) {
-        candidateRooms = lectureRoomsList;
-      }
-
-      // Find conflict-free day, timeSlot, and room
       let assignedDay: DayOfWeek = days[(gIdx + cIdx) % days.length];
       let assignedSlot = allValidSlots[(cIdx + gIdx * 2) % allValidSlots.length];
-      let assignedRoom = candidateRooms[(cIdx + gIdx) % candidateRooms.length];
+      let assignedRoom = lectureRooms[(cIdx + gIdx) % lectureRooms.length];
 
-      // Verify and search for free slot
-      let foundSlot = false;
+      let foundLecture = false;
       for (const d of days) {
         for (const s of allValidSlots) {
           const groupKey = `${group.id}_${d}_${s}`;
@@ -590,14 +597,7 @@ export function generateLargeSampleSections(): Section[] {
             continue;
           }
 
-          // Check instructor availability
-          const instObj = largeSampleInstructors.find(i => i.id === instructorId);
-          if (instObj?.unavailableSlots.some(un => un.day === d && un.timeSlot === s)) {
-            continue;
-          }
-
-          // Find free room
-          for (const room of candidateRooms) {
+          for (const room of lectureRooms) {
             const roomKey = `${room.id}_${d}_${s}`;
             if (!bookedRoomSlots.has(roomKey)) {
               bookedRoomSlots.add(roomKey);
@@ -606,33 +606,101 @@ export function generateLargeSampleSections(): Section[] {
               assignedDay = d;
               assignedSlot = s;
               assignedRoom = room;
-              foundSlot = true;
+              foundLecture = true;
               break;
             }
           }
-          if (foundSlot) break;
+          if (foundLecture) break;
         }
-        if (foundSlot) break;
+        if (foundLecture) break;
       }
 
       sections.push({
         id: `sec-sample-${secCounter++}`,
         courseId: course.id,
         termId: largeSampleTerm.id,
-        sectionNumber: group.section || 'A',
+        sectionNumber: `${group.section || 'A'}-Lec`,
         expectedEnrollment: group.size,
         instructorId,
         studentGroupId: group.id,
+        sessionType: 'Lecture',
+        spanSlots: 1,
         assignedSlot: {
           day: assignedDay,
           timeSlot: assignedSlot,
           roomId: assignedRoom.id,
-          durationMinutes: 90
+          durationMinutes: 50,
+          sessionType: 'Lecture',
+          spanSlots: 1
         },
         isLocked: false,
         is_sample: true,
         isSample: true
       });
+
+      // 2) If course has laboratory/studio hours, also schedule a 3-hour Continuous Lab block
+      const hasLab = course.labHours > 0 || course.requiredRoomType === 'lab' || course.requiredRoomType === 'studio';
+      if (hasLab && cohortLabCount < 2) {
+        let labCandidateRooms = compLabList;
+        if (course.requiredRoomType === 'studio') {
+          labCandidateRooms = studioList;
+        } else if (course.code.startsWith('EE') || course.code.startsWith('EL')) {
+          labCandidateRooms = elecLabList;
+        } else if (course.code.startsWith('PH') || course.code.startsWith('CH') || course.code.startsWith('CE')) {
+          labCandidateRooms = physLabList;
+        }
+        if (labCandidateRooms.length === 0) labCandidateRooms = compLabList;
+
+        let foundLab = false;
+        for (const d of days) {
+          for (const block of validLabBlocks) {
+            const canGroup = block.coveredPeriods.every(p => !bookedGroupSlots.has(`${group.id}_${d}_${p}`));
+            const canInst = block.coveredPeriods.every(p => !bookedInstructorSlots.has(`${instructorId}_${d}_${p}`));
+            if (!canGroup || !canInst) continue;
+
+            for (const labRoom of labCandidateRooms) {
+              const canRoom = block.coveredPeriods.every(p => !bookedRoomSlots.has(`${labRoom.id}_${d}_${p}`));
+              if (canRoom) {
+                block.coveredPeriods.forEach(p => {
+                  bookedGroupSlots.add(`${group.id}_${d}_${p}`);
+                  bookedInstructorSlots.add(`${instructorId}_${d}_${p}`);
+                  bookedRoomSlots.add(`${labRoom.id}_${d}_${p}`);
+                });
+
+                sections.push({
+                  id: `sec-sample-${secCounter++}`,
+                  courseId: course.id,
+                  termId: largeSampleTerm.id,
+                  sectionNumber: `${group.section || 'A'}-Lab`,
+                  expectedEnrollment: Math.min(group.size, labRoom.capacity),
+                  instructorId,
+                  studentGroupId: group.id,
+                  sessionType: 'Lab',
+                  spanSlots: 3,
+                  assignedSlot: {
+                    day: d,
+                    timeSlot: block.startPeriod,
+                    roomId: labRoom.id,
+                    durationMinutes: 180,
+                    sessionType: 'Lab',
+                    spanSlots: 3,
+                    continuousTimeLabel: block.continuousLabel
+                  },
+                  isLocked: false,
+                  is_sample: true,
+                  isSample: true
+                });
+
+                cohortLabCount++;
+                foundLab = true;
+                break;
+              }
+            }
+            if (foundLab) break;
+          }
+          if (foundLab) break;
+        }
+      }
     });
   });
 
@@ -641,27 +709,27 @@ export function generateLargeSampleSections(): Section[] {
 
 export const largeSampleSections: Section[] = generateLargeSampleSections();
 
-// 8. Time Structure (09:00 - 17:00 with lunch break 13:00 - 14:00 on 30-min grid)
+// 8. Time Structure (9:00 AM - 5:00 PM with fixed lunch break 1:00 PM - 2:00 PM)
 export const largeSampleTimeStructure: TimeStructure = {
   id: 'standard-wpi-grid-sample',
-  name: 'WPI Master Academic Grid (30-min resolution)',
+  name: 'University Standard 9:00 AM – 5:00 PM Academic Grid',
   workingDays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'],
-  periodLengthMinutes: 90,
+  periodLengthMinutes: 50,
   dayStartTime: '09:00',
   dayEndTime: '17:00',
   periods: [
-    '09:00 - 10:30',
-    '09:30 - 11:00',
-    '10:30 - 12:00',
-    '11:00 - 12:30',
-    '14:00 - 15:30',
-    '14:30 - 16:00',
-    '15:30 - 17:00'
+    '9:00 – 9:50 AM',
+    '10:00 – 10:50 AM',
+    '11:00 – 11:50 AM',
+    '12:00 – 12:50 PM',
+    '2:00 – 2:50 PM',
+    '3:00 – 3:50 PM',
+    '4:00 – 4:50 PM'
   ],
   breaks: [
     {
       id: 'break-lunch',
-      name: 'Lunch break',
+      name: 'Fixed University Lunch Break (1:00 PM – 2:00 PM)',
       startTime: '13:00',
       endTime: '14:00',
       days: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']
