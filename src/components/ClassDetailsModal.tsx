@@ -1,5 +1,6 @@
 import React from 'react';
-import { X, Clock, MapPin, User, Users, CheckCircle } from 'lucide-react';
+import { X, Clock, MapPin, User, Users, CheckCircle, Sparkles } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 
 export interface ClassItem {
   id: string;
@@ -32,24 +33,38 @@ export const ClassDetailsModal: React.FC<ClassDetailsModalProps> = ({
   if (!classItem) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in duration-200">
-      <div 
-        className="bg-white border border-[#ece6ed] rounded-xl shadow-2xl max-w-lg w-full overflow-hidden"
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      {/* Backdrop */}
+      <motion.div 
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        onClick={onClose}
+        className="fixed inset-0 bg-black/45 backdrop-blur-xs"
+      />
+
+      {/* Modal Container */}
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.95, y: 10 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.95, y: 10 }}
+        transition={{ duration: 0.2, ease: 'easeOut' }}
+        className="relative bg-white border border-[#ece6ed] rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden z-10"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="px-6 py-5 border-b border-[#ece6ed] flex items-start justify-between bg-[#fbf8fc]">
+        <div className="px-6 py-5 border-b border-[#ece6ed] flex items-start justify-between bg-gradient-to-r from-white via-[#fffbfa] to-[#fbf8fc]">
           <div className="space-y-1">
-            <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase tracking-wider bg-white border border-[#ece6ed] text-[#9c4126] mb-1">
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase tracking-wider bg-white border border-[#ece6ed] text-[#9c4126] shadow-xs mb-1">
               <span className={`w-1.5 h-1.5 rounded-full ${classItem.accent === 'plum' ? 'bg-[#3b1e4a]' : classItem.accent === 'emerald' ? 'bg-[#18794e]' : 'bg-[#c84c16]'}`}></span>
               {classItem.type || 'Academic Lecture'} • {classItem.credits || 4} Credits
             </div>
-            <h2 className="text-xl font-bold text-[#1f1b20]">{classItem.code}: {classItem.title}</h2>
+            <h2 className="text-xl font-black text-[#1f1b20]">{classItem.code}: {classItem.title}</h2>
             <p className="text-xs text-[#655d69]">Assigned to Cohort: <strong className="text-[#1f1b20]">{classItem.cohort}</strong></p>
           </div>
           <button 
             onClick={onClose}
-            className="text-[#7c747f] hover:text-[#1f1b20] p-1.5 rounded-lg hover:bg-[#ece6ed] transition-colors"
+            className="text-[#7c747f] hover:text-[#1f1b20] p-2 rounded-xl hover:bg-[#ece6ed] transition-colors cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>
@@ -125,7 +140,7 @@ export const ClassDetailsModal: React.FC<ClassDetailsModalProps> = ({
         <div className="px-6 py-4 bg-[#fbf8fc] border-t border-[#ece6ed] flex items-center justify-end gap-3">
           <button 
             onClick={onClose}
-            className="px-4 py-2 border border-[#ece6ed] rounded-xl text-xs font-bold uppercase tracking-wider text-[#655d69] hover:bg-white transition-colors"
+            className="px-4 py-2 border border-[#ece6ed] rounded-xl text-xs font-bold uppercase tracking-wider text-[#655d69] hover:bg-white transition-colors cursor-pointer"
           >
             Close Details
           </button>
@@ -134,12 +149,12 @@ export const ClassDetailsModal: React.FC<ClassDetailsModalProps> = ({
               onLocateInMatrix?.(classItem.code);
               onClose();
             }}
-            className="px-4 py-2 bg-[#3b1e4a] text-white rounded-xl text-xs font-bold uppercase tracking-wider hover:bg-[#2a1335] transition-colors shadow-xs"
+            className="px-4 py-2 bg-gradient-to-r from-[#9c4126] to-[#b3401f] text-white rounded-xl text-xs font-bold uppercase tracking-wider hover:from-[#83341d] hover:to-[#9c4126] transition-all shadow-md cursor-pointer"
           >
             Inspect in Matrix
           </button>
         </div>
-      </div>
+      </motion.div>
     </div>
   );
 };

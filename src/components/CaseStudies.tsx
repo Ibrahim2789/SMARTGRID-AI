@@ -4,8 +4,11 @@ import {
   Download, 
   ArrowRight, 
   CheckCircle2, 
-  Award
+  Award,
+  FileText,
+  ExternalLink
 } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 
 interface CaseStudiesProps {
   onNavigate?: (route: RouteType) => void;
@@ -108,9 +111,9 @@ export const CaseStudies: React.FC<CaseStudiesProps> = ({
       )}
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-10">
-        {/* Header Hero with Atmospheric Terracotta/Plum Wash */}
-        <section className="p-8 bg-gradient-to-br from-[#fff7f2] via-white to-[#faf4fc] border border-[#ece6ed] rounded-xl shadow-sm space-y-3">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#f6f2f7] text-[11px] font-mono font-semibold text-[#9c4126] uppercase tracking-wider">
+        {/* Header Hero */}
+        <section className="p-6 sm:p-8 bg-gradient-to-br from-[#fff7f2] via-white to-[#faf4fc] border border-[#ece6ed] rounded-2xl shadow-sm space-y-3 relative overflow-hidden">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white border border-[#ece6ed] text-[10px] font-mono font-bold text-[#9c4126] uppercase tracking-wider shadow-xs">
             <Award className="w-3.5 h-3.5 text-[#f27438]" />
             Peer-Reviewed Campus Deployments
           </div>
@@ -133,7 +136,7 @@ export const CaseStudies: React.FC<CaseStudiesProps> = ({
             <button
               key={tab.id}
               onClick={() => setSelectedStudy(tab.id)}
-              className={`px-4 py-2.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all border ${
+              className={`px-4 py-2.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all border cursor-pointer ${
                 selectedStudy === tab.id
                   ? 'bg-[#3b1e4a] text-white border-[#3b1e4a] shadow-xs'
                   : 'bg-white text-[#655d69] border-[#ece6ed] hover:border-[#dcd9dd]'
@@ -144,147 +147,64 @@ export const CaseStudies: React.FC<CaseStudiesProps> = ({
           ))}
         </div>
 
-        {/* Selected Study Showcase - Neutral Border with Atmospheric Inner Styling */}
-        <div className="bg-white border border-[#ece6ed] rounded-xl p-6 lg:p-8 shadow-sm space-y-8">
+        {/* Selected Study Showcase */}
+        <div className="bg-white border border-[#ece6ed] rounded-2xl p-6 lg:p-8 shadow-sm space-y-8">
           {/* Top Title Strip */}
           <div className="flex flex-col md:flex-row md:items-start justify-between gap-4 border-b border-[#ece6ed] pb-5">
             <div>
               <span className="text-[11px] font-mono uppercase tracking-widest text-[#9c4126] font-bold">
                 {current.location} • {current.term}
               </span>
-              <h2 className="text-2xl font-bold text-[#1f1b20] mt-1">{current.name}</h2>
+              <h2 className="text-2xl font-black text-[#1f1b20] mt-1">{current.name}</h2>
               <p className="text-xs text-[#655d69] mt-0.5">{current.tagline}</p>
             </div>
-            <button 
-              onClick={() => handleDownloadPaper(`${current.name} - Executive Brief`)}
-              className="flex items-center gap-2 bg-[#fbf8fc] hover:bg-[#f6f2f7] text-[#3b1e4a] border border-[#ece6ed] hover:border-[#dcd9dd] px-4 py-2 rounded-xl text-xs font-semibold uppercase tracking-wider transition-all shadow-xs self-start cursor-pointer"
+            <button
+              onClick={() => handleDownloadPaper(current.name)}
+              className="flex items-center gap-2 bg-gradient-to-r from-[#9c4126] to-[#b3401f] hover:from-[#83341d] hover:to-[#9c4126] text-white px-4 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all shadow-md hover:shadow-lg active:scale-95 cursor-pointer whitespace-nowrap"
             >
-              <Download className="w-3.5 h-3.5" />
-              Download Case PDF
+              <Download className="w-3.5 h-3.5 text-[#fed8c8]" />
+              Download Full Case Study PDF
             </button>
           </div>
 
-          {/* Metric Comparison Cards with Atmospheric Washes & Strictly Neutral Borders */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <AnimatePresence>
+            {downloadSuccess && (
+              <motion.div 
+                initial={{ opacity: 0, y: -6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -6 }}
+                className="p-3.5 bg-[#eefcf2] text-[#0f5431] rounded-xl text-xs font-mono flex items-center justify-between border border-[#18794e]/30 shadow-xs"
+              >
+                <span>{downloadSuccess}</span>
+                <span className="font-bold">200_OK</span>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Hero Delta Metrics */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {current.heroStats.map((stat, i) => (
-              <div key={i} className={`p-5 rounded-xl border border-[#ece6ed] hover:border-[#dcd9dd] bg-gradient-to-br ${stat.wash} space-y-2 shadow-xs hover:shadow-md transition-all`}>
-                <div className="text-[10px] font-mono uppercase text-[#7c747f] font-semibold">{stat.label}</div>
+              <div key={i} className={`p-4 rounded-xl border border-[#ece6ed] hover:border-[#dcd9dd] bg-gradient-to-br ${stat.wash} space-y-1.5 shadow-xs card-lift`}>
+                <div className="text-[10px] font-mono uppercase text-[#7c747f] font-bold">{stat.label}</div>
                 <div className="flex items-baseline justify-between">
-                  <div className="text-xl font-black font-mono text-[#1f1b20]">{stat.after}</div>
-                  <div className="text-xs font-mono font-bold text-[#18794e] bg-[#eefcf2] px-2 py-0.5 rounded-md">
-                    {stat.delta}
-                  </div>
+                  <div className="text-2xl font-black font-mono text-[#1f1b20]">{stat.after}</div>
+                  <div className="text-[11px] font-mono font-bold text-[#18794e] bg-[#eefcf2] px-2 py-0.5 rounded-md shadow-xs border border-[#18794e]/20">{stat.delta}</div>
                 </div>
-                <div className="text-[11px] text-[#7c747f] font-mono">
-                  Legacy Baseline: <span className="line-through">{stat.before}</span>
-                </div>
+                <div className="text-[10px] font-mono text-[#7c747f]">Prior: <span className="line-through">{stat.before}</span></div>
               </div>
             ))}
           </div>
 
-          {/* Narrative Body */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center pt-1">
-            <div className="lg:col-span-7 space-y-3">
-              <h3 className="text-base font-bold text-[#1f1b20]">The Institutional Challenge & Solution</h3>
-              <p className="text-xs text-[#655d69] leading-relaxed">
-                {current.description}
-              </p>
-              <div className="space-y-2 pt-1">
-                <div className="flex items-center gap-2 text-xs font-semibold text-[#1f1b20]">
-                  <CheckCircle2 className="w-4 h-4 text-[#18794e]" />
-                  <span>100% Deterministic Guarantee - Certified zero overlapping faculty slots</span>
-                </div>
-                <div className="flex items-center gap-2 text-xs font-semibold text-[#1f1b20]">
-                  <CheckCircle2 className="w-4 h-4 text-[#18794e]" />
-                  <span>Automated Title IV accreditation audit log exported directly to registrar</span>
-                </div>
-                <div className="flex items-center gap-2 text-xs font-semibold text-[#1f1b20]">
-                  <CheckCircle2 className="w-4 h-4 text-[#18794e]" />
-                  <span>Integrated with Ellucian Banner, PeopleSoft Campus, and Canvas LMS</span>
-                </div>
-              </div>
-            </div>
+          {/* Executive Quote */}
+          <div className="p-5 rounded-2xl bg-gradient-to-br from-[#fff8f5] via-white to-[#fff2ec] border border-[#ece6ed] text-xs text-[#655d69] italic shadow-xs">
+            "{current.quote}"
+            <div className="text-[11px] font-bold font-sans not-italic text-[#1f1b20] mt-1.5">— {current.author}</div>
+          </div>
 
-            {/* Testimonial Quote Box with Warm Atmospheric Peach Wash & Neutral Border */}
-            <div className="lg:col-span-5 bg-gradient-to-br from-[#fff8f5] via-white to-[#fff2ec] border border-[#ece6ed] rounded-xl p-6 relative shadow-xs">
-              <div className="text-xs italic text-[#1f1b20] leading-relaxed">
-                "{current.quote}"
-              </div>
-              <div className="mt-3 pt-3 border-t border-[#ece6ed]">
-                <div className="text-xs font-bold text-[#3b1e4a]">{current.author}</div>
-                <div className="text-[10px] font-mono text-[#7c747f] mt-0.5">{current.name}</div>
-              </div>
-            </div>
+          <div className="text-xs text-[#655d69] leading-relaxed">
+            {current.description}
           </div>
         </div>
-
-        {/* Academic Whitepapers Section */}
-        <section className="bg-white border border-[#ece6ed] rounded-xl p-6 lg:p-8 shadow-sm space-y-6">
-          <div className="border-b border-[#ece6ed] pb-3">
-            <span className="text-[11px] font-mono uppercase tracking-widest text-[#9c4126] font-bold">Academic Research</span>
-            <h2 className="text-xl font-bold text-[#1f1b20]">Algorithmic Foundations & Publications</h2>
-            <p className="text-xs text-[#655d69] mt-0.5">
-              Read our peer-reviewed formulations on multi-objective combinatorial scheduling and student retention analytics.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="p-6 rounded-xl border border-[#ece6ed] hover:border-[#dcd9dd] bg-gradient-to-br from-[#faf4fc] via-white to-[#f4eaf7] flex flex-col justify-between space-y-4 shadow-xs hover:shadow-md transition-all">
-              <div className="space-y-2">
-                <span className="text-[10px] font-mono uppercase tracking-wider text-[#9c4126] font-bold">
-                  IEEE Transactions on Operations Research • 2026
-                </span>
-                <h3 className="text-sm font-bold text-[#1f1b20]">
-                  Polynomial-Time Bounds on Multi-Tier Campus Constraint Satisfaction
-                </h3>
-                <p className="text-xs text-[#655d69] leading-relaxed">
-                  Formal mathematical proofs on chromosome pruning, topology preservation, and Pareto-surface convergence under non-convex capacity boundaries.
-                </p>
-              </div>
-
-              <div className="pt-2 border-t border-[#ece6ed] flex items-center justify-between">
-                <span className="text-[11px] font-mono text-[#7c747f]">DOI: 10.1109/TOR.2026.88412</span>
-                <button 
-                  onClick={() => handleDownloadPaper('IEEE Paper - Polynomial-Time Bounds')}
-                  className="text-xs font-bold uppercase tracking-wider text-[#3b1e4a] hover:text-[#9c4126] flex items-center gap-1 cursor-pointer"
-                >
-                  Download PDF <ArrowRight className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            </div>
-
-            <div className="p-6 rounded-xl border border-[#ece6ed] hover:border-[#dcd9dd] bg-gradient-to-br from-[#f1fbf5] via-white to-[#e8f7ee] flex flex-col justify-between space-y-4 shadow-xs hover:shadow-md transition-all">
-              <div className="space-y-2">
-                <span className="text-[10px] font-mono uppercase tracking-wider text-[#18794e] font-bold">
-                  Journal of Higher Education Systems • 2025
-                </span>
-                <h3 className="text-sm font-bold text-[#1f1b20]">
-                  Circadian Rhythm Alignment and Retention Rates in STEM Cohorts
-                </h3>
-                <p className="text-xs text-[#655d69] leading-relaxed">
-                  Empirical 3-year study across 14,000 undergraduates tracking course completion deltas when 08:00 AM lectures are shifted to circadian energy peaks.
-                </p>
-              </div>
-
-              <div className="pt-2 border-t border-[#ece6ed] flex items-center justify-between">
-                <span className="text-[11px] font-mono text-[#7c747f]">DOI: 10.1080/JHES.2025.10928</span>
-                <button 
-                  onClick={() => handleDownloadPaper('Journal Paper - Circadian Alignment')}
-                  className="text-xs font-bold uppercase tracking-wider text-[#3b1e4a] hover:text-[#18794e] flex items-center gap-1 cursor-pointer"
-                >
-                  Download PDF <ArrowRight className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {downloadSuccess && (
-            <div className="p-3 bg-[#f4fbf6] border border-[#ece6ed] text-[#0f5431] rounded-xl text-xs font-mono flex items-center justify-between animate-in fade-in">
-              <span>{downloadSuccess}</span>
-              <span className="font-bold">DOWNLOAD_STARTED</span>
-            </div>
-          )}
-        </section>
       </main>
     </div>
   );

@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { SmartGridNav, RouteType } from './SmartGridNav';
-import { Filter, Download, Sparkles, Building, Clock, AlertCircle } from 'lucide-react';
+import { Filter, Download, Sparkles, Building, Clock, AlertCircle, Search, CheckCircle2 } from 'lucide-react';
 import { ClassDetailsModal, ClassItem } from './ClassDetailsModal';
+import { motion, AnimatePresence } from 'motion/react';
 
 interface TimetableMatrixProps {
   onNavigate?: (route: RouteType) => void;
@@ -49,6 +50,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
   const [selectedClass, setSelectedClass] = useState<ClassItem | null>(null);
   const [isSweeping, setIsSweeping] = useState(false);
   const [sweepNotice, setSweepNotice] = useState<string | null>(null);
+  const [searchFilter, setSearchFilter] = useState('');
 
   const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
   const timeSlots = Object.keys(scheduleData);
@@ -59,10 +61,27 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
       setIsSweeping(false);
       setSweepNotice('1,420 lectures synchronized with zero instructor overlap. Parity verified.');
       setTimeout(() => setSweepNotice(null), 4000);
+    }, 900);
+  };
+
+  const handleExport = () => {
+    setSweepNotice('Exporting campus timetable matrix as iCal & CSV...');
+    setTimeout(() => {
+      setSweepNotice('Export completed. Master schedule downloaded.');
+      setTimeout(() => setSweepNotice(null), 3000);
     }, 1000);
   };
 
   const filterClass = (cls: ClassItem) => {
+    if (searchFilter) {
+      const q = searchFilter.toLowerCase();
+      const match = cls.code.toLowerCase().includes(q) || 
+                    cls.title.toLowerCase().includes(q) || 
+                    cls.prof.toLowerCase().includes(q) || 
+                    cls.room.toLowerCase().includes(q);
+      if (!match) return false;
+    }
+
     if (selectedCohort === 'Computer Science' && !cls.cohort.includes('CS') && !cls.code.includes('CS') && !cls.cohort.includes('All')) return false;
     if (selectedCohort === 'Bioengineering' && !cls.cohort.includes('Bio') && !cls.code.includes('BIO') && !cls.code.includes('CHEM') && !cls.cohort.includes('All')) return false;
     if (selectedCohort === 'Architecture' && !cls.cohort.includes('Arch') && !cls.code.includes('ARCH') && !cls.cohort.includes('All')) return false;
@@ -83,25 +102,29 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
       )}
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
-        {/* Workspace Subheader with Atmospheric Peach Wash */}
-        <div className="p-6 bg-gradient-to-br from-[#fff7f2] via-white to-[#faf4fc] border border-[#ece6ed] rounded-xl flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm">
+        {/* Workspace Subheader */}
+        <div className="p-6 sm:p-8 bg-gradient-to-br from-[#fff7f2] via-white to-[#faf4fc] border border-[#ece6ed] rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm relative overflow-hidden">
           <div>
-            <div className="text-[11px] font-mono uppercase tracking-widest text-[#9c4126] font-bold">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white border border-[#ece6ed] text-[10px] font-mono font-bold uppercase tracking-wider text-[#9c4126] shadow-xs mb-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#9c4126]" />
               Master Schedule Matrix • Term 2 (2025/2026)
             </div>
-            <h1 className="text-2xl font-black text-[#1f1b20] mt-1">Institutional Timetable Matrix</h1>
+            <h1 className="text-2xl sm:text-3xl font-black text-[#1f1b20]">Institutional Timetable Matrix</h1>
             <p className="text-xs text-[#655d69] mt-0.5">5-day synchronized campus allocation with zero lecture overlaps</p>
           </div>
 
-          <div className="flex items-center gap-3">
-            <button className="flex items-center gap-2 bg-white border border-[#ece6ed] hover:border-[#dcd9dd] text-[#3b1e4a] px-4 py-2.5 rounded-xl text-xs font-semibold shadow-xs hover:bg-[#f6f2f7] transition-all cursor-pointer">
+          <div className="flex flex-wrap items-center gap-3">
+            <button 
+              onClick={handleExport}
+              className="flex items-center gap-2 bg-white border border-[#ece6ed] hover:border-[#dcd9dd] text-[#3b1e4a] px-4 py-2.5 rounded-xl text-xs font-bold shadow-xs hover:bg-[#f6f2f7] transition-all cursor-pointer"
+            >
               <Download className="w-3.5 h-3.5" />
               Export CSV / iCal
             </button>
             <button 
               onClick={handleRunSweep}
               disabled={isSweeping}
-              className="flex items-center gap-2 bg-gradient-to-r from-[#9c4126] to-[#f27438] hover:from-[#83341d] hover:to-[#ea580c] text-white px-5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider shadow-sm transition-all active:scale-95 disabled:opacity-75 cursor-pointer"
+              className="flex items-center gap-2 bg-gradient-to-r from-[#9c4126] to-[#b3401f] hover:from-[#83341d] hover:to-[#9c4126] text-white px-5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider shadow-md hover:shadow-lg transition-all active:scale-95 disabled:opacity-75 cursor-pointer"
             >
               <Sparkles className={`w-3.5 h-3.5 text-[#fed8c8] ${isSweeping ? 'animate-spin' : ''}`} />
               {isSweeping ? 'Running Sweep...' : 'Run Conflict Sweep'}
@@ -109,37 +132,61 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
           </div>
         </div>
 
-        {sweepNotice && (
-          <div className="p-3 bg-[#eefcf2] text-[#0f5431] rounded-xl text-xs font-mono flex items-center gap-2 animate-in fade-in border border-[#ece6ed]">
-            <span className="font-bold">SWEEP_PASS:</span>
-            <span>{sweepNotice}</span>
-          </div>
-        )}
-
-        {/* Filter Tabs with rounded-xl and clean borders */}
-        <div className="flex items-center gap-2 overflow-x-auto py-1">
-          {['All Departments', 'Computer Science', 'Bioengineering', 'Architecture', 'Mechanical Engineering'].map(tag => (
-            <button
-              key={tag}
-              onClick={() => setSelectedCohort(tag)}
-              className={`px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all border ${
-                selectedCohort === tag
-                  ? 'bg-[#3b1e4a] text-white border-[#3b1e4a] shadow-xs'
-                  : 'bg-white text-[#655d69] border-[#ece6ed] hover:border-[#dcd9dd]'
-              }`}
+        {/* Sweep Notice Toast */}
+        <AnimatePresence>
+          {sweepNotice && (
+            <motion.div 
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              className="p-3.5 bg-[#eefcf2] text-[#0f5431] rounded-xl text-xs font-mono flex items-center gap-2 border border-[#18794e]/30 shadow-xs"
             >
-              {tag}
-            </button>
-          ))}
+              <CheckCircle2 className="w-4 h-4 text-[#18794e]" />
+              <span className="font-bold">PARITY_STATUS:</span>
+              <span>{sweepNotice}</span>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Search & Filter Bar */}
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+          {/* Department Filter Pills */}
+          <div className="flex items-center gap-2 overflow-x-auto py-1 w-full sm:w-auto">
+            {['All Departments', 'Computer Science', 'Bioengineering', 'Architecture', 'Mechanical Engineering'].map(tag => (
+              <button
+                key={tag}
+                onClick={() => setSelectedCohort(tag)}
+                className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all border cursor-pointer ${
+                  selectedCohort === tag
+                    ? 'bg-[#3b1e4a] text-white border-[#3b1e4a] shadow-xs'
+                    : 'bg-white text-[#655d69] border-[#ece6ed] hover:border-[#dcd9dd]'
+                }`}
+              >
+                {tag}
+              </button>
+            ))}
+          </div>
+
+          {/* Quick search input */}
+          <div className="relative w-full sm:w-64">
+            <Search className="w-3.5 h-3.5 text-[#7c747f] absolute left-3 top-2.5" />
+            <input
+              type="text"
+              placeholder="Search course, prof, room..."
+              value={searchFilter}
+              onChange={e => setSearchFilter(e.target.value)}
+              className="w-full pl-9 pr-3 py-1.5 text-xs rounded-xl border border-[#ece6ed] focus:outline-none focus:border-[#3b1e4a] bg-white text-[#1f1b20]"
+            />
+          </div>
         </div>
 
-        {/* Horizontally Scrollable Timetable Grid (Min Col Width 160px) - Strictly Neutral Border with Rich Pastel Fills */}
-        <div className="bg-white border border-[#ece6ed] rounded-xl shadow-sm overflow-hidden">
+        {/* Timetable Grid */}
+        <div className="bg-white border border-[#ece6ed] rounded-2xl shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full min-w-[960px] border-collapse text-left">
               <thead>
                 <tr className="border-b border-[#ece6ed] bg-[#fbf8fc]">
-                  <th className="py-3 px-4 w-36 text-[10px] font-mono uppercase tracking-wider text-[#7c747f]">Time Window</th>
+                  <th className="py-3 px-4 w-36 text-[10px] font-mono uppercase tracking-wider text-[#7c747f] font-bold">Time Window</th>
                   {days.map(day => (
                     <th key={day} className="py-3 px-4 min-w-[160px] text-xs font-bold text-[#1f1b20] border-l border-[#ece6ed]">
                       {day}
@@ -149,8 +196,8 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
               </thead>
               <tbody className="divide-y divide-[#ece6ed]">
                 {timeSlots.map(time => (
-                  <tr key={time} className="hover:bg-[#fcfaff]/50">
-                    <td className="py-4 px-4 text-xs font-mono font-medium text-[#655d69] whitespace-nowrap align-top">
+                  <tr key={time} className="hover:bg-[#fcfaff]/50 transition-colors">
+                    <td className="py-4 px-4 text-xs font-mono font-bold text-[#655d69] whitespace-nowrap align-top">
                       {time}
                     </td>
                     {days.map(day => {
@@ -162,7 +209,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
                               <div
                                 key={cls.id}
                                 onClick={() => setSelectedClass({ ...cls, day, time })}
-                                className={`p-3 rounded-xl border border-[#ece6ed] hover:border-[#dcd9dd] text-xs space-y-1.5 transition-all cursor-pointer shadow-xs hover:shadow-md ${
+                                className={`p-3 rounded-xl border border-[#ece6ed] hover:border-[#dcd9dd] text-xs space-y-1.5 transition-all cursor-pointer shadow-xs card-lift ${
                                   cls.accent === 'plum'
                                     ? 'bg-gradient-to-br from-[#faf4fc] to-[#f4eaf7] text-[#1f1b20]'
                                     : cls.accent === 'emerald'
@@ -172,16 +219,16 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
                               >
                                 <div className="font-bold truncate flex items-center justify-between">
                                   <span>{cls.code}</span>
-                                  <span className={`text-[9px] font-mono font-semibold px-1.5 py-0.5 rounded ${
+                                  <span className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded shadow-xs ${
                                     cls.accent === 'plum' ? 'bg-[#ede0f2] text-[#3b1e4a]' : cls.accent === 'emerald' ? 'bg-[#d2f3dd] text-[#18794e]' : 'bg-[#fed8c8] text-[#9c4126]'
                                   }`}>
                                     {cls.type}
                                   </span>
                                 </div>
                                 <div className="text-[11px] font-medium truncate text-[#1f1b20]">{cls.title}</div>
-                                <div className="text-[10px] text-[#7c747f] flex items-center justify-between pt-0.5">
+                                <div className="text-[10px] text-[#7c747f] flex items-center justify-between pt-0.5 font-mono">
                                   <span className="truncate max-w-[90px]">{cls.room}</span>
-                                  <span className="font-mono">{cls.prof}</span>
+                                  <span className="font-bold">{cls.prof}</span>
                                 </div>
                               </div>
                             ))}
@@ -196,9 +243,9 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
           </div>
         </div>
 
-        {/* Lower Metric Bar - Distinct Atmospheric Tints & Neutral Borders */}
+        {/* Lower Metric Bar */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="bg-gradient-to-br from-[#fff7f2] via-white to-[#fff0eb] border border-[#ece6ed] rounded-xl p-5 shadow-xs flex items-center gap-4">
+          <div className="bg-gradient-to-br from-[#fff7f2] via-white to-[#fff0eb] border border-[#ece6ed] rounded-2xl p-5 shadow-xs flex items-center gap-4 card-lift">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#9c4126] to-[#f27438] text-white flex items-center justify-center shadow-xs shrink-0">
               <Clock className="w-5 h-5" />
             </div>
@@ -208,7 +255,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
             </div>
           </div>
 
-          <div className="bg-gradient-to-br from-[#faf4fc] via-white to-[#f4eaf7] border border-[#ece6ed] rounded-xl p-5 shadow-xs flex items-center gap-4">
+          <div className="bg-gradient-to-br from-[#faf4fc] via-white to-[#f4eaf7] border border-[#ece6ed] rounded-2xl p-5 shadow-xs flex items-center gap-4 card-lift">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#3b1e4a] to-[#7209b7] text-white flex items-center justify-center shadow-xs shrink-0">
               <Building className="w-5 h-5" />
             </div>
@@ -218,13 +265,13 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
             </div>
           </div>
 
-          <div className="bg-gradient-to-br from-[#f1fbf5] via-white to-[#e8f7ee] border border-[#ece6ed] rounded-xl p-5 shadow-xs flex items-center gap-4">
+          <div className="bg-gradient-to-br from-[#f1fbf5] via-white to-[#e8f7ee] border border-[#ece6ed] rounded-2xl p-5 shadow-xs flex items-center gap-4 card-lift">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#18794e] to-[#25a26c] text-white flex items-center justify-center shadow-xs shrink-0">
               <AlertCircle className="w-5 h-5" />
             </div>
             <div>
               <div className="text-xs font-bold text-[#1f1b20]">Deterministic Parity</div>
-              <div className="text-[11px] font-mono text-[#18794e] font-semibold">SOLVER_PASS_STABLE // 99.98%</div>
+              <div className="text-[11px] font-mono text-[#18794e] font-bold">SOLVER_PASS_STABLE // 99.98%</div>
             </div>
           </div>
         </div>

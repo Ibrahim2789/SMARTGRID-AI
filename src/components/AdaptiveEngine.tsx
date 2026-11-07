@@ -12,6 +12,7 @@ import {
   CheckCircle2,
   ArrowRight
 } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 
 interface AdaptiveEngineProps {
   onNavigate?: (route: RouteType) => void;
@@ -43,7 +44,7 @@ export const AdaptiveEngine: React.FC<AdaptiveEngineProps> = ({
 
   // Simulation generation tick
   useEffect(() => {
-    let interval: NodeJS.Timeout;
+    let interval: any;
     if (isRunningSim) {
       interval = setInterval(() => {
         setGeneration(prev => prev + 1);
@@ -70,11 +71,11 @@ export const AdaptiveEngine: React.FC<AdaptiveEngineProps> = ({
       setResolutionLog(prev => [
         ...prev,
         `[0.88ms] Found Pareto-optimal slot swap: Hall B3 -> Annex 102`,
-        `[1.14ms] Validated zero cascade violations across 18 enrolled students`,
+        `[1.14ms] Validated zero cascade violations across 18 enrolled cohorts`,
         `[1.32ms] EQUILIBRIUM_RESTORED: 100% collision-free guarantee reinstated.`
       ]);
       setResolvingConflict(false);
-    }, 900);
+    }, 850);
   };
 
   const resetConflict = () => {
@@ -94,10 +95,10 @@ export const AdaptiveEngine: React.FC<AdaptiveEngineProps> = ({
         />
       )}
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-12">
-        {/* Header Hero with Atmospheric Terracotta/Plum Wash */}
-        <section className="p-8 bg-gradient-to-br from-[#fff7f2] via-white to-[#faf4fc] border border-[#ece6ed] rounded-xl shadow-sm space-y-3">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#f6f2f7] text-[11px] font-mono font-semibold text-[#9c4126] uppercase tracking-wider">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-10">
+        {/* Header Hero */}
+        <section className="p-6 sm:p-8 bg-gradient-to-br from-[#fff7f2] via-white to-[#faf4fc] border border-[#ece6ed] rounded-2xl shadow-sm space-y-3 relative overflow-hidden">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white border border-[#ece6ed] text-[10px] font-mono font-bold text-[#9c4126] uppercase tracking-wider shadow-xs">
             <Cpu className="w-3.5 h-3.5 text-[#f27438]" />
             Deterministic Solver Core • Mathematical Architecture
           </div>
@@ -109,25 +110,23 @@ export const AdaptiveEngine: React.FC<AdaptiveEngineProps> = ({
           </p>
         </section>
 
-        {/* Live System Architecture Diagram & Pipeline - Strictly Neutral Card Borders with Rich Atmospheric Fills */}
-        <section className="bg-white border border-[#ece6ed] rounded-xl p-6 lg:p-8 shadow-sm space-y-8">
+        {/* 4-Stage Flow Pipeline */}
+        <section className="bg-white border border-[#ece6ed] rounded-2xl p-6 lg:p-8 shadow-sm space-y-8">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-[#ece6ed] pb-4">
             <div>
               <span className="text-[11px] font-mono uppercase tracking-widest text-[#9c4126] font-bold">End-to-End Pipeline</span>
-              <h2 className="text-xl font-bold text-[#1f1b20] mt-0.5">Constraint Propagation Flow</h2>
+              <h2 className="text-xl font-black text-[#1f1b20] mt-0.5">Constraint Propagation Flow</h2>
             </div>
             <div className="flex items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-[#eefcf2] text-xs font-mono font-bold text-[#18794e]">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-[#eefcf2] text-xs font-mono font-bold text-[#18794e] border border-[#18794e]/20 shadow-xs">
                 <ShieldCheck className="w-3.5 h-3.5 text-[#18794e]" />
                 DETERMINISTIC_PARITY_ACTIVE
               </span>
             </div>
           </div>
 
-          {/* 4-Stage Flow Pipeline with Atmospheric Washes & Neutral Borders */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-            {/* Stage 1: Lavender Plum */}
-            <div className="bg-gradient-to-br from-[#faf4fc] via-white to-[#f4eaf7] border border-[#ece6ed] hover:border-[#dcd9dd] rounded-xl p-6 space-y-3 transition-all duration-300 shadow-xs hover:shadow-md">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 sm:gap-6">
+            <div className="bg-gradient-to-br from-[#faf4fc] via-white to-[#f4eaf7] border border-[#ece6ed] hover:border-[#dcd9dd] rounded-2xl p-6 space-y-3 transition-all duration-300 shadow-xs card-lift">
               <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#3b1e4a] to-[#7209b7] text-white flex items-center justify-center font-mono text-xs font-bold shadow-xs">
                 01
               </div>
@@ -138,8 +137,7 @@ export const AdaptiveEngine: React.FC<AdaptiveEngineProps> = ({
               <div className="text-xs font-mono text-[#7209b7] font-bold bg-[#f4ecf8] px-2.5 py-1 rounded w-fit">Zero-Tolerance Pass</div>
             </div>
 
-            {/* Stage 2: Peach Terracotta */}
-            <div className="bg-gradient-to-br from-[#fff7f2] via-white to-[#fff0eb] border border-[#ece6ed] hover:border-[#dcd9dd] rounded-xl p-6 space-y-3 transition-all duration-300 shadow-xs hover:shadow-md">
+            <div className="bg-gradient-to-br from-[#fff7f2] via-white to-[#fff0eb] border border-[#ece6ed] hover:border-[#dcd9dd] rounded-2xl p-6 space-y-3 transition-all duration-300 shadow-xs card-lift">
               <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#f27438] to-[#ea580c] text-white flex items-center justify-center font-mono text-xs font-bold shadow-xs">
                 02
               </div>
@@ -150,8 +148,7 @@ export const AdaptiveEngine: React.FC<AdaptiveEngineProps> = ({
               <div className="text-xs font-mono text-[#ea580c] font-bold bg-[#fff7ed] px-2.5 py-1 rounded w-fit">Weighted Pareto Cost</div>
             </div>
 
-            {/* Stage 3: Warm Ember */}
-            <div className="bg-gradient-to-br from-[#fff5f0] via-white to-[#ffede5] border border-[#ece6ed] hover:border-[#dcd9dd] rounded-xl p-6 space-y-3 transition-all duration-300 shadow-xs hover:shadow-md">
+            <div className="bg-gradient-to-br from-[#fff5f0] via-white to-[#ffede5] border border-[#ece6ed] hover:border-[#dcd9dd] rounded-2xl p-6 space-y-3 transition-all duration-300 shadow-xs card-lift">
               <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#9c4126] to-[#c84c16] text-white flex items-center justify-center font-mono text-xs font-bold shadow-xs">
                 03
               </div>
@@ -162,14 +159,13 @@ export const AdaptiveEngine: React.FC<AdaptiveEngineProps> = ({
               <div className="text-xs font-mono text-[#9c4126] font-bold bg-[#ffebe2] px-2.5 py-1 rounded w-fit">1.24ms Convergence</div>
             </div>
 
-            {/* Stage 4: Fresh Sage Mint */}
-            <div className="bg-gradient-to-br from-[#f1fbf5] via-white to-[#e8f7ee] border border-[#ece6ed] hover:border-[#dcd9dd] rounded-xl p-6 space-y-3 transition-all duration-300 shadow-xs hover:shadow-md">
+            <div className="bg-gradient-to-br from-[#f1fbf5] via-white to-[#e8f7ee] border border-[#ece6ed] hover:border-[#dcd9dd] rounded-2xl p-6 space-y-3 transition-all duration-300 shadow-xs card-lift">
               <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#18794e] to-[#25a26c] text-white flex items-center justify-center font-mono text-xs font-bold shadow-xs">
                 04
               </div>
               <h3 className="text-base font-bold text-[#1f1b20]">Equilibrium Matrix</h3>
               <p className="text-xs text-[#655d69] leading-relaxed">
-                Final master timetable lock, room thermal heating conservation pass, and instant iCal / SIS SIS sync.
+                Final master timetable lock, room thermal heating conservation pass, and instant iCal / SIS sync.
               </p>
               <div className="text-xs font-mono text-[#18794e] font-bold bg-[#e6f9ed] px-2.5 py-1 rounded w-fit">Ready for Deployment</div>
             </div>
@@ -178,7 +174,7 @@ export const AdaptiveEngine: React.FC<AdaptiveEngineProps> = ({
 
         {/* Live Genetic Solver Sandbox */}
         <section className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-          <div className="lg:col-span-7 bg-white border border-[#ece6ed] rounded-xl p-6 lg:p-8 shadow-sm space-y-6">
+          <div className="lg:col-span-7 bg-white border border-[#ece6ed] rounded-2xl p-6 lg:p-8 shadow-sm space-y-6">
             <div className="flex items-center justify-between border-b border-[#ece6ed] pb-3">
               <div>
                 <span className="text-[11px] font-mono uppercase tracking-widest text-[#9c4126] font-bold">Interactive Sandbox</span>
@@ -186,10 +182,10 @@ export const AdaptiveEngine: React.FC<AdaptiveEngineProps> = ({
               </div>
               <button 
                 onClick={() => setIsRunningSim(!isRunningSim)}
-                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all shadow-sm cursor-pointer ${
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all shadow-md active:scale-95 cursor-pointer ${
                   isRunningSim 
-                    ? 'bg-gradient-to-r from-[#18794e] to-[#25a26c] text-white' 
-                    : 'bg-gradient-to-r from-[#9c4126] to-[#f27438] text-white'
+                    ? 'bg-[#18794e] text-white' 
+                    : 'bg-gradient-to-r from-[#9c4126] to-[#b3401f] text-white'
                 }`}
               >
                 {isRunningSim ? (
@@ -206,27 +202,27 @@ export const AdaptiveEngine: React.FC<AdaptiveEngineProps> = ({
               </button>
             </div>
 
-            {/* Telemetry Metric Cards with Atmospheric Washes & Neutral Borders */}
-            <div className="grid grid-cols-3 gap-4">
-              <div className="p-4 bg-gradient-to-br from-[#faf4fc] via-white to-[#f4eaf7] rounded-xl border border-[#ece6ed] hover:border-[#dcd9dd] text-center shadow-xs">
+            {/* Telemetry Metric Cards */}
+            <div className="grid grid-cols-3 gap-3">
+              <div className="p-4 bg-gradient-to-br from-[#faf4fc] via-white to-[#f4eaf7] rounded-xl border border-[#ece6ed] text-center shadow-xs card-lift">
                 <div className="text-2xl font-black font-mono text-[#3b1e4a]">{generation}</div>
-                <div className="text-[10px] font-mono uppercase text-[#7209b7] mt-1 font-semibold">Generation Epoch</div>
+                <div className="text-[10px] font-mono uppercase text-[#7209b7] mt-1 font-bold">Generation Epoch</div>
               </div>
-              <div className="p-4 bg-gradient-to-br from-[#f1fbf5] via-white to-[#e8f7ee] rounded-xl border border-[#ece6ed] hover:border-[#dcd9dd] text-center shadow-xs">
+              <div className="p-4 bg-gradient-to-br from-[#f1fbf5] via-white to-[#e8f7ee] rounded-xl border border-[#ece6ed] text-center shadow-xs card-lift">
                 <div className="text-2xl font-black font-mono text-[#18794e]">{fitnessScore}%</div>
-                <div className="text-[10px] font-mono uppercase text-[#18794e] mt-1 font-semibold">Fitness Quotient</div>
+                <div className="text-[10px] font-mono uppercase text-[#18794e] mt-1 font-bold">Fitness Quotient</div>
               </div>
-              <div className="p-4 bg-gradient-to-br from-[#fff7f2] via-white to-[#fff0eb] rounded-xl border border-[#ece6ed] hover:border-[#dcd9dd] text-center shadow-xs">
+              <div className="p-4 bg-gradient-to-br from-[#fff7f2] via-white to-[#fff0eb] rounded-xl border border-[#ece6ed] text-center shadow-xs card-lift">
                 <div className="text-2xl font-black font-mono text-[#9c4126]">{activeChromosomes}</div>
-                <div className="text-[10px] font-mono uppercase text-[#9c4126] mt-1 font-semibold">Candidate Pool</div>
+                <div className="text-[10px] font-mono uppercase text-[#9c4126] mt-1 font-bold">Candidate Pool</div>
               </div>
             </div>
 
             {/* Visual Convergence Waveform */}
             <div className="space-y-2">
-              <div className="flex justify-between text-xs font-semibold text-[#1f1b20]">
+              <div className="flex justify-between text-xs font-bold text-[#1f1b20]">
                 <span>Pareto Surface Convergence Curve</span>
-                <span className="font-mono text-[#18794e] bg-[#eaf8f0] px-2 py-0.5 rounded font-bold">Delta: 0.00012 ε</span>
+                <span className="font-mono text-[#18794e] bg-[#eaf8f0] px-2 py-0.5 rounded font-bold border border-[#ece6ed]">Delta: 0.00012 ε</span>
               </div>
               <div className="h-24 bg-gradient-to-b from-[#fdfbfd] to-[#fbf8fc] border border-[#ece6ed] rounded-xl p-3 flex items-end gap-1.5 overflow-hidden">
                 {[68, 72, 75, 78, 82, 85, 87, 90, 91, 93, 94, 96, 97, 98, 98.4, 99.1, 99.4, 99.8, fitnessScore].map((val, idx) => (
@@ -250,7 +246,7 @@ export const AdaptiveEngine: React.FC<AdaptiveEngineProps> = ({
             {/* Slider Parameters */}
             <div className="space-y-3 pt-2">
               <div>
-                <div className="flex justify-between text-xs font-semibold text-[#1f1b20] mb-1">
+                <div className="flex justify-between text-xs font-bold text-[#1f1b20] mb-1">
                   <span>Mutation Probability:</span>
                   <span className="font-mono text-[#9c4126] font-bold">{(mutationRate * 100).toFixed(1)}%</span>
                 </div>
@@ -260,12 +256,12 @@ export const AdaptiveEngine: React.FC<AdaptiveEngineProps> = ({
                   max="15" 
                   value={mutationRate * 100}
                   onChange={e => setMutationRate(Number(e.target.value) / 100)}
-                  className="w-full h-1.5 bg-[#ece6ed] rounded-lg appearance-none cursor-pointer accent-[#9c4126]"
+                  className="w-full h-1.5"
                 />
               </div>
 
               <div>
-                <div className="flex justify-between text-xs font-semibold text-[#1f1b20] mb-1">
+                <div className="flex justify-between text-xs font-bold text-[#1f1b20] mb-1">
                   <span>Crossover Uniformity (Blend Alpha):</span>
                   <span className="font-mono text-[#9c4126] font-bold">{(crossoverRate * 100).toFixed(0)}%</span>
                 </div>
@@ -275,17 +271,17 @@ export const AdaptiveEngine: React.FC<AdaptiveEngineProps> = ({
                   max="98" 
                   value={crossoverRate * 100}
                   onChange={e => setCrossoverRate(Number(e.target.value) / 100)}
-                  className="w-full h-1.5 bg-[#ece6ed] rounded-lg appearance-none cursor-pointer accent-[#9c4126]"
+                  className="w-full h-1.5"
                 />
               </div>
             </div>
           </div>
 
-          {/* Conflict Arbitration Test Bench - Neutral Card Border */}
-          <div className="lg:col-span-5 bg-white border border-[#ece6ed] rounded-xl p-6 lg:p-8 shadow-sm space-y-6">
+          {/* Conflict Arbitration Test Bench */}
+          <div className="lg:col-span-5 bg-white border border-[#ece6ed] rounded-2xl p-6 lg:p-8 shadow-sm space-y-6">
             <div className="border-b border-[#ece6ed] pb-3">
               <span className="text-[11px] font-mono uppercase tracking-widest text-[#9c4126] font-bold">Stress Test Bench</span>
-              <h3 className="text-base font-bold text-[#1f1b20] mt-0.5">Real-Time Conflict Arbitration</h3>
+              <h3 className="text-base font-black text-[#1f1b20] mt-0.5">Real-Time Conflict Arbitration</h3>
               <p className="text-xs text-[#655d69] mt-1">
                 Inject realistic campus scheduling faults and witness the deterministic auto-arbitration engine solve them.
               </p>
@@ -295,7 +291,7 @@ export const AdaptiveEngine: React.FC<AdaptiveEngineProps> = ({
               <button 
                 onClick={() => handleResolveConflict('prof_overlap')}
                 disabled={resolvingConflict}
-                className="w-full text-left p-3.5 rounded-xl border border-[#ece6ed] hover:border-[#dcd9dd] bg-gradient-to-r from-white to-[#fffaf8] hover:bg-[#fff5f0] transition-all flex items-center justify-between group cursor-pointer"
+                className="w-full text-left p-3.5 rounded-xl border border-[#ece6ed] hover:border-[#dcd9dd] bg-gradient-to-r from-white to-[#fffaf8] hover:bg-[#fff5f0] transition-all flex items-center justify-between group cursor-pointer card-lift"
               >
                 <div>
                   <div className="text-xs font-bold text-[#1f1b20] group-hover:text-[#9c4126]">
@@ -311,7 +307,7 @@ export const AdaptiveEngine: React.FC<AdaptiveEngineProps> = ({
               <button 
                 onClick={() => handleResolveConflict('room_surge')}
                 disabled={resolvingConflict}
-                className="w-full text-left p-3.5 rounded-xl border border-[#ece6ed] hover:border-[#dcd9dd] bg-gradient-to-r from-white to-[#fffaf8] hover:bg-[#fff5f0] transition-all flex items-center justify-between group cursor-pointer"
+                className="w-full text-left p-3.5 rounded-xl border border-[#ece6ed] hover:border-[#dcd9dd] bg-gradient-to-r from-white to-[#fffaf8] hover:bg-[#fff5f0] transition-all flex items-center justify-between group cursor-pointer card-lift"
               >
                 <div>
                   <div className="text-xs font-bold text-[#1f1b20] group-hover:text-[#9c4126]">
@@ -327,7 +323,7 @@ export const AdaptiveEngine: React.FC<AdaptiveEngineProps> = ({
               <button 
                 onClick={() => handleResolveConflict('lab_hazard')}
                 disabled={resolvingConflict}
-                className="w-full text-left p-3.5 rounded-xl border border-[#ece6ed] hover:border-[#dcd9dd] bg-gradient-to-r from-white to-[#fffaf8] hover:bg-[#fff5f0] transition-all flex items-center justify-between group cursor-pointer"
+                className="w-full text-left p-3.5 rounded-xl border border-[#ece6ed] hover:border-[#dcd9dd] bg-gradient-to-r from-white to-[#fffaf8] hover:bg-[#fff5f0] transition-all flex items-center justify-between group cursor-pointer card-lift"
               >
                 <div>
                   <div className="text-xs font-bold text-[#1f1b20] group-hover:text-[#9c4126]">
@@ -341,8 +337,8 @@ export const AdaptiveEngine: React.FC<AdaptiveEngineProps> = ({
               </button>
             </div>
 
-            {/* Real-time Arbitration Terminal */}
-            <div className="bg-[#1f1b20] text-[#fbf8fc] rounded-xl p-4 font-mono text-[11px] space-y-1.5 h-44 overflow-y-auto border border-[#3b1e4a]">
+            {/* Arbitration Terminal */}
+            <div className="bg-[#1f1b20] text-[#fbf8fc] rounded-xl p-4 font-mono text-[11px] space-y-1.5 h-44 overflow-y-auto border border-[#3b1e4a] shadow-inner">
               <div className="text-[#f27438] font-bold pb-1 border-b border-[#3b1e4a]">
                 // SMARTGRID_ARBITRATION_CONSOLE
               </div>
@@ -373,51 +369,50 @@ export const AdaptiveEngine: React.FC<AdaptiveEngineProps> = ({
           </div>
         </section>
 
-        {/* Spatial & Thermal Campus Footprint Card - Atmospheric Washes & Neutral Borders */}
-        <section className="bg-white border border-[#ece6ed] rounded-xl p-6 lg:p-8 shadow-sm space-y-6">
+        {/* Spatial & Thermal Campus Footprint Card */}
+        <section className="bg-white border border-[#ece6ed] rounded-2xl p-6 lg:p-8 shadow-sm space-y-6">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
               <span className="text-[11px] font-mono uppercase tracking-widest text-[#9c4126] font-bold">Resource Optimization</span>
-              <h2 className="text-xl sm:text-2xl font-bold text-[#1f1b20]">Campus Thermal & Spatial Compaction</h2>
+              <h2 className="text-xl sm:text-2xl font-black text-[#1f1b20]">Campus Thermal & Spatial Compaction</h2>
               <p className="text-xs text-[#655d69] mt-0.5">
                 The Adaptive Engine groups consecutive courses into unified building wings, allowing dormant structures to power down HVAC systems.
               </p>
             </div>
             <div className="text-left md:text-right">
               <div className="text-2xl font-black font-mono text-[#18794e]">-34.1 MWh</div>
-              <div className="text-[10px] font-mono uppercase text-[#7c747f]">Weekly Energy Conserved</div>
+              <div className="text-[10px] font-mono uppercase text-[#7c747f] font-bold">Weekly Energy Conserved</div>
             </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-            {/* Building 1: Mint */}
-            <div className="p-4 rounded-xl border border-[#ece6ed] hover:border-[#dcd9dd] bg-gradient-to-br from-[#f1fbf5] via-white to-[#e8f7ee] shadow-xs">
+            <div className="p-4 rounded-xl border border-[#ece6ed] hover:border-[#dcd9dd] bg-gradient-to-br from-[#f1fbf5] via-white to-[#e8f7ee] shadow-xs card-lift">
               <div className="text-xs font-bold text-[#1f1b20]">Science Quad Wing C</div>
-              <div className="text-[11px] text-[#7c747f] mt-1">Utilization: 96.4%</div>
+              <div className="text-[11px] text-[#7c747f] mt-1 font-mono">Utilization: 96.4%</div>
               <div className="w-full bg-[#ece6ed] rounded-full h-1.5 mt-2 overflow-hidden">
                 <div className="bg-[#18794e] h-1.5 rounded-full" style={{ width: '96.4%' }}></div>
               </div>
             </div>
-            {/* Building 2: Sage */}
-            <div className="p-4 rounded-xl border border-[#ece6ed] hover:border-[#dcd9dd] bg-gradient-to-br from-[#f1fbf5] via-white to-[#e8f7ee] shadow-xs">
+
+            <div className="p-4 rounded-xl border border-[#ece6ed] hover:border-[#dcd9dd] bg-gradient-to-br from-[#f1fbf5] via-white to-[#e8f7ee] shadow-xs card-lift">
               <div className="text-xs font-bold text-[#1f1b20]">Engineering Hall 1</div>
-              <div className="text-[11px] text-[#7c747f] mt-1">Utilization: 92.1%</div>
+              <div className="text-[11px] text-[#7c747f] mt-1 font-mono">Utilization: 92.1%</div>
               <div className="w-full bg-[#ece6ed] rounded-full h-1.5 mt-2 overflow-hidden">
                 <div className="bg-[#18794e] h-1.5 rounded-full" style={{ width: '92.1%' }}></div>
               </div>
             </div>
-            {/* Building 3: Peach */}
-            <div className="p-4 rounded-xl border border-[#ece6ed] hover:border-[#dcd9dd] bg-gradient-to-br from-[#fff7f2] via-white to-[#fff0eb] shadow-xs">
+
+            <div className="p-4 rounded-xl border border-[#ece6ed] hover:border-[#dcd9dd] bg-gradient-to-br from-[#fff7f2] via-white to-[#fff0eb] shadow-xs card-lift">
               <div className="text-xs font-bold text-[#1f1b20]">Humanities Annex B</div>
-              <div className="text-[11px] text-[#7c747f] mt-1">Dormant Mode: 14:00 - 18:00</div>
+              <div className="text-[11px] text-[#7c747f] mt-1 font-mono">Dormant Mode: 14:00 - 18:00</div>
               <div className="w-full bg-[#ece6ed] rounded-full h-1.5 mt-2 overflow-hidden">
                 <div className="bg-[#9c4126] h-1.5 rounded-full" style={{ width: '40%' }}></div>
               </div>
             </div>
-            {/* Building 4: Plum */}
-            <div className="p-4 rounded-xl border border-[#ece6ed] hover:border-[#dcd9dd] bg-gradient-to-br from-[#faf4fc] via-white to-[#f4eaf7] shadow-xs">
+
+            <div className="p-4 rounded-xl border border-[#ece6ed] hover:border-[#dcd9dd] bg-gradient-to-br from-[#faf4fc] via-white to-[#f4eaf7] shadow-xs card-lift">
               <div className="text-xs font-bold text-[#1f1b20]">Biomedical Cleanroom Lab</div>
-              <div className="text-[11px] text-[#7c747f] mt-1">Filtered Cycles Optimized</div>
+              <div className="text-[11px] text-[#7c747f] mt-1 font-mono">Filtered Cycles Optimized</div>
               <div className="w-full bg-[#ece6ed] rounded-full h-1.5 mt-2 overflow-hidden">
                 <div className="bg-[#3b1e4a] h-1.5 rounded-full" style={{ width: '88%' }}></div>
               </div>

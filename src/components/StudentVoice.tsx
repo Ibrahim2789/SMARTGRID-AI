@@ -11,6 +11,7 @@ import {
   Car, 
   Train 
 } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 
 interface StudentVoiceProps {
   onNavigate?: (route: RouteType) => void;
@@ -93,9 +94,9 @@ export const StudentVoice: React.FC<StudentVoiceProps> = ({
       )}
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-10">
-        {/* Subheader Hero with Atmospheric Wash */}
-        <section className="p-8 bg-gradient-to-br from-[#fff7f2] via-white to-[#faf4fc] border border-[#ece6ed] rounded-xl shadow-sm space-y-3">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#f6f2f7] text-[11px] font-mono font-semibold text-[#9c4126] uppercase tracking-wider">
+        {/* Subheader Hero */}
+        <section className="p-6 sm:p-8 bg-gradient-to-br from-[#fff7f2] via-white to-[#faf4fc] border border-[#ece6ed] rounded-2xl shadow-sm space-y-3 relative overflow-hidden">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white border border-[#ece6ed] text-[10px] font-mono font-bold text-[#9c4126] uppercase tracking-wider shadow-xs">
             <HeartHandshake className="w-3.5 h-3.5 text-[#9c4126]" />
             Circadian Rhythm & Student Voice Telemetry
           </div>
@@ -111,22 +112,22 @@ export const StudentVoice: React.FC<StudentVoiceProps> = ({
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
           
           {/* Circadian Chronotype Engine */}
-          <section className="lg:col-span-6 bg-white border border-[#ece6ed] rounded-xl p-6 lg:p-8 shadow-sm space-y-6">
+          <section className="lg:col-span-6 bg-white border border-[#ece6ed] rounded-2xl p-6 lg:p-8 shadow-sm space-y-6">
             <div className="border-b border-[#ece6ed] pb-3">
               <span className="text-[11px] font-mono uppercase tracking-widest text-[#9c4126] font-bold">Circadian Alignment</span>
-              <h2 className="text-xl font-bold text-[#1f1b20] mt-0.5">Chronotype Energy Optimization</h2>
+              <h2 className="text-xl font-black text-[#1f1b20] mt-0.5">Chronotype Energy Optimization</h2>
               <p className="text-xs text-[#655d69] mt-1">
                 Align high-intensity lectures (e.g., Quantum Mechanics, Multivariable Calculus) with cohort cognitive peaks.
               </p>
             </div>
 
-            {/* Chronotype Selector Cards - Atmospheric Washes with Strictly Neutral Borders */}
+            {/* Chronotype Selector Cards */}
             <div className="grid grid-cols-3 gap-3">
               <button
                 onClick={() => setSelectedChronotype('early')}
-                className={`p-3.5 rounded-xl border border-[#ece6ed] hover:border-[#dcd9dd] text-center transition-all cursor-pointer shadow-xs ${
+                className={`p-3.5 rounded-xl border border-[#ece6ed] hover:border-[#dcd9dd] text-center transition-all cursor-pointer shadow-xs card-lift ${
                   selectedChronotype === 'early'
-                    ? 'bg-gradient-to-br from-[#fff7f2] to-[#fff0eb] shadow-md'
+                    ? 'bg-gradient-to-br from-[#fff7f2] to-[#fff0eb] shadow-md ring-1 ring-[#9c4126]'
                     : 'bg-[#fbf8fc] hover:bg-white'
                 }`}
               >
@@ -137,9 +138,9 @@ export const StudentVoice: React.FC<StudentVoiceProps> = ({
 
               <button
                 onClick={() => setSelectedChronotype('balanced')}
-                className={`p-3.5 rounded-xl border border-[#ece6ed] hover:border-[#dcd9dd] text-center transition-all cursor-pointer shadow-xs ${
+                className={`p-3.5 rounded-xl border border-[#ece6ed] hover:border-[#dcd9dd] text-center transition-all cursor-pointer shadow-xs card-lift ${
                   selectedChronotype === 'balanced'
-                    ? 'bg-gradient-to-br from-[#f1fbf5] to-[#e8f7ee] shadow-md'
+                    ? 'bg-gradient-to-br from-[#f1fbf5] to-[#e8f7ee] shadow-md ring-1 ring-[#18794e]'
                     : 'bg-[#fbf8fc] hover:bg-white'
                 }`}
               >
@@ -150,9 +151,9 @@ export const StudentVoice: React.FC<StudentVoiceProps> = ({
 
               <button
                 onClick={() => setSelectedChronotype('evening')}
-                className={`p-3.5 rounded-xl border border-[#ece6ed] hover:border-[#dcd9dd] text-center transition-all cursor-pointer shadow-xs ${
+                className={`p-3.5 rounded-xl border border-[#ece6ed] hover:border-[#dcd9dd] text-center transition-all cursor-pointer shadow-xs card-lift ${
                   selectedChronotype === 'evening'
-                    ? 'bg-gradient-to-br from-[#faf4fc] to-[#f4eaf7] shadow-md'
+                    ? 'bg-gradient-to-br from-[#faf4fc] to-[#f4eaf7] shadow-md ring-1 ring-[#7209b7]'
                     : 'bg-[#fbf8fc] hover:bg-white'
                 }`}
               >
@@ -162,11 +163,11 @@ export const StudentVoice: React.FC<StudentVoiceProps> = ({
               </button>
             </div>
 
-            {/* Simulated Energy vs Time Profile with Chromatic Gradient Waves */}
+            {/* Cognitive Alertness Curve */}
             <div className="space-y-2">
-              <div className="flex justify-between text-xs font-semibold text-[#1f1b20]">
+              <div className="flex justify-between text-xs font-bold text-[#1f1b20]">
                 <span>Predicted Cognitive Alertness Curve</span>
-                <span className="font-mono text-[#18794e] bg-[#eaf8f0] px-2 py-0.5 rounded font-bold">Target: 10:30 AM Peak</span>
+                <span className="font-mono text-[#18794e] bg-[#eaf8f0] px-2 py-0.5 rounded font-bold border border-[#ece6ed]">Target: 10:30 AM Peak</span>
               </div>
               <div className="bg-gradient-to-b from-[#fdfbfd] to-[#fbf8fc] border border-[#ece6ed] rounded-xl p-4 space-y-2">
                 <div className="flex items-center justify-between text-[11px] font-mono text-[#655d69] font-bold">
@@ -210,7 +211,7 @@ export const StudentVoice: React.FC<StudentVoiceProps> = ({
               </div>
             </div>
 
-            {/* Lunch buffer protection switch */}
+            {/* Lunch buffer switch */}
             <div className="p-4 bg-gradient-to-br from-[#fff7f2] via-white to-[#fff0eb] rounded-xl border border-[#ece6ed] flex items-center justify-between shadow-xs">
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#9c4126] to-[#f27438] text-white flex items-center justify-center shadow-xs">
@@ -231,10 +232,10 @@ export const StudentVoice: React.FC<StudentVoiceProps> = ({
           </section>
 
           {/* Commuter Transit Buffer & Campus Geography Engine */}
-          <section className="lg:col-span-6 bg-white border border-[#ece6ed] rounded-xl p-6 lg:p-8 shadow-sm space-y-6">
+          <section className="lg:col-span-6 bg-white border border-[#ece6ed] rounded-2xl p-6 lg:p-8 shadow-sm space-y-6">
             <div className="border-b border-[#ece6ed] pb-3">
               <span className="text-[11px] font-mono uppercase tracking-widest text-[#9c4126] font-bold">Transit Geography</span>
-              <h2 className="text-xl font-bold text-[#1f1b20] mt-0.5">Commuter Buffer & Walking Step Matrix</h2>
+              <h2 className="text-xl font-black text-[#1f1b20] mt-0.5">Commuter Buffer & Walking Step Matrix</h2>
               <p className="text-xs text-[#655d69] mt-1">
                 Ensures realistic transit windows between regional transit hubs and opposite campus quads.
               </p>
@@ -254,7 +255,7 @@ export const StudentVoice: React.FC<StudentVoiceProps> = ({
                   <button
                     key={m.id}
                     onClick={() => setCommuteMode(m.id)}
-                    className={`p-3 rounded-xl border border-[#ece6ed] hover:border-[#dcd9dd] flex flex-col items-center justify-center transition-all cursor-pointer shadow-xs ${
+                    className={`p-3 rounded-xl border border-[#ece6ed] hover:border-[#dcd9dd] flex flex-col items-center justify-center transition-all cursor-pointer shadow-xs card-lift ${
                       isSel ? 'bg-gradient-to-br from-[#3b1e4a] to-[#5a2a71] text-white shadow-md' : 'bg-[#fbf8fc] text-[#655d69] hover:bg-white'
                     }`}
                   >
@@ -267,9 +268,9 @@ export const StudentVoice: React.FC<StudentVoiceProps> = ({
 
             {/* Commute slider */}
             <div className="space-y-2">
-              <div className="flex justify-between text-xs font-semibold text-[#1f1b20]">
+              <div className="flex justify-between text-xs font-bold text-[#1f1b20]">
                 <span>Average Door-to-Campus Commute:</span>
-                <span className="font-mono text-[#9c4126] font-bold bg-[#fff0eb] px-2 py-0.5 rounded">{commuteDuration} minutes</span>
+                <span className="font-mono text-[#9c4126] font-bold bg-[#fff0eb] px-2 py-0.5 rounded border border-[#ece6ed]">{commuteDuration} minutes</span>
               </div>
               <input
                 type="range"
@@ -278,27 +279,27 @@ export const StudentVoice: React.FC<StudentVoiceProps> = ({
                 step="5"
                 value={commuteDuration}
                 onChange={e => setCommuteDuration(Number(e.target.value))}
-                className="w-full h-2 bg-[#ece6ed] rounded-lg appearance-none cursor-pointer accent-[#9c4126]"
+                className="w-full h-1.5"
               />
               <div className="text-[11px] text-[#7c747f]">
                 {commuteDuration > 45 ? 'High commute impact: Morning class window shifted to 09:15 AM start.' : 'Standard commute window: 15-minute inter-building buffer enforced.'}
               </div>
             </div>
 
-            {/* Campus Walking Distances Radar */}
+            {/* Walking Speed Constraints */}
             <div className="space-y-2 pt-1">
               <div className="text-xs font-bold text-[#1f1b20]">Cross-Campus Walking Speed Constraints</div>
-              <div className="divide-y divide-[#ece6ed] bg-[#fbf8fc] border border-[#ece6ed] rounded-xl text-xs">
+              <div className="divide-y divide-[#ece6ed] bg-[#fbf8fc] border border-[#ece6ed] rounded-xl text-xs overflow-hidden">
                 <div className="p-3 flex items-center justify-between">
-                  <span className="font-medium text-[#1f1b20]">Science Quad B ↔ South Engineering</span>
+                  <span className="font-semibold text-[#1f1b20]">Science Quad B ↔ South Engineering</span>
                   <span className="font-mono text-[#18794e] font-bold bg-[#eaf8f0] px-2 py-0.5 rounded">12 mins (Buffer: 20 mins)</span>
                 </div>
                 <div className="p-3 flex items-center justify-between">
-                  <span className="font-medium text-[#1f1b20]">Architecture Atrium ↔ Chemistry Lab B</span>
+                  <span className="font-semibold text-[#1f1b20]">Architecture Atrium ↔ Chemistry Lab B</span>
                   <span className="font-mono text-[#18794e] font-bold bg-[#eaf8f0] px-2 py-0.5 rounded">8 mins (Buffer: 15 mins)</span>
                 </div>
                 <div className="p-3 flex items-center justify-between">
-                  <span className="font-medium text-[#1f1b20]">Humanities Hall ↔ Medical Annex</span>
+                  <span className="font-semibold text-[#1f1b20]">Humanities Hall ↔ Medical Annex</span>
                   <span className="font-mono text-[#9c4126] font-bold bg-[#fff0eb] px-2 py-0.5 rounded">17 mins (Buffer: 25 mins)</span>
                 </div>
               </div>
@@ -306,21 +307,19 @@ export const StudentVoice: React.FC<StudentVoiceProps> = ({
           </section>
         </div>
 
-        {/* Student Voice Polling & Cohort Democratic Input - Neutral Borders with Atmospheric Washes */}
-        <section className="bg-white border border-[#ece6ed] rounded-xl p-6 lg:p-8 shadow-sm space-y-6">
+        {/* Student Voice Polling & Referendums */}
+        <section className="bg-white border border-[#ece6ed] rounded-2xl p-6 lg:p-8 shadow-sm space-y-6">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-[#ece6ed] pb-4">
             <div>
               <span className="text-[11px] font-mono uppercase tracking-widest text-[#9c4126] font-bold">Student Governance Matrix</span>
-              <h2 className="text-2xl font-bold text-[#1f1b20]">Live Academic Scheduling Referendums</h2>
+              <h2 className="text-2xl font-black text-[#1f1b20]">Live Academic Scheduling Referendums</h2>
               <p className="text-xs text-[#655d69] mt-0.5">
                 Verified student senate voting results are ingested as hard algorithmic penalty scalars in each semester cycle.
               </p>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-mono font-bold text-[#18794e] bg-[#eefcf2] px-3.5 py-1.5 rounded-xl">
-                10,353 Total Verified Votes
-              </span>
-            </div>
+            <span className="text-xs font-mono font-bold text-[#18794e] bg-[#eefcf2] px-3.5 py-1.5 rounded-xl border border-[#18794e]/20 shadow-xs">
+              10,353 Total Verified Votes
+            </span>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -329,9 +328,9 @@ export const StudentVoice: React.FC<StudentVoiceProps> = ({
               const pctYes = Math.round((poll.votesYes / total) * 100);
 
               return (
-                <div key={poll.id} className={`p-5 rounded-xl border border-[#ece6ed] hover:border-[#dcd9dd] bg-gradient-to-br ${poll.wash} flex flex-col justify-between space-y-4 shadow-xs hover:shadow-md transition-all`}>
+                <div key={poll.id} className={`p-5 rounded-2xl border border-[#ece6ed] hover:border-[#dcd9dd] bg-gradient-to-br ${poll.wash} flex flex-col justify-between space-y-4 shadow-xs card-lift`}>
                   <div className="space-y-2">
-                    <span className="text-[10px] font-mono uppercase tracking-wider text-[#9c4126] font-bold">
+                    <span className="text-[10px] font-mono uppercase tracking-wider text-[#9c4126] font-bold bg-white px-2 py-0.5 rounded shadow-xs border border-[#ece6ed]">
                       {poll.category}
                     </span>
                     <h3 className="text-sm font-bold text-[#1f1b20] leading-snug">
@@ -341,22 +340,22 @@ export const StudentVoice: React.FC<StudentVoiceProps> = ({
 
                   <div className="space-y-3 pt-2">
                     <div className="space-y-1">
-                      <div className="flex justify-between text-xs font-mono font-semibold">
+                      <div className="flex justify-between text-xs font-mono font-bold">
                         <span className="text-[#18794e]">{pctYes}% In Favor</span>
-                        <span className="text-[#7c747f]">{total} votes</span>
+                        <span className="text-[#7c747f]">{total.toLocaleString()} votes</span>
                       </div>
                       <div className="w-full bg-[#ece6ed] rounded-full h-2 overflow-hidden flex">
-                        <div className="bg-gradient-to-r from-[#18794e] to-[#25a26c] h-2 transition-all duration-300" style={{ width: `${pctYes}%` }}></div>
-                        <div className="bg-[#dcd6df] h-2 transition-all duration-300" style={{ width: `${100 - pctYes}%` }}></div>
+                        <div className="bg-gradient-to-r from-[#18794e] to-[#25a26c] h-2 transition-all duration-300 rounded-full" style={{ width: `${pctYes}%` }}></div>
+                        <div className="bg-[#dcd6df] h-2" style={{ width: `${100 - pctYes}%` }}></div>
                       </div>
                     </div>
 
                     <div className="grid grid-cols-2 gap-2 pt-1">
                       <button
                         onClick={() => handleVote(poll.id, 'yes')}
-                        className={`py-2 px-3 rounded-xl text-xs font-bold uppercase tracking-wider border border-[#ece6ed] transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                        className={`py-2 px-3 rounded-xl text-xs font-bold uppercase tracking-wider border border-[#ece6ed] transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-xs ${
                           poll.userVoted === 'yes'
-                            ? 'bg-[#18794e] text-white shadow-sm'
+                            ? 'bg-[#18794e] text-white shadow-xs'
                             : 'bg-white text-[#18794e] hover:bg-[#eefcf2]'
                         }`}
                       >
@@ -365,9 +364,9 @@ export const StudentVoice: React.FC<StudentVoiceProps> = ({
                       </button>
                       <button
                         onClick={() => handleVote(poll.id, 'no')}
-                        className={`py-2 px-3 rounded-xl text-xs font-bold uppercase tracking-wider border border-[#ece6ed] transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                        className={`py-2 px-3 rounded-xl text-xs font-bold uppercase tracking-wider border border-[#ece6ed] transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-xs ${
                           poll.userVoted === 'no'
-                            ? 'bg-[#3b1e4a] text-white shadow-sm'
+                            ? 'bg-[#3b1e4a] text-white shadow-xs'
                             : 'bg-white text-[#655d69] hover:bg-[#f6f2f7]'
                         }`}
                       >
