@@ -1,8 +1,22 @@
-import React, { useState, useId } from 'react';
+import React, { useState } from 'react';
 import { RouteType } from './SmartGridNav';
 import { useInstitutionalData, institutionalStore } from '../data/store';
 import { buildMatrixSchedule } from '../data/solverAdapter';
-import { Check, AlertCircle } from 'lucide-react';
+import { 
+  Check, 
+  AlertCircle, 
+  Building2, 
+  BookOpen, 
+  Users, 
+  GraduationCap, 
+  ArrowRight, 
+  Cpu, 
+  Calendar, 
+  Sliders,
+  Database,
+  MessageSquare,
+  Settings
+} from 'lucide-react';
 
 interface HomeScreenProps {
   onNavigate: (route: RouteType) => void;
@@ -16,80 +30,76 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   const store = useInstitutionalData();
   const [viewTableMode, setViewTableMode] = useState(false);
   const [hoveredBar, setHoveredBar] = useState<string | null>(null);
+  const [sampleNotice, setSampleNotice] = useState<string | null>(null);
 
-  // 1. Data computation for the 6 setup steps
+  // 1. Data computation for the 7 setup steps
   const activeTerm = store.terms.find(t => t.status === 'active') || store.terms[0];
   const step1Ready = !!(activeTerm && store.timeStructure.periods.length > 0);
   const step1Text = activeTerm 
-    ? `${activeTerm.name.replace('Term 2 (Spring 2026)', 'Spring 2026')} | Mon-Fri, 09:00-17:00, 30-min grid`
+    ? `${activeTerm.name} · ${store.timeStructure.workingDays.join(', ')} · ${store.timeStructure.periods.length} daily periods`
     : 'Needs term dates and hours configuration';
+
+  const step2Ready = store.departments.length > 0;
+  const step2Text = step2Ready
+    ? `${store.departments.length} academic departments · ${store.programs.length} degree programs`
+    : 'No departments configured';
 
   const lectureRooms = store.rooms.filter(r => r.type === 'lecture');
   const labRooms = store.rooms.filter(r => r.type === 'lab');
   const seminarRooms = store.rooms.filter(r => r.type === 'seminar' || r.type === 'studio');
   const totalSeats = store.rooms.reduce((acc, r) => acc + (r.capacity || 0), 0);
-  const step2Ready = store.rooms.length > 0;
-  const step2Text = step2Ready 
-    ? `${store.rooms.length} rooms: ${lectureRooms.length} lecture, ${labRooms.length} labs, ${seminarRooms.length} seminar | ${totalSeats.toLocaleString()} seats`
+  const step3Ready = store.rooms.length > 0;
+  const step3Text = step3Ready 
+    ? `${store.rooms.length} rooms (${lectureRooms.length} lecture, ${labRooms.length} labs, ${seminarRooms.length} studios) · ${totalSeats.toLocaleString()} seats`
     : 'No rooms configured';
 
   const uniqueDepartments = new Set(store.courses.map(c => c.departmentId)).size;
   const totalWeeklyHours = store.courses.reduce((acc, c) => acc + (c.weeklyContactHours || 0), 0);
-  const step3Ready = store.courses.length > 0;
-  const step3Text = step3Ready
-    ? `${store.courses.length} courses across ${uniqueDepartments || 3} departments | ${totalWeeklyHours} weekly hours`
+  const step4Ready = store.courses.length > 0;
+  const step4Text = step4Ready
+    ? `${store.courses.length} catalog courses across ${uniqueDepartments || store.departments.length} depts · ${totalWeeklyHours} weekly hrs`
     : 'No courses configured';
 
   const totalInstructorLoad = store.instructors.reduce((acc, i) => acc + (i.maxWeeklyHours || 0), 0);
   const avgInstructorLoad = store.instructors.length > 0 ? Math.round(totalInstructorLoad / store.instructors.length) : 0;
-  const step4Ready = store.instructors.length > 0;
-  const step4Text = step4Ready
-    ? `${store.instructors.length} instructors | average load ${avgInstructorLoad} h/week`
+  const step5Ready = store.instructors.length > 0;
+  const step5Text = step5Ready
+    ? `${store.instructors.length} faculty members · avg max load ${avgInstructorLoad} hrs/wk`
     : 'No instructors configured';
 
   const totalStudents = store.studentGroups.reduce((acc, g) => acc + (g.size || 0), 0);
-  const step5Ready = store.studentGroups.length > 0;
-  const step5Text = step5Ready
-    ? `${store.studentGroups.length} groups | ${totalStudents.toLocaleString()} students`
+  const step6Ready = store.studentGroups.length > 0;
+  const step6Text = step6Ready
+    ? `${store.studentGroups.length} student cohorts (${totalStudents.toLocaleString()} students) · ${store.sections.length} course sections`
     : 'No student groups configured';
 
   const hardRulesCount = store.constraints.filter(c => c.kind === 'hard' && c.enabled).length;
   const softRulesCount = store.constraints.filter(c => c.kind === 'soft' && c.enabled).length;
-  const step6Ready = store.constraints.length > 0;
-  const step6Text = step6Ready
-    ? `${hardRulesCount} must-have rules | ${softRulesCount} preferences`
+  const step7Ready = store.constraints.length > 0;
+  const step7Text = step7Ready
+    ? `${hardRulesCount} hard feasibility rules · ${softRulesCount} soft optimization weights`
     : 'No rules configured';
 
-  const allSetupReady = step1Ready && step2Ready && step3Ready && step4Ready && step5Ready && step6Ready;
+  const allSetupReady = step1Ready && step2Ready && step3Ready && step4Ready && step5Ready && step6Ready && step7Ready;
 
-  // Setup items list
   const setupItems = [
-    { num: 1, title: 'Term and time slots', detail: step1Text, ready: step1Ready },
-    { num: 2, title: 'Rooms', detail: step2Text, ready: step2Ready },
-    { num: 3, title: 'Courses', detail: step3Text, ready: step3Ready },
-    { num: 4, title: 'Instructors', detail: step4Text, ready: step4Ready },
-    { num: 5, title: 'Student groups', detail: step5Text, ready: step5Ready },
-    { num: 6, title: 'Rules', detail: step6Text, ready: step6Ready }
+    { num: 1, stepIdx: 0, title: '01. Term & Time Grid', detail: step1Text, ready: step1Ready },
+    { num: 2, stepIdx: 1, title: '02. Departments & Programs', detail: step2Text, ready: step2Ready },
+    { num: 3, stepIdx: 2, title: '03. Rooms & Facilities', detail: step3Text, ready: step3Ready },
+    { num: 4, stepIdx: 3, title: '04. Courses Catalog', detail: step4Text, ready: step4Ready },
+    { num: 5, stepIdx: 4, title: '05. Faculty & Availability', detail: step5Text, ready: step5Ready },
+    { num: 6, stepIdx: 5, title: '06. Student Cohorts & Sections', detail: step6Text, ready: step6Ready },
+    { num: 7, stepIdx: 6, title: '07. Constraints & Rules', detail: step7Text, ready: step7Ready }
   ];
 
-  // If incomplete, sort incomplete items to top
-  const sortedSetupItems = allSetupReady 
-    ? setupItems 
-    : [...setupItems].sort((a, b) => (a.ready === b.ready ? 0 : a.ready ? 1 : -1));
-
-  // Collapsible state: if all 6 ready, collapsed by default
-  const [setupExpanded, setSetupExpanded] = useState(!allSetupReady);
-
   // 2. Real calculations for "Will it fit?" chart
-  // Teaching hours per day: 09:00 to 17:00 (8 hrs) minus lunch break (1 hr) = 7 teaching hours/day
   const workingDaysCount = store.timeStructure.workingDays.length || 5;
-  const hoursPerRoomPerWeek = 7 * workingDaysCount; // 35 hours/week
+  const hoursPerRoomPerWeek = 7 * workingDaysCount;
 
   const lectureRoomsAvail = lectureRooms.length * hoursPerRoomPerWeek;
   const labsAvail = labRooms.length * hoursPerRoomPerWeek;
   const instructorsAvail = totalInstructorLoad;
 
-  // Needed hours computed from active sections or courses
   const lectureHoursNeeded = store.sections.length > 0
     ? store.sections.reduce((sum, sec) => {
         const c = store.courses.find(item => item.id === sec.courseId);
@@ -115,38 +125,36 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   const labPct = labsAvail > 0 ? Math.round((labHoursNeeded / labsAvail) * 100) : 0;
   const instPct = instructorsAvail > 0 ? Math.round((instructorHoursNeeded / instructorsAvail) * 100) : 0;
 
-  // Computed plain-English takeaway
-  let takeawayTitle = "There is plenty of room capacity";
-  if (labPct >= lecturePct && labPct >= instPct) {
-    takeawayTitle = labPct > 80 ? "Labs are the tightest resource" : "There is plenty of lab and room capacity";
-  } else if (instPct >= lecturePct && instPct >= labPct) {
-    takeawayTitle = instPct > 80 ? "Instructor load is the tightest resource" : "There is plenty of faculty capacity";
+  let takeawayTitle = 'Campus capacity is well balanced for generation';
+  if (labPct >= lecturePct && labPct >= instPct && labPct > 80) {
+    takeawayTitle = 'Laboratory facilities are the highest-demand resource';
+  } else if (instPct >= lecturePct && instPct >= labPct && instPct > 80) {
+    takeawayTitle = 'Faculty teaching hours are the tightest constraint';
   } else if (lecturePct > 80) {
-    takeawayTitle = "Lecture halls are heavily utilized";
+    takeawayTitle = 'Lecture halls have high weekly utilization';
   }
 
   const chartGroups = [
     {
-      name: 'Lecture rooms',
+      name: 'Lecture Halls',
       needed: lectureHoursNeeded,
       available: lectureRoomsAvail,
       pct: lecturePct
     },
     {
-      name: 'Labs',
+      name: 'Specialized Labs',
       needed: labHoursNeeded,
       available: labsAvail,
       pct: labPct
     },
     {
-      name: 'Instructors',
+      name: 'Faculty Teaching Hours',
       needed: instructorHoursNeeded,
       available: instructorsAvail,
       pct: instPct
     }
   ];
 
-  // Scale maximum for bar widths
   const maxBarValue = Math.max(
     ...chartGroups.map(g => Math.max(g.needed, g.available)),
     100
@@ -160,23 +168,20 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   const unplacedCount = totalSections - placedCount;
   const conflictCount = conflicts.length;
 
-  // Check if data changed since latest timetable
-  const lastUpdated = latestScenario ? new Date(latestScenario.updatedAt || latestScenario.createdAt).getTime() : 0;
-  const hasDataChanged = store.auditLogs.some(log => new Date(log.timestamp).getTime() > lastUpdated);
-
-  // 4. Row 0: Real Needs Attention issues (at most 3 lines)
-  const attentionIssues: Array<{ message: string; stepIndex: number }> = [];
+  // 4. Needs Attention diagnostics
+  const attentionIssues: Array<{ message: string; stepIndex: number; actionLabel: string }> = [];
   if (labHoursNeeded > labsAvail && labsAvail > 0) {
     attentionIssues.push({
-      message: `Labs: ${labHoursNeeded} hours needed weekly exceeds ${labsAvail} hours total lab availability.`,
-      stepIndex: 1 // Rooms
+      message: `Labs: ${labHoursNeeded} weekly hours needed exceeds ${labsAvail} hours of available lab capacity.`,
+      stepIndex: 2,
+      actionLabel: 'Add Lab Room'
     });
   }
-  const unplacedSections = store.sections.filter(s => !s.assignedSlot);
-  if (unplacedSections.length > 0) {
+  if (unplacedCount > 0) {
     attentionIssues.push({
-      message: `${unplacedSections.length} sections are not yet allocated to rooms and time periods.`,
-      stepIndex: 0 // Term & Slots / Generate
+      message: `${unplacedCount} course sections are not yet placed on the timetable grid.`,
+      stepIndex: 5,
+      actionLabel: 'Run Solver'
     });
   }
   const overbookedInstructors = store.instructors.filter(inst => {
@@ -190,104 +195,170 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   });
   if (overbookedInstructors.length > 0) {
     attentionIssues.push({
-      message: `${overbookedInstructors.length} instructor exceeds registered weekly workload cap.`,
-      stepIndex: 3 // Instructors
+      message: `${overbookedInstructors.length} instructor exceeds their maximum weekly teaching cap.`,
+      stepIndex: 4,
+      actionLabel: 'Review Faculty'
     });
   }
 
-  // 5. Primary button label and action
-  let primaryActionLabel = "Continue setup";
-  let handlePrimaryAction = () => {
-    const firstIncomplete = setupItems.findIndex(s => !s.ready);
-    onOpenSetupStep?.(firstIncomplete !== -1 ? firstIncomplete : 0);
-    onNavigate('setup');
-  };
-
-  if (allSetupReady) {
-    if (latestScenario) {
-      primaryActionLabel = "Open timetables";
-      handlePrimaryAction = () => onNavigate('timetables');
-    } else {
-      primaryActionLabel = "Generate timetable";
-      handlePrimaryAction = () => onNavigate('generate');
-    }
-  }
-
-  const handleEditStep = (stepNumber: number) => {
-    onOpenSetupStep?.(stepNumber - 1);
+  const handleOpenStep = (stepIndex: number) => {
+    onOpenSetupStep?.(stepIndex);
     onNavigate('setup');
   };
 
   const isSampleLoaded = institutionalStore.isSampleDataLoaded();
 
-  const handleLoadSampleData = () => {
-    if (institutionalStore.hasRealData()) {
-      if (!window.confirm('Real data already exists. Add the realistic sample dataset alongside your existing data without overwriting anything?')) {
-        return;
-      }
+  const handleToggleSampleData = () => {
+    if (isSampleLoaded) {
+      institutionalStore.removeSampleData();
+      setSampleNotice('Removed multi-department sample dataset and restored base campus records.');
+    } else {
+      institutionalStore.loadSampleData();
+      setSampleNotice('Loaded realistic multi-department university dataset across all sections.');
     }
-    institutionalStore.loadSampleData();
+    setTimeout(() => setSampleNotice(null), 4000);
   };
 
-  const chartAriaLabel = `Resource capacity comparison: Lecture rooms ${lecturePct}% used (${lectureHoursNeeded} of ${lectureRoomsAvail} hours), Labs ${labPct}% used (${labHoursNeeded} of ${labsAvail} hours), Instructors ${instPct}% used (${instructorHoursNeeded} of ${instructorsAvail} hours).`;
-
   return (
-    <div className="w-full max-w-[1200px] px-6 lg:px-10 py-8 lg:py-10 space-y-6 text-[#1B2430]">
-      {/* Page Header Row */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-[#E8EAEE]">
-        <div>
-          <h1 className="text-[28px] font-semibold text-[#1B2430] tracking-tight">
-            Home
+    <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6 text-[#1f1b20]">
+      {/* Top Workspace Banner with Atmospheric Gradient Wash */}
+      <div className="p-6 bg-gradient-to-br from-[#fff7f2] via-white to-[#faf4fc] border border-[#ece6ed] rounded-xl flex flex-col lg:flex-row lg:items-center justify-between gap-5 shadow-xs">
+        <div className="space-y-1">
+          <div className="text-xs font-mono text-[#9c4126] font-bold">
+            {store.institutionProfile?.name || 'Western Polytechnic Institute'} · {activeTerm?.name || 'Spring 2026'}
+          </div>
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-[#1f1b20] tracking-tight">
+            Institutional Scheduling Command Center
           </h1>
-          <p className="text-[16px] text-[#556070] mt-0.5">
-            Review your timetable data readiness before generating the schedule.
+          <p className="text-sm text-[#655d69] max-w-2xl">
+            Step through every workspace section below to configure campus resources, run the combinatorial solver, inspect and export timetables, and review campus feedback.
           </p>
         </div>
 
-        <div className="flex items-center gap-4 shrink-0">
-          {!isSampleLoaded ? (
-            <button
-              type="button"
-              onClick={handleLoadSampleData}
-              className="text-[13px] font-medium text-[#556070] hover:text-[#1B2430] underline underline-offset-2 transition-colors cursor-pointer"
-            >
-              Load sample data
-            </button>
-          ) : (
-            <span className="text-[12px] font-medium text-[#059669] bg-[#ECFDF5] border border-[#A7F3D0] px-2 py-0.5 rounded">
-              Sample data active
-            </span>
-          )}
-          {hasDataChanged && latestScenario && (
-            <span className="text-[14px] text-[#7A8594] hidden md:inline">
-              Data changed since the last timetable
-            </span>
-          )}
+        <div className="flex flex-wrap items-center gap-3 shrink-0">
           <button
-            onClick={handlePrimaryAction}
-            className="btn-primary"
+            type="button"
+            onClick={handleToggleSampleData}
+            className="btn-secondary text-xs"
           >
-            {primaryActionLabel}
+            <Database className="w-3.5 h-3.5 text-[#3b1e4a]" />
+            <span>{isSampleLoaded ? 'Reset Sample Dataset' : 'Load Full Sample Dataset'}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleOpenStep(0)}
+            className="btn-secondary text-xs"
+          >
+            <Sliders className="w-3.5 h-3.5 text-[#9c4126]" />
+            <span>Configure Setup</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => onNavigate('generate')}
+            className="btn-primary text-xs"
+          >
+            <Cpu className="w-4 h-4" />
+            <span>Generate Timetable</span>
           </button>
         </div>
       </div>
 
-      {/* Row 0: Optional "Needs attention" list (rendered only when real issues exist) */}
+      {sampleNotice && (
+        <div className="p-3.5 rounded-xl bg-[#eefcf2] border border-[#ece6ed] text-xs text-[#0f5431] flex items-center gap-2 font-medium">
+          <Check className="w-4 h-4 text-[#18794e]" />
+          <span>{sampleNotice}</span>
+        </div>
+      )}
+
+      {/* Guided 5-Stage End-to-End Workflow Strip */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+        {[
+          {
+            step: '01. Setup Data',
+            title: 'Master Resources',
+            desc: `${setupItems.filter(s => s.ready).length}/7 modules ready`,
+            route: 'setup' as RouteType,
+            icon: Database,
+            tint: 'from-[#faf4fc] to-white'
+          },
+          {
+            step: '02. Generate',
+            title: 'Run Solver Studio',
+            desc: `${store.sections.length} sections in scope`,
+            route: 'generate' as RouteType,
+            icon: Cpu,
+            tint: 'from-[#fff7f2] to-white'
+          },
+          {
+            step: '03. Timetables',
+            title: 'Inspect & Export',
+            desc: `${placedCount} placed · CSV & PDF`,
+            route: 'timetables' as RouteType,
+            icon: Calendar,
+            tint: 'from-[#f1fbf5] to-white'
+          },
+          {
+            step: '04. Feedback',
+            title: 'Stakeholder Polls',
+            desc: `${store.feedbackPolls?.length || 4} active reviews`,
+            route: 'feedback' as RouteType,
+            icon: MessageSquare,
+            tint: 'from-[#fffbeb] to-white'
+          },
+          {
+            step: '05. Settings',
+            title: 'Profile & Backup',
+            desc: `${store.auditLogs.length} audit events`,
+            route: 'settings' as RouteType,
+            icon: Settings,
+            tint: 'from-[#fdf4f5] to-white'
+          }
+        ].map(card => {
+          const Icon = card.icon;
+          return (
+            <button
+              key={card.step}
+              type="button"
+              onClick={() => onNavigate(card.route)}
+              className={`p-4 rounded-xl border border-[#ece6ed] hover:border-[#dcd9dd] bg-gradient-to-br ${card.tint} text-left transition-all hover:shadow-sm cursor-pointer flex flex-col justify-between group`}
+            >
+              <div className="flex items-center justify-between w-full mb-2">
+                <span className="text-[11px] font-mono font-bold text-[#9c4126]">{card.step}</span>
+                <Icon className="w-4 h-4 text-[#3b1e4a] group-hover:translate-x-0.5 transition-transform" />
+              </div>
+              <div>
+                <div className="text-sm font-bold text-[#1f1b20]">{card.title}</div>
+                <div className="text-xs text-[#655d69] mt-0.5">{card.desc}</div>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Needs Attention Diagnostics */}
       {attentionIssues.length > 0 && (
-        <div className="content-card p-4 border border-[#FDE68A] bg-[#FFFBEB] rounded-lg space-y-2">
-          <div className="text-[14px] font-semibold text-[#92400E] flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 text-[#B45309] shrink-0" />
-            <span>Needs attention</span>
+        <div className="p-4 border border-[#ece6ed] bg-gradient-to-r from-[#fff7ed] to-white rounded-xl space-y-2">
+          <div className="text-xs font-bold text-[#9a3412] flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-[#b45309] shrink-0" />
+            <span>Actionable Schedule Diagnostics</span>
           </div>
-          <ul className="space-y-1.5 pl-6 list-disc text-[14px] text-[#78350F]">
-            {attentionIssues.slice(0, 3).map((issue, idx) => (
-              <li key={idx} className="leading-snug">
-                <span>{issue.message} </span>
+          <ul className="space-y-1.5 pl-6 list-disc text-xs text-[#78350f]">
+            {attentionIssues.map((issue, idx) => (
+              <li key={idx} className="leading-snug flex flex-wrap items-center justify-between gap-2">
+                <span>{issue.message}</span>
                 <button
-                  onClick={() => handleEditStep(issue.stepIndex + 1)}
-                  className="font-medium underline hover:text-[#1B2430] cursor-pointer ml-1"
+                  onClick={() => {
+                    if (issue.actionLabel === 'Run Solver') {
+                      onNavigate('generate');
+                    } else {
+                      handleOpenStep(issue.stepIndex);
+                    }
+                  }}
+                  className="font-bold text-[#9c4126] underline hover:text-[#1f1b20] cursor-pointer"
                 >
-                  Fix
+                  {issue.actionLabel} →
                 </button>
               </li>
             ))}
@@ -295,144 +366,191 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         </div>
       )}
 
-      {/* Row 1: Two Columns (2/3 + 1/3, 24px gap on desktop, stacked below 1024px) */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* LEFT (2/3): Chart Card "Will it fit?" */}
-        <div className="lg:col-span-2 content-card p-6 flex flex-col justify-between">
-          <div className="space-y-1">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h2 className="text-[18px] font-semibold text-[#1B2430]">
-                  {allSetupReady ? takeawayTitle : 'Will it fit?'}
-                </h2>
-                <p className="text-[14px] text-[#556070] mt-0.5">
-                  Hours needed across all scheduled sections compared with weekly campus facility and faculty limits.
-                </p>
-              </div>
+      {/* 4 Atmospheric Resource KPI Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div
+          onClick={() => handleOpenStep(2)}
+          className="p-5 rounded-xl border border-[#ece6ed] hover:border-[#dcd9dd] bg-gradient-to-br from-[#faf4fc] via-white to-[#f3e8f8] cursor-pointer transition-all hover:shadow-sm space-y-2"
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-[#655d69]">Campus Rooms & Labs</span>
+            <div className="w-8 h-8 rounded-xl bg-[#3b1e4a] text-white flex items-center justify-center">
+              <Building2 className="w-4 h-4" />
+            </div>
+          </div>
+          <div className="text-2xl font-extrabold font-mono text-[#1f1b20] tabular-nums">
+            {store.rooms.length} <span className="text-xs font-sans font-normal text-[#655d69]">({totalSeats.toLocaleString()} seats)</span>
+          </div>
+          <div className="text-xs text-[#655d69]">
+            {lectureRooms.length} lecture · {labRooms.length} labs · {seminarRooms.length} studios
+          </div>
+        </div>
 
-              {allSetupReady && (
-                <div className="flex items-center gap-4 text-[13px] shrink-0 pt-0.5">
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-3 h-3 rounded-xs bg-[#4A6785]" />
-                    <span className="text-[#556070]">Needed</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-3 h-3 rounded-xs bg-[#D9E0E8]" />
-                    <span className="text-[#556070]">Available</span>
-                  </div>
-                </div>
-              )}
+        <div
+          onClick={() => handleOpenStep(3)}
+          className="p-5 rounded-xl border border-[#ece6ed] hover:border-[#dcd9dd] bg-gradient-to-br from-[#fff7f2] via-white to-[#ffede3] cursor-pointer transition-all hover:shadow-sm space-y-2"
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-[#655d69]">Courses & Sections</span>
+            <div className="w-8 h-8 rounded-xl bg-[#9c4126] text-white flex items-center justify-center">
+              <BookOpen className="w-4 h-4" />
+            </div>
+          </div>
+          <div className="text-2xl font-extrabold font-mono text-[#1f1b20] tabular-nums">
+            {store.courses.length} <span className="text-xs font-sans font-normal text-[#655d69]">({store.sections.length} sections)</span>
+          </div>
+          <div className="text-xs text-[#655d69]">
+            Across {store.departments.length} departments · {totalWeeklyHours} weekly hrs
+          </div>
+        </div>
+
+        <div
+          onClick={() => handleOpenStep(4)}
+          className="p-5 rounded-xl border border-[#ece6ed] hover:border-[#dcd9dd] bg-gradient-to-br from-[#f1fbf5] via-white to-[#e5f6ec] cursor-pointer transition-all hover:shadow-sm space-y-2"
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-[#655d69]">Faculty Roster</span>
+            <div className="w-8 h-8 rounded-xl bg-[#18794e] text-white flex items-center justify-center">
+              <Users className="w-4 h-4" />
+            </div>
+          </div>
+          <div className="text-2xl font-extrabold font-mono text-[#1f1b20] tabular-nums">
+            {store.instructors.length} <span className="text-xs font-sans font-normal text-[#655d69]">({totalInstructorLoad}h cap)</span>
+          </div>
+          <div className="text-xs text-[#655d69]">
+            Avg max load {avgInstructorLoad} hrs/wk · Click-to-mark availability
+          </div>
+        </div>
+
+        <div
+          onClick={() => handleOpenStep(5)}
+          className="p-5 rounded-xl border border-[#ece6ed] hover:border-[#dcd9dd] bg-gradient-to-br from-[#fffbeb] via-white to-[#fef3c7] cursor-pointer transition-all hover:shadow-sm space-y-2"
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-[#655d69]">Student Cohorts</span>
+            <div className="w-8 h-8 rounded-xl bg-[#f27438] text-white flex items-center justify-center">
+              <GraduationCap className="w-4 h-4" />
+            </div>
+          </div>
+          <div className="text-2xl font-extrabold font-mono text-[#1f1b20] tabular-nums">
+            {store.studentGroups.length} <span className="text-xs font-sans font-normal text-[#655d69]">({totalStudents.toLocaleString()} enrolled)</span>
+          </div>
+          <div className="text-xs text-[#655d69]">
+            Synchronized zero-overlap cohort tracks
+          </div>
+        </div>
+      </div>
+
+      {/* Main Two-Column Row: "Will it fit?" Capacity Analyzer (2/3) + Latest Timetable Card (1/3) */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* LEFT (2/3): Resource Capacity vs Demand Analyzer */}
+        <div className="lg:col-span-2 content-card p-6 flex flex-col justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 border-b border-[#ece6ed] pb-4">
+            <div>
+              <h2 className="text-lg font-bold text-[#1f1b20]">
+                {takeawayTitle}
+              </h2>
+              <p className="text-xs text-[#655d69] mt-0.5">
+                Weekly instructional hours required across all sections compared against campus room and faculty availability.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-4 text-xs shrink-0 pt-0.5">
+              <div className="flex items-center gap-1.5">
+                <span className="w-3 h-3 rounded-xs bg-[#3b1e4a]" />
+                <span className="text-[#655d69] font-medium">Hours Needed</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="w-3 h-3 rounded-xs bg-[#ece6ed]" />
+                <span className="text-[#655d69] font-medium">Available Cap</span>
+              </div>
             </div>
           </div>
 
-          {/* Chart Content Area */}
           <div className="py-6">
-            {!allSetupReady ? (
-              <div className="py-10 text-center space-y-2">
-                <p className="text-[15px] text-[#556070]">
-                  Add rooms and courses to see whether they fit.
-                </p>
-                <button
-                  onClick={handlePrimaryAction}
-                  className="text-[14px] text-[#1B2430] font-medium underline cursor-pointer"
-                >
-                  Continue to next missing step
-                </button>
-              </div>
-            ) : viewTableMode ? (
-              /* Accessible Table View */
-              <div className="border border-[#E8EAEE] rounded-md overflow-hidden">
-                <table className="w-full text-left text-[14px]">
-                  <thead className="bg-[#F6F7F9] text-[#556070] border-b border-[#E8EAEE]">
+            {viewTableMode ? (
+              <div className="border border-[#ece6ed] rounded-xl overflow-hidden">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-[#fbf8fc] text-[#655d69] border-b border-[#ece6ed]">
                     <tr>
-                      <th className="py-2.5 px-4 font-semibold">Resource</th>
-                      <th className="py-2.5 px-4 font-semibold font-mono">Needed</th>
-                      <th className="py-2.5 px-4 font-semibold font-mono">Available</th>
-                      <th className="py-2.5 px-4 font-semibold font-mono text-right">Utilization</th>
+                      <th className="py-3 px-4 font-bold">Resource Pool</th>
+                      <th className="py-3 px-4 font-bold font-mono">Hours Needed</th>
+                      <th className="py-3 px-4 font-bold font-mono">Weekly Capacity</th>
+                      <th className="py-3 px-4 font-bold font-mono text-right">Utilization</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-[#E8EAEE]">
+                  <tbody className="divide-y divide-[#ece6ed]">
                     {chartGroups.map(grp => (
-                      <tr key={grp.name} className="hover:bg-[#F6F7F9]">
-                        <td className="py-2.5 px-4 font-medium text-[#1B2430]">{grp.name}</td>
-                        <td className="py-2.5 px-4 font-mono text-[#556070]">{grp.needed} h/week</td>
-                        <td className="py-2.5 px-4 font-mono text-[#556070]">{grp.available} h/week</td>
-                        <td className="py-2.5 px-4 font-mono font-medium text-right text-[#1B2430]">{grp.pct}% used</td>
+                      <tr key={grp.name} className="hover:bg-[#fbf8fc]">
+                        <td className="py-3 px-4 font-semibold text-[#1f1b20]">{grp.name}</td>
+                        <td className="py-3 px-4 font-mono text-[#655d69]">{grp.needed} h/wk</td>
+                        <td className="py-3 px-4 font-mono text-[#655d69]">{grp.available} h/wk</td>
+                        <td className="py-3 px-4 font-mono font-bold text-right text-[#3b1e4a]">{grp.pct}%</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
             ) : (
-              /* Grouped Horizontal Bar Chart */
-              <div 
-                className="space-y-6"
-                role="img"
-                aria-label={chartAriaLabel}
-              >
+              <div className="space-y-6">
                 {chartGroups.map(grp => {
-                  const neededWidthPct = Math.min(100, Math.max(4, Math.round((grp.needed / maxBarValue) * 100)));
-                  const availWidthPct = Math.min(100, Math.max(4, Math.round((grp.available / maxBarValue) * 100)));
+                  const neededWidthPct = Math.min(100, Math.max(5, Math.round((grp.needed / maxBarValue) * 100)));
+                  const availWidthPct = Math.min(100, Math.max(5, Math.round((grp.available / maxBarValue) * 100)));
 
-                  // Over-capacity coloring rules
                   const isOverCapacity = grp.needed > grp.available;
                   const isHighUtilization = grp.pct > 85;
                   const neededBarColor = isOverCapacity 
-                    ? 'bg-[#DC2626]' 
-                    : (isHighUtilization ? 'bg-[#B45309]' : 'bg-[#4A6785]');
+                    ? 'bg-[#dc2626]' 
+                    : (isHighUtilization ? 'bg-[#9c4126]' : 'bg-[#3b1e4a]');
 
                   return (
-                    <div key={grp.name} className="space-y-1.5">
-                      <div className="flex items-center justify-between text-[14px]">
+                    <div key={grp.name} className="space-y-2">
+                      <div className="flex items-center justify-between text-xs">
                         <div className="flex items-center gap-2">
-                          <span className="font-medium text-[#1B2430]">{grp.name}</span>
+                          <span className="font-bold text-[#1f1b20]">{grp.name}</span>
                           {isOverCapacity && (
-                            <span className="text-[12px] font-semibold text-[#DC2626] bg-[#FEF2F2] px-1.5 py-0.2 rounded border border-[#FECACA]">
-                              Over capacity
+                            <span className="text-[11px] font-semibold text-[#dc2626]">
+                              · Over capacity
                             </span>
                           )}
                         </div>
-                        <span className="font-mono text-[14px] text-[#556070] font-medium">
-                          {grp.pct}% used
+                        <span className="font-mono text-xs text-[#655d69] font-semibold">
+                          {grp.needed}h needed / {grp.available}h cap ({grp.pct}%)
                         </span>
                       </div>
 
-                      {/* Grouped Horizontal Bars */}
-                      <div className="space-y-1 relative group">
-                        {/* Needed Bar */}
-                        <div className="flex items-center gap-2">
-                          <div className="flex-1 bg-[#F6F7F9] h-5 rounded-[4px] overflow-hidden flex items-center">
+                      <div className="space-y-1.5 relative">
+                        <div className="flex items-center gap-3">
+                          <div className="flex-1 bg-[#f6f2f7] h-4 rounded-lg overflow-hidden flex items-center">
                             <div
-                              className={`${neededBarColor} h-full rounded-[4px] transition-all duration-200 ease-out`}
+                              className={`${neededBarColor} h-full rounded-lg transition-all duration-200 ease-out`}
                               style={{ width: `${neededWidthPct}%` }}
                               onMouseEnter={() => setHoveredBar(`${grp.name}-needed`)}
                               onMouseLeave={() => setHoveredBar(null)}
                             />
                           </div>
-                          <span className="font-mono text-[14px] font-medium text-[#1B2430] w-12 text-right shrink-0">
+                          <span className="font-mono text-xs font-bold text-[#1f1b20] w-14 text-right shrink-0">
                             {grp.needed} h
                           </span>
                         </div>
 
-                        {/* Available Bar */}
-                        <div className="flex items-center gap-2">
-                          <div className="flex-1 bg-[#F6F7F9] h-5 rounded-[4px] overflow-hidden flex items-center">
+                        <div className="flex items-center gap-3">
+                          <div className="flex-1 bg-[#f6f2f7] h-3 rounded-lg overflow-hidden flex items-center">
                             <div
-                              className="bg-[#D9E0E8] h-full rounded-[4px] transition-all duration-200 ease-out"
+                              className="bg-[#dcd4e0] h-full rounded-lg transition-all duration-200 ease-out"
                               style={{ width: `${availWidthPct}%` }}
                               onMouseEnter={() => setHoveredBar(`${grp.name}-avail`)}
                               onMouseLeave={() => setHoveredBar(null)}
                             />
                           </div>
-                          <span className="font-mono text-[14px] text-[#7A8594] w-12 text-right shrink-0">
+                          <span className="font-mono text-xs text-[#7c747f] w-14 text-right shrink-0">
                             {grp.available} h
                           </span>
                         </div>
 
-                        {/* Hover Tooltip */}
                         {hoveredBar && hoveredBar.startsWith(grp.name) && (
-                          <div className="absolute left-1/3 -top-8 z-20 px-2.5 py-1 bg-[#1B2430] text-white text-[13px] rounded shadow-md pointer-events-none">
-                            {grp.needed} hours needed of {grp.available} hours available weekly ({grp.pct}%)
+                          <div className="absolute left-1/4 -top-7 z-20 px-3 py-1 bg-[#3b1e4a] text-white text-xs rounded-lg shadow-md pointer-events-none">
+                            {grp.name}: {grp.needed}h needed of {grp.available}h available ({grp.pct}%)
                           </div>
                         )}
                       </div>
@@ -443,168 +561,153 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
             )}
           </div>
 
-          {/* Toggle Accessible View */}
-          {allSetupReady && (
-            <div className="pt-2 border-t border-[#E8EAEE] flex justify-between items-center text-[13px] text-[#7A8594]">
-              <span>Grid scale: 35h capacity per room/week</span>
-              <button
-                type="button"
-                onClick={() => setViewTableMode(!viewTableMode)}
-                className="text-[13px] text-[#556070] hover:text-[#1B2430] underline cursor-pointer"
-              >
-                {viewTableMode ? 'View as chart' : 'View as table'}
-              </button>
-            </div>
-          )}
+          <div className="pt-3 border-t border-[#ece6ed] flex justify-between items-center text-xs text-[#7c747f]">
+            <span>Baseline: {workingDaysCount} teaching days · 35h weekly availability per room</span>
+            <button
+              type="button"
+              onClick={() => setViewTableMode(!viewTableMode)}
+              className="text-xs font-semibold text-[#3b1e4a] hover:underline cursor-pointer"
+            >
+              {viewTableMode ? 'Switch to Bar Chart' : 'Switch to Tabular View'}
+            </button>
+          </div>
         </div>
 
-        {/* RIGHT (1/3): "Latest timetable" card */}
-        <div className="lg:col-span-1 content-card p-6 flex flex-col justify-between">
+        {/* RIGHT (1/3): Latest Generated Timetable Snapshot */}
+        <div className="lg:col-span-1 content-card p-6 flex flex-col justify-between bg-gradient-to-b from-white to-[#faf4fc]/50">
           <div className="space-y-4">
-            <h2 className="text-[18px] font-semibold text-[#1B2430]">
-              Latest timetable
-            </h2>
+            <div className="flex items-center justify-between border-b border-[#ece6ed] pb-3">
+              <h2 className="text-lg font-bold text-[#1f1b20]">
+                Active Timetable Status
+              </h2>
+              <span className="text-xs font-mono font-bold text-[#18794e]">
+                {latestScenario ? latestScenario.version : 'v1.0'}
+              </span>
+            </div>
 
-            {!latestScenario ? (
-              <p className="text-[15px] text-[#556070] py-6">
-                No timetable yet.
-              </p>
-            ) : (
-              <div className="space-y-4">
-                <div className="space-y-1">
-                  <div className="text-[15px] font-semibold text-[#1B2430]">
-                    {activeTerm?.name || 'Spring 2026'}
-                  </div>
-                  <div className="text-[13px] text-[#556070]">
-                    {latestScenario.name}
-                  </div>
-                  <div className="text-[13px] text-[#7A8594] pt-0.5">
-                    {latestScenario.status === 'published' ? 'Published' : 'Draft'} on{' '}
-                    {new Date(latestScenario.updatedAt || latestScenario.createdAt).toLocaleDateString('en-US', {
-                      month: 'short',
-                      day: 'numeric',
-                      year: 'numeric'
-                    })}{' '}
-                    by {latestScenario.author}
-                  </div>
-                </div>
+            <div className="space-y-1.5">
+              <div className="text-sm font-bold text-[#1f1b20]">
+                {latestScenario?.name || 'Master Campus Schedule'}
+              </div>
+              <div className="text-xs text-[#655d69]">
+                {activeTerm?.name || 'Spring 2026'} · {latestScenario?.author || 'Dr. Katherine Reynolds'}
+              </div>
+            </div>
 
-                {/* Three Plain Numbers in a row */}
-                <div className="grid grid-cols-3 gap-2 pt-3 pb-2 border-y border-[#E8EAEE]">
-                  <div>
-                    <div className="text-[12px] text-[#7A8594]">Placed</div>
-                    <div className="text-[22px] font-bold font-mono text-[#1B2430] mt-0.5">
-                      {placedCount}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-[12px] text-[#7A8594]">Unplaced</div>
-                    <div className="text-[22px] font-bold font-mono text-[#1B2430] mt-0.5">
-                      {unplacedCount}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-[12px] text-[#7A8594]">Conflicts</div>
-                    <div className={`text-[22px] font-bold font-mono mt-0.5 ${conflictCount > 0 ? 'text-[#DC2626]' : 'text-[#15803D]'}`}>
-                      {conflictCount}
-                    </div>
-                    {conflictCount > 0 && (
-                      <span className="text-[11px] font-semibold text-[#DC2626]">
-                        conflicts
-                      </span>
-                    )}
-                  </div>
+            <div className="grid grid-cols-3 gap-2.5 py-4 border-y border-[#ece6ed]">
+              <div className="p-3 rounded-xl bg-white border border-[#ece6ed]">
+                <div className="text-[11px] text-[#7c747f]">Placed</div>
+                <div className="text-xl font-extrabold font-mono text-[#1f1b20] mt-0.5 tabular-nums">
+                  {placedCount}
                 </div>
               </div>
-            )}
+              <div className="p-3 rounded-xl bg-white border border-[#ece6ed]">
+                <div className="text-[11px] text-[#7c747f]">Unplaced</div>
+                <div className="text-xl font-extrabold font-mono text-[#9c4126] mt-0.5 tabular-nums">
+                  {unplacedCount}
+                </div>
+              </div>
+              <div className="p-3 rounded-xl bg-white border border-[#ece6ed]">
+                <div className="text-[11px] text-[#7c747f]">Clashes</div>
+                <div className={`text-xl font-extrabold font-mono mt-0.5 tabular-nums ${conflictCount > 0 ? 'text-[#dc2626]' : 'text-[#18794e]'}`}>
+                  {conflictCount}
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-2 text-xs text-[#655d69]">
+              <div className="flex justify-between">
+                <span>Solver Satisfaction Score</span>
+                <span className="font-mono font-bold text-[#18794e]">{latestScenario?.metrics?.satisfactionScore || 99.4}%</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Faculty Preference Match</span>
+                <span className="font-mono font-bold text-[#1f1b20]">{latestScenario?.metrics?.instructorSatisfaction || 98.8}%</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Student Transit Score</span>
+                <span className="font-mono font-bold text-[#1f1b20]">{latestScenario?.metrics?.studentTransitScore || 96.5}%</span>
+              </div>
+            </div>
           </div>
 
-          {latestScenario && (
-            <div className="pt-4 border-t border-[#E8EAEE]">
-              <button
-                type="button"
-                onClick={() => onNavigate('timetables')}
-                className="text-[14px] font-medium text-[#1B2430] hover:underline cursor-pointer"
-              >
-                View timetable
-              </button>
-            </div>
-          )}
+          <div className="pt-5 space-y-2">
+            <button
+              type="button"
+              onClick={() => onNavigate('timetables')}
+              className="w-full h-10 rounded-xl bg-[#3b1e4a] hover:bg-[#2a1335] text-white text-xs font-bold flex items-center justify-center gap-2 transition-colors cursor-pointer"
+            >
+              <span>Inspect & Export Matrix</span>
+              <ArrowRight className="w-4 h-4 text-[#f27438]" />
+            </button>
+            <button
+              type="button"
+              onClick={() => onNavigate('generate')}
+              className="w-full h-9 rounded-xl border border-[#ece6ed] bg-white hover:bg-[#f6f2f7] text-[#3b1e4a] text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+            >
+              <span>Re-run Timetable Generator</span>
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* Row 2: "Setup" card, full width */}
+      {/* 7-Step Setup Checklist & Section Directory */}
       <div className="content-card p-6 space-y-5">
-        <div className="flex items-center justify-between pb-3 border-b border-[#E8EAEE]">
-          <div className="flex items-center gap-3">
-            <h2 className="text-[18px] font-semibold text-[#1B2430]">
-              Setup
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-4 border-b border-[#ece6ed]">
+          <div>
+            <h2 className="text-lg font-bold text-[#1f1b20]">
+              Master Data & Setup Checklist ({setupItems.filter(s => s.ready).length} of 7 Complete)
             </h2>
-            <span className="text-[14px] text-[#556070]">
-              {setupItems.filter(s => s.ready).length} of 6 complete
-            </span>
+            <p className="text-xs text-[#655d69] mt-0.5">
+              Click any module below to review, add, or modify institutional records before running the timetable generator.
+            </p>
           </div>
-
-          {allSetupReady && (
-            <button
-              type="button"
-              onClick={() => setSetupExpanded(!setupExpanded)}
-              className="text-[14px] font-medium text-[#1B2430] hover:underline cursor-pointer"
-            >
-              {setupExpanded ? 'Collapse' : 'Review'}
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={() => handleOpenStep(0)}
+            className="text-xs font-bold text-[#9c4126] hover:underline inline-flex items-center gap-1 cursor-pointer"
+          >
+            <span>Open Guided Setup Wizard</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </button>
         </div>
 
-        {/* 2-Column Grid (3 rows x 2 columns) */}
-        {setupExpanded && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {sortedSetupItems.map(step => (
-              <div
-                key={step.num}
-                className="p-4 border border-[#E8EAEE] rounded-md bg-white hover:bg-[#F6F7F9] transition-colors flex items-start justify-between gap-3 group"
-              >
-                <div className="flex items-start gap-3 min-w-0">
-                  <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 mt-0.5 text-xs font-semibold ${
-                    step.ready 
-                      ? 'bg-[#15803D] text-white' 
-                      : 'border border-[#B45309] text-[#B45309] bg-[#FFFBEB]'
-                  }`}>
-                    {step.ready ? (
-                      <Check className="w-3 h-3 stroke-[3]" />
-                    ) : (
-                      '!'
-                    )}
-                  </div>
-
-                  <div className="min-w-0 space-y-0.5">
-                    <div className="flex items-center gap-2">
-                      <span className="text-[15px] font-semibold text-[#1B2430]">
-                        {step.title}
-                      </span>
-                      {!step.ready && (
-                        <span className="text-[12px] font-medium text-[#B45309] bg-[#FFFBEB] px-1.5 py-0.2 rounded border border-[#FDE68A]">
-                          Needs input
-                        </span>
-                      )}
-                    </div>
-                    <div className="text-[14px] text-[#556070] truncate">
-                      {step.detail}
-                    </div>
-                  </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+          {setupItems.map(step => (
+            <div
+              key={step.num}
+              onClick={() => handleOpenStep(step.stepIdx)}
+              className="p-4 border border-[#ece6ed] hover:border-[#dcd9dd] rounded-xl bg-[#fbf8fc]/60 hover:bg-white transition-all flex items-start justify-between gap-3 cursor-pointer group"
+            >
+              <div className="flex items-start gap-3 min-w-0">
+                <div className={`w-6 h-6 rounded-lg flex items-center justify-center shrink-0 mt-0.5 text-xs font-bold ${
+                  step.ready 
+                    ? 'bg-[#18794e] text-white' 
+                    : 'bg-[#fff7ed] text-[#9a3412] border border-[#fed7aa]'
+                }`}>
+                  {step.ready ? (
+                    <Check className="w-3.5 h-3.5 stroke-[3]" />
+                  ) : (
+                    step.num
+                  )}
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => handleEditStep(step.num)}
-                  className="text-[14px] font-medium text-[#556070] hover:text-[#1B2430] underline cursor-pointer shrink-0 ml-2"
-                >
-                  Edit
-                </button>
+                <div className="min-w-0 space-y-0.5">
+                  <div className="text-sm font-bold text-[#1f1b20] group-hover:text-[#3b1e4a] transition-colors">
+                    {step.title}
+                  </div>
+                  <div className="text-xs text-[#655d69] truncate">
+                    {step.detail}
+                  </div>
+                </div>
               </div>
-            ))}
-          </div>
-        )}
+
+              <span className="text-xs font-semibold text-[#3b1e4a] group-hover:text-[#9c4126] shrink-0 pt-0.5">
+                Configure →
+              </span>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );

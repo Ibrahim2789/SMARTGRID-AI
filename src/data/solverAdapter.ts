@@ -1,16 +1,20 @@
 import { ClassItem } from '../components/ClassDetailsModal';
 import { InstitutionalDataStore } from './store';
-import { DayOfWeek } from '../types/institutional';
 
 export function getDepartmentBlockClass(code: string): string {
-  if (code.startsWith('CS')) return 'dept-block-sky';
-  if (code.startsWith('BIO')) return 'dept-block-mint';
-  if (code.startsWith('CHEM')) return 'dept-block-aqua';
-  if (code.startsWith('ENG')) return 'dept-block-peach';
-  if (code.startsWith('ARCH')) return 'dept-block-sand';
-  if (code.startsWith('MATH')) return 'dept-block-butter';
-  if (code.startsWith('HUM')) return 'dept-block-rose';
-  return 'dept-block-lime';
+  const upper = code.toUpperCase();
+  if (upper.startsWith('CS') || upper.startsWith('MATH')) return 'dept-block-plum';
+  if (upper.startsWith('BIO') || upper.startsWith('CHEM')) return 'dept-block-emerald';
+  if (upper.startsWith('ENG') || upper.startsWith('MECH')) return 'dept-block-terracotta';
+  if (upper.startsWith('ARCH')) return 'dept-block-amber';
+  return 'dept-block-rose';
+}
+
+export function getDepartmentAccent(code: string): 'plum' | 'emerald' | 'terracotta' {
+  const upper = code.toUpperCase();
+  if (upper.startsWith('BIO') || upper.startsWith('CHEM')) return 'emerald';
+  if (upper.startsWith('ENG') || upper.startsWith('MECH') || upper.startsWith('HUM')) return 'terracotta';
+  return 'plum';
 }
 
 export function buildMatrixSchedule(store: InstitutionalDataStore): {
@@ -18,10 +22,13 @@ export function buildMatrixSchedule(store: InstitutionalDataStore): {
   conflicts: Array<{ id: string; description: string; day: string; time: string }>;
 } {
   const scheduleData: Record<string, Record<string, ClassItem[]>> = {};
-  const periods = store.timeStructure.periods;
-  const days = store.timeStructure.workingDays;
+  const periods = store.timeStructure.periods.length > 0
+    ? store.timeStructure.periods
+    : ['09:00 - 10:30', '11:00 - 12:30', '13:30 - 15:00', '15:30 - 17:00'];
+  const days = store.timeStructure.workingDays.length > 0
+    ? store.timeStructure.workingDays
+    : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
 
-  // Initialize empty grid
   periods.forEach(period => {
     scheduleData[period] = {};
     days.forEach(day => {
@@ -31,13 +38,15 @@ export function buildMatrixSchedule(store: InstitutionalDataStore): {
 
   const conflicts: Array<{ id: string; description: string; day: string; time: string }> = [];
 
-  // Map each assigned section
   store.sections.forEach(sec => {
     if (!sec.assignedSlot) return;
 
     const { day, timeSlot, roomId } = sec.assignedSlot;
     if (!scheduleData[timeSlot]) {
       scheduleData[timeSlot] = {};
+      days.forEach(d => {
+        scheduleData[timeSlot][d] = [];
+      });
     }
     if (!scheduleData[timeSlot][day]) {
       scheduleData[timeSlot][day] = [];
@@ -47,12 +56,13 @@ export function buildMatrixSchedule(store: InstitutionalDataStore): {
     const room = store.rooms.find(r => r.id === roomId);
     const instructor = store.instructors.find(i => i.id === sec.instructorId);
     const group = store.studentGroups.find(g => g.id === sec.studentGroupId);
+    const dept = store.departments.find(d => d.id === course?.departmentId);
 
-    const code = course?.code || 'CRS-000';
-    const title = course?.title || 'Untitled Course';
-    const roomCode = room?.code || 'TBD';
-    const profName = instructor?.name || 'Unassigned';
-    const cohortCode = group?.code || 'General';
+    const code = course?.code || 'CRS-101';
+    const title = course?.title || 'Academic Seminar';
+    const roomCode = room?.code || 'Hall A1';
+    const profName = instructor?.name || 'Staff Faculty';
+    const cohortCode = group?.code || 'All-STEM';
 
     // Conflict detection: room double-booking
     const existingInRoom = scheduleData[timeSlot][day].find(item => item.room === roomCode);
@@ -76,24 +86,35 @@ export function buildMatrixSchedule(store: InstitutionalDataStore): {
       });
     }
 
-    // Capacity warning
-    const capacity = room?.capacity || 30;
-    const enrolled = sec.expectedEnrollment || 25;
+    const capacity = room?.capacity || 40;
+    const enrolled = sec.expectedEnrollment || group?.size || 30;
 
     const classItem: ClassItem = {
       id: sec.id,
       code,
       title,
       room: roomCode,
+      roomId: room?.id,
       prof: profName,
+      instructorId: instructor?.id,
       cohort: cohortCode,
+      studentGroupId: group?.id,
+      departmentId: dept?.id,
+      departmentName: dept?.name || 'General Sciences',
       capacity,
       enrolled,
       time: timeSlot,
       day,
-      type: course?.requiredRoomType === 'lab' ? 'Laboratory' : (course?.requiredRoomType === 'studio' ? 'Studio' : 'Lecture'),
+      type: course?.requiredRoomType === 'lab'
+        ? 'Laboratory'
+        : course?.requiredRoomType === 'studio'
+        ? 'Studio'
+        : course?.requiredRoomType === 'seminar'
+        ? 'Recitation'
+        : 'Lecture',
       credits: course?.creditHours || 3,
-      accent: 'emerald',
+      accent: getDepartmentAccent(code),
+      isLocked: sec.isLocked,
       constraintStatus: existingInRoom || existingForProf ? 'Soft Penalty Resolved' : 'Optimal'
     };
 

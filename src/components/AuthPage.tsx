@@ -28,7 +28,6 @@ export const AuthPage: React.FC<AuthPageProps> = ({
   const [mode, setMode] = useState<'signin' | 'signup'>(initialMode);
   const [selectedProfile, setSelectedProfile] = useState<'registrar' | 'dean' | 'student'>('registrar');
   
-  // Fields
   const [email, setEmail] = useState('k.reynolds@westernpoly.edu');
   const [password, setPassword] = useState('••••••••••••');
   const [showPassword, setShowPassword] = useState(false);
@@ -36,6 +35,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({
   const [institution, setInstitution] = useState('Western Polytechnic Institute');
   const [isLoading, setIsLoading] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
+  const [helperNotice, setHelperNotice] = useState<string | null>(null);
 
   const demoAccounts = [
     {
@@ -66,6 +66,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({
     setEmail(p.email);
     setName(p.name);
     setInstitution(p.institution);
+    setHelperNotice(null);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -94,69 +95,69 @@ export const AuthPage: React.FC<AuthPageProps> = ({
           });
         }
       }, 300);
-    }, 500);
+    }, 450);
   };
 
   return (
-    <div className="min-h-screen bg-app text-primary flex flex-col justify-center items-center px-4 sm:px-6 py-12 antialiased">
+    <div className="min-h-screen bg-[#fbf8fc] text-[#1f1b20] flex flex-col justify-center items-center px-4 sm:px-6 py-12 antialiased">
       {/* Top Header / Back Button */}
       <div className="w-full max-w-md mb-4">
         <button
           onClick={onCancel}
-          className="inline-flex items-center gap-2 h-[38px] px-3.5 rounded-md text-[14px] font-medium text-secondary hover:text-primary hover:bg-subtle border border-border bg-surface transition-colors cursor-pointer"
+          className="btn-secondary h-9 text-xs"
         >
-          <ArrowLeft className="w-4 h-4" />
-          <span>Back to public site</span>
+          <ArrowLeft className="w-3.5 h-3.5" />
+          <span>Back to Public Overview</span>
         </button>
       </div>
 
       {/* Main Form Card */}
-      <div className="w-full max-w-md bg-surface border border-border rounded-lg shadow-sm p-7 space-y-6">
+      <div className="w-full max-w-md bg-white border border-[#ece6ed] rounded-xl shadow-sm p-7 space-y-6">
         {/* Brand Header */}
         <div className="text-center space-y-1.5">
-          <div className="w-9 h-9 rounded-md bg-brand flex items-center justify-center text-white mx-auto mb-2">
-            <Compass className="w-5 h-5" />
+          <div className="w-10 h-10 rounded-xl bg-[#3b1e4a] flex items-center justify-center text-white mx-auto mb-2 shadow-xs">
+            <Compass className="w-5 h-5 text-[#f27438]" />
           </div>
 
-          <h1 className="text-xl font-semibold text-primary">
-            {mode === 'signin' ? 'Sign in to SmartGrid' : 'Create campus account'}
+          <h1 className="text-xl font-extrabold text-[#1f1b20]">
+            {mode === 'signin' ? 'Sign in to SmartGrid AI' : 'Create Campus Account'}
           </h1>
-          <p className="text-[14px] text-secondary">
-            University timetable scheduling platform
+          <p className="text-xs text-[#655d69]">
+            Institutional timetable generation & scheduling workspace
           </p>
         </div>
 
         {/* Mode Switcher */}
-        <div className="flex p-1 bg-subtle rounded-md border border-border text-[14px]">
+        <div className="flex p-1 bg-[#f6f2f7] rounded-xl border border-[#ece6ed] text-xs">
           <button
             type="button"
             onClick={() => setMode('signin')}
-            className={`flex-1 py-2 text-center rounded-md transition-colors cursor-pointer font-medium ${
+            className={`flex-1 py-2 text-center rounded-lg transition-colors cursor-pointer font-bold ${
               mode === 'signin' 
-                ? 'bg-surface text-primary shadow-xs' 
-                : 'text-secondary hover:text-primary'
+                ? 'bg-white text-[#3b1e4a] shadow-xs' 
+                : 'text-[#655d69] hover:text-[#1f1b20]'
             }`}
           >
-            Sign in
+            Sign In
           </button>
           <button
             type="button"
             onClick={() => setMode('signup')}
-            className={`flex-1 py-2 text-center rounded-md transition-colors cursor-pointer font-medium ${
+            className={`flex-1 py-2 text-center rounded-lg transition-colors cursor-pointer font-bold ${
               mode === 'signup' 
-                ? 'bg-surface text-primary shadow-xs' 
-                : 'text-secondary hover:text-primary'
+                ? 'bg-white text-[#3b1e4a] shadow-xs' 
+                : 'text-[#655d69] hover:text-[#1f1b20]'
             }`}
           >
-            Register
+            Register Institution
           </button>
         </div>
 
         {/* 1-Click Fast Profiles */}
         {mode === 'signin' && (
           <div className="space-y-2">
-            <div className="text-[13px] text-secondary font-medium">
-              Demo accounts (1-click)
+            <div className="text-xs text-[#655d69] font-bold">
+              Instant Demo Accounts (1-Click Switch)
             </div>
 
             <div className="space-y-1.5">
@@ -167,23 +168,29 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                     key={account.id}
                     type="button"
                     onClick={() => handleProfileSelect(account)}
-                    className={`w-full p-2.5 rounded-md border text-left transition-colors cursor-pointer flex items-center justify-between text-[14px] ${
+                    className={`w-full p-3 rounded-xl border text-left transition-all cursor-pointer flex items-center justify-between text-xs ${
                       isSelected
-                        ? 'border-brand bg-brand/5 text-primary'
-                        : 'border-border bg-surface hover:bg-subtle text-primary'
+                        ? 'border-[#3b1e4a] bg-[#faf4fc] text-[#1f1b20]'
+                        : 'border-[#ece6ed] bg-white hover:bg-[#f6f2f7] text-[#1f1b20]'
                     }`}
                   >
                     <div className="truncate pr-2">
-                      <div className="font-medium truncate">{account.name}</div>
-                      <div className="text-[13px] text-secondary truncate">{account.role}</div>
+                      <div className="font-bold truncate">{account.name}</div>
+                      <div className="text-[11px] text-[#655d69] truncate">{account.role} · {account.institution}</div>
                     </div>
                     {isSelected && (
-                      <Check className="w-4 h-4 text-brand shrink-0" />
+                      <Check className="w-4 h-4 text-[#9c4126] shrink-0" />
                     )}
                   </button>
                 );
               })}
             </div>
+          </div>
+        )}
+
+        {helperNotice && (
+          <div className="p-3 rounded-xl bg-[#fff7f2] border border-[#ece6ed] text-xs text-[#9c4126]">
+            {helperNotice}
           </div>
         )}
 
@@ -198,35 +205,35 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                 className="space-y-4"
               >
                 <div>
-                  <label className="block text-[14px] font-medium text-primary mb-1.5">
-                    Full name
+                  <label className="block text-xs font-bold text-[#1f1b20] mb-1.5">
+                    Full Name
                   </label>
                   <div className="relative">
-                    <User className="w-4 h-4 text-secondary absolute left-3 top-2.5" />
+                    <User className="w-4 h-4 text-[#7c747f] absolute left-3.5 top-3" />
                     <input
                       type="text"
                       required
                       placeholder="e.g. Dr. Eleanor Vance"
                       value={name}
                       onChange={e => setName(e.target.value)}
-                      className="w-full h-[38px] pl-9 pr-3 text-[14px] rounded-md border border-border focus:outline-none focus:ring-2 focus:ring-brand focus:border-brand bg-surface text-primary"
+                      className="form-input pl-10 text-xs"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-[14px] font-medium text-primary mb-1.5">
-                    University / institution
+                  <label className="block text-xs font-bold text-[#1f1b20] mb-1.5">
+                    University / Institution
                   </label>
                   <div className="relative">
-                    <Building2 className="w-4 h-4 text-secondary absolute left-3 top-2.5" />
+                    <Building2 className="w-4 h-4 text-[#7c747f] absolute left-3.5 top-3" />
                     <input
                       type="text"
                       required
                       placeholder="e.g. Western Polytechnic"
                       value={institution}
                       onChange={e => setInstitution(e.target.value)}
-                      className="w-full h-[38px] pl-9 pr-3 text-[14px] rounded-md border border-border focus:outline-none focus:ring-2 focus:ring-brand focus:border-brand bg-surface text-primary"
+                      className="form-input pl-10 text-xs"
                     />
                   </div>
                 </div>
@@ -236,51 +243,51 @@ export const AuthPage: React.FC<AuthPageProps> = ({
 
           {/* Email */}
           <div>
-            <label className="block text-[14px] font-medium text-primary mb-1.5">
-              Institutional email
+            <label className="block text-xs font-bold text-[#1f1b20] mb-1.5">
+              Institutional Email
             </label>
             <div className="relative">
-              <Mail className="w-4 h-4 text-secondary absolute left-3 top-2.5" />
+              <Mail className="w-4 h-4 text-[#7c747f] absolute left-3.5 top-3" />
               <input
                 type="email"
                 required
                 placeholder="user@university.edu"
                 value={email}
                 onChange={e => setEmail(e.target.value)}
-                className="w-full h-[38px] pl-9 pr-3 text-[14px] rounded-md border border-border focus:outline-none focus:ring-2 focus:ring-brand focus:border-brand bg-surface text-primary"
+                className="form-input pl-10 text-xs font-mono"
               />
             </div>
           </div>
 
-          {/* Password with visibility toggle */}
+          {/* Password */}
           <div>
             <div className="flex justify-between items-center mb-1.5">
-              <label className="block text-[14px] font-medium text-primary">
+              <label className="block text-xs font-bold text-[#1f1b20]">
                 Password
               </label>
               {mode === 'signin' && (
                 <button
                   type="button"
-                  onClick={() => alert('Demo mode: Click any of the 1-click profiles above to sign in.')}
-                  className="text-[13px] text-brand hover:underline cursor-pointer"
+                  onClick={() => setHelperNotice('Demo workspace: select any 1-click institutional profile above and click Sign In.')}
+                  className="text-xs text-[#9c4126] font-semibold hover:underline cursor-pointer"
                 >
-                  Forgot?
+                  Reset / Demo Help
                 </button>
               )}
             </div>
             <div className="relative">
-              <Lock className="w-4 h-4 text-secondary absolute left-3 top-2.5" />
+              <Lock className="w-4 h-4 text-[#7c747f] absolute left-3.5 top-3" />
               <input
                 type={showPassword ? 'text' : 'password'}
                 required
                 value={password}
                 onChange={e => setPassword(e.target.value)}
-                className="w-full h-[38px] pl-9 pr-9 text-[14px] rounded-md border border-border focus:outline-none focus:ring-2 focus:ring-brand focus:border-brand bg-surface text-primary font-mono"
+                className="form-input pl-10 pr-10 text-xs font-mono"
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-2.5 text-secondary hover:text-primary cursor-pointer"
+                className="absolute right-3.5 top-3 text-[#7c747f] hover:text-[#1f1b20] cursor-pointer"
               >
                 {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
@@ -291,12 +298,12 @@ export const AuthPage: React.FC<AuthPageProps> = ({
           <button
             type="submit"
             disabled={isLoading || isSuccess}
-            className="w-full h-[38px] mt-2 bg-brand hover:bg-brand-hover text-white rounded-md text-[14px] font-medium transition-colors shadow-xs disabled:opacity-60 flex items-center justify-center gap-2 cursor-pointer"
+            className="w-full btn-primary mt-2 text-xs"
           >
             {isSuccess ? (
               <>
                 <CheckCircle2 className="w-4 h-4" />
-                <span>Session verified</span>
+                <span>Session Verified</span>
               </>
             ) : isLoading ? (
               <span className="flex items-center gap-2">
@@ -304,17 +311,17 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                 <span>Authenticating...</span>
               </span>
             ) : mode === 'signin' ? (
-              <span>Sign in</span>
+              <span>Sign In to Workspace</span>
             ) : (
-              <span>Create account</span>
+              <span>Create Institutional Account</span>
             )}
           </button>
         </form>
 
         {/* Security / FERPA footer */}
-        <div className="pt-3 text-center text-[13px] text-tertiary flex items-center justify-center gap-2 border-t border-border">
-          <ShieldCheck className="w-4 h-4 text-secondary" />
-          <span>Single sign-on • FERPA & SOC2 compliant</span>
+        <div className="pt-3 text-center text-xs text-[#7c747f] flex items-center justify-center gap-2 border-t border-[#ece6ed]">
+          <ShieldCheck className="w-4 h-4 text-[#18794e]" />
+          <span>Single Sign-On · FERPA & SOC2 Compliant</span>
         </div>
       </div>
     </div>
