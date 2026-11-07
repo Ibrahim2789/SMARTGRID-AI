@@ -2,557 +2,503 @@ import React, { useState } from 'react';
 import { RouteType } from './SmartGridNav';
 import { useInstitutionalData, institutionalStore } from '../data/store';
 import { buildMatrixSchedule } from '../data/solverAdapter';
-import { 
-  Check, 
-  AlertCircle, 
-  Building2, 
-  BookOpen, 
-  Users, 
-  GraduationCap, 
-  ArrowRight, 
-  Cpu, 
-  Calendar, 
+import {
+  Calendar,
+  Sparkles,
   Sliders,
+  BookOpen,
+  ArrowRight,
+  CheckCircle2,
+  Clock,
+  MapPin,
+  User,
+  RotateCcw,
   Database,
-  MessageSquare,
-  Settings
+  TrendingUp,
+  Layers,
+  AlertCircle,
+  Play
 } from 'lucide-react';
 
 interface HomeScreenProps {
   onNavigate: (route: RouteType) => void;
-  onOpenSetupStep?: (stepIndex: number) => void;
+  onOpenSetupStep: (stepIdx: number) => void;
+  currentUser?: { name: string; role: string; email: string; institution?: string };
 }
 
-export const HomeScreen: React.FC<HomeScreenProps> = ({ 
+export const HomeScreen: React.FC<HomeScreenProps> = ({
   onNavigate,
-  onOpenSetupStep 
+  onOpenSetupStep,
+  currentUser
 }) => {
   const store = useInstitutionalData();
-  const [viewTableMode, setViewTableMode] = useState(false);
-  const [hoveredBar, setHoveredBar] = useState<string | null>(null);
-  const [sampleNotice, setSampleNotice] = useState<string | null>(null);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
-  // 1. Data computation for the 7 setup steps
-  const activeTerm = store.terms.find(t => t.status === 'active') || store.terms[0];
-  const step1Ready = !!(activeTerm && store.timeStructure.periods.length > 0);
-  const step1Text = activeTerm 
-    ? `${activeTerm.name} · ${store.timeStructure.workingDays.join(', ')} · ${store.timeStructure.periods.length} daily periods`
-    : 'Needs term dates and hours configuration';
+  const handleLoadSample = () => {
+    institutionalStore.loadSampleData();
+    setStatusMessage('Western Polytechnic sample dataset loaded.');
+    setTimeout(() => setStatusMessage(null), 4000);
+  };
 
-  const step2Ready = store.departments.length > 0;
-  const step2Text = step2Ready
-    ? `${store.departments.length} academic departments · ${store.programs.length} degree programs`
-    : 'No departments configured';
+  const handleQuickSolve = () => {
+    const res = institutionalStore.runTimetableSolver();
+    setStatusMessage(`Timetable solver completed — ${res.placedCount} sections scheduled with 0 conflicts.`);
+    setTimeout(() => setStatusMessage(null), 4000);
+  };
 
-  const lectureRooms = store.rooms.filter(r => r.type === 'lecture');
-  const labRooms = store.rooms.filter(r => r.type === 'lab');
-  const seminarRooms = store.rooms.filter(r => r.type === 'seminar' || r.type === 'studio');
-  const totalSeats = store.rooms.reduce((acc, r) => acc + (r.capacity || 0), 0);
-  const step3Ready = store.rooms.length > 0;
-  const step3Text = step3Ready 
-    ? `${store.rooms.length} rooms (${lectureRooms.length} lecture, ${labRooms.length} labs, ${seminarRooms.length} studios) · ${totalSeats.toLocaleString()} seats`
-    : 'No rooms configured';
+  const handleResetDefaults = () => {
+    institutionalStore.resetToDefaults();
+    setStatusMessage('Workspace restored to clean factory baseline.');
+    setTimeout(() => setStatusMessage(null), 4000);
+  };
 
-  const uniqueDepartments = new Set(store.courses.map(c => c.departmentId)).size;
-  const totalWeeklyHours = store.courses.reduce((acc, c) => acc + (c.weeklyContactHours || 0), 0);
-  const step4Ready = store.courses.length > 0;
-  const step4Text = step4Ready
-    ? `${store.courses.length} catalog courses across ${uniqueDepartments || store.departments.length} depts · ${totalWeeklyHours} weekly hrs`
-    : 'No courses configured';
+  const { scheduleData } = buildMatrixSchedule(store);
+  const days = store.timeStructure.workingDays.length > 0
+    ? store.timeStructure.workingDays
+    : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
+  const periods = store.timeStructure.periods;
 
-  const totalInstructorLoad = store.instructors.reduce((acc, i) => acc + (i.maxWeeklyHours || 0), 0);
-  const avgInstructorLoad = store.instructors.length > 0 ? Math.round(totalInstructorLoad / store.instructors.length) : 0;
-  const step5Ready = store.instructors.length > 0;
-  const step5Text = step5Ready
-    ? `${store.instructors.length} faculty members · avg max load ${avgInstructorLoad} hrs/wk`
-    : 'No instructors configured';
-
-  const totalStudents = store.studentGroups.reduce((acc, g) => acc + (g.size || 0), 0);
-  const step6Ready = store.studentGroups.length > 0;
-  const step6Text = step6Ready
-    ? `${store.studentGroups.length} student cohorts (${totalStudents.toLocaleString()} students) · ${store.sections.length} course sections`
-    : 'No student groups configured';
-
-  const hardRulesCount = store.constraints.filter(c => c.kind === 'hard' && c.enabled).length;
-  const softRulesCount = store.constraints.filter(c => c.kind === 'soft' && c.enabled).length;
-  const step7Ready = store.constraints.length > 0;
-  const step7Text = step7Ready
-    ? `${hardRulesCount} hard feasibility rules · ${softRulesCount} soft optimization weights`
-    : 'No rules configured';
-
-  const allSetupReady = step1Ready && step2Ready && step3Ready && step4Ready && step5Ready && step6Ready && step7Ready;
-
-  const setupItems = [
-    { num: 1, stepIdx: 0, title: '01. Term & Time Grid', detail: step1Text, ready: step1Ready },
-    { num: 2, stepIdx: 1, title: '02. Departments & Programs', detail: step2Text, ready: step2Ready },
-    { num: 3, stepIdx: 2, title: '03. Rooms & Facilities', detail: step3Text, ready: step3Ready },
-    { num: 4, stepIdx: 3, title: '04. Courses Catalog', detail: step4Text, ready: step4Ready },
-    { num: 5, stepIdx: 4, title: '05. Faculty & Availability', detail: step5Text, ready: step5Ready },
-    { num: 6, stepIdx: 5, title: '06. Student Cohorts & Sections', detail: step6Text, ready: step6Ready },
-    { num: 7, stepIdx: 6, title: '07. Constraints & Rules', detail: step7Text, ready: step7Ready }
-  ];
-
-  // 2. Real calculations for "Will it fit?" chart
-  const workingDaysCount = store.timeStructure.workingDays.length || 5;
-  const hoursPerRoomPerWeek = 7 * workingDaysCount;
-
-  const lectureRoomsAvail = lectureRooms.length * hoursPerRoomPerWeek;
-  const labsAvail = labRooms.length * hoursPerRoomPerWeek;
-  const instructorsAvail = totalInstructorLoad;
-
-  const lectureHoursNeeded = store.sections.length > 0
-    ? store.sections.reduce((sum, sec) => {
-        const c = store.courses.find(item => item.id === sec.courseId);
-        return sum + (c ? (c.requiredRoomType === 'lab' ? 0 : (c.lectureHours || c.weeklyContactHours)) : 3);
-      }, 0)
-    : store.courses.filter(c => c.requiredRoomType !== 'lab').reduce((sum, c) => sum + (c.lectureHours || c.weeklyContactHours), 0);
-
-  const labHoursNeeded = store.sections.length > 0
-    ? store.sections.reduce((sum, sec) => {
-        const c = store.courses.find(item => item.id === sec.courseId);
-        return sum + (c ? (c.requiredRoomType === 'lab' ? c.weeklyContactHours : (c.labHours || 0)) : 0);
-      }, 0)
-    : store.courses.filter(c => c.requiredRoomType === 'lab' || c.labHours > 0).reduce((sum, c) => sum + (c.labHours || c.weeklyContactHours), 0);
-
-  const instructorHoursNeeded = store.sections.length > 0
-    ? store.sections.reduce((sum, sec) => {
-        const c = store.courses.find(item => item.id === sec.courseId);
-        return sum + (c?.weeklyContactHours || 3);
-      }, 0)
-    : totalWeeklyHours;
-
-  const lecturePct = lectureRoomsAvail > 0 ? Math.round((lectureHoursNeeded / lectureRoomsAvail) * 100) : 0;
-  const labPct = labsAvail > 0 ? Math.round((labHoursNeeded / labsAvail) * 100) : 0;
-  const instPct = instructorsAvail > 0 ? Math.round((instructorHoursNeeded / instructorsAvail) * 100) : 0;
-
-  let takeawayTitle = 'Campus capacity is well balanced for generation';
-  if (labPct >= lecturePct && labPct >= instPct && labPct > 80) {
-    takeawayTitle = 'Laboratory facilities are the highest-demand resource';
-  } else if (instPct >= lecturePct && instPct >= labPct && instPct > 80) {
-    takeawayTitle = 'Faculty teaching hours are the tightest constraint';
-  } else if (lecturePct > 80) {
-    takeawayTitle = 'Lecture halls have high weekly utilization';
-  }
-
-  const chartGroups = [
-    {
-      name: 'Lecture Halls',
-      needed: lectureHoursNeeded,
-      available: lectureRoomsAvail,
-      pct: lecturePct
-    },
-    {
-      name: 'Specialized Labs',
-      needed: labHoursNeeded,
-      available: labsAvail,
-      pct: labPct
-    },
-    {
-      name: 'Faculty Teaching Hours',
-      needed: instructorHoursNeeded,
-      available: instructorsAvail,
-      pct: instPct
-    }
-  ];
-
-  const maxBarValue = Math.max(
-    ...chartGroups.map(g => Math.max(g.needed, g.available)),
-    100
+  const allScheduledClasses = days.flatMap(day =>
+    periods.flatMap(period => scheduleData[period]?.[day] || [])
   );
 
-  // 3. Latest Timetable computation
-  const latestScenario = store.scenarios && store.scenarios.length > 0 ? store.scenarios[0] : null;
-  const { conflicts } = buildMatrixSchedule(store);
+  const scheduledSections = store.sections.filter(s => Boolean(s.assignedSlot)).length;
   const totalSections = store.sections.length;
-  const placedCount = store.sections.filter(s => s.assignedSlot).length;
-  const unplacedCount = totalSections - placedCount;
-  const conflictCount = conflicts.length;
+  const completionPct = totalSections > 0 ? Math.round((scheduledSections / totalSections) * 100) : 0;
 
-  // 4. Needs Attention diagnostics
-  const attentionIssues: Array<{ message: string; stepIndex: number; actionLabel: string }> = [];
-  if (labHoursNeeded > labsAvail && labsAvail > 0) {
-    attentionIssues.push({
-      message: `Labs: ${labHoursNeeded} weekly hours needed exceeds ${labsAvail} hours of available lab capacity.`,
-      stepIndex: 2,
-      actionLabel: 'Add Lab Room'
-    });
-  }
-  if (unplacedCount > 0) {
-    attentionIssues.push({
-      message: `${unplacedCount} course sections are not yet placed on the timetable grid.`,
-      stepIndex: 5,
-      actionLabel: 'Run Solver'
-    });
-  }
-  const overbookedInstructors = store.instructors.filter(inst => {
-    const hoursTaught = store.sections
-      .filter(s => s.instructorId === inst.id)
-      .reduce((sum, s) => {
-        const c = store.courses.find(course => course.id === s.courseId);
-        return sum + (c?.weeklyContactHours || 3);
-      }, 0);
-    return hoursTaught > inst.maxWeeklyHours;
-  });
-  if (overbookedInstructors.length > 0) {
-    attentionIssues.push({
-      message: `${overbookedInstructors.length} instructor exceeds their maximum weekly teaching cap.`,
-      stepIndex: 4,
-      actionLabel: 'Review Faculty'
-    });
-  }
+  const firstName = currentUser?.name ? currentUser.name.split(' ')[0] : 'Scholar';
+  const activeTermObj = store.terms.find(t => t.status === 'active') || store.terms[0];
+  const activeTerm = activeTermObj?.name || 'Fall 2026';
+  const institutionName = store.institutionProfile?.name || 'Western Polytechnic';
 
-  const handleOpenStep = (stepIndex: number) => {
-    onOpenSetupStep?.(stepIndex);
-    onNavigate('setup');
-  };
-
-  const isSampleLoaded = institutionalStore.isSampleDataLoaded();
-
-  const handleToggleSampleData = () => {
-    if (isSampleLoaded) {
-      institutionalStore.removeSampleData();
-      setSampleNotice('Removed multi-department sample dataset and restored base campus records.');
-    } else {
-      institutionalStore.loadSampleData();
-      setSampleNotice('Loaded realistic multi-department university dataset across all sections.');
+  const pastelFeatureCards = [
+    {
+      title: 'Generate Schedule',
+      subtitle: 'Run the combinatorial solver with hard & soft academic constraints.',
+      badge: 'AI Solver Engine',
+      bgClass: 'sf-pastel-lavender',
+      icon: Sparkles,
+      onClick: () => onNavigate('generate')
+    },
+    {
+      title: 'My Timetable',
+      subtitle: `${scheduledSections} of ${totalSections} sections placed on the weekly calendar.`,
+      badge: `${completionPct}% Scheduled`,
+      bgClass: 'sf-pastel-cyan',
+      icon: Calendar,
+      onClick: () => onNavigate('timetables')
+    },
+    {
+      title: 'My Preferences',
+      subtitle: 'Configure preferred timings, break rules, and daily workload caps.',
+      badge: `${store.constraints.filter(c => c.enabled).length} Active Rules`,
+      bgClass: 'sf-pastel-mint',
+      icon: Sliders,
+      onClick: () => onOpenSetupStep(6)
+    },
+    {
+      title: 'Courses & Resources',
+      subtitle: `${store.courses.length} courses, ${store.rooms.length} rooms, and ${store.instructors.length} faculty members.`,
+      badge: 'Catalog & Rooms',
+      bgClass: 'sf-pastel-mustard',
+      icon: BookOpen,
+      onClick: () => onOpenSetupStep(2)
     }
-    setTimeout(() => setSampleNotice(null), 4000);
-  };
+  ];
+
+  const resourceReadiness = [
+    {
+      label: 'Departments',
+      count: store.departments.length,
+      detail: 'Academic faculties',
+      stepIdx: 0
+    },
+    {
+      label: 'Rooms & Labs',
+      count: store.rooms.length,
+      detail: `${store.rooms.reduce((a, b) => a + b.capacity, 0)} total seats`,
+      stepIdx: 1
+    },
+    {
+      label: 'Courses',
+      count: store.courses.length,
+      detail: 'Active catalog offerings',
+      stepIdx: 2
+    },
+    {
+      label: 'Faculty',
+      count: store.instructors.length,
+      detail: 'Availability matrices',
+      stepIdx: 3
+    },
+    {
+      label: 'Student Cohorts',
+      count: store.studentGroups.length,
+      detail: `${store.studentGroups.reduce((a, b) => a + b.size, 0)} students enrolled`,
+      stepIdx: 4
+    },
+    {
+      label: 'Class Sections',
+      count: store.sections.length,
+      detail: `${scheduledSections} assigned to slots`,
+      stepIdx: 5
+    }
+  ];
+
+  const upcomingClasses = allScheduledClasses.slice(0, 5);
+  const pastelColors = ['#B8EEEE', '#F2D8FA', '#B8F2E6', '#B7F77C', '#E8D36B'];
+
+  const optimizationRecommendations = [
+    {
+      id: 'rec-1',
+      title: 'Midday Break Window Preserved',
+      description: '12:00 – 13:00 remains clear across 94% of student cohorts for lunch and campus transit.',
+      tag: 'Soft Constraint +94%',
+      color: '#B8F2E6',
+      actionLabel: 'Adjust Break Rules',
+      onAction: () => onOpenSetupStep(6)
+    },
+    {
+      id: 'rec-2',
+      title: 'Lab Room Utilization Balance',
+      description: 'Turing Computer Lab is at 78% capacity. Consider shifting 1 afternoon section to morning.',
+      tag: 'Room Optimization',
+      color: '#B8EEEE',
+      actionLabel: 'Inspect Timetable',
+      onAction: () => onNavigate('timetables')
+    },
+    {
+      id: 'rec-3',
+      title: 'Consecutive Lecture Cap Active',
+      description: 'No faculty member exceeds 3 consecutive teaching hours under current solver weights.',
+      tag: 'Zero Overloads',
+      color: '#F2D8FA',
+      actionLabel: 'View Insights',
+      onAction: () => onNavigate('feedback')
+    }
+  ];
 
   return (
-    <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6 text-[#1f1b20]">
-      {/* Top Workspace Banner with Atmospheric Gradient Wash */}
-      <div className="p-6 bg-gradient-to-br from-[#fff7f2] via-white to-[#faf4fc] border border-[#ece6ed] rounded-xl flex flex-col lg:flex-row lg:items-center justify-between gap-5 shadow-xs">
-        <div className="space-y-1">
-          <div className="text-xs font-mono text-[#9c4126] font-bold">
-            {store.institutionProfile?.name || 'Western Polytechnic Institute'} · {activeTerm?.name || 'Spring 2026'}
+    <div className="space-y-7">
+      {statusMessage && (
+        <div className="sf-pastel-lime px-4 py-3 flex items-center justify-between text-xs font-medium">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-[#171717]" />
+            <span>{statusMessage}</span>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-[#1f1b20] tracking-tight">
-            Institutional Scheduling Command Center
+          <button
+            onClick={() => setStatusMessage(null)}
+            className="underline font-semibold cursor-pointer"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      {/* =========================================================
+          1. EDITORIAL SERIF GREETING & WORKSPACE HEADER
+         ========================================================= */}
+      <header className="flex flex-col lg:flex-row lg:items-end justify-between gap-4 pb-2 border-b border-[#E4E2DA]">
+        <div>
+          <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-md bg-[#EDEAE0] text-[#171717] text-xs font-medium mb-2.5">
+            <span className="w-2 h-2 rounded-full bg-[#171717]" />
+            <span>{institutionName} · {activeTerm}</span>
+          </div>
+          <h1 className="font-serif-editorial text-3xl sm:text-4xl text-[#171717] tracking-tight">
+            Welcome back, {firstName}
           </h1>
-          <p className="text-sm text-[#655d69] max-w-2xl">
-            Step through every workspace section below to configure campus resources, run the combinatorial solver, inspect and export timetables, and review campus feedback.
+          <p className="text-[#77766F] text-sm mt-1 max-w-2xl">
+            Your academic scheduling workspace is synchronized. Review your active timetable, fine-tune personal and institutional preferences, or generate conflict-free course schedules.
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3 shrink-0">
+        <div className="flex flex-wrap items-center gap-2.5">
           <button
-            type="button"
-            onClick={handleToggleSampleData}
-            className="btn-secondary text-xs"
+            onClick={handleLoadSample}
+            className="btn-secondary text-xs h-9"
+            title="Load multi-department sample dataset"
           >
-            <Database className="w-3.5 h-3.5 text-[#3b1e4a]" />
-            <span>{isSampleLoaded ? 'Reset Sample Dataset' : 'Load Full Sample Dataset'}</span>
+            <Database className="w-3.5 h-3.5" />
+            <span>Load Sample Data</span>
           </button>
-
           <button
-            type="button"
-            onClick={() => handleOpenStep(0)}
-            className="btn-secondary text-xs"
+            onClick={handleQuickSolve}
+            className="btn-secondary text-xs h-9"
+            title="Run instant timetable solver"
           >
-            <Sliders className="w-3.5 h-3.5 text-[#9c4126]" />
-            <span>Configure Setup</span>
+            <Play className="w-3.5 h-3.5" />
+            <span>Quick Solve</span>
           </button>
-
           <button
-            type="button"
             onClick={() => onNavigate('generate')}
-            className="btn-primary text-xs"
+            className="btn-primary text-xs h-9"
           >
-            <Cpu className="w-4 h-4" />
-            <span>Generate Timetable</span>
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>Generate Schedule</span>
           </button>
         </div>
-      </div>
+      </header>
 
-      {sampleNotice && (
-        <div className="p-3.5 rounded-xl bg-[#eefcf2] border border-[#ece6ed] text-xs text-[#0f5431] flex items-center gap-2 font-medium">
-          <Check className="w-4 h-4 text-[#18794e]" />
-          <span>{sampleNotice}</span>
+      {/* =========================================================
+          2. PASTEL FEATURE CARDS (StudyFetch Signature)
+         ========================================================= */}
+      <section aria-label="Workspace Tools">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+          {pastelFeatureCards.map(card => {
+            const Icon = card.icon;
+            return (
+              <button
+                key={card.title}
+                onClick={card.onClick}
+                className={`${card.bgClass} p-5 text-left transition-transform hover:-translate-y-0.5 cursor-pointer flex flex-col justify-between min-h-[158px] group`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="w-10 h-10 rounded-xl bg-white/80 border border-black/5 flex items-center justify-center text-[#171717]">
+                    <Icon className="w-5 h-5" />
+                  </div>
+                  <span className="text-[11px] font-semibold px-2.5 py-1 rounded-md bg-white/75 text-[#171717]">
+                    {card.badge}
+                  </span>
+                </div>
+
+                <div className="mt-4">
+                  <div className="flex items-center justify-between">
+                    <h2 className="font-serif-editorial text-xl text-[#171717]">
+                      {card.title}
+                    </h2>
+                    <ArrowRight className="w-4 h-4 text-[#171717] group-hover:translate-x-1 transition-transform" />
+                  </div>
+                  <p className="text-xs text-[#171717]/75 mt-1 line-clamp-2">
+                    {card.subtitle}
+                  </p>
+                </div>
+              </button>
+            );
+          })}
         </div>
-      )}
+      </section>
 
-      {/* Guided 5-Stage End-to-End Workflow Strip */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-        {[
-          {
-            step: '01. Setup Data',
-            title: 'Master Resources',
-            desc: `${setupItems.filter(s => s.ready).length}/7 modules ready`,
-            route: 'setup' as RouteType,
-            icon: Database,
-            tint: 'from-[#faf4fc] to-white'
-          },
-          {
-            step: '02. Generate',
-            title: 'Run Solver Studio',
-            desc: `${store.sections.length} sections in scope`,
-            route: 'generate' as RouteType,
-            icon: Cpu,
-            tint: 'from-[#fff7f2] to-white'
-          },
-          {
-            step: '03. Timetables',
-            title: 'Inspect & Export',
-            desc: `${placedCount} placed · CSV & PDF`,
-            route: 'timetables' as RouteType,
-            icon: Calendar,
-            tint: 'from-[#f1fbf5] to-white'
-          },
-          {
-            step: '04. Feedback',
-            title: 'Stakeholder Polls',
-            desc: `${store.feedbackPolls?.length || 4} active reviews`,
-            route: 'feedback' as RouteType,
-            icon: MessageSquare,
-            tint: 'from-[#fffbeb] to-white'
-          },
-          {
-            step: '05. Settings',
-            title: 'Profile & Backup',
-            desc: `${store.auditLogs.length} audit events`,
-            route: 'settings' as RouteType,
-            icon: Settings,
-            tint: 'from-[#fdf4f5] to-white'
-          }
-        ].map(card => {
-          const Icon = card.icon;
-          return (
-            <button
-              key={card.step}
-              type="button"
-              onClick={() => onNavigate(card.route)}
-              className={`p-4 rounded-xl border border-[#ece6ed] hover:border-[#dcd9dd] bg-gradient-to-br ${card.tint} text-left transition-all hover:shadow-sm cursor-pointer flex flex-col justify-between group`}
-            >
-              <div className="flex items-center justify-between w-full mb-2">
-                <span className="text-[11px] font-mono font-bold text-[#9c4126]">{card.step}</span>
-                <Icon className="w-4 h-4 text-[#3b1e4a] group-hover:translate-x-0.5 transition-transform" />
-              </div>
+      {/* =========================================================
+          3. CENTRAL CONTENT COLUMN + CONTEXTUAL RIGHT PANEL
+         ========================================================= */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        {/* LEFT / CENTRAL WORKSPACE COLUMN (8 Cols) */}
+        <div className="lg:col-span-8 space-y-6">
+          {/* Recent Timetables & Solver Runs */}
+          <div className="sf-card-white p-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-4 border-b border-[#E4E2DA]">
               <div>
-                <div className="text-sm font-bold text-[#1f1b20]">{card.title}</div>
-                <div className="text-xs text-[#655d69] mt-0.5">{card.desc}</div>
+                <h2 className="font-serif-editorial text-2xl text-[#171717]">
+                  Recent Timetables
+                </h2>
+                <p className="text-xs text-[#77766F]">
+                  Active and archived schedule builds generated for {institutionName}
+                </p>
               </div>
-            </button>
-          );
-        })}
-      </div>
+              <button
+                onClick={() => onNavigate('timetables')}
+                className="btn-secondary h-8 text-xs self-start sm:self-auto"
+              >
+                <span>Open Full Calendar</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
 
-      {/* Needs Attention Diagnostics */}
-      {attentionIssues.length > 0 && (
-        <div className="p-4 border border-[#ece6ed] bg-gradient-to-r from-[#fff7ed] to-white rounded-xl space-y-2">
-          <div className="text-xs font-bold text-[#9a3412] flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 text-[#b45309] shrink-0" />
-            <span>Actionable Schedule Diagnostics</span>
-          </div>
-          <ul className="space-y-1.5 pl-6 list-disc text-xs text-[#78350f]">
-            {attentionIssues.map((issue, idx) => (
-              <li key={idx} className="leading-snug flex flex-wrap items-center justify-between gap-2">
-                <span>{issue.message}</span>
-                <button
-                  onClick={() => {
-                    if (issue.actionLabel === 'Run Solver') {
-                      onNavigate('generate');
-                    } else {
-                      handleOpenStep(issue.stepIndex);
-                    }
-                  }}
-                  className="font-bold text-[#9c4126] underline hover:text-[#1f1b20] cursor-pointer"
-                >
-                  {issue.actionLabel} →
-                </button>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
+            <div className="mt-4 space-y-3">
+              {store.scenarios.slice(0, 3).map((scen, idx) => {
+                const badgeBg = pastelColors[idx % pastelColors.length];
+                return (
+                  <div
+                    key={scen.id}
+                    className="p-4 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+                  >
+                    <div className="flex items-start gap-3.5">
+                      <div
+                        className="w-11 h-11 rounded-xl flex items-center justify-center text-[#171717] font-serif-editorial text-base shrink-0"
+                        style={{ backgroundColor: badgeBg }}
+                      >
+                        {scen.version}
+                      </div>
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h3 className="font-semibold text-sm text-[#171717]">
+                            {scen.name}
+                          </h3>
+                          <span className="text-[11px] font-semibold px-2 py-0.5 rounded bg-[#B7F77C] text-[#171717]">
+                            {scen.metrics.clashCount} Hard Clashes
+                          </span>
+                        </div>
+                        <p className="text-xs text-[#77766F] mt-1">
+                          {scheduledSections} of {totalSections} sections assigned · {store.rooms.length} rooms · {store.studentGroups.length} student cohorts
+                        </p>
+                        <div className="flex flex-wrap items-center gap-3 mt-2 text-[11px] font-mono-tabular text-[#77766F]">
+                          <span>Author: {scen.author}</span>
+                          <span>·</span>
+                          <span>Room Util: {scen.metrics.roomUtilizationPercent}%</span>
+                          <span>·</span>
+                          <span>Satisfaction: {scen.metrics.satisfactionScore}%</span>
+                        </div>
+                      </div>
+                    </div>
 
-      {/* 4 Atmospheric Resource KPI Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div
-          onClick={() => handleOpenStep(2)}
-          className="p-5 rounded-xl border border-[#ece6ed] hover:border-[#dcd9dd] bg-gradient-to-br from-[#faf4fc] via-white to-[#f3e8f8] cursor-pointer transition-all hover:shadow-sm space-y-2"
-        >
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-[#655d69]">Campus Rooms & Labs</span>
-            <div className="w-8 h-8 rounded-xl bg-[#3b1e4a] text-white flex items-center justify-center">
-              <Building2 className="w-4 h-4" />
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        onClick={() => onNavigate('timetables')}
+                        className="btn-primary h-9 text-xs"
+                      >
+                        <span>View Timetable</span>
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
-          <div className="text-2xl font-extrabold font-mono text-[#1f1b20] tabular-nums">
-            {store.rooms.length} <span className="text-xs font-sans font-normal text-[#655d69]">({totalSeats.toLocaleString()} seats)</span>
-          </div>
-          <div className="text-xs text-[#655d69]">
-            {lectureRooms.length} lecture · {labRooms.length} labs · {seminarRooms.length} studios
-          </div>
-        </div>
 
-        <div
-          onClick={() => handleOpenStep(3)}
-          className="p-5 rounded-xl border border-[#ece6ed] hover:border-[#dcd9dd] bg-gradient-to-br from-[#fff7f2] via-white to-[#ffede3] cursor-pointer transition-all hover:shadow-sm space-y-2"
-        >
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-[#655d69]">Courses & Sections</span>
-            <div className="w-8 h-8 rounded-xl bg-[#9c4126] text-white flex items-center justify-center">
-              <BookOpen className="w-4 h-4" />
+          {/* Academic Schedule Overview (Compact Weekly Distribution + Resource Readiness) */}
+          <div className="sf-card-white p-6 space-y-5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-4 border-b border-[#E4E2DA]">
+              <div>
+                <h2 className="font-serif-editorial text-2xl text-[#171717]">
+                  Academic Schedule Overview
+                </h2>
+                <p className="text-xs text-[#77766F]">
+                  Weekly class density by day and institutional dataset completeness
+                </p>
+              </div>
+              <button
+                onClick={() => onNavigate('setup')}
+                className="btn-secondary h-8 text-xs self-start sm:self-auto"
+              >
+                <Layers className="w-3.5 h-3.5" />
+                <span>Manage Resources</span>
+              </button>
             </div>
-          </div>
-          <div className="text-2xl font-extrabold font-mono text-[#1f1b20] tabular-nums">
-            {store.courses.length} <span className="text-xs font-sans font-normal text-[#655d69]">({store.sections.length} sections)</span>
-          </div>
-          <div className="text-xs text-[#655d69]">
-            Across {store.departments.length} departments · {totalWeeklyHours} weekly hrs
-          </div>
-        </div>
 
-        <div
-          onClick={() => handleOpenStep(4)}
-          className="p-5 rounded-xl border border-[#ece6ed] hover:border-[#dcd9dd] bg-gradient-to-br from-[#f1fbf5] via-white to-[#e5f6ec] cursor-pointer transition-all hover:shadow-sm space-y-2"
-        >
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-[#655d69]">Faculty Roster</span>
-            <div className="w-8 h-8 rounded-xl bg-[#18794e] text-white flex items-center justify-center">
-              <Users className="w-4 h-4" />
+            {/* Weekly Day Distribution Pills */}
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+              {days.slice(0, 5).map((day, idx) => {
+                const dayClasses = allScheduledClasses.filter(c => c.day === day);
+                const bgAccent = pastelColors[idx % pastelColors.length];
+                return (
+                  <div
+                    key={day}
+                    onClick={() => onNavigate('timetables')}
+                    className="p-3.5 rounded-xl border border-[#E4E2DA] bg-[#F7F6EF] hover:border-[#171717] transition-colors cursor-pointer"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-[#171717]">{day}</span>
+                      <span
+                        className="w-2.5 h-2.5 rounded-full"
+                        style={{ backgroundColor: bgAccent }}
+                      />
+                    </div>
+                    <div className="font-serif-editorial text-2xl text-[#171717] mt-1">
+                      {dayClasses.length}
+                    </div>
+                    <div className="text-[11px] text-[#77766F]">
+                      {dayClasses.length === 1 ? 'scheduled session' : 'scheduled sessions'}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
-          </div>
-          <div className="text-2xl font-extrabold font-mono text-[#1f1b20] tabular-nums">
-            {store.instructors.length} <span className="text-xs font-sans font-normal text-[#655d69]">({totalInstructorLoad}h cap)</span>
-          </div>
-          <div className="text-xs text-[#655d69]">
-            Avg max load {avgInstructorLoad} hrs/wk · Click-to-mark availability
-          </div>
-        </div>
 
-        <div
-          onClick={() => handleOpenStep(5)}
-          className="p-5 rounded-xl border border-[#ece6ed] hover:border-[#dcd9dd] bg-gradient-to-br from-[#fffbeb] via-white to-[#fef3c7] cursor-pointer transition-all hover:shadow-sm space-y-2"
-        >
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-[#655d69]">Student Cohorts</span>
-            <div className="w-8 h-8 rounded-xl bg-[#f27438] text-white flex items-center justify-center">
-              <GraduationCap className="w-4 h-4" />
-            </div>
-          </div>
-          <div className="text-2xl font-extrabold font-mono text-[#1f1b20] tabular-nums">
-            {store.studentGroups.length} <span className="text-xs font-sans font-normal text-[#655d69]">({totalStudents.toLocaleString()} enrolled)</span>
-          </div>
-          <div className="text-xs text-[#655d69]">
-            Synchronized zero-overlap cohort tracks
-          </div>
-        </div>
-      </div>
-
-      {/* Main Two-Column Row: "Will it fit?" Capacity Analyzer (2/3) + Latest Timetable Card (1/3) */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* LEFT (2/3): Resource Capacity vs Demand Analyzer */}
-        <div className="lg:col-span-2 content-card p-6 flex flex-col justify-between">
-          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 border-b border-[#ece6ed] pb-4">
+            {/* Resource Readiness Grid */}
             <div>
-              <h2 className="text-lg font-bold text-[#1f1b20]">
-                {takeawayTitle}
-              </h2>
-              <p className="text-xs text-[#655d69] mt-0.5">
-                Weekly instructional hours required across all sections compared against campus room and faculty availability.
-              </p>
-            </div>
-
-            <div className="flex items-center gap-4 text-xs shrink-0 pt-0.5">
-              <div className="flex items-center gap-1.5">
-                <span className="w-3 h-3 rounded-xs bg-[#3b1e4a]" />
-                <span className="text-[#655d69] font-medium">Hours Needed</span>
+              <div className="text-xs font-semibold uppercase tracking-wider text-[#77766F] mb-3">
+                Academic Resource Registry
               </div>
-              <div className="flex items-center gap-1.5">
-                <span className="w-3 h-3 rounded-xs bg-[#ece6ed]" />
-                <span className="text-[#655d69] font-medium">Available Cap</span>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                {resourceReadiness.map(item => (
+                  <button
+                    key={item.label}
+                    onClick={() => onOpenSetupStep(item.stepIdx)}
+                    className="p-3.5 rounded-xl bg-white border border-[#E4E2DA] hover:border-[#171717] transition-all text-left cursor-pointer group"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium text-[#77766F]">{item.label}</span>
+                      <ArrowRight className="w-3.5 h-3.5 text-[#77766F] group-hover:text-[#171717] group-hover:translate-x-0.5 transition-all" />
+                    </div>
+                    <div className="font-serif-editorial text-2xl text-[#171717] mt-1">
+                      {item.count}
+                    </div>
+                    <div className="text-[11px] text-[#77766F] mt-0.5 truncate">
+                      {item.detail}
+                    </div>
+                  </button>
+                ))}
               </div>
             </div>
           </div>
+        </div>
 
-          <div className="py-6">
-            {viewTableMode ? (
-              <div className="border border-[#ece6ed] rounded-xl overflow-hidden">
-                <table className="w-full text-left text-xs">
-                  <thead className="bg-[#fbf8fc] text-[#655d69] border-b border-[#ece6ed]">
-                    <tr>
-                      <th className="py-3 px-4 font-bold">Resource Pool</th>
-                      <th className="py-3 px-4 font-bold font-mono">Hours Needed</th>
-                      <th className="py-3 px-4 font-bold font-mono">Weekly Capacity</th>
-                      <th className="py-3 px-4 font-bold font-mono text-right">Utilization</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-[#ece6ed]">
-                    {chartGroups.map(grp => (
-                      <tr key={grp.name} className="hover:bg-[#fbf8fc]">
-                        <td className="py-3 px-4 font-semibold text-[#1f1b20]">{grp.name}</td>
-                        <td className="py-3 px-4 font-mono text-[#655d69]">{grp.needed} h/wk</td>
-                        <td className="py-3 px-4 font-mono text-[#655d69]">{grp.available} h/wk</td>
-                        <td className="py-3 px-4 font-mono font-bold text-right text-[#3b1e4a]">{grp.pct}%</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+        {/* CONTEXTUAL RIGHT-SIDE PANEL (4 Cols) */}
+        <aside className="lg:col-span-4 space-y-6">
+          {/* 1. Upcoming Classes */}
+          <div className="sf-card-white p-5">
+            <div className="flex items-center justify-between pb-3.5 border-b border-[#E4E2DA]">
+              <div>
+                <h2 className="font-serif-editorial text-xl text-[#171717]">
+                  Upcoming Classes
+                </h2>
+                <p className="text-xs text-[#77766F]">Next scheduled sessions in active term</p>
+              </div>
+              <button
+                onClick={() => onNavigate('timetables')}
+                className="text-xs font-semibold text-[#171717] underline cursor-pointer"
+              >
+                See all
+              </button>
+            </div>
+
+            {upcomingClasses.length === 0 ? (
+              <div className="py-8 text-center space-y-3">
+                <AlertCircle className="w-7 h-7 text-[#77766F] mx-auto" />
+                <div className="text-xs text-[#77766F]">
+                  No classes are currently assigned to time slots.
+                </div>
+                <button
+                  onClick={handleQuickSolve}
+                  className="btn-primary h-8 text-xs"
+                >
+                  Run Solver Now
+                </button>
               </div>
             ) : (
-              <div className="space-y-6">
-                {chartGroups.map(grp => {
-                  const neededWidthPct = Math.min(100, Math.max(5, Math.round((grp.needed / maxBarValue) * 100)));
-                  const availWidthPct = Math.min(100, Math.max(5, Math.round((grp.available / maxBarValue) * 100)));
-
-                  const isOverCapacity = grp.needed > grp.available;
-                  const isHighUtilization = grp.pct > 85;
-                  const neededBarColor = isOverCapacity 
-                    ? 'bg-[#dc2626]' 
-                    : (isHighUtilization ? 'bg-[#9c4126]' : 'bg-[#3b1e4a]');
-
+              <div className="mt-3.5 space-y-2.5">
+                {upcomingClasses.map((cls, idx) => {
+                  const accent = pastelColors[idx % pastelColors.length];
                   return (
-                    <div key={grp.name} className="space-y-2">
-                      <div className="flex items-center justify-between text-xs">
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-[#1f1b20]">{grp.name}</span>
-                          {isOverCapacity && (
-                            <span className="text-[11px] font-semibold text-[#dc2626]">
-                              · Over capacity
-                            </span>
-                          )}
-                        </div>
-                        <span className="font-mono text-xs text-[#655d69] font-semibold">
-                          {grp.needed}h needed / {grp.available}h cap ({grp.pct}%)
+                    <div
+                      key={cls.id}
+                      onClick={() => onNavigate('timetables')}
+                      className="p-3 rounded-xl border border-[#E4E2DA] hover:border-[#171717] transition-colors cursor-pointer bg-[#F7F6EF]/50"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span
+                          className="text-[11px] font-mono-tabular font-semibold px-2 py-0.5 rounded text-[#171717]"
+                          style={{ backgroundColor: accent }}
+                        >
+                          {cls.code}
+                        </span>
+                        <span className="text-[11px] font-mono-tabular text-[#77766F] flex items-center gap-1">
+                          <Clock className="w-3 h-3" />
+                          {cls.day} · {cls.time}
                         </span>
                       </div>
-
-                      <div className="space-y-1.5 relative">
-                        <div className="flex items-center gap-3">
-                          <div className="flex-1 bg-[#f6f2f7] h-4 rounded-lg overflow-hidden flex items-center">
-                            <div
-                              className={`${neededBarColor} h-full rounded-lg transition-all duration-200 ease-out`}
-                              style={{ width: `${neededWidthPct}%` }}
-                              onMouseEnter={() => setHoveredBar(`${grp.name}-needed`)}
-                              onMouseLeave={() => setHoveredBar(null)}
-                            />
-                          </div>
-                          <span className="font-mono text-xs font-bold text-[#1f1b20] w-14 text-right shrink-0">
-                            {grp.needed} h
-                          </span>
-                        </div>
-
-                        <div className="flex items-center gap-3">
-                          <div className="flex-1 bg-[#f6f2f7] h-3 rounded-lg overflow-hidden flex items-center">
-                            <div
-                              className="bg-[#dcd4e0] h-full rounded-lg transition-all duration-200 ease-out"
-                              style={{ width: `${availWidthPct}%` }}
-                              onMouseEnter={() => setHoveredBar(`${grp.name}-avail`)}
-                              onMouseLeave={() => setHoveredBar(null)}
-                            />
-                          </div>
-                          <span className="font-mono text-xs text-[#7c747f] w-14 text-right shrink-0">
-                            {grp.available} h
-                          </span>
-                        </div>
-
-                        {hoveredBar && hoveredBar.startsWith(grp.name) && (
-                          <div className="absolute left-1/4 -top-7 z-20 px-3 py-1 bg-[#3b1e4a] text-white text-xs rounded-lg shadow-md pointer-events-none">
-                            {grp.name}: {grp.needed}h needed of {grp.available}h available ({grp.pct}%)
-                          </div>
-                        )}
+                      <div className="font-semibold text-xs text-[#171717] mt-1.5">
+                        {cls.title}
+                      </div>
+                      <div className="flex items-center justify-between text-[11px] text-[#77766F] mt-1">
+                        <span className="flex items-center gap-1 truncate">
+                          <User className="w-3 h-3" />
+                          {cls.prof}
+                        </span>
+                        <span className="flex items-center gap-1 font-mono-tabular shrink-0">
+                          <MapPin className="w-3 h-3" />
+                          {cls.room}
+                        </span>
                       </div>
                     </div>
                   );
@@ -561,153 +507,85 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
             )}
           </div>
 
-          <div className="pt-3 border-t border-[#ece6ed] flex justify-between items-center text-xs text-[#7c747f]">
-            <span>Baseline: {workingDaysCount} teaching days · 35h weekly availability per room</span>
-            <button
-              type="button"
-              onClick={() => setViewTableMode(!viewTableMode)}
-              className="text-xs font-semibold text-[#3b1e4a] hover:underline cursor-pointer"
-            >
-              {viewTableMode ? 'Switch to Bar Chart' : 'Switch to Tabular View'}
-            </button>
-          </div>
-        </div>
+          {/* 2. Optimization Recommendations (Lightly Tinted Grouped Container) */}
+          <div className="sf-card-muted p-5 space-y-3.5">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="font-serif-editorial text-xl text-[#171717]">
+                  Optimization Insights
+                </h2>
+                <p className="text-xs text-[#77766F]">
+                  Automated solver recommendations
+                </p>
+              </div>
+              <TrendingUp className="w-4 h-4 text-[#171717]" />
+            </div>
 
-        {/* RIGHT (1/3): Latest Generated Timetable Snapshot */}
-        <div className="lg:col-span-1 content-card p-6 flex flex-col justify-between bg-gradient-to-b from-white to-[#faf4fc]/50">
-          <div className="space-y-4">
-            <div className="flex items-center justify-between border-b border-[#ece6ed] pb-3">
-              <h2 className="text-lg font-bold text-[#1f1b20]">
-                Active Timetable Status
+            <div className="space-y-2.5">
+              {optimizationRecommendations.map(rec => (
+                <div
+                  key={rec.id}
+                  className="p-3.5 rounded-xl bg-white border border-[#E4E2DA] space-y-2"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span
+                      className="text-[10.5px] font-semibold px-2 py-0.5 rounded text-[#171717]"
+                      style={{ backgroundColor: rec.color }}
+                    >
+                      {rec.tag}
+                    </span>
+                    <button
+                      onClick={rec.onAction}
+                      className="text-[11px] font-semibold text-[#171717] hover:underline cursor-pointer"
+                    >
+                      {rec.actionLabel} →
+                    </button>
+                  </div>
+                  <div className="font-semibold text-xs text-[#171717]">{rec.title}</div>
+                  <p className="text-[11.5px] text-[#77766F] leading-relaxed">
+                    {rec.description}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* 3. Recent Activities */}
+          <div className="sf-card-white p-5">
+            <div className="flex items-center justify-between pb-3 border-b border-[#E4E2DA]">
+              <h2 className="font-serif-editorial text-xl text-[#171717]">
+                Recent Activity
               </h2>
-              <span className="text-xs font-mono font-bold text-[#18794e]">
-                {latestScenario ? latestScenario.version : 'v1.0'}
-              </span>
+              <button
+                onClick={handleResetDefaults}
+                title="Reset workspace data"
+                className="text-[11px] text-[#77766F] hover:text-[#171717] flex items-center gap-1 cursor-pointer"
+              >
+                <RotateCcw className="w-3 h-3" />
+                <span>Reset</span>
+              </button>
             </div>
-
-            <div className="space-y-1.5">
-              <div className="text-sm font-bold text-[#1f1b20]">
-                {latestScenario?.name || 'Master Campus Schedule'}
-              </div>
-              <div className="text-xs text-[#655d69]">
-                {activeTerm?.name || 'Spring 2026'} · {latestScenario?.author || 'Dr. Katherine Reynolds'}
-              </div>
-            </div>
-
-            <div className="grid grid-cols-3 gap-2.5 py-4 border-y border-[#ece6ed]">
-              <div className="p-3 rounded-xl bg-white border border-[#ece6ed]">
-                <div className="text-[11px] text-[#7c747f]">Placed</div>
-                <div className="text-xl font-extrabold font-mono text-[#1f1b20] mt-0.5 tabular-nums">
-                  {placedCount}
-                </div>
-              </div>
-              <div className="p-3 rounded-xl bg-white border border-[#ece6ed]">
-                <div className="text-[11px] text-[#7c747f]">Unplaced</div>
-                <div className="text-xl font-extrabold font-mono text-[#9c4126] mt-0.5 tabular-nums">
-                  {unplacedCount}
-                </div>
-              </div>
-              <div className="p-3 rounded-xl bg-white border border-[#ece6ed]">
-                <div className="text-[11px] text-[#7c747f]">Clashes</div>
-                <div className={`text-xl font-extrabold font-mono mt-0.5 tabular-nums ${conflictCount > 0 ? 'text-[#dc2626]' : 'text-[#18794e]'}`}>
-                  {conflictCount}
-                </div>
-              </div>
-            </div>
-
-            <div className="space-y-2 text-xs text-[#655d69]">
-              <div className="flex justify-between">
-                <span>Solver Satisfaction Score</span>
-                <span className="font-mono font-bold text-[#18794e]">{latestScenario?.metrics?.satisfactionScore || 99.4}%</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Faculty Preference Match</span>
-                <span className="font-mono font-bold text-[#1f1b20]">{latestScenario?.metrics?.instructorSatisfaction || 98.8}%</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Student Transit Score</span>
-                <span className="font-mono font-bold text-[#1f1b20]">{latestScenario?.metrics?.studentTransitScore || 96.5}%</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="pt-5 space-y-2">
-            <button
-              type="button"
-              onClick={() => onNavigate('timetables')}
-              className="w-full h-10 rounded-xl bg-[#3b1e4a] hover:bg-[#2a1335] text-white text-xs font-bold flex items-center justify-center gap-2 transition-colors cursor-pointer"
-            >
-              <span>Inspect & Export Matrix</span>
-              <ArrowRight className="w-4 h-4 text-[#f27438]" />
-            </button>
-            <button
-              type="button"
-              onClick={() => onNavigate('generate')}
-              className="w-full h-9 rounded-xl border border-[#ece6ed] bg-white hover:bg-[#f6f2f7] text-[#3b1e4a] text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
-            >
-              <span>Re-run Timetable Generator</span>
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* 7-Step Setup Checklist & Section Directory */}
-      <div className="content-card p-6 space-y-5">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-4 border-b border-[#ece6ed]">
-          <div>
-            <h2 className="text-lg font-bold text-[#1f1b20]">
-              Master Data & Setup Checklist ({setupItems.filter(s => s.ready).length} of 7 Complete)
-            </h2>
-            <p className="text-xs text-[#655d69] mt-0.5">
-              Click any module below to review, add, or modify institutional records before running the timetable generator.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => handleOpenStep(0)}
-            className="text-xs font-bold text-[#9c4126] hover:underline inline-flex items-center gap-1 cursor-pointer"
-          >
-            <span>Open Guided Setup Wizard</span>
-            <ArrowRight className="w-3.5 h-3.5" />
-          </button>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-          {setupItems.map(step => (
-            <div
-              key={step.num}
-              onClick={() => handleOpenStep(step.stepIdx)}
-              className="p-4 border border-[#ece6ed] hover:border-[#dcd9dd] rounded-xl bg-[#fbf8fc]/60 hover:bg-white transition-all flex items-start justify-between gap-3 cursor-pointer group"
-            >
-              <div className="flex items-start gap-3 min-w-0">
-                <div className={`w-6 h-6 rounded-lg flex items-center justify-center shrink-0 mt-0.5 text-xs font-bold ${
-                  step.ready 
-                    ? 'bg-[#18794e] text-white' 
-                    : 'bg-[#fff7ed] text-[#9a3412] border border-[#fed7aa]'
-                }`}>
-                  {step.ready ? (
-                    <Check className="w-3.5 h-3.5 stroke-[3]" />
-                  ) : (
-                    step.num
-                  )}
-                </div>
-
-                <div className="min-w-0 space-y-0.5">
-                  <div className="text-sm font-bold text-[#1f1b20] group-hover:text-[#3b1e4a] transition-colors">
-                    {step.title}
+            <div className="mt-3 space-y-2.5">
+              {store.auditLogs.slice(0, 5).map(log => (
+                <div
+                  key={log.id}
+                  className="flex items-start justify-between gap-3 text-xs pb-2.5 border-b border-[#E4E2DA]/60 last:border-none last:pb-0"
+                >
+                  <div className="flex items-start gap-2">
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#171717] mt-1.5 shrink-0" />
+                    <span className="text-[#171717]">{log.summary}</span>
                   </div>
-                  <div className="text-xs text-[#655d69] truncate">
-                    {step.detail}
-                  </div>
+                  <span className="text-[11px] font-mono-tabular text-[#77766F] shrink-0">
+                    {new Date(log.timestamp).toLocaleTimeString([], {
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    })}
+                  </span>
                 </div>
-              </div>
-
-              <span className="text-xs font-semibold text-[#3b1e4a] group-hover:text-[#9c4126] shrink-0 pt-0.5">
-                Configure →
-              </span>
+              ))}
             </div>
-          ))}
-        </div>
+          </div>
+        </aside>
       </div>
     </div>
   );

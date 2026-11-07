@@ -1,17 +1,19 @@
 import React, { useState } from 'react';
 import { RouteType } from './SmartGridNav';
 import { useInstitutionalData, institutionalStore } from '../data/store';
-import { buildMatrixSchedule } from '../data/solverAdapter';
-import { 
-  Play, 
-  ArrowRight, 
-  CheckCircle2, 
-  Check, 
-  Cpu, 
-  Sliders, 
-  RotateCcw, 
-  Layers,
-  Calendar
+import {
+  Play,
+  ArrowRight,
+  CheckCircle2,
+  Check,
+  Cpu,
+  Sliders,
+  RotateCcw,
+  Calendar,
+  BookOpen,
+  ShieldCheck,
+  Sparkles,
+  Clock
 } from 'lucide-react';
 
 interface GenerateScreenProps {
@@ -27,12 +29,18 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({ onNavigate }) =>
   const [selectedGroupIds, setSelectedGroupIds] = useState<Set<string>>(
     new Set(store.studentGroups.map(g => g.id))
   );
-  const [strategyPreset, setStrategyPreset] = useState<'balanced' | 'circadian' | 'compaction' | 'faculty'>('balanced');
-  const [scenarioName, setScenarioName] = useState<string>(
-    `Spring 2026 Master Allocation #${store.scenarios.length + 1}`
+  const [selectedCourseIds, setSelectedCourseIds] = useState<Set<string>>(
+    new Set(store.courses.map(c => c.id))
   );
 
-  // Solver weights
+  const [strategyPreset, setStrategyPreset] = useState<'balanced' | 'circadian' | 'compaction' | 'faculty'>('balanced');
+  const [scenarioName, setScenarioName] = useState<string>(
+    `Fall 2026 Optimized Build #${store.scenarios.length + 1}`
+  );
+
+  // Personal Preferences & Solver Weights
+  const [preferredWindow, setPreferredWindow] = useState<'morning' | 'balanced' | 'afternoon'>('balanced');
+  const [maxDailyWorkload, setMaxDailyWorkload] = useState<number>(6);
   const [transitBufferWeight, setTransitBufferWeight] = useState(85);
   const [circadianWeight, setCircadianWeight] = useState(90);
   const [roomCompactionWeight, setRoomCompactionWeight] = useState(75);
@@ -54,6 +62,11 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({ onNavigate }) =>
     if (selectedDeptId === 'all') return true;
     const prog = store.programs.find(p => p.id === g.programId);
     return prog?.departmentId === selectedDeptId;
+  });
+
+  const visibleCourses = store.courses.filter(c => {
+    if (selectedDeptId === 'all') return true;
+    return c.departmentId === selectedDeptId;
   });
 
   const handlePresetSelect = (preset: 'balanced' | 'circadian' | 'compaction' | 'faculty') => {
@@ -85,6 +98,7 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({ onNavigate }) =>
     setSelectedDeptId(deptId);
     if (deptId === 'all') {
       setSelectedGroupIds(new Set(store.studentGroups.map(g => g.id)));
+      setSelectedCourseIds(new Set(store.courses.map(c => c.id)));
     } else {
       const deptGroupIds = store.studentGroups
         .filter(g => {
@@ -93,55 +107,54 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({ onNavigate }) =>
         })
         .map(g => g.id);
       setSelectedGroupIds(new Set(deptGroupIds.length > 0 ? deptGroupIds : store.studentGroups.map(g => g.id)));
+      const deptCourses = store.courses.filter(c => c.departmentId === deptId).map(c => c.id);
+      setSelectedCourseIds(new Set(deptCourses.length > 0 ? deptCourses : store.courses.map(c => c.id)));
     }
   };
 
   const toggleGroupSelection = (groupId: string) => {
     const updated = new Set(selectedGroupIds);
-    if (updated.has(groupId)) {
-      updated.delete(groupId);
-    } else {
-      updated.add(groupId);
-    }
+    if (updated.has(groupId)) updated.delete(groupId);
+    else updated.add(groupId);
     setSelectedGroupIds(updated);
   };
 
-  const toggleSelectAllVisible = () => {
-    const allVisibleSelected = visibleGroups.every(g => selectedGroupIds.has(g.id));
-    const updated = new Set(selectedGroupIds);
-    if (allVisibleSelected) {
-      visibleGroups.forEach(g => updated.delete(g.id));
-    } else {
-      visibleGroups.forEach(g => updated.add(g.id));
-    }
-    setSelectedGroupIds(updated);
+  const toggleCourseSelection = (courseId: string) => {
+    const updated = new Set(selectedCourseIds);
+    if (updated.has(courseId)) updated.delete(courseId);
+    else updated.add(courseId);
+    setSelectedCourseIds(updated);
+  };
+
+  const handleToggleConstraint = (constraintId: string, currentEnabled: boolean) => {
+    institutionalStore.toggleConstraint(constraintId, !currentEnabled);
   };
 
   // Real Solver Execution
   const handleRunSolver = () => {
     setIsSolving(true);
-    setProgress(15);
-    setSolveStageText('Validating hard constraints, room capacities, and faculty blackout windows...');
+    setProgress(20);
+    setSolveStageText('Validating hard constraints, room capacities, and faculty availability windows...');
     setLastResult(null);
 
     setTimeout(() => {
-      setProgress(45);
-      setSolveStageText('Allocating specialized laboratories and design studios...');
+      setProgress(55);
+      setSolveStageText('Allocating specialized laboratories and matching course sections...');
     }, 250);
 
     setTimeout(() => {
-      setProgress(75);
-      setSolveStageText('Assigning lecture halls and balancing cohort daily loads...');
+      setProgress(85);
+      setSolveStageText('Applying personal timing preferences and midday break buffers...');
     }, 500);
 
     setTimeout(() => {
       setProgress(100);
-      setSolveStageText('Finalizing Pareto-optimal schedule and verifying zero collisions...');
+      setSolveStageText('Finalizing conflict-free timetable...');
       const res = institutionalStore.runTimetableSolver({
         termId: selectedTermId,
         departmentId: selectedDeptId,
         selectedGroupIds: Array.from(selectedGroupIds),
-        strategyName: scenarioName.trim() || `Master Allocation Run #${store.scenarios.length + 1}`
+        strategyName: scenarioName.trim() || `Optimized Schedule #${store.scenarios.length + 1}`
       });
       setIsSolving(false);
       setLastResult({
@@ -151,37 +164,38 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({ onNavigate }) =>
         roomUtilization: res.roomUtilization,
         scenarioName: res.scenario.name
       });
-      setScenarioName(`Spring 2026 Master Allocation #${institutionalStore.get().scenarios.length + 1}`);
-    }, 850);
+      setScenarioName(`Fall 2026 Optimized Build #${institutionalStore.get().scenarios.length + 1}`);
+    }, 800);
   };
 
-  const { conflicts } = buildMatrixSchedule(store);
   const scopedSections = store.sections.filter(s => selectedGroupIds.has(s.studentGroupId));
+  const hardConstraints = store.constraints.filter(c => c.kind === 'hard');
+  const softConstraints = store.constraints.filter(c => c.kind === 'soft');
 
-  // Pre-flight readiness checks
-  const readinessChecks = [
-    { label: 'Time Grid', detail: `${store.timeStructure.periods.length} slots`, ok: store.timeStructure.periods.length > 0 },
-    { label: 'Departments', detail: `${store.departments.length} depts`, ok: store.departments.length > 0 },
-    { label: 'Campus Rooms', detail: `${store.rooms.length} rooms`, ok: store.rooms.length > 0 },
-    { label: 'Courses', detail: `${store.courses.length} courses`, ok: store.courses.length > 0 },
-    { label: 'Faculty', detail: `${store.instructors.length} profs`, ok: store.instructors.length > 0 },
-    { label: 'Cohorts & Secs', detail: `${store.sections.length} sections`, ok: store.studentGroups.length > 0 && store.sections.length > 0 },
-    { label: 'Active Rules', detail: `${store.constraints.filter(c => c.enabled).length} rules`, ok: store.constraints.length > 0 }
+  const workflowSteps = [
+    { step: '01', label: 'Academic Info', color: '#B8EEEE' },
+    { step: '02', label: 'Course Selection', color: '#F2D8FA' },
+    { step: '03', label: 'Personal Preferences', color: '#B8F2E6' },
+    { step: '04', label: 'Hard Constraints', color: '#E8D36B' },
+    { step: '05', label: 'Generate & Optimize', color: '#B7F77C' }
   ];
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
-      {/* Header Banner */}
-      <div className="p-6 bg-gradient-to-br from-[#fff7f2] via-white to-[#faf4fc] border border-[#ece6ed] rounded-xl flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-xs">
+    <div className="space-y-6">
+      {/* =========================================================
+          1. EDITORIAL PAGE HEADING & GUIDED WORKFLOW PILLS
+         ========================================================= */}
+      <header className="flex flex-col lg:flex-row lg:items-end justify-between gap-4 pb-4 border-b border-[#E4E2DA]">
         <div>
-          <div className="text-xs font-mono text-[#9c4126] font-bold">
-            Multi-Objective Combinatorial Timetable Generator
+          <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-md bg-[#F2D8FA] text-[#171717] text-xs font-semibold mb-2">
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>Guided Timetable Configuration & Solver</span>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-[#1f1b20] tracking-tight mt-0.5">
-            Generate Institutional Timetable
+          <h1 className="font-serif-editorial text-3xl sm:text-4xl text-[#171717] tracking-tight">
+            Generate Schedule
           </h1>
-          <p className="text-xs sm:text-sm text-[#655d69] mt-1">
-            Review your pre-flight setup readiness, tune optimization weights, and execute the solver to assign all sections across rooms and periods.
+          <p className="text-xs sm:text-sm text-[#77766F] mt-1 max-w-2xl">
+            Configure academic scope, select courses and cohorts, customize personal timing preferences, and verify hard constraints before generating an optimized schedule.
           </p>
         </div>
 
@@ -189,94 +203,77 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({ onNavigate }) =>
           <button
             type="button"
             onClick={() => onNavigate('setup')}
-            className="btn-secondary text-xs"
+            className="btn-secondary text-xs h-9"
           >
-            <Sliders className="w-3.5 h-3.5 text-[#3b1e4a]" />
-            <span>Edit Setup Data</span>
+            <Sliders className="w-3.5 h-3.5" />
+            <span>Edit Catalog & Rooms</span>
           </button>
           <button
             type="button"
             onClick={handleRunSolver}
             disabled={isSolving}
-            className="btn-primary text-xs"
+            className="btn-primary text-xs h-9"
           >
-            <Play className="w-4 h-4 fill-white" />
-            <span>{isSolving ? 'Running Solver...' : 'Generate Timetable Now'}</span>
+            <Play className="w-3.5 h-3.5" />
+            <span>{isSolving ? 'Generating...' : 'Generate Schedule'}</span>
           </button>
         </div>
-      </div>
+      </header>
 
-      {/* Pre-Flight Readiness Bar */}
-      <div className="content-card p-5 space-y-3">
-        <div className="flex items-center justify-between">
-          <div className="text-xs font-bold text-[#1f1b20] flex items-center gap-2">
-            <Layers className="w-4 h-4 text-[#3b1e4a]" />
-            <span>Pre-Flight Data Readiness Verification</span>
-          </div>
-          <button
-            type="button"
-            onClick={() => onNavigate('setup')}
-            className="text-xs font-semibold text-[#9c4126] hover:underline cursor-pointer"
+      {/* Guided Workflow Steps Strip */}
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+        {workflowSteps.map(item => (
+          <div
+            key={item.step}
+            className="p-3.5 rounded-xl bg-white border border-[#E4E2DA] flex items-center gap-3"
           >
-            Review Setup Wizard →
-          </button>
-        </div>
-
-        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2.5">
-          {readinessChecks.map((chk, idx) => (
             <div
-              key={idx}
-              onClick={() => onNavigate('setup')}
-              className="p-3 rounded-xl border border-[#ece6ed] bg-[#fbf8fc] hover:bg-white transition-colors cursor-pointer space-y-1"
+              className="w-8 h-8 rounded-lg flex items-center justify-center font-mono-tabular font-bold text-xs text-[#171717] shrink-0"
+              style={{ backgroundColor: item.color }}
             >
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold text-[#1f1b20]">{chk.label}</span>
-                <span className={`w-4 h-4 rounded-md flex items-center justify-center text-[10px] font-bold ${
-                  chk.ok ? 'bg-[#18794e] text-white' : 'bg-[#fff7ed] text-[#9a3412]'
-                }`}>
-                  {chk.ok ? <Check className="w-2.5 h-2.5 stroke-[3]" /> : '!'}
-                </span>
-              </div>
-              <div className="text-xs font-mono text-[#655d69]">{chk.detail}</div>
+              {item.step}
             </div>
-          ))}
-        </div>
+            <div className="text-xs font-semibold text-[#171717] truncate">
+              {item.label}
+            </div>
+          </div>
+        ))}
       </div>
 
       {/* Solver Progress Banner */}
       {isSolving && (
-        <div className="p-6 rounded-xl border border-[#ece6ed] bg-gradient-to-r from-[#faf4fc] via-white to-[#fff7f2] space-y-3 shadow-sm">
+        <div className="p-6 rounded-2xl border border-[#E4E2DA] bg-[#F2D8FA]/45 space-y-3">
           <div className="flex items-center justify-between text-xs">
-            <span className="font-bold text-[#3b1e4a] flex items-center gap-2">
-              <Cpu className="w-4 h-4 text-[#9c4126] animate-spin" />
+            <span className="font-semibold text-[#171717] flex items-center gap-2">
+              <Cpu className="w-4 h-4 animate-spin" />
               <span>{solveStageText}</span>
             </span>
-            <span className="font-mono font-bold text-[#9c4126]">{progress}%</span>
+            <span className="font-mono-tabular font-bold text-[#171717]">{progress}%</span>
           </div>
-          <div className="w-full bg-[#ece6ed] h-2.5 rounded-full overflow-hidden">
-            <div 
-              className="bg-gradient-to-r from-[#3b1e4a] via-[#9c4126] to-[#f27438] h-full transition-all duration-200 rounded-full"
+          <div className="w-full bg-white h-2.5 rounded-full overflow-hidden border border-[#E4E2DA]">
+            <div
+              className="bg-[#171717] h-full transition-all duration-200 rounded-full"
               style={{ width: `${progress}%` }}
             />
           </div>
         </div>
       )}
 
-      {/* Solved Result Banner */}
+      {/* Generated Results & Optimization Information Banner */}
       {lastResult && (
-        <div className="p-6 border border-[#ece6ed] bg-gradient-to-br from-[#f1fbf5] via-white to-[#faf4fc] rounded-xl space-y-4 shadow-sm">
+        <div className="p-6 rounded-2xl border border-[#E4E2DA] bg-[#B7F77C]/45 space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-[#18794e] text-white flex items-center justify-center shrink-0">
+            <div className="flex items-center gap-3.5">
+              <div className="w-11 h-11 rounded-xl bg-[#171717] text-white flex items-center justify-center shrink-0">
                 <CheckCircle2 className="w-5 h-5" />
               </div>
               <div>
-                <div className="text-base font-extrabold text-[#0f5431]">
-                  Timetable Generation Complete — "{lastResult.scenarioName}"
-                </div>
-                <div className="text-xs text-[#655d69]">
-                  All hard constraints satisfied · Zero room, faculty, or student cohort double-bookings.
-                </div>
+                <h2 className="font-serif-editorial text-2xl text-[#171717]">
+                  Schedule Generated — "{lastResult.scenarioName}"
+                </h2>
+                <p className="text-xs text-[#171717]/80">
+                  All hard constraints satisfied · Zero instructor, room, or student cohort double-bookings.
+                </p>
               </div>
             </div>
 
@@ -285,189 +282,320 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({ onNavigate }) =>
               onClick={() => onNavigate('timetables')}
               className="btn-primary text-xs shrink-0"
             >
-              <span>Inspect & Export in Timetable Matrix</span>
+              <span>Open in My Timetable</span>
               <ArrowRight className="w-4 h-4" />
             </button>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2 border-t border-[#ece6ed]">
-            <div className="p-3.5 rounded-xl bg-white border border-[#ece6ed]">
-              <div className="text-xs text-[#655d69]">Sections Placed</div>
-              <div className="text-2xl font-extrabold font-mono text-[#1f1b20] mt-0.5 tabular-nums">{lastResult.placedCount}</div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
+            <div className="p-3.5 rounded-xl bg-white border border-[#E4E2DA]">
+              <div className="text-xs text-[#77766F]">Sections Scheduled</div>
+              <div className="font-serif-editorial text-2xl text-[#171717] mt-0.5">
+                {lastResult.placedCount}
+              </div>
             </div>
-            <div className="p-3.5 rounded-xl bg-white border border-[#ece6ed]">
-              <div className="text-xs text-[#655d69]">Unplaced Sections</div>
-              <div className="text-2xl font-extrabold font-mono text-[#9c4126] mt-0.5 tabular-nums">{lastResult.unplacedCount}</div>
+            <div className="p-3.5 rounded-xl bg-white border border-[#E4E2DA]">
+              <div className="text-xs text-[#77766F]">Unassigned Sections</div>
+              <div className="font-serif-editorial text-2xl text-[#171717] mt-0.5">
+                {lastResult.unplacedCount}
+              </div>
             </div>
-            <div className="p-3.5 rounded-xl bg-white border border-[#ece6ed]">
-              <div className="text-xs text-[#655d69]">Hard Collisions</div>
-              <div className="text-2xl font-extrabold font-mono text-[#18794e] mt-0.5 tabular-nums">{lastResult.conflictCount}</div>
+            <div className="p-3.5 rounded-xl bg-white border border-[#E4E2DA]">
+              <div className="text-xs text-[#77766F]">Hard Clashes</div>
+              <div className="font-serif-editorial text-2xl text-[#171717] mt-0.5">
+                {lastResult.conflictCount}
+              </div>
             </div>
-            <div className="p-3.5 rounded-xl bg-white border border-[#ece6ed]">
-              <div className="text-xs text-[#655d69]">Room Utilization</div>
-              <div className="text-2xl font-extrabold font-mono text-[#3b1e4a] mt-0.5 tabular-nums">{lastResult.roomUtilization}%</div>
+            <div className="p-3.5 rounded-xl bg-white border border-[#E4E2DA]">
+              <div className="text-xs text-[#77766F]">Room Utilization</div>
+              <div className="font-serif-editorial text-2xl text-[#171717] mt-0.5">
+                {lastResult.roomUtilization}%
+              </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* Main 2-Column Configuration Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Left (7 cols): Scope & Cohorts */}
-        <div className="lg:col-span-7 content-card p-6 space-y-6">
-          <div className="border-b border-[#ece6ed] pb-3">
-            <h2 className="text-lg font-bold text-[#1f1b20]">
-              1. Generation Scope & Cohort Selection
-            </h2>
-            <p className="text-xs text-[#655d69] mt-0.5">
-              Select the academic term, scenario label, and student cohorts to schedule.
-            </p>
-          </div>
+      {/* =========================================================
+          MAIN 2-COLUMN GUIDED CONFIGURATION WORKFLOW
+         ========================================================= */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        {/* LEFT COLUMN (7 Cols): Step 1 (Academic Info) + Step 2 (Course & Cohort Selection) */}
+        <div className="lg:col-span-7 space-y-6">
+          {/* STEP 1: Academic Information */}
+          <div className="sf-card-white p-6 space-y-5">
+            <div className="flex items-center justify-between border-b border-[#E4E2DA] pb-3.5">
+              <div className="flex items-center gap-3">
+                <span className="w-7 h-7 rounded-lg bg-[#B8EEEE] text-[#171717] font-mono-tabular font-bold text-xs flex items-center justify-center">
+                  01
+                </span>
+                <div>
+                  <h2 className="font-serif-editorial text-xl text-[#171717]">
+                    Academic Information
+                  </h2>
+                  <p className="text-xs text-[#77766F]">
+                    Select target term, department scope, and schedule build identifier
+                  </p>
+                </div>
+              </div>
+            </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-semibold text-[#171717] mb-1.5">
+                  Academic Term
+                </label>
+                <select
+                  value={selectedTermId}
+                  onChange={e => setSelectedTermId(e.target.value)}
+                  disabled={isSolving}
+                  className="input-field text-xs"
+                >
+                  {store.terms.map(term => (
+                    <option key={term.id} value={term.id}>
+                      {term.name} ({term.code})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-[#171717] mb-1.5">
+                  Schedule Build Label
+                </label>
+                <input
+                  type="text"
+                  value={scenarioName}
+                  onChange={e => setScenarioName(e.target.value)}
+                  disabled={isSolving}
+                  className="input-field text-xs"
+                />
+              </div>
+            </div>
+
             <div>
-              <label className="block text-xs font-bold text-[#1f1b20] mb-1.5">
-                Target Academic Term
+              <label className="block text-xs font-semibold text-[#171717] mb-1.5">
+                Department Scope
               </label>
               <select
-                value={selectedTermId}
-                onChange={e => setSelectedTermId(e.target.value)}
+                value={selectedDeptId}
+                onChange={e => handleDeptChange(e.target.value)}
                 disabled={isSolving}
-                className="form-input text-xs"
+                className="input-field text-xs"
               >
-                {store.terms.map(term => (
-                  <option key={term.id} value={term.id}>
-                    {term.name} ({term.code})
+                <option value="all">
+                  All Academic Departments ({store.departments.length} Faculties)
+                </option>
+                {store.departments.map(d => (
+                  <option key={d.id} value={d.id}>
+                    {d.name} ({d.code})
                   </option>
                 ))}
               </select>
             </div>
+          </div>
 
+          {/* STEP 2: Course & Cohort Selection */}
+          <div className="sf-card-white p-6 space-y-5">
+            <div className="flex items-center justify-between border-b border-[#E4E2DA] pb-3.5">
+              <div className="flex items-center gap-3">
+                <span className="w-7 h-7 rounded-lg bg-[#F2D8FA] text-[#171717] font-mono-tabular font-bold text-xs flex items-center justify-center">
+                  02
+                </span>
+                <div>
+                  <h2 className="font-serif-editorial text-xl text-[#171717]">
+                    Course & Cohort Selection
+                  </h2>
+                  <p className="text-xs text-[#77766F]">
+                    Choose which courses and student cohorts to include in this generation pass
+                  </p>
+                </div>
+              </div>
+              <span className="text-xs font-mono-tabular px-2.5 py-1 rounded-md bg-[#F7F6EF] border border-[#E4E2DA]">
+                {scopedSections.length} sections queued
+              </span>
+            </div>
+
+            {/* Courses Selection Grid */}
             <div>
-              <label className="block text-xs font-bold text-[#1f1b20] mb-1.5">
-                Scenario Run Name
-              </label>
-              <input
-                type="text"
-                value={scenarioName}
-                onChange={e => setScenarioName(e.target.value)}
-                disabled={isSolving}
-                className="form-input text-xs"
-              />
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-semibold text-[#171717] flex items-center gap-1.5">
+                  <BookOpen className="w-3.5 h-3.5" />
+                  <span>Courses ({selectedCourseIds.size} of {visibleCourses.length} active)</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (visibleCourses.every(c => selectedCourseIds.has(c.id))) {
+                      setSelectedCourseIds(new Set());
+                    } else {
+                      setSelectedCourseIds(new Set(visibleCourses.map(c => c.id)));
+                    }
+                  }}
+                  className="text-xs font-semibold text-[#171717] underline cursor-pointer"
+                >
+                  {visibleCourses.every(c => selectedCourseIds.has(c.id)) ? 'Clear all' : 'Select all'}
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-52 overflow-y-auto p-2 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA]">
+                {visibleCourses.map(course => {
+                  const checked = selectedCourseIds.has(course.id);
+                  return (
+                    <label
+                      key={course.id}
+                      className={`flex items-center justify-between p-2.5 rounded-lg border text-xs cursor-pointer transition-colors ${
+                        checked
+                          ? 'bg-white border-[#171717] text-[#171717]'
+                          : 'bg-white/60 border-[#E4E2DA] text-[#77766F]'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggleCourseSelection(course.id)}
+                          className="accent-[#171717]"
+                        />
+                        <span className="font-mono-tabular font-bold shrink-0">{course.code}</span>
+                        <span className="truncate">{course.title}</span>
+                      </div>
+                      <span className="text-[10.5px] font-mono-tabular px-1.5 py-0.5 rounded bg-[#EDEAE0] text-[#171717] shrink-0 ml-1">
+                        {course.creditHours}cr
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
             </div>
-          </div>
 
-          <div>
-            <label className="block text-xs font-bold text-[#1f1b20] mb-1.5">
-              Department Filter Scope
-            </label>
-            <select
-              value={selectedDeptId}
-              onChange={e => handleDeptChange(e.target.value)}
-              disabled={isSolving}
-              className="form-input text-xs"
-            >
-              <option value="all">Entire Institution (All {store.departments.length} Departments)</option>
-              {store.departments.map(d => (
-                <option key={d.id} value={d.id}>
-                  {d.name} ({d.code})
-                </option>
-              ))}
-            </select>
-          </div>
+            {/* Student Cohorts Checklist */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-semibold text-[#171717]">
+                  Student Cohorts ({selectedGroupIds.size} of {visibleGroups.length} selected)
+                </span>
+              </div>
 
-          {/* Student Cohorts Checklist */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <label className="text-xs font-bold text-[#1f1b20]">
-                Student Cohorts Included ({selectedGroupIds.size} of {visibleGroups.length} selected · {scopedSections.length} sections)
-              </label>
-              <button
-                type="button"
-                onClick={toggleSelectAllVisible}
-                className="text-xs font-semibold text-[#9c4126] hover:underline cursor-pointer"
-              >
-                {visibleGroups.every(g => selectedGroupIds.has(g.id)) ? 'Deselect All' : 'Select All'}
-              </button>
-            </div>
-
-            <div className="max-h-56 overflow-y-auto border border-[#ece6ed] rounded-xl p-3 divide-y divide-[#ece6ed] bg-[#fbf8fc]">
-              {visibleGroups.map(grp => {
-                const secCount = store.sections.filter(s => s.studentGroupId === grp.id).length;
-                return (
-                  <label key={grp.id} className="flex items-center justify-between py-2 px-1 cursor-pointer text-xs hover:bg-white rounded-lg">
-                    <div className="flex items-center gap-2.5">
-                      <input
-                        type="checkbox"
-                        checked={selectedGroupIds.has(grp.id)}
-                        onChange={() => toggleGroupSelection(grp.id)}
-                        className="rounded border-[#dcd9dd] text-[#3b1e4a] focus:ring-[#9c4126]"
-                      />
-                      <span className="font-mono font-bold text-[#3b1e4a]">{grp.code}</span>
-                      <span className="text-[#655d69]">{grp.name}</span>
-                    </div>
-                    <span className="text-[#7c747f] font-mono text-[11px]">
-                      {grp.size} students · {secCount} secs
-                    </span>
-                  </label>
-                );
-              })}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-44 overflow-y-auto p-2 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA]">
+                {visibleGroups.map(grp => {
+                  const secCount = store.sections.filter(s => s.studentGroupId === grp.id).length;
+                  const checked = selectedGroupIds.has(grp.id);
+                  return (
+                    <label
+                      key={grp.id}
+                      className={`flex items-center justify-between p-2.5 rounded-lg border text-xs cursor-pointer transition-colors ${
+                        checked
+                          ? 'bg-white border-[#171717] text-[#171717]'
+                          : 'bg-white/60 border-[#E4E2DA] text-[#77766F]'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 truncate">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggleGroupSelection(grp.id)}
+                          className="accent-[#171717]"
+                        />
+                        <span className="font-mono-tabular font-bold">{grp.code}</span>
+                        <span className="truncate text-[#77766F]">{grp.name}</span>
+                      </div>
+                      <span className="text-[10.5px] font-mono-tabular text-[#77766F] shrink-0">
+                        {secCount} secs
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
             </div>
           </div>
         </div>
 
-        {/* Right (5 cols): Strategy Presets & Objective Sliders */}
-        <div className="lg:col-span-5 content-card p-6 space-y-6 flex flex-col justify-between">
-          <div className="space-y-5">
-            <div className="flex items-center justify-between border-b border-[#ece6ed] pb-3">
-              <div>
-                <h2 className="text-lg font-bold text-[#1f1b20]">
-                  2. Solver Optimization Weights
-                </h2>
-                <p className="text-xs text-[#655d69] mt-0.5">
-                  Choose a preset strategy or fine-tune objective scalar sliders.
-                </p>
+        {/* RIGHT COLUMN (5 Cols): Step 3 (Personal Preferences) + Step 4 (Hard Constraints) + Step 5 (Execute) */}
+        <div className="lg:col-span-5 space-y-6">
+          {/* STEP 3: Personal Preferences */}
+          <div className="sf-card-white p-6 space-y-5">
+            <div className="flex items-center justify-between border-b border-[#E4E2DA] pb-3.5">
+              <div className="flex items-center gap-3">
+                <span className="w-7 h-7 rounded-lg bg-[#B8F2E6] text-[#171717] font-mono-tabular font-bold text-xs flex items-center justify-center">
+                  03
+                </span>
+                <div>
+                  <h2 className="font-serif-editorial text-xl text-[#171717]">
+                    Personal Preferences
+                  </h2>
+                  <p className="text-xs text-[#77766F]">
+                    Preferred timings, breaks, and daily workload balance
+                  </p>
+                </div>
               </div>
               <button
                 type="button"
                 onClick={() => handlePresetSelect('balanced')}
-                className="text-xs text-[#655d69] hover:text-[#1f1b20] inline-flex items-center gap-1 cursor-pointer"
-                title="Reset weights"
+                className="text-xs text-[#77766F] hover:text-[#171717] inline-flex items-center gap-1 cursor-pointer"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
                 <span>Reset</span>
               </button>
             </div>
 
-            {/* Strategy Preset Buttons */}
-            <div className="grid grid-cols-2 gap-2">
-              {[
-                { id: 'balanced' as const, label: 'Balanced Equilibrium' },
-                { id: 'circadian' as const, label: 'Circadian & Commute' },
-                { id: 'compaction' as const, label: 'Room Compaction' },
-                { id: 'faculty' as const, label: 'Faculty Research' }
-              ].map(p => (
-                <button
-                  key={p.id}
-                  type="button"
-                  onClick={() => handlePresetSelect(p.id)}
-                  className={`px-3 py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer text-left ${
-                    strategyPreset === p.id
-                      ? 'bg-[#3b1e4a] text-white border-[#3b1e4a]'
-                      : 'bg-[#fbf8fc] text-[#655d69] border-[#ece6ed] hover:bg-[#f6f2f7]'
-                  }`}
-                >
-                  {p.label}
-                </button>
-              ))}
+            {/* Preferred Time of Day */}
+            <div>
+              <label className="block text-xs font-semibold text-[#171717] mb-1.5">
+                Preferred Daily Timing Window
+              </label>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { id: 'morning' as const, label: 'Morning Focus', sub: '08:00 – 13:00' },
+                  { id: 'balanced' as const, label: 'Balanced Day', sub: '09:00 – 16:00' },
+                  { id: 'afternoon' as const, label: 'Afternoon Start', sub: '11:00 – 18:00' }
+                ].map(opt => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => setPreferredWindow(opt.id)}
+                    className={`p-2.5 rounded-xl border text-left transition-colors cursor-pointer ${
+                      preferredWindow === opt.id
+                        ? 'bg-[#171717] text-white border-[#171717]'
+                        : 'bg-[#F7F6EF] text-[#171717] border-[#E4E2DA] hover:border-[#171717]'
+                    }`}
+                  >
+                    <div className="text-xs font-semibold">{opt.label}</div>
+                    <div className={`text-[10.5px] font-mono-tabular mt-0.5 ${preferredWindow === opt.id ? 'text-[#B8EEEE]' : 'text-[#77766F]'}`}>
+                      {opt.sub}
+                    </div>
+                  </button>
+                ))}
+              </div>
             </div>
 
-            {/* Sliders */}
-            <div className="space-y-4 pt-1">
+            {/* Max Daily Workload */}
+            <div className="space-y-1.5">
+              <div className="flex justify-between text-xs">
+                <span className="font-semibold text-[#171717] flex items-center gap-1.5">
+                  <Clock className="w-3.5 h-3.5" />
+                  <span>Maximum Daily Workload Cap</span>
+                </span>
+                <span className="font-mono-tabular font-bold px-2 py-0.5 rounded bg-[#B8F2E6] text-[#171717]">
+                  {maxDailyWorkload} hrs / day
+                </span>
+              </div>
+              <input
+                type="range"
+                min="3"
+                max="8"
+                value={maxDailyWorkload}
+                onChange={e => setMaxDailyWorkload(Number(e.target.value))}
+                className="w-full accent-[#171717]"
+              />
+            </div>
+
+            {/* Optimization Sliders */}
+            <div className="space-y-3.5 pt-2 border-t border-[#E4E2DA]">
               <div className="space-y-1">
                 <div className="flex justify-between text-xs">
-                  <span className="font-bold text-[#1f1b20]">Commuter Transit Buffer</span>
-                  <span className="font-mono font-bold text-[#9c4126]">{transitBufferWeight}%</span>
+                  <span className="font-medium text-[#171717]">Midday Break & Transit Buffer</span>
+                  <span className="font-mono-tabular font-semibold">{transitBufferWeight}%</span>
                 </div>
                 <input
                   type="range"
@@ -475,44 +603,14 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({ onNavigate }) =>
                   max="100"
                   value={transitBufferWeight}
                   onChange={e => setTransitBufferWeight(Number(e.target.value))}
-                  className="w-full"
+                  className="w-full accent-[#171717]"
                 />
               </div>
 
               <div className="space-y-1">
                 <div className="flex justify-between text-xs">
-                  <span className="font-bold text-[#1f1b20]">Circadian Peak Alertness Alignment</span>
-                  <span className="font-mono font-bold text-[#9c4126]">{circadianWeight}%</span>
-                </div>
-                <input
-                  type="range"
-                  min="0"
-                  max="100"
-                  value={circadianWeight}
-                  onChange={e => setCircadianWeight(Number(e.target.value))}
-                  className="w-full"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <div className="flex justify-between text-xs">
-                  <span className="font-bold text-[#1f1b20]">Facility Compaction & Energy</span>
-                  <span className="font-mono font-bold text-[#9c4126]">{roomCompactionWeight}%</span>
-                </div>
-                <input
-                  type="range"
-                  min="0"
-                  max="100"
-                  value={roomCompactionWeight}
-                  onChange={e => setRoomCompactionWeight(Number(e.target.value))}
-                  className="w-full"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <div className="flex justify-between text-xs">
-                  <span className="font-bold text-[#1f1b20]">Faculty Consecutive Load Protection</span>
-                  <span className="font-mono font-bold text-[#9c4126]">{facultyLoadWeight}%</span>
+                  <span className="font-medium text-[#171717]">Consecutive-Class Cap Protection</span>
+                  <span className="font-mono-tabular font-semibold">{facultyLoadWeight}%</span>
                 </div>
                 <input
                   type="range"
@@ -520,66 +618,162 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({ onNavigate }) =>
                   max="100"
                   value={facultyLoadWeight}
                   onChange={e => setFacultyLoadWeight(Number(e.target.value))}
-                  className="w-full"
+                  className="w-full accent-[#171717]"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <div className="flex justify-between text-xs">
+                  <span className="font-medium text-[#171717]">Room Compaction & Proximity</span>
+                  <span className="font-mono-tabular font-semibold">{roomCompactionWeight}%</span>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  value={roomCompactionWeight}
+                  onChange={e => setRoomCompactionWeight(Number(e.target.value))}
+                  className="w-full accent-[#171717]"
                 />
               </div>
             </div>
           </div>
 
-          <div className="pt-5 border-t border-[#ece6ed]">
-            <button
-              type="button"
-              onClick={handleRunSolver}
-              disabled={isSolving}
-              className="w-full btn-primary"
-            >
-              <Play className="w-4 h-4 fill-white" />
-              <span>{isSolving ? 'Generating Timetable...' : `Generate Timetable (${scopedSections.length} Sections)`}</span>
-            </button>
+          {/* STEP 4: Hard Constraints & Step 5: Execute */}
+          <div className="sf-card-white p-6 space-y-5">
+            <div className="flex items-center justify-between border-b border-[#E4E2DA] pb-3.5">
+              <div className="flex items-center gap-3">
+                <span className="w-7 h-7 rounded-lg bg-[#E8D36B] text-[#171717] font-mono-tabular font-bold text-xs flex items-center justify-center">
+                  04
+                </span>
+                <div>
+                  <h2 className="font-serif-editorial text-xl text-[#171717]">
+                    Hard Constraints
+                  </h2>
+                  <p className="text-xs text-[#77766F]">
+                    Strict conflict rules enforced during schedule generation
+                  </p>
+                </div>
+              </div>
+              <ShieldCheck className="w-4 h-4 text-[#171717]" />
+            </div>
+
+            <div className="space-y-2">
+              {hardConstraints.concat(softConstraints.slice(0, 2)).map(rule => (
+                <div
+                  key={rule.id}
+                  onClick={() => handleToggleConstraint(rule.id, rule.enabled)}
+                  className="p-3 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] flex items-center justify-between gap-3 cursor-pointer hover:border-[#171717] transition-colors"
+                >
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-semibold text-[#171717] truncate">
+                        {rule.name}
+                      </span>
+                      <span
+                        className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${
+                          rule.kind === 'hard'
+                            ? 'bg-[#E8D36B] text-[#171717]'
+                            : 'bg-[#B8EEEE] text-[#171717]'
+                        }`}
+                      >
+                        {rule.kind.toUpperCase()}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-[#77766F] truncate mt-0.5">
+                      {rule.description}
+                    </p>
+                  </div>
+                  <div
+                    className={`w-5 h-5 rounded-md flex items-center justify-center shrink-0 ${
+                      rule.enabled
+                        ? 'bg-[#171717] text-white'
+                        : 'bg-white border border-[#E4E2DA]'
+                    }`}
+                  >
+                    {rule.enabled && <Check className="w-3.5 h-3.5" />}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={handleRunSolver}
+                disabled={isSolving}
+                className="w-full btn-primary h-11 text-sm"
+              >
+                <Play className="w-4 h-4" />
+                <span>
+                  {isSolving
+                    ? 'Generating Conflict-Free Schedule...'
+                    : `Generate Schedule (${scopedSections.length} Sections)`}
+                </span>
+              </button>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Saved Timetable Scenarios History */}
-      <div className="content-card overflow-hidden">
-        <div className="px-6 py-4 border-b border-[#ece6ed] bg-[#fbf8fc] flex items-center justify-between">
+      {/* =========================================================
+          6. GENERATED RESULTS & SCENARIO HISTORY TABLE
+         ========================================================= */}
+      <div className="sf-card-white overflow-hidden">
+        <div className="px-6 py-4 border-b border-[#E4E2DA] bg-[#F7F6EF] flex items-center justify-between">
           <div>
-            <h2 className="text-sm font-bold text-[#1f1b20]">Generated Timetable Scenarios History</h2>
-            <p className="text-xs text-[#655d69]">Every solver run is versioned and ready for inspection or export in the Timetable Matrix.</p>
+            <h2 className="font-serif-editorial text-xl text-[#171717]">
+              Generated Schedule Versions
+            </h2>
+            <p className="text-xs text-[#77766F]">
+              Every solver run is versioned and ready for inspection or export in My Timetable.
+            </p>
           </div>
-          <span className="text-xs font-mono font-bold text-[#3b1e4a]">{store.scenarios.length} scenarios</span>
+          <span className="text-xs font-mono-tabular font-semibold px-2.5 py-1 rounded bg-white border border-[#E4E2DA]">
+            {store.scenarios.length} builds
+          </span>
         </div>
 
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
-            <thead className="bg-white text-[#655d69] border-b border-[#ece6ed]">
+            <thead className="bg-white text-[#77766F] border-b border-[#E4E2DA]">
               <tr>
-                <th className="py-3 px-4 font-bold">Version</th>
-                <th className="py-3 px-4 font-bold">Scenario Name</th>
-                <th className="py-3 px-4 font-bold">Generated By</th>
-                <th className="py-3 px-4 font-bold font-mono">Hard Clashes</th>
-                <th className="py-3 px-4 font-bold font-mono">Room Util</th>
-                <th className="py-3 px-4 font-bold font-mono">Satisfaction</th>
-                <th className="py-3 px-4 font-bold text-right">Action</th>
+                <th className="py-3 px-4 font-semibold">Version</th>
+                <th className="py-3 px-4 font-semibold">Schedule Name</th>
+                <th className="py-3 px-4 font-semibold">Generated By</th>
+                <th className="py-3 px-4 font-semibold font-mono-tabular">Hard Clashes</th>
+                <th className="py-3 px-4 font-semibold font-mono-tabular">Room Util</th>
+                <th className="py-3 px-4 font-semibold font-mono-tabular">Preference Score</th>
+                <th className="py-3 px-4 font-semibold text-right">Action</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[#ece6ed]">
+            <tbody className="divide-y divide-[#E4E2DA]">
               {store.scenarios.map(scen => (
-                <tr key={scen.id} className="hover:bg-[#fbf8fc]">
-                  <td className="py-3 px-4 font-mono font-bold text-[#9c4126]">{scen.version}</td>
-                  <td className="py-3 px-4 font-bold text-[#1f1b20]">{scen.name}</td>
-                  <td className="py-3 px-4 text-[#655d69]">{scen.author}</td>
-                  <td className="py-3 px-4 font-mono font-bold text-[#18794e]">{scen.metrics.clashCount} clashes</td>
-                  <td className="py-3 px-4 font-mono text-[#1f1b20]">{scen.metrics.roomUtilizationPercent}%</td>
-                  <td className="py-3 px-4 font-mono font-bold text-[#3b1e4a]">{scen.metrics.satisfactionScore}%</td>
+                <tr key={scen.id} className="hover:bg-[#F7F6EF]/60">
+                  <td className="py-3 px-4 font-mono-tabular font-semibold text-[#171717]">
+                    {scen.version}
+                  </td>
+                  <td className="py-3 px-4 font-semibold text-[#171717]">{scen.name}</td>
+                  <td className="py-3 px-4 text-[#77766F]">{scen.author}</td>
+                  <td className="py-3 px-4">
+                    <span className="px-2 py-0.5 rounded bg-[#B7F77C] text-[#171717] font-mono-tabular font-semibold">
+                      {scen.metrics.clashCount} clashes
+                    </span>
+                  </td>
+                  <td className="py-3 px-4 font-mono-tabular text-[#171717]">
+                    {scen.metrics.roomUtilizationPercent}%
+                  </td>
+                  <td className="py-3 px-4 font-mono-tabular font-semibold text-[#171717]">
+                    {scen.metrics.satisfactionScore}%
+                  </td>
                   <td className="py-3 px-4 text-right">
                     <button
                       type="button"
                       onClick={() => onNavigate('timetables')}
-                      className="px-3 py-1.5 rounded-xl bg-[#f6f2f7] hover:bg-[#3b1e4a] hover:text-white text-[#3b1e4a] font-bold text-xs inline-flex items-center gap-1.5 transition-colors cursor-pointer"
+                      className="btn-secondary h-8 text-xs"
                     >
                       <Calendar className="w-3.5 h-3.5" />
-                      <span>Open Matrix</span>
+                      <span>Open Timetable</span>
                     </button>
                   </td>
                 </tr>

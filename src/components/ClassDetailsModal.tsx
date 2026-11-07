@@ -72,7 +72,7 @@ export const ClassDetailsModal: React.FC<ClassDetailsModalProps> = ({
       roomId: selectedRoomId
     });
     const newRoom = store.rooms.find(r => r.id === selectedRoomId);
-    setSavedNotice(`Rescheduled to ${selectedDay} • ${selectedPeriod} in ${newRoom?.code || 'selected room'}`);
+    setSavedNotice(`Rescheduled to ${selectedDay} · ${selectedPeriod} in ${newRoom?.code || 'selected room'}`);
     setIsReassigning(false);
     setTimeout(() => {
       onClose();
@@ -87,7 +87,7 @@ export const ClassDetailsModal: React.FC<ClassDetailsModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <motion.div 
+      <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
@@ -95,45 +95,42 @@ export const ClassDetailsModal: React.FC<ClassDetailsModalProps> = ({
         className="fixed inset-0 bg-black/40 backdrop-blur-xs"
       />
 
-      <motion.div 
+      <motion.div
         initial={{ opacity: 0, scale: 0.98, y: 8 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.98, y: 8 }}
         transition={{ duration: 0.15, ease: 'easeOut' }}
-        className="relative bg-white border border-[#ece6ed] rounded-xl shadow-xl max-w-lg w-full overflow-hidden z-10"
+        className="relative bg-white border border-[#E4E2DA] rounded-2xl shadow-xl max-w-lg w-full overflow-hidden z-10"
         onClick={e => e.stopPropagation()}
       >
-        {/* Header with Atmospheric Wash */}
-        <div className="px-6 py-5 border-b border-[#ece6ed] flex items-start justify-between bg-gradient-to-br from-[#fff7f2] via-white to-[#faf4fc]">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2 text-xs text-[#655d69]">
-              <span className="font-mono font-bold text-[#9c4126]">
+        {/* Header */}
+        <div className="px-6 py-5 border-b border-[#E4E2DA] flex items-start justify-between bg-[#F7F6EF]">
+          <div className="space-y-1.5">
+            <div className="flex flex-wrap items-center gap-2 text-xs text-[#77766F]">
+              <span className="font-mono-tabular font-semibold px-2 py-0.5 rounded bg-[#B8EEEE] text-[#171717]">
                 {classItem.code}
               </span>
-              <span aria-hidden="true">·</span>
-              <span>{classItem.type || 'Lecture'}</span>
-              <span aria-hidden="true">·</span>
-              <span className="font-mono">{classItem.credits || 4} credits</span>
+              <span className="px-2 py-0.5 rounded bg-white border border-[#E4E2DA] text-[#171717] font-medium">
+                {classItem.type || 'Lecture'}
+              </span>
+              <span className="font-mono-tabular">{classItem.credits || 4} credits</span>
               {isLocked && (
-                <>
-                  <span aria-hidden="true">·</span>
-                  <span className="text-[#3b1e4a] font-semibold inline-flex items-center gap-1">
-                    <Lock className="w-3 h-3" /> Pinned
-                  </span>
-                </>
+                <span className="px-2 py-0.5 rounded bg-[#E8D36B] text-[#171717] font-semibold inline-flex items-center gap-1">
+                  <Lock className="w-3 h-3" /> Pinned
+                </span>
               )}
             </div>
-            <h2 className="text-lg font-bold text-[#1f1b20]">
+            <h2 className="font-serif-editorial text-2xl text-[#171717]">
               {classItem.title}
             </h2>
-            <p className="text-xs text-[#655d69]">
-              Cohort Track: <span className="font-semibold text-[#1f1b20] font-mono">{classItem.cohort}</span>
+            <p className="text-xs text-[#77766F]">
+              Cohort Track: <span className="font-semibold text-[#171717] font-mono-tabular">{classItem.cohort}</span>
               {classItem.departmentName ? ` · ${classItem.departmentName}` : ''}
             </p>
           </div>
-          <button 
+          <button
             onClick={onClose}
-            className="text-[#655d69] hover:text-[#1f1b20] p-2 rounded-xl hover:bg-[#f6f2f7] transition-colors cursor-pointer"
+            className="text-[#77766F] hover:text-[#171717] p-2 rounded-xl hover:bg-[#EDEAE0] transition-colors cursor-pointer"
             aria-label="Close details"
           >
             <X className="w-4 h-4" />
@@ -143,70 +140,70 @@ export const ClassDetailsModal: React.FC<ClassDetailsModalProps> = ({
         {/* Content */}
         <div className="p-6 space-y-5">
           {savedNotice && (
-            <div className="p-3 rounded-xl bg-[#eefcf2] border border-[#ece6ed] text-xs text-[#0f5431] flex items-center gap-2 font-medium">
-              <Check className="w-4 h-4 text-[#18794e] shrink-0" />
+            <div className="p-3 rounded-xl bg-[#B7F77C] text-xs text-[#171717] flex items-center gap-2 font-medium">
+              <Check className="w-4 h-4 text-[#171717] shrink-0" />
               <span>{savedNotice}</span>
             </div>
           )}
 
           {/* Key Meta Grid */}
           <div className="grid grid-cols-2 gap-3">
-            <div className="p-3.5 bg-[#fbf8fc] rounded-xl border border-[#ece6ed] space-y-1">
-              <div className="text-xs text-[#655d69] flex items-center gap-1.5">
-                <Clock className="w-3.5 h-3.5 text-[#9c4126]" />
+            <div className="p-3.5 bg-[#F7F6EF] rounded-xl border border-[#E4E2DA] space-y-1">
+              <div className="text-xs text-[#77766F] flex items-center gap-1.5">
+                <Clock className="w-3.5 h-3.5 text-[#171717]" />
                 <span>Assigned Window</span>
               </div>
-              <div className="text-xs font-mono font-bold text-[#1f1b20]">
+              <div className="text-xs font-mono-tabular font-semibold text-[#171717]">
                 {classItem.day ? `${classItem.day} · ` : ''}{classItem.time || '09:00 - 10:30'}
               </div>
             </div>
 
-            <div className="p-3.5 bg-[#fbf8fc] rounded-xl border border-[#ece6ed] space-y-1">
-              <div className="text-xs text-[#655d69] flex items-center gap-1.5">
-                <MapPin className="w-3.5 h-3.5 text-[#3b1e4a]" />
+            <div className="p-3.5 bg-[#F7F6EF] rounded-xl border border-[#E4E2DA] space-y-1">
+              <div className="text-xs text-[#77766F] flex items-center gap-1.5">
+                <MapPin className="w-3.5 h-3.5 text-[#171717]" />
                 <span>Campus Room</span>
               </div>
-              <div className="text-xs font-mono font-bold text-[#1f1b20]">
+              <div className="text-xs font-mono-tabular font-semibold text-[#171717]">
                 {classItem.room}
               </div>
             </div>
 
-            <div className="p-3.5 bg-[#fbf8fc] rounded-xl border border-[#ece6ed] space-y-1">
-              <div className="text-xs text-[#655d69] flex items-center gap-1.5">
-                <User className="w-3.5 h-3.5 text-[#3b1e4a]" />
+            <div className="p-3.5 bg-[#F7F6EF] rounded-xl border border-[#E4E2DA] space-y-1">
+              <div className="text-xs text-[#77766F] flex items-center gap-1.5">
+                <User className="w-3.5 h-3.5 text-[#171717]" />
                 <span>Faculty Instructor</span>
               </div>
-              <div className="text-xs font-semibold text-[#1f1b20]">
+              <div className="text-xs font-semibold text-[#171717]">
                 {classItem.prof}
               </div>
             </div>
 
-            <div className="p-3.5 bg-[#fbf8fc] rounded-xl border border-[#ece6ed] space-y-1">
-              <div className="text-xs text-[#655d69] flex items-center gap-1.5">
-                <Users className="w-3.5 h-3.5 text-[#18794e]" />
+            <div className="p-3.5 bg-[#F7F6EF] rounded-xl border border-[#E4E2DA] space-y-1">
+              <div className="text-xs text-[#77766F] flex items-center gap-1.5">
+                <Users className="w-3.5 h-3.5 text-[#171717]" />
                 <span>Seat Utilization</span>
               </div>
-              <div className="text-xs font-mono font-bold text-[#1f1b20]">
+              <div className="text-xs font-mono-tabular font-semibold text-[#171717]">
                 {classItem.enrolled || 38} / {classItem.capacity || 45} seats
               </div>
             </div>
           </div>
 
-          {/* Interactive Slot Reassignment Panel (when store-backed) */}
+          {/* Interactive Slot Reassignment Panel */}
           <AnimatePresence>
             {isReassigning && isStoreBacked && (
               <motion.div
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: 'auto' }}
                 exit={{ opacity: 0, height: 0 }}
-                className="p-4 rounded-xl bg-[#faf4fc] border border-[#ece6ed] space-y-3"
+                className="p-4 rounded-xl bg-[#EDEAE0] border border-[#E4E2DA] space-y-3"
               >
-                <div className="text-xs font-bold text-[#3b1e4a] flex items-center justify-between">
-                  <span>Manual Slot & Room Reassignment</span>
+                <div className="text-xs font-semibold text-[#171717] flex items-center justify-between">
+                  <span>Contextual Slot & Room Reassignment</span>
                   <button
                     type="button"
                     onClick={() => setIsReassigning(false)}
-                    className="text-[11px] text-[#655d69] hover:text-[#1f1b20] underline cursor-pointer font-normal"
+                    className="text-[11px] text-[#77766F] hover:text-[#171717] underline cursor-pointer font-normal"
                   >
                     Cancel
                   </button>
@@ -214,11 +211,11 @@ export const ClassDetailsModal: React.FC<ClassDetailsModalProps> = ({
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                   <div>
-                    <label className="block text-[11px] font-medium text-[#655d69] mb-1">Day</label>
+                    <label className="block text-[11px] font-medium text-[#77766F] mb-1">Day</label>
                     <select
                       value={selectedDay}
                       onChange={e => setSelectedDay(e.target.value as DayOfWeek)}
-                      className="w-full h-9 px-2.5 text-xs bg-white border border-[#ece6ed] rounded-xl text-[#1f1b20] font-medium"
+                      className="input-field h-9 text-xs"
                     >
                       {store.timeStructure.workingDays.map(d => (
                         <option key={d} value={d}>{d}</option>
@@ -227,11 +224,11 @@ export const ClassDetailsModal: React.FC<ClassDetailsModalProps> = ({
                   </div>
 
                   <div>
-                    <label className="block text-[11px] font-medium text-[#655d69] mb-1">Time Period</label>
+                    <label className="block text-[11px] font-medium text-[#77766F] mb-1">Time Period</label>
                     <select
                       value={selectedPeriod}
                       onChange={e => setSelectedPeriod(e.target.value)}
-                      className="w-full h-9 px-2.5 text-xs bg-white border border-[#ece6ed] rounded-xl text-[#1f1b20] font-mono"
+                      className="input-field h-9 text-xs font-mono-tabular"
                     >
                       {store.timeStructure.periods.map(p => (
                         <option key={p} value={p}>{p}</option>
@@ -240,11 +237,11 @@ export const ClassDetailsModal: React.FC<ClassDetailsModalProps> = ({
                   </div>
 
                   <div>
-                    <label className="block text-[11px] font-medium text-[#655d69] mb-1">Room</label>
+                    <label className="block text-[11px] font-medium text-[#77766F] mb-1">Room</label>
                     <select
                       value={selectedRoomId}
                       onChange={e => setSelectedRoomId(e.target.value)}
-                      className="w-full h-9 px-2.5 text-xs bg-white border border-[#ece6ed] rounded-xl text-[#1f1b20] font-mono"
+                      className="input-field h-9 text-xs font-mono-tabular"
                     >
                       {store.rooms.map(r => (
                         <option key={r.id} value={r.id}>
@@ -259,45 +256,45 @@ export const ClassDetailsModal: React.FC<ClassDetailsModalProps> = ({
                   <button
                     type="button"
                     onClick={handleSaveSlotChange}
-                    className="px-4 py-2 rounded-xl bg-[#3b1e4a] hover:bg-[#2a1335] text-white text-xs font-semibold cursor-pointer transition-colors"
+                    className="btn-primary h-8 text-xs"
                   >
-                    Apply New Assignment
+                    Apply Assignment
                   </button>
                 </div>
               </motion.div>
             )}
           </AnimatePresence>
 
-          {/* Solver Verification Banner */}
-          <div className="p-3.5 rounded-xl border border-[#ece6ed] bg-gradient-to-r from-[#f1fbf5] to-white flex items-start gap-2.5">
-            <CheckCircle className="w-4 h-4 text-[#18794e] shrink-0 mt-0.5" />
+          {/* Validation Status Banner */}
+          <div className="p-3.5 rounded-xl border border-[#E4E2DA] bg-[#B8F2E6]/45 flex items-start gap-2.5">
+            <CheckCircle className="w-4 h-4 text-[#171717] shrink-0 mt-0.5" />
             <div className="text-xs space-y-0.5">
-              <div className="font-bold text-[#0f5431]">
-                Constraint Parity Confirmed · {classItem.constraintStatus || 'Optimal'}
+              <div className="font-semibold text-[#171717]">
+                Validation Status: {classItem.constraintStatus || 'Optimal'}
               </div>
-              <p className="text-[#655d69] leading-relaxed">
-                Zero instructor or cohort collisions detected. Walking transit margin meets campus threshold and room capacity satisfies enrolled headcount.
+              <p className="text-[#77766F] leading-relaxed">
+                Zero instructor or cohort collisions detected. Room capacity satisfies enrolled headcount ({classItem.enrolled || 38} students).
               </p>
             </div>
           </div>
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 bg-[#fbf8fc] border-t border-[#ece6ed] flex flex-wrap items-center justify-between gap-2.5">
+        <div className="px-6 py-4 bg-[#F7F6EF] border-t border-[#E4E2DA] flex flex-wrap items-center justify-between gap-2.5">
           {isStoreBacked ? (
             <div className="flex items-center gap-2">
               <button
                 type="button"
                 onClick={() => setIsReassigning(!isReassigning)}
-                className="h-9 px-3.5 rounded-xl border border-[#ece6ed] bg-white hover:bg-[#f6f2f7] text-xs font-semibold text-[#3b1e4a] inline-flex items-center gap-1.5 cursor-pointer transition-colors"
+                className="btn-secondary h-9 text-xs"
               >
-                <ArrowRightLeft className="w-3.5 h-3.5 text-[#9c4126]" />
+                <ArrowRightLeft className="w-3.5 h-3.5" />
                 <span>Move Slot / Room</span>
               </button>
               <button
                 type="button"
                 onClick={handleToggleLock}
-                className="h-9 px-3.5 rounded-xl border border-[#ece6ed] bg-white hover:bg-[#f6f2f7] text-xs font-semibold text-[#655d69] hover:text-[#1f1b20] inline-flex items-center gap-1.5 cursor-pointer transition-colors"
+                className="btn-secondary h-9 text-xs"
               >
                 {isLocked ? <Unlock className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
                 <span>{isLocked ? 'Unlock Slot' : 'Pin Slot'}</span>
@@ -308,21 +305,21 @@ export const ClassDetailsModal: React.FC<ClassDetailsModalProps> = ({
           )}
 
           <div className="flex items-center gap-2">
-            <button 
+            <button
               onClick={onClose}
-              className="h-9 px-4 rounded-xl border border-[#ece6ed] bg-white hover:bg-[#f6f2f7] text-xs text-[#1f1b20] transition-colors cursor-pointer font-semibold"
+              className="btn-secondary h-9 text-xs"
             >
               Close
             </button>
             {onLocateInMatrix && (
-              <button 
+              <button
                 onClick={() => {
                   onLocateInMatrix(classItem.code);
                   onClose();
                 }}
-                className="h-9 px-4 rounded-xl bg-gradient-to-r from-[#9c4126] to-[#f27438] text-white text-xs font-semibold transition-all shadow-xs cursor-pointer"
+                className="btn-primary h-9 text-xs"
               >
-                Inspect in Matrix
+                Locate in Calendar
               </button>
             )}
           </div>

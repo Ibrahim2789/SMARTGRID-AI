@@ -98,6 +98,11 @@ export default function App() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  const handleOpenSetupStep = (stepIdx: number) => {
+    setSetupStep(stepIdx);
+    handleNavigate('setup');
+  };
+
   // 1. If user is NOT logged in:
   if (!currentUser) {
     if (showAuthPage) {
@@ -120,7 +125,9 @@ export default function App() {
   return (
     <AuthenticatedLayout
       activeRoute={currentRoute}
+      setupStep={setupStep}
       onNavigate={handleNavigate}
+      onOpenSetupStep={handleOpenSetupStep}
       onSignOut={handleSignOut}
       onOpenAuth={handleOpenAuth}
       currentUser={currentUser}
@@ -129,16 +136,15 @@ export default function App() {
       {currentRoute === 'home' && (
         <HomeScreen 
           onNavigate={handleNavigate}
-          onOpenSetupStep={stepIdx => {
-            setSetupStep(stepIdx);
-            handleNavigate('setup');
-          }}
+          onOpenSetupStep={handleOpenSetupStep}
+          currentUser={currentUser}
         />
       )}
 
       {currentRoute === 'setup' && (
         <SetupFlow 
           initialStep={setupStep}
+          onStepChange={setSetupStep}
           onNavigate={handleNavigate}
         />
       )}
