@@ -138,7 +138,7 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
               <button
                 key={item.id}
                 onClick={() => handleNavClick(item.id)}
-                className={`w-full text-left px-6 py-2.5 text-[15px] flex items-center relative transition-colors cursor-pointer ${
+                className={`w-full text-left px-6 py-2.5 text-[15px] flex items-center relative transition-colors cursor-pointer focus:outline-none focus-visible:outline-2 focus-visible:outline-[#1B2430] ${
                   isActive 
                     ? 'font-semibold text-[#1B2430] bg-[#F6F7F9]' 
                     : 'text-[#556070] hover:text-[#1B2430] hover:bg-[#F6F7F9]'

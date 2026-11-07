@@ -29,6 +29,73 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
   // Instructor modal availability state
   const [selectedInstructorForGrid, setSelectedInstructorForGrid] = useState<Instructor | null>(null);
 
+  // Sample data management state
+  const isSampleLoaded = institutionalStore.isSampleDataLoaded();
+  const sampleCounts = institutionalStore.getSampleCounts();
+  const [showRemoveConfirm, setShowRemoveConfirm] = useState(false);
+
+  // Pagination states (15 items per page)
+  const PAGE_SIZE = 15;
+  const [roomPage, setRoomPage] = useState(1);
+  const [coursePage, setCoursePage] = useState(1);
+  const [instructorPage, setInstructorPage] = useState(1);
+  const [groupPage, setGroupPage] = useState(1);
+
+  const handleLoadSample = () => {
+    if (institutionalStore.hasRealData()) {
+      if (!window.confirm('Real data already exists. Load realistic sample dataset alongside your existing data without overwriting anything?')) {
+        return;
+      }
+    }
+    institutionalStore.loadSampleData();
+  };
+
+  const handleConfirmRemoveSample = () => {
+    institutionalStore.removeSampleData();
+    setShowRemoveConfirm(false);
+    setRoomPage(1);
+    setCoursePage(1);
+    setInstructorPage(1);
+    setGroupPage(1);
+  };
+
+  const renderPagination = (currentPage: number, totalItems: number, setPage: (p: number) => void) => {
+    const totalPages = Math.ceil(totalItems / PAGE_SIZE) || 1;
+    if (totalPages <= 1) return null;
+
+    const startItem = (currentPage - 1) * PAGE_SIZE + 1;
+    const endItem = Math.min(currentPage * PAGE_SIZE, totalItems);
+
+    return (
+      <div className="flex items-center justify-between px-4 py-3 bg-[#FAFBFD] border-t border-[#E8EAEE] text-[13px] text-[#556070]">
+        <div>
+          Showing <span className="font-medium text-[#1B2430]">{startItem}</span> to <span className="font-medium text-[#1B2430]">{endItem}</span> of <span className="font-medium text-[#1B2430]">{totalItems}</span> records
+        </div>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => setPage(Math.max(1, currentPage - 1))}
+            disabled={currentPage === 1}
+            className="px-2.5 py-1 border border-[#E8EAEE] rounded bg-white text-[#1B2430] disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#F6F7F9] cursor-pointer"
+          >
+            Previous
+          </button>
+          <span className="px-2 font-mono text-[13px] text-[#1B2430]">
+            {currentPage} / {totalPages}
+          </span>
+          <button
+            type="button"
+            onClick={() => setPage(Math.min(totalPages, currentPage + 1))}
+            disabled={currentPage === totalPages}
+            className="px-2.5 py-1 border border-[#E8EAEE] rounded bg-white text-[#1B2430] disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#F6F7F9] cursor-pointer"
+          >
+            Next
+          </button>
+        </div>
+      </div>
+    );
+  };
+
   // Form states for side drawers
   // Step 2: Room Form
   const [roomForm, setRoomForm] = useState({
@@ -371,6 +438,83 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
         </p>
       </div>
 
+      {/* Quiet Sample Data Banner */}
+      {isSampleLoaded ? (
+        <div className="mt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2 py-2.5 px-4 bg-[#F6F7F9] border border-[#E8EAEE] rounded-md text-[13px] text-[#556070]">
+          <span>
+            Sample data is loaded ({sampleCounts.departments} departments, {sampleCounts.programs} programs, {sampleCounts.classes} classes, {sampleCounts.courses} courses, {sampleCounts.instructors} instructors, {sampleCounts.rooms} rooms).
+          </span>
+          <button
+            type="button"
+            onClick={() => setShowRemoveConfirm(true)}
+            className="text-[#DC2626] hover:underline font-medium cursor-pointer shrink-0"
+          >
+            Remove it
+          </button>
+        </div>
+      ) : (
+        <div className="mt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2 py-2.5 px-4 bg-[#F6F7F9] border border-[#E8EAEE] rounded-md text-[13px] text-[#556070]">
+          <span>Need realistic institutional data for testing and demonstration?</span>
+          <button
+            type="button"
+            onClick={handleLoadSample}
+            className="text-[#1B2430] hover:underline font-medium underline underline-offset-2 cursor-pointer shrink-0"
+          >
+            Load sample data
+          </button>
+        </div>
+      )}
+
+      {/* Confirm Remove Sample Modal */}
+      {showRemoveConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6 space-y-4 border border-[#E8EAEE]">
+            <div className="flex items-center justify-between">
+              <h3 className="text-[18px] font-semibold text-[#1B2430]">Remove sample data?</h3>
+              <button 
+                onClick={() => setShowRemoveConfirm(false)}
+                className="text-[#7A8594] hover:text-[#1B2430] p-1 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="text-[14px] text-[#556070] space-y-2">
+              <p>This will delete only the sample records:</p>
+              <ul className="list-disc pl-5 space-y-1 text-[#1B2430] font-mono text-[13px]">
+                <li>{sampleCounts.departments} Departments</li>
+                <li>{sampleCounts.programs} Programs</li>
+                <li>{sampleCounts.classes} Student Groups / Classes</li>
+                <li>{sampleCounts.courses} Courses</li>
+                <li>{sampleCounts.instructors} Instructors</li>
+                <li>{sampleCounts.rooms} Rooms</li>
+                <li>{sampleCounts.sections} Assigned Sections</li>
+              </ul>
+              <p className="pt-1 text-[#059669] font-medium text-[13px]">
+                Your real data and custom configurations will never be touched.
+              </p>
+            </div>
+
+            <div className="flex justify-end gap-3 pt-3 border-t border-[#E8EAEE]">
+              <button
+                type="button"
+                onClick={() => setShowRemoveConfirm(false)}
+                className="btn-secondary"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmRemoveSample}
+                className="px-4 py-2 bg-[#DC2626] hover:bg-[#B91C1C] text-white text-[14px] font-medium rounded-md cursor-pointer transition-colors"
+              >
+                Remove sample data
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Main 2-Column Guided Layout: Vertical step list on left, One step on right */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 pt-8">
         {/* Left: Vertical Step List */}
@@ -593,48 +737,51 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
                   </button>
                 </div>
               ) : (
-                <div className="border border-[#E8EAEE] rounded-md overflow-x-auto">
-                  <table className="w-full text-left text-[15px]">
-                    <thead className="bg-[#F6F7F9] text-[#556070] text-[14px] border-b border-[#E8EAEE]">
-                      <tr>
-                        <th className="py-3 px-4 font-semibold">Code</th>
-                        <th className="py-3 px-4 font-semibold">Building</th>
-                        <th className="py-3 px-4 font-semibold">Capacity</th>
-                        <th className="py-3 px-4 font-semibold">Type</th>
-                        <th className="py-3 px-4 font-semibold">Equipment</th>
-                        <th className="py-3 px-4 font-semibold text-right">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-[#E8EAEE]">
-                      {store.rooms.map(room => (
-                        <tr key={room.id} className="hover:bg-[#F6F7F9] transition-colors">
-                          <td className="py-3 px-4 font-mono font-medium text-[#1B2430]">{room.code}</td>
-                          <td className="py-3 px-4 text-[#556070]">{room.name}</td>
-                          <td className="py-3 px-4 text-[#1B2430] font-mono">{room.capacity}</td>
-                          <td className="py-3 px-4 capitalize text-[#556070]">{room.type}</td>
-                          <td className="py-3 px-4 text-[14px] text-[#7A8594] truncate max-w-[200px]">
-                            {room.equipment.join(', ') || 'Standard'}
-                          </td>
-                          <td className="py-3 px-4 text-right">
-                            <button
-                              onClick={() => handleOpenAddRoom(room)}
-                              className="p-1.5 text-[#556070] hover:text-[#1B2430] cursor-pointer"
-                              title="Edit"
-                            >
-                              <Edit2 className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={() => institutionalStore.deleteRoom(room.id)}
-                              className="p-1.5 text-[#556070] hover:text-[#DC2626] cursor-pointer ml-1"
-                              title="Delete"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </td>
+                <div className="border border-[#E8EAEE] rounded-md overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-[15px]">
+                      <thead className="bg-[#F6F7F9] text-[#556070] text-[14px] border-b border-[#E8EAEE]">
+                        <tr>
+                          <th className="py-3 px-4 font-semibold">Code</th>
+                          <th className="py-3 px-4 font-semibold">Building</th>
+                          <th className="py-3 px-4 font-semibold">Capacity</th>
+                          <th className="py-3 px-4 font-semibold">Type</th>
+                          <th className="py-3 px-4 font-semibold">Equipment</th>
+                          <th className="py-3 px-4 font-semibold text-right">Actions</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody className="divide-y divide-[#E8EAEE]">
+                        {store.rooms.slice((roomPage - 1) * PAGE_SIZE, roomPage * PAGE_SIZE).map(room => (
+                          <tr key={room.id} className="hover:bg-[#F6F7F9] transition-colors">
+                            <td className="py-3 px-4 font-mono font-medium text-[#1B2430]">{room.code}</td>
+                            <td className="py-3 px-4 text-[#556070]">{room.name}</td>
+                            <td className="py-3 px-4 text-[#1B2430] font-mono">{room.capacity}</td>
+                            <td className="py-3 px-4 capitalize text-[#556070]">{room.type}</td>
+                            <td className="py-3 px-4 text-[14px] text-[#7A8594] truncate max-w-[200px]">
+                              {room.equipment.join(', ') || 'Standard'}
+                            </td>
+                            <td className="py-3 px-4 text-right">
+                              <button
+                                onClick={() => handleOpenAddRoom(room)}
+                                className="p-1.5 text-[#556070] hover:text-[#1B2430] cursor-pointer"
+                                title="Edit"
+                              >
+                                <Edit2 className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => institutionalStore.deleteRoom(room.id)}
+                                className="p-1.5 text-[#556070] hover:text-[#DC2626] cursor-pointer ml-1"
+                                title="Delete"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {renderPagination(roomPage, store.rooms.length, setRoomPage)}
                 </div>
               )}
 
@@ -697,46 +844,49 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
                   </button>
                 </div>
               ) : (
-                <div className="border border-[#E8EAEE] rounded-md overflow-x-auto">
-                  <table className="w-full text-left text-[15px]">
-                    <thead className="bg-[#F6F7F9] text-[#556070] text-[14px] border-b border-[#E8EAEE]">
-                      <tr>
-                        <th className="py-3 px-4 font-semibold">Code</th>
-                        <th className="py-3 px-4 font-semibold">Title</th>
-                        <th className="py-3 px-4 font-semibold">Credits</th>
-                        <th className="py-3 px-4 font-semibold">Weekly hrs</th>
-                        <th className="py-3 px-4 font-semibold">Room type</th>
-                        <th className="py-3 px-4 text-right">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-[#E8EAEE]">
-                      {store.courses.map(course => (
-                        <tr key={course.id} className="hover:bg-[#F6F7F9] transition-colors">
-                          <td className="py-3 px-4 font-mono font-medium text-[#1B2430]">{course.code}</td>
-                          <td className="py-3 px-4 text-[#1B2430] font-medium">{course.title}</td>
-                          <td className="py-3 px-4 text-[#556070] font-mono">{course.creditHours}</td>
-                          <td className="py-3 px-4 text-[#556070] font-mono">{course.weeklyContactHours} hrs</td>
-                          <td className="py-3 px-4 text-[#556070] capitalize">{course.requiredRoomType}</td>
-                          <td className="py-3 px-4 text-right">
-                            <button
-                              onClick={() => handleOpenAddCourse(course)}
-                              className="p-1.5 text-[#556070] hover:text-[#1B2430] cursor-pointer"
-                              title="Edit"
-                            >
-                              <Edit2 className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={() => institutionalStore.deleteCourse(course.id)}
-                              className="p-1.5 text-[#556070] hover:text-[#DC2626] cursor-pointer ml-1"
-                              title="Delete"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </td>
+                <div className="border border-[#E8EAEE] rounded-md overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-[15px]">
+                      <thead className="bg-[#F6F7F9] text-[#556070] text-[14px] border-b border-[#E8EAEE]">
+                        <tr>
+                          <th className="py-3 px-4 font-semibold">Code</th>
+                          <th className="py-3 px-4 font-semibold">Title</th>
+                          <th className="py-3 px-4 font-semibold">Credits</th>
+                          <th className="py-3 px-4 font-semibold">Weekly hrs</th>
+                          <th className="py-3 px-4 font-semibold">Room type</th>
+                          <th className="py-3 px-4 text-right">Actions</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody className="divide-y divide-[#E8EAEE]">
+                        {store.courses.slice((coursePage - 1) * PAGE_SIZE, coursePage * PAGE_SIZE).map(course => (
+                          <tr key={course.id} className="hover:bg-[#F6F7F9] transition-colors">
+                            <td className="py-3 px-4 font-mono font-medium text-[#1B2430]">{course.code}</td>
+                            <td className="py-3 px-4 text-[#1B2430] font-medium">{course.title}</td>
+                            <td className="py-3 px-4 text-[#556070] font-mono">{course.creditHours}</td>
+                            <td className="py-3 px-4 text-[#556070] font-mono">{course.weeklyContactHours} hrs</td>
+                            <td className="py-3 px-4 text-[#556070] capitalize">{course.requiredRoomType}</td>
+                            <td className="py-3 px-4 text-right">
+                              <button
+                                onClick={() => handleOpenAddCourse(course)}
+                                className="p-1.5 text-[#556070] hover:text-[#1B2430] cursor-pointer"
+                                title="Edit"
+                              >
+                                <Edit2 className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => institutionalStore.deleteCourse(course.id)}
+                                className="p-1.5 text-[#556070] hover:text-[#DC2626] cursor-pointer ml-1"
+                                title="Delete"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {renderPagination(coursePage, store.courses.length, setCoursePage)}
                 </div>
               )}
 
@@ -798,55 +948,58 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
                   </button>
                 </div>
               ) : (
-                <div className="border border-[#E8EAEE] rounded-md overflow-x-auto">
-                  <table className="w-full text-left text-[15px]">
-                    <thead className="bg-[#F6F7F9] text-[#556070] text-[14px] border-b border-[#E8EAEE]">
-                      <tr>
-                        <th className="py-3 px-4 font-semibold">Name</th>
-                        <th className="py-3 px-4 font-semibold">Department</th>
-                        <th className="py-3 px-4 font-semibold">Max load</th>
-                        <th className="py-3 px-4 font-semibold">Blackout slots</th>
-                        <th className="py-3 px-4 text-right">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-[#E8EAEE]">
-                      {store.instructors.map(inst => (
-                        <tr key={inst.id} className="hover:bg-[#F6F7F9] transition-colors">
-                          <td className="py-3 px-4 font-medium text-[#1B2430]">{inst.name}</td>
-                          <td className="py-3 px-4 text-[#556070]">
-                            {store.departments.find(d => d.id === inst.departmentId)?.name || 'General'}
-                          </td>
-                          <td className="py-3 px-4 font-mono text-[#556070]">{inst.maxWeeklyHours} hrs/wk</td>
-                          <td className="py-3 px-4">
-                            <button
-                              onClick={() => setSelectedInstructorForGrid(inst)}
-                              className="text-[14px] text-[#1B2430] underline cursor-pointer hover:font-medium"
-                            >
-                              {inst.unavailableSlots.length === 0 
-                                ? 'Set availability' 
-                                : `${inst.unavailableSlots.length} unavailable slots`}
-                            </button>
-                          </td>
-                          <td className="py-3 px-4 text-right">
-                            <button
-                              onClick={() => handleOpenAddInstructor(inst)}
-                              className="p-1.5 text-[#556070] hover:text-[#1B2430] cursor-pointer"
-                              title="Edit"
-                            >
-                              <Edit2 className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={() => institutionalStore.deleteInstructor(inst.id)}
-                              className="p-1.5 text-[#556070] hover:text-[#DC2626] cursor-pointer ml-1"
-                              title="Delete"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </td>
+                <div className="border border-[#E8EAEE] rounded-md overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-[15px]">
+                      <thead className="bg-[#F6F7F9] text-[#556070] text-[14px] border-b border-[#E8EAEE]">
+                        <tr>
+                          <th className="py-3 px-4 font-semibold">Name</th>
+                          <th className="py-3 px-4 font-semibold">Department</th>
+                          <th className="py-3 px-4 font-semibold">Max load</th>
+                          <th className="py-3 px-4 font-semibold">Blackout slots</th>
+                          <th className="py-3 px-4 text-right">Actions</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody className="divide-y divide-[#E8EAEE]">
+                        {store.instructors.slice((instructorPage - 1) * PAGE_SIZE, instructorPage * PAGE_SIZE).map(inst => (
+                          <tr key={inst.id} className="hover:bg-[#F6F7F9] transition-colors">
+                            <td className="py-3 px-4 font-medium text-[#1B2430]">{inst.name}</td>
+                            <td className="py-3 px-4 text-[#556070]">
+                              {store.departments.find(d => d.id === inst.departmentId)?.name || 'General'}
+                            </td>
+                            <td className="py-3 px-4 font-mono text-[#556070]">{inst.maxWeeklyHours} hrs/wk</td>
+                            <td className="py-3 px-4">
+                              <button
+                                onClick={() => setSelectedInstructorForGrid(inst)}
+                                className="text-[14px] text-[#1B2430] underline cursor-pointer hover:font-medium"
+                              >
+                                {inst.unavailableSlots.length === 0 
+                                  ? 'Set availability' 
+                                  : `${inst.unavailableSlots.length} unavailable slots`}
+                              </button>
+                            </td>
+                            <td className="py-3 px-4 text-right">
+                              <button
+                                onClick={() => handleOpenAddInstructor(inst)}
+                                className="p-1.5 text-[#556070] hover:text-[#1B2430] cursor-pointer"
+                                title="Edit"
+                              >
+                                <Edit2 className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => institutionalStore.deleteInstructor(inst.id)}
+                                className="p-1.5 text-[#556070] hover:text-[#DC2626] cursor-pointer ml-1"
+                                title="Delete"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {renderPagination(instructorPage, store.instructors.length, setInstructorPage)}
                 </div>
               )}
 
@@ -908,44 +1061,47 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
                   </button>
                 </div>
               ) : (
-                <div className="border border-[#E8EAEE] rounded-md overflow-x-auto">
-                  <table className="w-full text-left text-[15px]">
-                    <thead className="bg-[#F6F7F9] text-[#556070] text-[14px] border-b border-[#E8EAEE]">
-                      <tr>
-                        <th className="py-3 px-4 font-semibold">Cohort code</th>
-                        <th className="py-3 px-4 font-semibold">Name</th>
-                        <th className="py-3 px-4 font-semibold">Year</th>
-                        <th className="py-3 px-4 font-semibold">Size</th>
-                        <th className="py-3 px-4 text-right">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-[#E8EAEE]">
-                      {store.studentGroups.map(grp => (
-                        <tr key={grp.id} className="hover:bg-[#F6F7F9] transition-colors">
-                          <td className="py-3 px-4 font-mono font-medium text-[#1B2430]">{grp.code}</td>
-                          <td className="py-3 px-4 text-[#556070]">{grp.name}</td>
-                          <td className="py-3 px-4 text-[#556070] font-mono">Year {grp.year}</td>
-                          <td className="py-3 px-4 text-[#1B2430] font-mono">{grp.size} students</td>
-                          <td className="py-3 px-4 text-right">
-                            <button
-                              onClick={() => handleOpenAddGroup(grp)}
-                              className="p-1.5 text-[#556070] hover:text-[#1B2430] cursor-pointer"
-                              title="Edit"
-                            >
-                              <Edit2 className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={() => institutionalStore.deleteStudentGroup(grp.id)}
-                              className="p-1.5 text-[#556070] hover:text-[#DC2626] cursor-pointer ml-1"
-                              title="Delete"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </td>
+                <div className="border border-[#E8EAEE] rounded-md overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-[15px]">
+                      <thead className="bg-[#F6F7F9] text-[#556070] text-[14px] border-b border-[#E8EAEE]">
+                        <tr>
+                          <th className="py-3 px-4 font-semibold">Cohort code</th>
+                          <th className="py-3 px-4 font-semibold">Name</th>
+                          <th className="py-3 px-4 font-semibold">Year</th>
+                          <th className="py-3 px-4 font-semibold">Size</th>
+                          <th className="py-3 px-4 text-right">Actions</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody className="divide-y divide-[#E8EAEE]">
+                        {store.studentGroups.slice((groupPage - 1) * PAGE_SIZE, groupPage * PAGE_SIZE).map(grp => (
+                          <tr key={grp.id} className="hover:bg-[#F6F7F9] transition-colors">
+                            <td className="py-3 px-4 font-mono font-medium text-[#1B2430]">{grp.code}</td>
+                            <td className="py-3 px-4 text-[#556070]">{grp.name}</td>
+                            <td className="py-3 px-4 text-[#556070] font-mono">Year {grp.year}</td>
+                            <td className="py-3 px-4 text-[#1B2430] font-mono">{grp.size} students</td>
+                            <td className="py-3 px-4 text-right">
+                              <button
+                                onClick={() => handleOpenAddGroup(grp)}
+                                className="p-1.5 text-[#556070] hover:text-[#1B2430] cursor-pointer"
+                                title="Edit"
+                              >
+                                <Edit2 className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => institutionalStore.deleteStudentGroup(grp.id)}
+                                className="p-1.5 text-[#556070] hover:text-[#DC2626] cursor-pointer ml-1"
+                                title="Delete"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {renderPagination(groupPage, store.studentGroups.length, setGroupPage)}
                 </div>
               )}
 

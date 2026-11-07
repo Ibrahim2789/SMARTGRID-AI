@@ -6,7 +6,12 @@ export type ConstraintKind = 'hard' | 'soft';
 export type ScenarioStatus = 'draft' | 'published' | 'archived';
 export type AuditAction = 'create' | 'update' | 'delete' | 'generate' | 'publish' | 'restore';
 
-export interface AcademicTerm {
+export interface BaseEntity {
+  is_sample?: boolean;
+  isSample?: boolean;
+}
+
+export interface AcademicTerm extends BaseEntity {
   id: string;
   name: string;
   code: string;
@@ -16,14 +21,14 @@ export interface AcademicTerm {
   weeksCount: number;
 }
 
-export interface Campus {
+export interface Campus extends BaseEntity {
   id: string;
   name: string;
   code: string;
   address: string;
 }
 
-export interface Building {
+export interface Building extends BaseEntity {
   id: string;
   campusId: string;
   name: string;
@@ -37,20 +42,20 @@ export interface RoomAvailabilityWindow {
   endTime: string;
 }
 
-export interface Room {
+export interface Room extends BaseEntity {
   id: string;
   buildingId: string;
   code: string;
   name: string;
   capacity: number;
   type: RoomType;
-  equipment: string[]; // e.g. ['Projector', 'Fume Hood', 'Workstations', 'Sound System']
+  equipment: string[]; // e.g. ['Projector', 'AC', 'Accessible', 'Workstations']
   isAccessible: boolean;
   isAvailable: boolean;
   availabilityWindows?: RoomAvailabilityWindow[];
 }
 
-export interface Department {
+export interface Department extends BaseEntity {
   id: string;
   name: string;
   code: string;
@@ -58,7 +63,7 @@ export interface Department {
   colorHex: string;
 }
 
-export interface Program {
+export interface Program extends BaseEntity {
   id: string;
   departmentId: string;
   name: string;
@@ -67,7 +72,7 @@ export interface Program {
   totalSemesters: number;
 }
 
-export interface Course {
+export interface Course extends BaseEntity {
   id: string;
   departmentId: string;
   code: string;
@@ -82,15 +87,16 @@ export interface Course {
 
 export interface SectionSlotAssignment {
   day: DayOfWeek;
-  timeSlot: string; // e.g. '09:00 - 10:30'
+  timeSlot: string; // e.g. '09:00 - 10:30' or '09:00 - 10:00'
   roomId: string;
+  durationMinutes?: number;
 }
 
-export interface Section {
+export interface Section extends BaseEntity {
   id: string;
   courseId: string;
   termId: string;
-  sectionNumber: string; // e.g. '01', '02'
+  sectionNumber: string; // e.g. '01', 'A', 'B'
   expectedEnrollment: number;
   instructorId: string;
   studentGroupId: string;
@@ -104,7 +110,7 @@ export interface InstructorUnavailableSlot {
   reason?: string;
 }
 
-export interface Instructor {
+export interface Instructor extends BaseEntity {
   id: string;
   departmentId: string;
   name: string;
@@ -116,36 +122,38 @@ export interface Instructor {
   unavailableSlots: InstructorUnavailableSlot[];
 }
 
-export interface StudentGroup {
+export interface StudentGroup extends BaseEntity {
   id: string;
   programId: string;
   name: string;
-  code: string; // e.g. 'CS-Year2'
+  code: string; // e.g. 'BSCS-3A' or 'BSCS Sem 3 - A'
   year: number; // 1, 2, 3, 4
+  semester?: number; // 1 to 8
+  section?: string; // 'A', 'B', 'C'
   size: number;
   sharedCourseIds: string[];
 }
 
 export interface TimeBlockBreak {
   id: string;
-  name: string; // e.g. 'Mid-day Lunch', 'Friday Prayer'
+  name: string; // e.g. 'Lunch break', 'Friday Prayer'
   startTime: string; // HH:mm
   endTime: string;
   days: DayOfWeek[];
 }
 
-export interface TimeStructure {
+export interface TimeStructure extends BaseEntity {
   id: string;
   name: string;
   workingDays: DayOfWeek[];
   periodLengthMinutes: number;
-  dayStartTime: string; // HH:mm e.g. '08:30'
-  dayEndTime: string;   // HH:mm e.g. '17:30'
-  periods: string[];    // Array of formatted period strings: ['09:00 - 10:30', '11:00 - 12:30', ...]
+  dayStartTime: string; // HH:mm e.g. '09:00'
+  dayEndTime: string;   // HH:mm e.g. '17:00'
+  periods: string[];    // Array of formatted period strings
   breaks: TimeBlockBreak[];
 }
 
-export interface ConstraintRule {
+export interface ConstraintRule extends BaseEntity {
   id: string;
   code: string;
   name: string;
@@ -164,7 +172,7 @@ export interface TimetableScenarioMetrics {
   studentTransitScore: number;
 }
 
-export interface TimetableScenario {
+export interface TimetableScenario extends BaseEntity {
   id: string;
   termId: string;
   name: string;
@@ -177,7 +185,7 @@ export interface TimetableScenario {
   assignments: Record<string, SectionSlotAssignment>; // sectionId -> assignment
 }
 
-export interface AuditLogEntry {
+export interface AuditLogEntry extends BaseEntity {
   id: string;
   timestamp: string; // ISO string
   userId: string;

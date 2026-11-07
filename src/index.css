@@ -73,10 +73,17 @@
     color: #1B2430;
   }
 
-  /* 2px ink focus ring */
+  /* 2px ink focus ring on keyboard navigation only */
   :focus-visible {
     outline: 2px solid #1B2430;
     outline-offset: 1px;
+  }
+
+  button:focus:not(:focus-visible),
+  a:focus:not(:focus-visible),
+  input:focus:not(:focus-visible),
+  select:focus:not(:focus-visible) {
+    outline: none;
   }
 
   @media (prefers-reduced-motion: reduce) {

@@ -13,6 +13,10 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({ onNavigate }) =>
   const [selectedTermId, setSelectedTermId] = useState<string>(
     store.terms.find(t => t.status === 'active')?.id || store.terms[0]?.id || ''
   );
+  const [selectedDeptId, setSelectedDeptId] = useState<string>('all');
+  const [selectedGroupIds, setSelectedGroupIds] = useState<Set<string>>(
+    new Set(store.studentGroups.map(g => g.id))
+  );
   const [isSolving, setIsSolving] = useState(false);
   const [progress, setProgress] = useState(0);
   const [solved, setSolved] = useState(false);
@@ -22,6 +26,49 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({ onNavigate }) =>
   const [timeLimitSeconds, setTimeLimitSeconds] = useState(30);
   const [transitBufferWeight, setTransitBufferWeight] = useState(85);
   const [roomCompactionWeight, setRoomCompactionWeight] = useState(70);
+
+  // Groups in current department filter
+  const visibleGroups = store.studentGroups.filter(g => {
+    if (selectedDeptId === 'all') return true;
+    const prog = store.programs.find(p => p.id === g.programId);
+    return prog?.departmentId === selectedDeptId;
+  });
+
+  const handleDeptChange = (deptId: string) => {
+    setSelectedDeptId(deptId);
+    if (deptId === 'all') {
+      setSelectedGroupIds(new Set(store.studentGroups.map(g => g.id)));
+    } else {
+      const deptGroupIds = store.studentGroups
+        .filter(g => {
+          const prog = store.programs.find(p => p.id === g.programId);
+          return prog?.departmentId === deptId;
+        })
+        .map(g => g.id);
+      setSelectedGroupIds(new Set(deptGroupIds));
+    }
+  };
+
+  const toggleGroupSelection = (groupId: string) => {
+    const updated = new Set(selectedGroupIds);
+    if (updated.has(groupId)) {
+      updated.delete(groupId);
+    } else {
+      updated.add(groupId);
+    }
+    setSelectedGroupIds(updated);
+  };
+
+  const toggleSelectAllVisible = () => {
+    const allVisibleSelected = visibleGroups.every(g => selectedGroupIds.has(g.id));
+    const updated = new Set(selectedGroupIds);
+    if (allVisibleSelected) {
+      visibleGroups.forEach(g => updated.delete(g.id));
+    } else {
+      visibleGroups.forEach(g => updated.add(g.id));
+    }
+    setSelectedGroupIds(updated);
+  };
 
   // Solver run simulation connecting store data
   const handleRunSolver = () => {
@@ -51,10 +98,11 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({ onNavigate }) =>
     setProgress(0);
   };
 
-  // Compute metrics from current store
+  // Compute metrics for selected scope
   const { conflicts } = buildMatrixSchedule(store);
-  const totalSections = store.sections.length;
-  const placedSections = store.sections.filter(s => s.assignedSlot).length;
+  const scopedSections = store.sections.filter(s => selectedGroupIds.has(s.studentGroupId));
+  const totalSections = scopedSections.length;
+  const placedSections = scopedSections.filter(s => s.assignedSlot).length;
   const unplacedSections = totalSections - placedSections;
   const conflictCount = conflicts.length;
 
@@ -89,6 +137,63 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({ onNavigate }) =>
               </option>
             ))}
           </select>
+        </div>
+
+        {/* Department Scope Select */}
+        <div>
+          <label className="block text-[14px] font-medium text-[#1B2430] mb-2">
+            Department scope
+          </label>
+          <select
+            value={selectedDeptId}
+            onChange={e => handleDeptChange(e.target.value)}
+            disabled={isSolving}
+            className="form-input text-[15px]"
+          >
+            <option value="all">Entire Institution (All Departments)</option>
+            {store.departments.map(d => (
+              <option key={d.id} value={d.id}>
+                {d.name} ({d.code})
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Classes In Scope (all checked by default) */}
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <label className="text-[14px] font-medium text-[#1B2430]">
+              Classes included ({selectedGroupIds.size} of {visibleGroups.length} selected)
+            </label>
+            <button
+              type="button"
+              onClick={toggleSelectAllVisible}
+              className="text-[13px] text-[#556070] hover:text-[#1B2430] underline cursor-pointer"
+            >
+              {visibleGroups.every(g => selectedGroupIds.has(g.id)) ? 'Deselect all' : 'Select all'}
+            </button>
+          </div>
+
+          <div className="max-h-48 overflow-y-auto border border-[#E8EAEE] rounded-md p-3 divide-y divide-[#E8EAEE] bg-[#FAFBFD]">
+            {visibleGroups.map(grp => (
+              <label key={grp.id} className="flex items-center justify-between py-1.5 cursor-pointer text-[14px] hover:text-[#1B2430]">
+                <div className="flex items-center gap-2.5">
+                  <input
+                    type="checkbox"
+                    checked={selectedGroupIds.has(grp.id)}
+                    onChange={() => toggleGroupSelection(grp.id)}
+                    className="rounded border-[#C8CDD5] text-[#1B2430] focus:ring-[#FFC400]"
+                  />
+                  <span className="font-mono font-medium text-[#1B2430]">{grp.code}</span>
+                  <span className="text-[#556070] text-[13px]">({grp.name})</span>
+                </div>
+                <span className="text-[#7A8594] text-[12px]">{grp.size} students</span>
+              </label>
+            ))}
+          </div>
+          <p className="text-[13px] text-[#7A8594] mt-1.5">
+            Will generate and schedule {scopedSections.length} course section periods for the selected classes.
+          </p>
         </div>
 
         {/* Closed Advanced Disclosure */}

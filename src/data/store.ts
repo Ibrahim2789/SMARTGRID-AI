@@ -33,6 +33,23 @@ import {
   seedAuditLogs
 } from './seedData';
 
+import {
+  largeSampleTerm,
+  largeSampleCampuses,
+  largeSampleBuildings,
+  largeSampleRooms,
+  largeSampleDepartments,
+  largeSamplePrograms,
+  largeSampleCourses,
+  largeSampleInstructors,
+  largeSampleStudentGroups,
+  largeSampleSections,
+  largeSampleTimeStructure,
+  largeSampleConstraints,
+  largeSampleScenario,
+  largeSampleAuditLogs
+} from './largeSampleDataset';
+
 export interface InstitutionalDataStore {
   terms: AcademicTerm[];
   campuses: Campus[];
@@ -54,11 +71,13 @@ const STORAGE_KEY = 'smartgrid_institutional_data_v2';
 
 function loadInitialData(): InstitutionalDataStore {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (parsed && parsed.terms && parsed.rooms && parsed.courses) {
-        return parsed;
+    if (typeof localStorage !== 'undefined') {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && parsed.terms && parsed.rooms && parsed.courses) {
+          return parsed;
+        }
       }
     }
   } catch (e) {
@@ -89,7 +108,9 @@ const listeners = new Set<() => void>();
 
 function notifyListeners() {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(currentStore));
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(currentStore));
+    }
   } catch (e) {
     console.warn('LocalStorage save failed', e);
   }
@@ -125,6 +146,136 @@ export const institutionalStore = {
       scenarios: seedScenarios,
       auditLogs: seedAuditLogs
     };
+    notifyListeners();
+  },
+
+  isSampleDataLoaded(): boolean {
+    const isS = (item: any) => Boolean(item && (item.is_sample || item.isSample));
+    return (
+      currentStore.rooms.some(isS) ||
+      currentStore.courses.some(isS) ||
+      currentStore.instructors.some(isS) ||
+      currentStore.studentGroups.some(isS) ||
+      currentStore.departments.some(isS)
+    );
+  },
+
+  hasRealData(): boolean {
+    const isRealRoom = currentStore.rooms.some(r => !r.is_sample && !r.isSample && !seedRooms.some(sr => sr.id === r.id));
+    const isRealCourse = currentStore.courses.some(c => !c.is_sample && !c.isSample && !seedCourses.some(sc => sc.id === c.id));
+    const isRealInst = currentStore.instructors.some(i => !i.is_sample && !i.isSample && !seedInstructors.some(si => si.id === i.id));
+    const isRealGroup = currentStore.studentGroups.some(g => !g.is_sample && !g.isSample && !seedStudentGroups.some(sg => sg.id === g.id));
+    return isRealRoom || isRealCourse || isRealInst || isRealGroup;
+  },
+
+  getSampleCounts() {
+    const isS = (item: any) => Boolean(item && (item.is_sample || item.isSample));
+    const deptCount = currentStore.departments.filter(isS).length;
+    const progCount = currentStore.programs.filter(isS).length;
+    const groupCount = currentStore.studentGroups.filter(isS).length;
+    const courseCount = currentStore.courses.filter(isS).length;
+    const instCount = currentStore.instructors.filter(isS).length;
+    const roomCount = currentStore.rooms.filter(isS).length;
+    const sectionCount = currentStore.sections.filter(isS).length;
+    return {
+      departments: deptCount,
+      programs: progCount,
+      classes: groupCount,
+      courses: courseCount,
+      instructors: instCount,
+      rooms: roomCount,
+      sections: sectionCount,
+      totalRecords: deptCount + progCount + groupCount + courseCount + instCount + roomCount + sectionCount
+    };
+  },
+
+  loadSampleData() {
+    const isBaseSeedSection = (s: Section) => seedSections.some(sec => sec.id === s.id);
+    const realUserSections = currentStore.sections.filter(s => !isBaseSeedSection(s) && !s.is_sample && !s.isSample);
+
+    const isBaseSeedRoom = (r: Room) => seedRooms.some(sr => sr.id === r.id);
+    const realUserRooms = currentStore.rooms.filter(r => !isBaseSeedRoom(r) && !r.is_sample && !r.isSample);
+
+    const isBaseSeedCourse = (c: Course) => seedCourses.some(sc => sc.id === c.id);
+    const realUserCourses = currentStore.courses.filter(c => !isBaseSeedCourse(c) && !c.is_sample && !c.isSample);
+
+    const isBaseSeedInst = (i: Instructor) => seedInstructors.some(si => si.id === i.id);
+    const realUserInstructors = currentStore.instructors.filter(i => !isBaseSeedInst(i) && !i.is_sample && !i.isSample);
+
+    const isBaseSeedGroup = (g: StudentGroup) => seedStudentGroups.some(sg => sg.id === g.id);
+    const realUserGroups = currentStore.studentGroups.filter(g => !isBaseSeedGroup(g) && !g.is_sample && !g.isSample);
+
+    const mergeSample = <T extends { id: string }>(realUserItems: T[], sampleItems: T[]): T[] => {
+      const existingIds = new Set(realUserItems.map(x => x.id));
+      const sampleToAdd = sampleItems.filter(s => !existingIds.has(s.id));
+      return [...realUserItems, ...sampleToAdd];
+    };
+
+    currentStore = {
+      ...currentStore,
+      terms: mergeSample(currentStore.terms.filter(t => !seedTerms.some(st => st.id === t.id) && !t.is_sample && !t.isSample), [largeSampleTerm]),
+      campuses: mergeSample(currentStore.campuses.filter(c => !seedCampuses.some(sc => sc.id === c.id) && !c.is_sample && !c.isSample), largeSampleCampuses),
+      buildings: mergeSample(currentStore.buildings.filter(b => !seedBuildings.some(sb => sb.id === b.id) && !b.is_sample && !b.isSample), largeSampleBuildings),
+      rooms: mergeSample(realUserRooms, largeSampleRooms),
+      departments: largeSampleDepartments,
+      programs: largeSamplePrograms,
+      courses: mergeSample(realUserCourses, largeSampleCourses),
+      instructors: mergeSample(realUserInstructors, largeSampleInstructors),
+      studentGroups: mergeSample(realUserGroups, largeSampleStudentGroups),
+      sections: mergeSample(realUserSections, largeSampleSections),
+      timeStructure: { ...largeSampleTimeStructure, is_sample: true, isSample: true },
+      constraints: largeSampleConstraints,
+      scenarios: [largeSampleScenario],
+      auditLogs: [...currentStore.auditLogs.filter(a => !a.is_sample && !a.isSample), ...largeSampleAuditLogs]
+    };
+
+    // Ensure Spring 2026 is active
+    currentStore.terms = currentStore.terms.map(t =>
+      t.id === largeSampleTerm.id ? { ...t, status: 'active' } : (t.status === 'active' ? { ...t, status: 'archived' } : t)
+    );
+
+    this.addAuditLog('create', 'system', 'sample-data', 'Loaded realistic multi-department sample dataset.');
+    notifyListeners();
+  },
+
+  removeSampleData() {
+    const isNotSample = (item: any) => !item.is_sample && !item.isSample;
+
+    currentStore = {
+      ...currentStore,
+      terms: currentStore.terms.filter(isNotSample),
+      campuses: currentStore.campuses.filter(isNotSample),
+      buildings: currentStore.buildings.filter(isNotSample),
+      rooms: currentStore.rooms.filter(isNotSample),
+      departments: currentStore.departments.filter(isNotSample),
+      programs: currentStore.programs.filter(isNotSample),
+      courses: currentStore.courses.filter(isNotSample),
+      instructors: currentStore.instructors.filter(isNotSample),
+      studentGroups: currentStore.studentGroups.filter(isNotSample),
+      sections: currentStore.sections.filter(isNotSample),
+      constraints: currentStore.constraints.filter(isNotSample),
+      scenarios: currentStore.scenarios.filter(isNotSample),
+      auditLogs: currentStore.auditLogs.filter(isNotSample)
+    };
+
+    // Restore clean default seed data if no real data was added
+    if (currentStore.terms.length === 0) currentStore.terms = seedTerms;
+    if (currentStore.campuses.length === 0) currentStore.campuses = seedCampuses;
+    if (currentStore.buildings.length === 0) currentStore.buildings = seedBuildings;
+    if (currentStore.rooms.length === 0) currentStore.rooms = seedRooms;
+    if (currentStore.departments.length === 0) currentStore.departments = seedDepartments;
+    if (currentStore.programs.length === 0) currentStore.programs = seedPrograms;
+    if (currentStore.courses.length === 0) currentStore.courses = seedCourses;
+    if (currentStore.instructors.length === 0) currentStore.instructors = seedInstructors;
+    if (currentStore.studentGroups.length === 0) currentStore.studentGroups = seedStudentGroups;
+    if (currentStore.sections.length === 0) currentStore.sections = seedSections;
+    if (currentStore.constraints.length === 0) currentStore.constraints = seedConstraintRules;
+    if (currentStore.scenarios.length === 0) currentStore.scenarios = seedScenarios;
+    if (!currentStore.timeStructure || currentStore.timeStructure.is_sample) {
+      currentStore.timeStructure = seedTimeStructure;
+    }
+
+    this.addAuditLog('delete', 'system', 'sample-data', 'Removed all sample dataset records.');
     notifyListeners();
   },
 

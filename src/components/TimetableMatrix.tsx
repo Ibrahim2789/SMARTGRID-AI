@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { RouteType } from './SmartGridNav';
 import { useInstitutionalData, institutionalStore } from '../data/store';
 import { buildMatrixSchedule, getDepartmentBlockClass } from '../data/solverAdapter';
+import { exportTimetableToExcel, exportTimetableToCSV } from '../services/timetableExporter';
 import { ClassItem } from './ClassDetailsModal';
 import { DayOfWeek } from '../types/institutional';
 import { X, ChevronDown, Check, AlertCircle, Download, FileSpreadsheet } from 'lucide-react';
@@ -59,24 +60,34 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = () => {
     setTimeout(() => setPublishSuccess(false), 4000);
   };
 
-  const handleExport = (format: string) => {
+  const handleExport = async (format: string) => {
     setExportOpen(false);
-    let csvContent = 'data:text/csv;charset=utf-8,Code,Title,Room,Instructor,Cohort,Day,Time\n';
-    periods.forEach(p => {
-      days.forEach(d => {
-        const items = scheduleData[p]?.[d] || [];
-        items.forEach(c => {
-          csvContent += `"${c.code}","${c.title}","${c.room}","${c.prof}","${c.cohort}","${d}","${p}"\n`;
-        });
+    if (format === 'excel') {
+      await exportTimetableToExcel(store, viewBy === 'department' ? filterValue : undefined);
+      return;
+    }
+    if (format === 'csv') {
+      exportTimetableToCSV(store);
+      return;
+    }
+    if (format === 'ical') {
+      let icsContent = 'BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//SmartGrid AI//Timetable//EN\n';
+      store.sections.forEach(s => {
+        if (!s.assignedSlot) return;
+        const c = store.courses.find(item => item.id === s.courseId);
+        icsContent += `BEGIN:VEVENT\nSUMMARY:${c?.code} - ${c?.title}\nDESCRIPTION:Day: ${s.assignedSlot.day}, Slot: ${s.assignedSlot.timeSlot}\nEND:VEVENT\n`;
       });
-    });
-    const encoded = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encoded);
-    link.setAttribute('download', `timetable_export.${format.toLowerCase()}`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+      icsContent += 'END:VCALENDAR';
+      const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `timetable_calendar.ics`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    }
   };
 
   // Filter logic
@@ -190,16 +201,23 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = () => {
               <ChevronDown className="w-3.5 h-3.5 text-[#7A8594]" />
             </button>
             {exportOpen && (
-              <div className="absolute right-0 mt-1 w-44 bg-white border border-[#E8EAEE] rounded-md shadow-lg py-1 z-30 text-[14px]">
+              <div className="absolute right-0 mt-1 w-52 bg-white border border-[#E8EAEE] rounded-md shadow-lg py-1 z-30 text-[14px]">
+                <button
+                  onClick={() => handleExport('excel')}
+                  className="w-full text-left px-4 py-2.5 hover:bg-[#F6F7F9] text-[#1B2430] cursor-pointer flex items-center gap-2 font-medium"
+                >
+                  <FileSpreadsheet className="w-4 h-4 text-[#059669]" />
+                  <span>Export Excel (.xlsx)</span>
+                </button>
                 <button
                   onClick={() => handleExport('csv')}
-                  className="w-full text-left px-4 py-2 hover:bg-[#F6F7F9] text-[#1B2430] cursor-pointer"
+                  className="w-full text-left px-4 py-2 hover:bg-[#F6F7F9] text-[#556070] hover:text-[#1B2430] cursor-pointer"
                 >
-                  Export CSV
+                  Export CSV (.csv)
                 </button>
                 <button
                   onClick={() => handleExport('ical')}
-                  className="w-full text-left px-4 py-2 hover:bg-[#F6F7F9] text-[#1B2430] cursor-pointer"
+                  className="w-full text-left px-4 py-2 hover:bg-[#F6F7F9] text-[#556070] hover:text-[#1B2430] cursor-pointer"
                 >
                   Export iCalendar (.ics)
                 </button>
