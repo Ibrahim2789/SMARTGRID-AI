@@ -172,38 +172,29 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({ onNavigate }) =>
   const hardConstraints = store.constraints.filter(c => c.kind === 'hard');
   const softConstraints = store.constraints.filter(c => c.kind === 'soft');
 
-  const workflowSteps = [
-    { step: '01', label: 'Academic Info', color: '#B8EEEE' },
-    { step: '02', label: 'Course Selection', color: '#F2D8FA' },
-    { step: '03', label: 'Personal Preferences', color: '#B8F2E6' },
-    { step: '04', label: 'Hard Constraints', color: '#E8D36B' },
-    { step: '05', label: 'Generate & Optimize', color: '#B7F77C' }
-  ];
-
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       {/* =========================================================
-          1. EDITORIAL PAGE HEADING & GUIDED WORKFLOW PILLS
+          1. CALM EDITORIAL PAGE HEADER
          ========================================================= */}
-      <header className="flex flex-col lg:flex-row lg:items-end justify-between gap-4 pb-4 border-b border-[#E4E2DA]">
-        <div>
-          <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-md bg-[#F2D8FA] text-[#171717] text-xs font-semibold mb-2">
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>Guided Timetable Configuration & Solver</span>
+      <header className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 pb-6 border-b border-[#E4E2DA]">
+        <div className="space-y-2">
+          <div className="text-xs font-medium text-[#77766F]">
+            Schedule Configuration · {scopedSections.length} Sections Queued
           </div>
           <h1 className="font-serif-editorial text-3xl sm:text-4xl text-[#171717] tracking-tight">
             Generate Schedule
           </h1>
-          <p className="text-xs sm:text-sm text-[#77766F] mt-1 max-w-2xl">
-            Configure academic scope, select courses and cohorts, customize personal timing preferences, and verify hard constraints before generating an optimized schedule.
+          <p className="text-sm text-[#77766F] max-w-xl">
+            Select your academic scope, courses, timing preferences, and hard constraints before generating a conflict-free timetable.
           </p>
         </div>
 
-        <div className="flex items-center gap-2.5 shrink-0">
+        <div className="flex items-center gap-3 shrink-0">
           <button
             type="button"
             onClick={() => onNavigate('setup')}
-            className="btn-secondary text-xs h-9"
+            className="btn-secondary text-xs h-10 px-4"
           >
             <Sliders className="w-3.5 h-3.5" />
             <span>Edit Catalog & Rooms</span>
@@ -212,33 +203,13 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({ onNavigate }) =>
             type="button"
             onClick={handleRunSolver}
             disabled={isSolving}
-            className="btn-primary text-xs h-9"
+            className="btn-primary text-xs h-10 px-5"
           >
             <Play className="w-3.5 h-3.5" />
             <span>{isSolving ? 'Generating...' : 'Generate Schedule'}</span>
           </button>
         </div>
       </header>
-
-      {/* Guided Workflow Steps Strip */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-        {workflowSteps.map(item => (
-          <div
-            key={item.step}
-            className="p-3.5 rounded-xl bg-white border border-[#E4E2DA] flex items-center gap-3"
-          >
-            <div
-              className="w-8 h-8 rounded-lg flex items-center justify-center font-mono-tabular font-bold text-xs text-[#171717] shrink-0"
-              style={{ backgroundColor: item.color }}
-            >
-              {item.step}
-            </div>
-            <div className="text-xs font-semibold text-[#171717] truncate">
-              {item.label}
-            </div>
-          </div>
-        ))}
-      </div>
 
       {/* Solver Progress Banner */}
       {isSolving && (

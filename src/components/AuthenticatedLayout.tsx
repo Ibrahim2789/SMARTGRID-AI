@@ -739,14 +739,14 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
             )}
           </div>
 
-          {/* All Primary Navigation Sections — Fitted to Viewport Without Scrolling */}
+          {/* All Primary Navigation Sections — Clean, Spacious & Visible Without Scrolling */}
           <nav
-            className="flex-1 flex flex-col justify-between px-2.5 py-2 overflow-hidden"
+            className="flex-1 flex flex-col justify-between px-3 py-4 overflow-hidden"
             aria-label="Workspace sections"
           >
             {navigationGroups.map(group => (
-              <div key={group.heading} className="space-y-0.5">
-                <div className="px-2 pb-0.5 text-[10px] font-semibold uppercase tracking-wider text-[#8E8C84] select-none">
+              <div key={group.heading} className="space-y-1">
+                <div className="px-2.5 pb-1 text-[10px] font-semibold uppercase tracking-widest text-[#8E8C84] select-none">
                   {group.heading}
                 </div>
                 <div className="space-y-0.5">
@@ -756,28 +756,22 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
                       <button
                         key={item.id}
                         onClick={item.onClick}
-                        className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-[12.5px] leading-tight transition-colors cursor-pointer ${
+                        className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-[13px] leading-snug transition-colors cursor-pointer ${
                           item.isActive
                             ? 'bg-[#3A3A3A] text-white font-medium'
                             : 'text-[#C2C0B8] hover:bg-[#323232] hover:text-white'
                         }`}
                       >
-                        <span className="flex items-center gap-2 min-w-0">
+                        <span className="flex items-center gap-2.5 min-w-0">
                           <Icon
-                            className={`w-3.5 h-3.5 shrink-0 ${
+                            className={`w-4 h-4 shrink-0 ${
                               item.isActive ? 'text-[#B8EEEE]' : 'text-[#9E9D96]'
                             }`}
                           />
                           <span className="truncate">{item.label}</span>
                         </span>
-                        {item.badge && (
-                          <span
-                            className={`text-[10px] font-mono-tabular px-1.5 py-0.5 rounded shrink-0 ${
-                              item.badgeHighlight
-                                ? 'bg-[#1F1F1F] text-[#B8EEEE]'
-                                : 'text-[#8E8C84]'
-                            }`}
-                          >
+                        {item.badgeHighlight && item.badge && (
+                          <span className="text-[10.5px] font-mono-tabular px-1.5 py-0.5 rounded bg-[#1F1F1F] text-[#B8EEEE] shrink-0">
                             {item.badge}
                           </span>
                         )}
@@ -788,19 +782,6 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
               </div>
             ))}
           </nav>
-
-          {/* Compact Status Footer */}
-          <div className="px-3 py-2 border-t border-[#363636] bg-[#242424] flex items-center justify-between gap-2 shrink-0">
-            <div className="flex items-center gap-1.5 min-w-0">
-              <ShieldCheck className="w-3.5 h-3.5 text-[#B7F77C] shrink-0" />
-              <span className="text-[11px] text-[#C2C0B8] truncate">
-                9:00 AM – 5:00 PM · Lunch 1–2 PM
-              </span>
-            </div>
-            <span className="text-[10px] font-mono-tabular px-1.5 py-0.5 rounded bg-[#333333] text-[#EAE8E1] shrink-0">
-              {currentUser.role}
-            </span>
-          </div>
         </div>
       </aside>
 
@@ -915,7 +896,7 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
           </div>
         )}
 
-        <main className="flex-1 w-full max-w-[1480px] mx-auto px-5 sm:px-8 py-7">
+        <main className="flex-1 w-full max-w-[1340px] mx-auto px-6 sm:px-10 lg:px-12 py-8 lg:py-10">
           {children}
         </main>
       </div>

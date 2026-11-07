@@ -96,29 +96,28 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onNavigate }) =>
   });
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       {/* =========================================================
-          1. EDITORIAL SERIF PAGE HEADING
+          1. CALM EDITORIAL PAGE HEADING
          ========================================================= */}
-      <header className="flex flex-col lg:flex-row lg:items-end justify-between gap-4 pb-4 border-b border-[#E4E2DA]">
-        <div>
-          <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-md bg-[#EDEAE0] text-[#171717] text-xs font-semibold mb-2">
-            <SettingsIcon className="w-3.5 h-3.5" />
-            <span>Workspace Configuration & Audit Trail</span>
+      <header className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 pb-6 border-b border-[#E4E2DA]">
+        <div className="space-y-2">
+          <div className="text-xs font-medium text-[#77766F]">
+            Workspace Administration · {name}
           </div>
           <h1 className="font-serif-editorial text-3xl sm:text-4xl text-[#171717] tracking-tight">
             Workspace Settings
           </h1>
-          <p className="text-xs sm:text-sm text-[#77766F] mt-1 max-w-2xl">
-            Configure academic accreditation metadata, export full JSON backups, manage sample datasets, and inspect the system audit trail.
+          <p className="text-sm text-[#77766F] max-w-xl">
+            Manage institutional profile metadata, export workspace backups, or inspect the system audit trail.
           </p>
         </div>
 
-        <div className="flex items-center gap-2.5 shrink-0">
+        <div className="flex items-center gap-3 shrink-0">
           <button
             type="button"
             onClick={handleExportJSON}
-            className="btn-secondary text-xs h-9"
+            className="btn-secondary text-xs h-10 px-4"
           >
             <Download className="w-3.5 h-3.5" />
             <span>Export JSON Backup</span>
@@ -126,7 +125,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onNavigate }) =>
           <button
             type="button"
             onClick={() => onNavigate('home')}
-            className="btn-primary text-xs h-9"
+            className="btn-primary text-xs h-10 px-5"
           >
             <span>Return to Dashboard</span>
             <ArrowRight className="w-3.5 h-3.5" />

@@ -468,7 +468,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
   });
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       {!hideNav && (
         <SmartGridNav
           activeRoute="timetable"
@@ -480,30 +480,39 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
       )}
 
       {/* =========================================================
-          1. EDITORIAL PAGE HEADING & EXPORT / SOLVER CONTROLS
+          1. CALM EDITORIAL PAGE HEADER & PRIMARY ACTIONS
          ========================================================= */}
-      <header className="flex flex-col lg:flex-row lg:items-end justify-between gap-4 pb-4 border-b border-[#E4E2DA]">
-        <div>
-          <div className="inline-flex flex-wrap items-center gap-2 px-2.5 py-1 rounded-md bg-[#EDEAE0] text-[#171717] text-xs font-medium mb-2">
-            <CalendarIcon className="w-3.5 h-3.5" />
-            <span>{activeTerm?.name || 'Spring 2026'} · 9:00 AM – 5:00 PM University Grid</span>
-            <span className="text-[#77766F]">•</span>
+      <header className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 pb-6 border-b border-[#E4E2DA]">
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-[#77766F]">
+            <span>{activeTerm?.name || 'Fall 2026'}</span>
+            <span>·</span>
             <span>{lectureCount} Lectures (50m) & {labCount} Continuous Labs (3h)</span>
+            <span>·</span>
+            <span className="text-[#171717] font-semibold">
+              {conflicts.length === 0 ? '0 Clashes' : `${conflicts.length} Clashes`}
+            </span>
+            {lockedTotal > 0 && (
+              <>
+                <span>·</span>
+                <span>{lockedTotal} Pinned</span>
+              </>
+            )}
           </div>
           <h1 className="font-serif-editorial text-3xl sm:text-4xl text-[#171717] tracking-tight">
             My Timetable
           </h1>
-          <p className="text-xs sm:text-sm text-[#77766F] mt-1">
-            Morning Session (9:00 AM – 1:00 PM) · Fixed Lunch Break (1:00 – 2:00 PM) · Afternoon Session (2:00 – 5:00 PM).
+          <p className="text-sm text-[#77766F] max-w-xl">
+            University hours 9:00 AM – 5:00 PM with a fixed midday lunch break from 1:00 – 2:00 PM. Select any class block to inspect details or reassign its slot.
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2.5">
+        <div className="flex flex-wrap items-center gap-3 shrink-0">
           {/* Prominent Export to Google Sheets Action */}
           <button
             onClick={() => handleExportGoogleSheets('filtered')}
             disabled={isExportingSheets}
-            className="px-3.5 h-9 rounded-xl bg-[#B7F77C] hover:bg-[#a6ec68] border border-[#98DF58] text-[#171717] text-xs font-semibold inline-flex items-center gap-2 transition-colors cursor-pointer shadow-2xs"
+            className="px-4 h-10 rounded-xl bg-[#B7F77C] hover:bg-[#a6ec68] border border-[#98DF58] text-[#171717] text-xs font-semibold inline-flex items-center gap-2 transition-colors cursor-pointer"
             title="Export multi-worksheet Google Sheets (.xlsx) with Weekly Overview and individual Course tabs"
           >
             <FileSpreadsheet className="w-4 h-4 text-[#171717]" />
@@ -514,17 +523,17 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
           <div className="relative" ref={exportDropdownRef}>
             <button
               onClick={() => setShowExportMenu(!showExportMenu)}
-              className="btn-secondary text-xs h-9"
+              className="btn-secondary text-xs h-10 px-3.5"
               title="More export options (CSV, PDF, Full Campus Google Sheets)"
             >
               <Download className="w-3.5 h-3.5" />
-              <span>Export Options</span>
+              <span>Export</span>
               <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showExportMenu ? 'rotate-180' : ''}`} />
             </button>
 
             {showExportMenu && (
               <div className="absolute right-0 mt-2 w-80 bg-white border border-[#E4E2DA] rounded-2xl shadow-xl z-50 py-2">
-                <div className="px-3.5 py-2 border-b border-[#E4E2DA]">
+                <div className="px-4 py-2.5 border-b border-[#E4E2DA]">
                   <div className="text-[11px] font-semibold uppercase tracking-wider text-[#77766F]">
                     Export Active View
                   </div>
@@ -536,7 +545,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
                 <div className="p-2 space-y-1">
                   <button
                     onClick={() => handleExportGoogleSheets('filtered')}
-                    className="w-full text-left px-3 py-2 rounded-xl text-xs flex items-start gap-2.5 bg-[#B7F77C]/35 hover:bg-[#B7F77C]/60 transition-colors cursor-pointer text-[#171717]"
+                    className="w-full text-left px-3 py-2.5 rounded-xl text-xs flex items-start gap-2.5 bg-[#B7F77C]/35 hover:bg-[#B7F77C]/60 transition-colors cursor-pointer text-[#171717]"
                   >
                     <FileSpreadsheet className="w-4 h-4 text-[#171717] mt-0.5 shrink-0" />
                     <div>
@@ -549,7 +558,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
 
                   <button
                     onClick={() => handleExportCSV('filtered')}
-                    className="w-full text-left px-3 py-2 rounded-xl text-xs flex items-start gap-2.5 hover:bg-[#F7F6EF] transition-colors cursor-pointer text-[#171717]"
+                    className="w-full text-left px-3 py-2.5 rounded-xl text-xs flex items-start gap-2.5 hover:bg-[#F7F6EF] transition-colors cursor-pointer text-[#171717]"
                   >
                     <FileSpreadsheet className="w-4 h-4 text-[#171717] mt-0.5 shrink-0" />
                     <div>
@@ -560,7 +569,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
 
                   <button
                     onClick={() => handleExportPDF('filtered')}
-                    className="w-full text-left px-3 py-2 rounded-xl text-xs flex items-start gap-2.5 hover:bg-[#F7F6EF] transition-colors cursor-pointer text-[#171717]"
+                    className="w-full text-left px-3 py-2.5 rounded-xl text-xs flex items-start gap-2.5 hover:bg-[#F7F6EF] transition-colors cursor-pointer text-[#171717]"
                   >
                     <FileText className="w-4 h-4 text-[#171717] mt-0.5 shrink-0" />
                     <div>
@@ -578,7 +587,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
                   </div>
                   <button
                     onClick={() => handleExportGoogleSheets('all')}
-                    className="w-full text-left px-3 py-1.5 rounded-xl text-xs flex items-center justify-between hover:bg-[#F7F6EF] transition-colors cursor-pointer text-[#171717]"
+                    className="w-full text-left px-3 py-2 rounded-xl text-xs flex items-center justify-between hover:bg-[#F7F6EF] transition-colors cursor-pointer text-[#171717]"
                   >
                     <span className="flex items-center gap-2 font-medium">
                       <FileSpreadsheet className="w-3.5 h-3.5" />
@@ -589,7 +598,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
 
                   <button
                     onClick={() => handleExportCSV('all')}
-                    className="w-full text-left px-3 py-1.5 rounded-xl text-xs flex items-center justify-between hover:bg-[#F7F6EF] transition-colors cursor-pointer text-[#171717]"
+                    className="w-full text-left px-3 py-2 rounded-xl text-xs flex items-center justify-between hover:bg-[#F7F6EF] transition-colors cursor-pointer text-[#171717]"
                   >
                     <span className="flex items-center gap-2 font-medium">
                       <Layers className="w-3.5 h-3.5" />
@@ -600,7 +609,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
 
                   <button
                     onClick={() => handleExportPDF('all')}
-                    className="w-full text-left px-3 py-1.5 rounded-xl text-xs flex items-center justify-between hover:bg-[#F7F6EF] transition-colors cursor-pointer text-[#171717]"
+                    className="w-full text-left px-3 py-2 rounded-xl text-xs flex items-center justify-between hover:bg-[#F7F6EF] transition-colors cursor-pointer text-[#171717]"
                   >
                     <span className="flex items-center gap-2 font-medium">
                       <FileText className="w-3.5 h-3.5" />
@@ -616,108 +625,51 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
           <button
             onClick={handleRunSweep}
             disabled={isSweeping}
-            className="btn-primary text-xs h-9"
+            className="btn-primary text-xs h-10 px-4"
           >
             <Sparkles className={`w-3.5 h-3.5 ${isSweeping ? 'animate-spin' : ''}`} />
-            <span>{isSweeping ? 'Optimizing...' : 'Re-Optimize Timetable'}</span>
+            <span>{isSweeping ? 'Optimizing...' : 'Re-Optimize'}</span>
           </button>
         </div>
       </header>
 
       {/* Feedback Notices */}
       {sweepNotice && (
-        <div className="p-3.5 sf-pastel-lime text-xs font-medium flex items-center gap-2">
+        <div className="px-5 py-3.5 sf-pastel-lime rounded-xl text-xs font-medium flex items-center gap-2.5">
           <Check className="w-4 h-4 text-[#171717] shrink-0" />
           <span>{sweepNotice}</span>
         </div>
       )}
 
       {exportNotice && (
-        <div className="p-3.5 sf-pastel-cyan text-xs font-medium flex items-start gap-2.5">
+        <div className="px-5 py-4 sf-pastel-cyan rounded-xl text-xs font-medium flex items-start gap-2.5">
           <Check className="w-4 h-4 text-[#171717] shrink-0 mt-0.5" />
-          <div className="space-y-0.5">
+          <div className="space-y-1">
             <div className="font-semibold text-[#171717]">{exportNotice}</div>
             <div className="text-[11px] text-[#171717]/80">
-              Note: Direct Google OAuth was declined, so SmartGrid AI generated a native multi-worksheet Google Sheets (.xlsx) file with Weekly Overview + per-course tabs and vertically merged 3-hour lab blocks. Open in Google Drive / Google Sheets for full formatting.
+              Open the downloaded .xlsx workbook in Google Drive / Google Sheets to view the formatted Weekly Overview (with vertically merged 3-hour labs) and individual course sheets.
             </div>
           </div>
         </div>
       )}
 
       {/* =========================================================
-          2. COMPACT SCHEDULE STATISTICS
+          2. CLEAN TIMETABLE CONTROLS & FILTERS
          ========================================================= */}
-      <section className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
-        <div className="sf-card-stat flex items-center justify-between">
-          <div>
-            <div className="text-xs text-[#77766F]">Validation Status</div>
-            <div className="font-serif-editorial text-2xl text-[#171717] mt-0.5">
-              {conflicts.length === 0 ? '0 Clashes' : `${conflicts.length} Overlaps`}
-            </div>
-            <div className="text-[11px] text-[#77766F]">1:00–2:00 PM lunch protected</div>
-          </div>
-          <div className="w-10 h-10 rounded-xl bg-[#B7F77C] flex items-center justify-center text-[#171717]">
-            <CheckCircle2 className="w-5 h-5" />
-          </div>
-        </div>
-
-        <div className="sf-card-stat flex items-center justify-between">
-          <div>
-            <div className="text-xs text-[#77766F]">Regular Lectures (50m)</div>
-            <div className="font-serif-editorial text-2xl text-[#171717] mt-0.5">
-              {lectureCount} Lectures
-            </div>
-            <div className="text-[11px] text-[#77766F]">50m lecture + 10m short break</div>
-          </div>
-          <div className="w-10 h-10 rounded-xl bg-[#B8EEEE] flex items-center justify-center text-[#171717]">
-            <BookOpen className="w-5 h-5" />
-          </div>
-        </div>
-
-        <div className="sf-card-stat flex items-center justify-between">
-          <div>
-            <div className="text-xs text-[#77766F]">Continuous Labs (3h)</div>
-            <div className="font-serif-editorial text-2xl text-[#171717] mt-0.5">
-              {labCount} Lab Blocks
-            </div>
-            <div className="text-[11px] text-[#77766F]">3 consecutive cycles · No break</div>
-          </div>
-          <div className="w-10 h-10 rounded-xl bg-[#F2D8FA] flex items-center justify-center text-[#171717]">
-            <FlaskConical className="w-5 h-5" />
-          </div>
-        </div>
-
-        <div className="sf-card-stat flex items-center justify-between">
-          <div>
-            <div className="text-xs text-[#77766F]">Pinned Slots</div>
-            <div className="font-serif-editorial text-2xl text-[#171717] mt-0.5">
-              {lockedTotal} Locked
-            </div>
-            <div className="text-[11px] text-[#77766F]">Protected during re-solve</div>
-          </div>
-          <div className="w-10 h-10 rounded-xl bg-[#E8D36B] flex items-center justify-center text-[#171717]">
-            <Lock className="w-5 h-5" />
-          </div>
-        </div>
-      </section>
-
-      {/* =========================================================
-          3. DAY / WEEK / AGENDA NAVIGATION & CONTEXTUAL FILTERS
-         ========================================================= */}
-      <div className="sf-card-white p-4 space-y-4">
-        <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-3.5">
+      <div className="sf-card-white p-5 space-y-4">
+        <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4">
           <div className="flex flex-wrap items-center gap-3">
             {/* Day / Week / Agenda Switcher */}
             <div className="inline-flex items-center p-1 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA]">
               {[
-                { id: 'week' as const, label: 'Week View' },
-                { id: 'day' as const, label: 'Day View' },
-                { id: 'agenda' as const, label: 'Course Agenda' }
+                { id: 'week' as const, label: 'Week' },
+                { id: 'day' as const, label: 'Day' },
+                { id: 'agenda' as const, label: 'Agenda' }
               ].map(mode => (
                 <button
                   key={mode.id}
                   onClick={() => setCalendarMode(mode.id)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
+                  className={`px-3.5 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
                     calendarMode === mode.id
                       ? 'bg-[#171717] text-white'
                       : 'text-[#77766F] hover:text-[#171717]'
@@ -732,7 +684,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
             <div className="inline-flex flex-wrap items-center p-1 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA]">
               {[
                 { id: 'master' as const, label: 'All Courses', icon: Layers },
-                { id: 'cohort' as const, label: 'Student Cohort', icon: Users },
+                { id: 'cohort' as const, label: 'Cohort', icon: Users },
                 { id: 'instructor' as const, label: 'Faculty', icon: User },
                 { id: 'room' as const, label: 'Room', icon: Building }
               ].map(tab => {
@@ -743,9 +695,9 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
                     key={tab.id}
                     type="button"
                     onClick={() => setPerspective(tab.id)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer ${
                       active
-                        ? 'bg-white text-[#171717] shadow-2xs border border-[#E4E2DA]'
+                        ? 'bg-white text-[#171717] border border-[#E4E2DA]'
                         : 'text-[#77766F] hover:text-[#171717]'
                     }`}
                   >
@@ -755,26 +707,20 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
                 );
               })}
             </div>
-          </div>
 
-          {/* Search & Specific Perspective Selector */}
-          <div className="flex flex-wrap items-center gap-2.5">
-            {calendarMode === 'day' && (
-              <div className="inline-flex items-center gap-1 bg-[#F7F6EF] p-1 rounded-xl border border-[#E4E2DA]">
-                {days.map(d => (
-                  <button
-                    key={d}
-                    onClick={() => setFocusedDay(d)}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-semibold cursor-pointer ${
-                      focusedDay === d
-                        ? 'bg-[#171717] text-white'
-                        : 'text-[#77766F] hover:text-[#171717]'
-                    }`}
-                  >
-                    {d}
-                  </button>
+            {perspective === 'master' && (
+              <select
+                value={selectedDeptId}
+                onChange={e => setSelectedDeptId(e.target.value)}
+                className="input-field h-9 w-auto text-xs font-medium"
+              >
+                <option value="all">All Departments ({placedTotal})</option>
+                {store.departments.map(dept => (
+                  <option key={dept.id} value={dept.id}>
+                    {dept.name} ({dept.code})
+                  </option>
                 ))}
-              </div>
+              </select>
             )}
 
             {perspective === 'cohort' && (
@@ -785,7 +731,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
               >
                 {store.studentGroups.map(g => (
                   <option key={g.id} value={g.id}>
-                    Cohort: {g.code} — {g.name} ({g.size} students)
+                    Cohort: {g.code} — {g.name}
                   </option>
                 ))}
               </select>
@@ -799,7 +745,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
               >
                 {store.instructors.map(i => (
                   <option key={i.id} value={i.id}>
-                    Faculty: {i.name} ({i.maxWeeklyHours}h max)
+                    Faculty: {i.name}
                   </option>
                 ))}
               </select>
@@ -813,17 +759,38 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
               >
                 {store.rooms.map(r => (
                   <option key={r.id} value={r.id}>
-                    Room: {r.code} — {r.type.toUpperCase()} ({r.capacity} seats)
+                    Room: {r.code} ({r.capacity} seats)
                   </option>
                 ))}
               </select>
+            )}
+          </div>
+
+          {/* Search & Day Selector */}
+          <div className="flex flex-wrap items-center gap-3">
+            {calendarMode === 'day' && (
+              <div className="inline-flex items-center gap-1 bg-[#F7F6EF] p-1 rounded-xl border border-[#E4E2DA]">
+                {days.map(d => (
+                  <button
+                    key={d}
+                    onClick={() => setFocusedDay(d)}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-medium cursor-pointer ${
+                      focusedDay === d
+                        ? 'bg-[#171717] text-white'
+                        : 'text-[#77766F] hover:text-[#171717]'
+                    }`}
+                  >
+                    {d}
+                  </button>
+                ))}
+              </div>
             )}
 
             <div className="relative min-w-[220px]">
               <Search className="w-3.5 h-3.5 text-[#77766F] absolute left-3 top-2.5" />
               <input
                 type="text"
-                placeholder="Filter course, instructor, room..."
+                placeholder="Search course or room..."
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
                 className="input-field h-9 pl-8 pr-3 text-xs"
@@ -831,66 +798,17 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
             </div>
           </div>
         </div>
-
-        {/* Department Filter Strip & Visual Legend */}
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 pt-3 border-t border-[#E4E2DA]">
-          {perspective === 'master' ? (
-            <div className="flex items-center gap-2 overflow-x-auto">
-              <button
-                onClick={() => setSelectedDeptId('all')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors border cursor-pointer ${
-                  selectedDeptId === 'all'
-                    ? 'bg-[#171717] text-white border-[#171717]'
-                    : 'bg-[#F7F6EF] text-[#77766F] border-[#E4E2DA] hover:text-[#171717]'
-                }`}
-              >
-                All Departments ({placedTotal})
-              </button>
-              {store.departments.map(dept => (
-                <button
-                  key={dept.id}
-                  onClick={() => setSelectedDeptId(dept.id)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors border cursor-pointer ${
-                    selectedDeptId === dept.id
-                      ? 'bg-[#171717] text-white border-[#171717]'
-                      : 'bg-[#F7F6EF] text-[#77766F] border-[#E4E2DA] hover:text-[#171717]'
-                  }`}
-                >
-                  {dept.name} ({dept.code})
-                </button>
-              ))}
-            </div>
-          ) : (
-            <div />
-          )}
-
-          {/* Session Type Legend */}
-          <div className="flex flex-wrap items-center gap-3 text-[11px] text-[#77766F] shrink-0">
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#F7F6EF] border border-[#E4E2DA] text-[#171717] font-medium">
-              <BookOpen className="w-3 h-3" />
-              <span>Lecture: 50 mins + 10m Short Break</span>
-            </span>
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#F2D8FA]/60 border border-[#DFB9EC] text-[#171717] font-medium">
-              <FlaskConical className="w-3 h-3" />
-              <span>Lab: 3 Hours Continuous (3 Cycles Merged)</span>
-            </span>
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#E8D36B]/50 border border-[#D4BC4C] text-[#171717] font-medium">
-              <Coffee className="w-3 h-3" />
-              <span>Lunch Break: 1:00 – 2:00 PM</span>
-            </span>
-          </div>
-        </div>
       </div>
 
       {/* =========================================================
-          4. WEEKLY / DAILY CALENDAR OR AGENDA VIEW
+          3. WEEKLY / DAILY CALENDAR OR AGENDA VIEW
          ========================================================= */}
       {calendarMode === 'agenda' ? (
-        <div className="sf-card-white p-6 space-y-4">
+        <div className="sf-card-white p-6 sm:p-7 space-y-5">
           <h2 className="font-serif-editorial text-2xl text-[#171717]">
-            Scheduled Course Agenda (9:00 AM – 5:00 PM)
+            Course Agenda
           </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {days.flatMap(day =>
               UNIVERSITY_SLOTS.flatMap(slotMeta =>
                 (scheduleData[slotMeta.period]?.[day] || [])
@@ -906,22 +824,22 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
                         key={`${day}-${slotMeta.period}-${cls.id}`}
                         onClick={() => setSelectedClass(cls)}
                         style={{ backgroundColor: pastel.bg, borderColor: pastel.border }}
-                        className="p-4 rounded-xl border text-[#171717] cursor-pointer hover:-translate-y-0.5 transition-transform space-y-2"
+                        className="p-5 rounded-2xl border text-[#171717] cursor-pointer hover:-translate-y-0.5 transition-transform space-y-2.5"
                       >
-                        <div className="flex items-center justify-between text-xs font-mono-tabular">
-                          <span className="font-bold px-2 py-0.5 rounded bg-white/85">
-                            {cls.code} · {isLab ? 'Lab (3h Continuous)' : 'Lecture (50m)'}
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="font-mono-tabular font-semibold text-[#171717]/80">
+                            {cls.code} · {isLab ? 'Lab (3h)' : 'Lecture'}
                           </span>
-                          <span className="font-semibold">
+                          <span className="font-mono-tabular font-medium">
                             {day} · {timeWindow}
                           </span>
                         </div>
                         <div className="font-serif-editorial text-lg leading-snug">
                           {cls.title}
                         </div>
-                        <div className="flex items-center justify-between text-xs text-[#171717]/80 pt-1 border-t border-black/10">
+                        <div className="flex items-center justify-between text-xs text-[#171717]/75 pt-2 border-t border-black/10">
+                          <span>{cls.room}</span>
                           <span>{cls.prof}</span>
-                          <span className="font-mono-tabular font-semibold">{cls.room}</span>
                         </div>
                       </div>
                     );
@@ -933,16 +851,16 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
       ) : (
         <div className="sf-card-white overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[920px] border-collapse text-left">
+            <table className="w-full min-w-[900px] border-collapse text-left">
               <thead>
                 <tr className="border-b border-[#E4E2DA] bg-[#F7F6EF]">
-                  <th className="py-3.5 px-4 w-48 text-xs font-mono-tabular font-semibold text-[#77766F]">
-                    University Slot & Break
+                  <th className="py-4 px-5 w-44 text-xs font-medium text-[#77766F]">
+                    Time & Break
                   </th>
                   {visibleDays.map(day => (
                     <th
                       key={day}
-                      className="py-3.5 px-4 min-w-[185px] text-sm font-serif-editorial text-[#171717] border-l border-[#E4E2DA]"
+                      className="py-4 px-5 min-w-[180px] text-base font-serif-editorial text-[#171717] border-l border-[#E4E2DA]"
                     >
                       {day}
                     </th>
@@ -952,78 +870,45 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
               <tbody className="divide-y divide-[#E4E2DA]">
                 {UNIVERSITY_SLOTS.map(slotMeta => {
                   const time = slotMeta.period;
-                  const isFirstMorning = slotMeta.slotNumber === 1;
                   const isFirstAfternoon = slotMeta.slotNumber === 5;
 
                   return (
                     <React.Fragment key={slotMeta.slotNumber}>
-                      {/* Morning Session Subheader Banner */}
-                      {isFirstMorning && (
-                        <tr className="bg-[#F7F6EF]/90 border-b border-[#E4E2DA]">
+                      {/* Fixed University Lunch Break Row (1:00 PM – 2:00 PM) */}
+                      {isFirstAfternoon && (
+                        <tr className="bg-[#F7F6EF] border-y border-[#E4E2DA]">
+                          <td className="py-3.5 px-5 border-r border-[#E4E2DA] align-middle">
+                            <div className="text-xs font-mono-tabular font-semibold text-[#171717]">
+                              1:00 – 2:00 PM
+                            </div>
+                            <div className="text-[11px] text-[#77766F] mt-0.5">
+                              Lunch Break
+                            </div>
+                          </td>
                           <td
-                            colSpan={visibleDays.length + 1}
-                            className="py-1.5 px-4 text-[11px] font-mono-tabular font-semibold uppercase tracking-wider text-[#77766F]"
+                            colSpan={visibleDays.length}
+                            className="py-3.5 px-6 text-center align-middle"
                           >
-                            Morning Session · 9:00 AM – 1:00 PM (Four 50-Minute Lecture Slots + 10-Minute Short Breaks)
+                            <div className="inline-flex items-center gap-2 text-xs font-medium text-[#77766F]">
+                              <Coffee className="w-3.5 h-3.5 text-[#171717]" />
+                              <span className="text-[#171717] font-semibold">
+                                Lunch Break (1:00 PM – 2:00 PM)
+                              </span>
+                              <span>· No classes scheduled</span>
+                            </div>
                           </td>
                         </tr>
                       )}
 
-                      {/* Fixed University Lunch Break Row (1:00 PM – 2:00 PM) */}
-                      {isFirstAfternoon && (
-                        <>
-                          <tr className="bg-[#EDEAE0] border-y-2 border-[#D5D1C4]">
-                            <td className="py-3.5 px-4 bg-[#E8D36B]/55 border-r border-[#D5D1C4] align-middle">
-                              <div className="flex items-center gap-1.5 text-xs font-mono-tabular font-bold text-[#171717]">
-                                <Coffee className="w-3.5 h-3.5 shrink-0" />
-                                <span>1:00 – 2:00 PM</span>
-                              </div>
-                              <div className="mt-1 inline-flex items-center px-2 py-0.5 rounded bg-[#171717] text-white text-[10px] font-semibold uppercase tracking-wider">
-                                Lunch Break
-                              </div>
-                            </td>
-                            <td
-                              colSpan={visibleDays.length}
-                              className="py-3.5 px-6 text-center align-middle bg-[#EDEAE0]"
-                            >
-                              <div className="inline-flex flex-wrap items-center justify-center gap-2.5 px-4 py-1.5 rounded-xl bg-white/85 border border-[#D5D1C4] text-xs font-semibold text-[#171717]">
-                                <Coffee className="w-4 h-4 text-[#171717]" />
-                                <span>Lunch Break (1:00 PM – 2:00 PM)</span>
-                                <span className="text-[#77766F] font-normal">
-                                  • University-Wide Fixed Break — No Lectures or Laboratory Sessions Scheduled
-                                </span>
-                              </div>
-                            </td>
-                          </tr>
-                          <tr className="bg-[#F7F6EF]/90 border-b border-[#E4E2DA]">
-                            <td
-                              colSpan={visibleDays.length + 1}
-                              className="py-1.5 px-4 text-[11px] font-mono-tabular font-semibold uppercase tracking-wider text-[#77766F]"
-                            >
-                              Afternoon Session · 2:00 PM – 5:00 PM (Three 50-Minute Lecture Slots + 10-Minute Short Breaks)
-                            </td>
-                          </tr>
-                        </>
-                      )}
-
                       {/* Regular Hourly Slot Row */}
-                      <tr className="hover:bg-[#F7F6EF]/40">
-                        {/* Left Column: Lecture Time + Unobtrusive 10m Short Break */}
-                        <td className="py-3.5 px-4 text-xs font-mono-tabular text-[#171717] whitespace-nowrap align-top bg-[#F7F6EF]/60">
-                          <div className="flex items-center justify-between gap-1.5">
-                            <span className="text-[10.5px] font-semibold uppercase tracking-wider text-[#77766F]">
-                              Slot {slotMeta.slotNumber}
-                            </span>
-                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-white border border-[#E4E2DA] text-[#171717] font-medium">
-                              50m Lecture
-                            </span>
-                          </div>
-                          <div className="font-bold text-[12.5px] text-[#171717] mt-1">
+                      <tr>
+                        {/* Left Column: Lecture Time + Subtle Short Break */}
+                        <td className="py-4 px-5 text-xs font-mono-tabular text-[#171717] whitespace-nowrap align-top bg-[#F7F6EF]/40">
+                          <div className="font-semibold text-[12.5px] text-[#171717]">
                             {slotMeta.period}
                           </div>
-                          <div className="mt-2 pt-1.5 border-t border-[#E4E2DA]/80 flex items-center justify-between text-[10.5px] text-[#77766F]">
-                            <span className="font-medium">Short Break</span>
-                            <span>{slotMeta.shortBreak}</span>
+                          <div className="text-[11px] text-[#77766F] mt-1">
+                            Short break {slotMeta.shortBreak}
                           </div>
                         </td>
 
@@ -1031,7 +916,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
                         {visibleDays.map(day => {
                           const cellKey = `${day}__${slotMeta.slotNumber}`;
 
-                          // If covered by a 3-hour continuous Lab starting 1 or 2 slots above, skip rendering <td>
+                          // Skip cell if covered by a 3-hour continuous Lab above
                           if (skippedCells.has(cellKey)) {
                             return null;
                           }
@@ -1047,7 +932,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
                               <td
                                 key={day}
                                 rowSpan={3}
-                                className="p-2.5 min-w-[185px] border-l border-[#E4E2DA] align-stretch bg-white"
+                                className="p-3 min-w-[180px] border-l border-[#E4E2DA] align-stretch bg-white"
                               >
                                 <div className="h-full flex flex-col gap-2">
                                   <div
@@ -1056,77 +941,38 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
                                       backgroundColor: pastel.bg,
                                       borderColor: pastel.border
                                     }}
-                                    className="flex-1 min-h-[252px] p-3.5 rounded-2xl border-2 text-xs text-[#171717] flex flex-col justify-between transition-transform hover:-translate-y-0.5 cursor-pointer shadow-2xs"
+                                    className="flex-1 min-h-[220px] p-4 rounded-2xl border text-xs text-[#171717] flex flex-col justify-between transition-transform hover:-translate-y-0.5 cursor-pointer"
                                   >
                                     <div className="space-y-2">
-                                      <div className="flex items-center justify-between gap-1.5 flex-wrap">
-                                        <span className="font-mono-tabular font-bold px-2 py-0.5 rounded-md bg-white/90 text-[#171717] flex items-center gap-1">
+                                      <div className="flex items-center justify-between gap-2">
+                                        <span className="font-mono-tabular text-[11px] font-semibold text-[#171717]/80 flex items-center gap-1">
                                           {labItem.code}
                                           {labItem.isLocked && <Lock className="w-3 h-3" />}
                                         </span>
-                                        <span className="text-[10.5px] font-bold px-2 py-0.5 rounded-md bg-[#171717] text-white inline-flex items-center gap-1">
-                                          <FlaskConical className="w-3 h-3" />
-                                          <span>Lab · 3h Continuous</span>
+                                        <span className="text-[10.5px] font-medium px-2 py-0.5 rounded-md bg-white/80 text-[#171717]">
+                                          Lab · 3h
                                         </span>
                                       </div>
 
                                       <div className="font-serif-editorial text-base leading-snug text-[#171717]">
                                         {labItem.title}
                                       </div>
-
-                                      <div className="p-2 rounded-xl bg-white/70 border border-black/10 space-y-1">
-                                        <div className="text-[11px] font-mono-tabular font-bold text-[#171717] flex items-center gap-1.5">
-                                          <Clock className="w-3.5 h-3.5 shrink-0" />
-                                          <span>{continuousWindow}</span>
-                                        </div>
-                                        <div className="text-[10.5px] text-[#171717]/80">
-                                          3 consecutive hourly cycles · No internal 10m breaks
-                                        </div>
-                                      </div>
                                     </div>
 
-                                    <div className="space-y-1.5 pt-2.5 border-t border-black/10">
-                                      <div className="text-[11px] text-[#171717] flex items-center justify-between">
-                                        <span className="font-mono-tabular font-semibold flex items-center gap-1 truncate">
-                                          <MapPin className="w-3 h-3 shrink-0" />
-                                          {labItem.room}
-                                        </span>
-                                        <span className="font-medium truncate max-w-[105px]">
-                                          {labItem.prof}
-                                        </span>
+                                    <div className="space-y-1.5 pt-3 border-t border-black/10 text-[11.5px]">
+                                      <div className="font-mono-tabular font-medium text-[#171717]">
+                                        {continuousWindow}
                                       </div>
-                                      <div className="text-[10.5px] font-mono-tabular text-[#171717]/75 flex items-center justify-between">
-                                        <span>Cohort: {labItem.cohort}</span>
-                                        <span>
-                                          {labItem.enrolled}/{labItem.capacity} seats
-                                        </span>
+                                      <div className="text-[#171717]/75 flex items-center justify-between">
+                                        <span className="font-mono-tabular">{labItem.room}</span>
+                                        {concurrentItems.length > 0 && (
+                                          <span className="text-[10.5px]">
+                                            +{concurrentItems.length} more
+                                          </span>
+                                        )}
                                       </div>
                                     </div>
                                   </div>
-
-                                  {/* If Master View has any other cohort lecture during one of these 3 hours, show compact card */}
-                                  {concurrentItems.map(otherCls => {
-                                    const otherPastel = getCoursePastel(otherCls.code);
-                                    return (
-                                      <div
-                                        key={otherCls.id}
-                                        onClick={() => setSelectedClass(otherCls)}
-                                        style={{
-                                          backgroundColor: otherPastel.bg,
-                                          borderColor: otherPastel.border
-                                        }}
-                                        className="p-2 rounded-xl border text-[11px] text-[#171717] cursor-pointer hover:opacity-95"
-                                      >
-                                        <div className="flex items-center justify-between font-mono-tabular font-bold">
-                                          <span>{otherCls.code} ({otherCls.sessionType || 'Lecture'})</span>
-                                          <span>{otherCls.time}</span>
-                                        </div>
-                                        <div className="truncate text-[10.5px] text-[#171717]/80">
-                                          {otherCls.room} · {otherCls.prof} ({otherCls.cohort})
-                                        </div>
-                                      </div>
-                                    );
-                                  })}
                                 </div>
                               </td>
                             );
@@ -1143,12 +989,12 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
                           return (
                             <td
                               key={day}
-                              className="py-2.5 px-2.5 min-w-[185px] border-l border-[#E4E2DA] align-top"
+                              className="p-3 min-w-[180px] border-l border-[#E4E2DA] align-top"
                             >
                               <div className="space-y-2">
                                 {isInstructorBlackedOut && (
-                                  <div className="p-2.5 rounded-xl bg-[#EDEAE0] border border-[#E4E2DA] text-[11px] text-[#77766F] font-mono-tabular font-semibold text-center">
-                                    Unavailable Slot
+                                  <div className="p-3 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] text-[11px] text-[#77766F] text-center">
+                                    Unavailable
                                   </div>
                                 )}
 
@@ -1163,33 +1009,26 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
                                         backgroundColor: pastel.bg,
                                         borderColor: pastel.border
                                       }}
-                                      className="p-3 rounded-xl border text-xs text-[#171717] space-y-1.5 transition-transform hover:-translate-y-0.5 cursor-pointer"
+                                      className="p-3.5 rounded-xl border text-xs text-[#171717] space-y-2 transition-transform hover:-translate-y-0.5 cursor-pointer"
                                     >
-                                      <div className="flex items-center justify-between gap-1">
-                                        <span className="font-mono-tabular font-bold px-1.5 py-0.5 rounded bg-white/85 text-[#171717] flex items-center gap-1">
-                                          {cls.code}
-                                          {cls.isLocked && <Lock className="w-3 h-3" />}
-                                        </span>
-                                        <span className="text-[10.5px] font-semibold px-1.5 py-0.5 rounded bg-black/10 text-[#171717]">
-                                          {isLab ? 'Lab (3h)' : 'Lecture · 50m'}
-                                        </span>
+                                      <div>
+                                        <div className="flex items-center justify-between gap-1.5 text-[11px] text-[#171717]/75 font-mono-tabular">
+                                          <span className="flex items-center gap-1">
+                                            {cls.code}
+                                            {cls.isLocked && <Lock className="w-3 h-3" />}
+                                          </span>
+                                          <span>{isLab ? 'Lab' : 'Lecture'}</span>
+                                        </div>
+                                        <div className="font-semibold text-[13px] leading-snug text-[#171717] mt-0.5 line-clamp-1">
+                                          {cls.title}
+                                        </div>
                                       </div>
 
-                                      <div className="font-semibold text-[12.5px] leading-snug text-[#171717] line-clamp-1">
-                                        {cls.title}
-                                      </div>
-
-                                      <div className="text-[11px] text-[#171717]/80 flex items-center justify-between pt-0.5">
-                                        <span className="font-mono-tabular font-semibold flex items-center gap-1 truncate max-w-[90px]">
-                                          <MapPin className="w-3 h-3 shrink-0" />
+                                      <div className="text-[11px] font-mono-tabular text-[#171717]/80 flex items-center justify-between pt-1.5 border-t border-black/10">
+                                        <span>{slotMeta.period}</span>
+                                        <span className="font-medium truncate max-w-[85px]">
                                           {cls.room}
                                         </span>
-                                        <span className="truncate max-w-[95px]">{cls.prof}</span>
-                                      </div>
-
-                                      <div className="text-[10.5px] font-mono-tabular text-[#171717]/70 flex items-center justify-between border-t border-black/10 pt-1">
-                                        <span>{cls.cohort}</span>
-                                        <span>{slotMeta.period}</span>
                                       </div>
                                     </div>
                                   );

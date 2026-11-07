@@ -102,46 +102,45 @@ export const FeedbackScreen: React.FC<FeedbackScreenProps> = ({ onNavigate }) =>
     : 95;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       {/* =========================================================
-          1. EDITORIAL SERIF PAGE HEADING
+          1. CALM EDITORIAL PAGE HEADING
          ========================================================= */}
-      <header className="flex flex-col lg:flex-row lg:items-end justify-between gap-4 pb-4 border-b border-[#E4E2DA]">
-        <div>
-          <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-md bg-[#B8EEEE] text-[#171717] text-xs font-semibold mb-2">
-            <BarChart3 className="w-3.5 h-3.5" />
-            <span>Schedule Quality & Stakeholder Diagnostics</span>
+      <header className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 pb-6 border-b border-[#E4E2DA]">
+        <div className="space-y-2">
+          <div className="text-xs font-medium text-[#77766F]">
+            Analytics & Optimization · {scheduledSections} Active Sessions
           </div>
           <h1 className="font-serif-editorial text-3xl sm:text-4xl text-[#171717] tracking-tight">
             Schedule Insights
           </h1>
-          <p className="text-xs sm:text-sm text-[#77766F] mt-1 max-w-2xl">
-            Inspect preference satisfaction, conflict validation, daily workload balance, free-time distribution, room utilization, and schedule stability.
+          <p className="text-sm text-[#77766F] max-w-xl">
+            Inspect preference satisfaction, conflict validation, daily workload balance, and saved schedule snapshots.
           </p>
         </div>
 
-        <div className="flex items-center gap-2.5 shrink-0">
+        <div className="flex items-center gap-3 shrink-0">
           <button
             type="button"
             onClick={() => onNavigate('timetables')}
-            className="btn-secondary text-xs h-9"
+            className="btn-secondary text-xs h-10 px-4"
           >
             <Calendar className="w-3.5 h-3.5" />
-            <span>Open My Timetable</span>
+            <span>Open Timetable</span>
           </button>
           <button
             type="button"
             onClick={() => onNavigate('generate')}
-            className="btn-primary text-xs h-9"
+            className="btn-primary text-xs h-10 px-5"
           >
-            <span>Re-Optimize Schedule</span>
+            <span>Re-Optimize</span>
             <ArrowRight className="w-3.5 h-3.5" />
           </button>
         </div>
       </header>
 
       {submitNotice && (
-        <div className="p-3.5 sf-pastel-lime text-xs font-medium flex items-center gap-2">
+        <div className="px-5 py-3.5 sf-pastel-lime rounded-xl text-xs font-medium flex items-center gap-2.5">
           <Check className="w-4 h-4 text-[#171717]" />
           <span>{submitNotice}</span>
         </div>
@@ -150,50 +149,50 @@ export const FeedbackScreen: React.FC<FeedbackScreenProps> = ({ onNavigate }) =>
       {/* =========================================================
           2. TOP 4 PASTEL INSIGHT CARDS (Satisfaction, Conflicts, Stability, Free-Time)
          ========================================================= */}
-      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="sf-pastel-lavender p-5 space-y-2">
-          <div className="flex items-center justify-between text-xs font-semibold text-[#171717]">
-            <span>Preference Satisfaction</span>
+      <section id="insights-analytics" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 scroll-mt-6">
+        <div className="sf-pastel-lavender p-6 space-y-2">
+          <div className="flex items-center justify-between text-xs font-medium text-[#171717]/80">
+            <span>Preference Match</span>
             <Sparkles className="w-4 h-4" />
           </div>
           <div className="font-serif-editorial text-3xl text-[#171717]">94.8%</div>
-          <div className="text-xs text-[#171717]/75">
-            Preferred timing & faculty availability alignment
+          <div className="text-xs text-[#171717]/70">
+            Preferred timing & faculty alignment
           </div>
         </div>
 
-        <div className="sf-pastel-lime p-5 space-y-2">
-          <div className="flex items-center justify-between text-xs font-semibold text-[#171717]">
+        <div className="sf-pastel-lime p-6 space-y-2">
+          <div className="flex items-center justify-between text-xs font-medium text-[#171717]/80">
             <span>Conflict Validation</span>
             <ShieldCheck className="w-4 h-4" />
           </div>
           <div className="font-serif-editorial text-3xl text-[#171717]">
             {conflicts.length} Clashes
           </div>
-          <div className="text-xs text-[#171717]/75">
-            Zero room, cohort, or instructor double-bookings
+          <div className="text-xs text-[#171717]/70">
+            Zero room or cohort double-bookings
           </div>
         </div>
 
-        <div className="sf-pastel-cyan p-5 space-y-2">
-          <div className="flex items-center justify-between text-xs font-semibold text-[#171717]">
-            <span>Free-Time Distribution</span>
+        <div className="sf-pastel-cyan p-6 space-y-2">
+          <div className="flex items-center justify-between text-xs font-medium text-[#171717]/80">
+            <span>Break Protection</span>
             <Clock className="w-4 h-4" />
           </div>
-          <div className="font-serif-editorial text-3xl text-[#171717]">1.8 hrs/day</div>
-          <div className="text-xs text-[#171717]/75">
-            Protected midday lunch & study blocks across cohorts
+          <div className="font-serif-editorial text-3xl text-[#171717]">100%</div>
+          <div className="text-xs text-[#171717]/70">
+            1:00–2:00 PM lunch & 10m breaks
           </div>
         </div>
 
-        <div className="sf-pastel-mustard p-5 space-y-2">
-          <div className="flex items-center justify-between text-xs font-semibold text-[#171717]">
+        <div className="sf-pastel-mustard p-6 space-y-2">
+          <div className="flex items-center justify-between text-xs font-medium text-[#171717]/80">
             <span>Schedule Stability</span>
             <Lock className="w-4 h-4" />
           </div>
           <div className="font-serif-editorial text-3xl text-[#171717]">{stabilityScore}%</div>
-          <div className="text-xs text-[#171717]/75">
-            {pinnedSections} pinned sections locked · {scheduledSections} placed
+          <div className="text-xs text-[#171717]/70">
+            {pinnedSections} pinned · {scheduledSections} placed
           </div>
         </div>
       </section>
@@ -201,7 +200,7 @@ export const FeedbackScreen: React.FC<FeedbackScreenProps> = ({ onNavigate }) =>
       {/* =========================================================
           3. DAILY WORKLOAD & FREE-TIME DISTRIBUTION + ROOM UTILIZATION
          ========================================================= */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      <div id="insights-optimization" className="grid grid-cols-1 lg:grid-cols-12 gap-8 scroll-mt-6">
         {/* Daily Workload & Free-Time Distribution (7 Cols) */}
         <div className="lg:col-span-7 sf-card-white p-6 space-y-5">
           <div className="border-b border-[#E4E2DA] pb-3.5 flex items-center justify-between">
