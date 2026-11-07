@@ -311,6 +311,65 @@ export const FeedbackScreen: React.FC<FeedbackScreenProps> = ({ onNavigate }) =>
       </div>
 
       {/* =========================================================
+          3B. SCHEDULE HISTORY & SAVED OPTIMIZATION SCENARIOS
+         ========================================================= */}
+      <section id="insights-history" className="sf-card-white p-6 space-y-4 scroll-mt-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#E4E2DA] pb-3.5">
+          <div>
+            <h2 className="font-serif-editorial text-2xl text-[#171717]">
+              Schedule History & Optimization Snapshots
+            </h2>
+            <p className="text-xs text-[#77766F]">
+              Archived solver runs and published timetable baselines for the current academic term
+            </p>
+          </div>
+          <span className="text-xs font-mono-tabular px-2.5 py-1 rounded-md bg-[#F7F6EF] border border-[#E4E2DA] text-[#171717]">
+            {store.scenarios.length} saved versions
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {store.scenarios.map(sc => (
+            <div
+              key={sc.id}
+              className="p-4 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] flex flex-col justify-between gap-3"
+            >
+              <div className="space-y-1">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-semibold text-sm text-[#171717]">{sc.name}</span>
+                  <span
+                    className={`text-[10.5px] font-semibold uppercase px-2 py-0.5 rounded ${
+                      sc.status === 'published' ? 'bg-[#B7F77C] text-[#171717]' : 'bg-[#B8EEEE] text-[#171717]'
+                    }`}
+                  >
+                    {sc.status}
+                  </span>
+                </div>
+                <p className="text-xs text-[#77766F]">
+                  Version {sc.version} · Authored by {sc.author} · {new Date(sc.createdAt).toLocaleDateString()}
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-[#E4E2DA] text-xs font-mono-tabular">
+                <span className="text-[#171717] font-semibold">
+                  Satisfaction: {sc.metrics.satisfactionScore}%
+                </span>
+                <span className="text-[#77766F]">
+                  {sc.metrics.clashCount} conflicts · {sc.metrics.roomUtilizationPercent}% room util
+                </span>
+                <button
+                  type="button"
+                  onClick={() => onNavigate('timetables')}
+                  className="text-xs font-semibold text-[#171717] underline hover:opacity-75 cursor-pointer"
+                >
+                  Inspect Timetable
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* =========================================================
           4. STAKEHOLDER FEEDBACK & SCHEDULE POLICY PROPOSALS
          ========================================================= */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
