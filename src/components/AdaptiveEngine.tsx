@@ -63,7 +63,7 @@ export const AdaptiveEngine: React.FC<AdaptiveEngineProps> = ({
     setResolvingConflict(true);
     setResolutionLog([
       `[0.00ms] Injected: ${type.toUpperCase()} into constraint pipeline`,
-      `[0.12ms] Flagged: Hard collision detected in sub-matrix D-4`,
+      `[0.12ms] Hard collision detected in sub-matrix D-4`,
       `[0.45ms] Evaluating 1,280 adjacent chromosome permutations...`
     ]);
 
@@ -72,10 +72,10 @@ export const AdaptiveEngine: React.FC<AdaptiveEngineProps> = ({
         ...prev,
         `[0.88ms] Found Pareto-optimal slot swap: Hall B3 -> Annex 102`,
         `[1.14ms] Validated zero cascade violations across 18 enrolled cohorts`,
-        `[1.32ms] EQUILIBRIUM_RESTORED: 100% collision-free guarantee reinstated.`
+        `[1.32ms] Equilibrium restored: 100% collision-free guarantee reinstated.`
       ]);
       setResolvingConflict(false);
-    }, 850);
+    }, 700);
   };
 
   const resetConflict = () => {
@@ -84,7 +84,7 @@ export const AdaptiveEngine: React.FC<AdaptiveEngineProps> = ({
   };
 
   return (
-    <div className="min-h-screen bg-[#fbf8fc] text-[#1f1b20] font-sans antialiased">
+    <div className="min-h-screen bg-app text-primary antialiased">
       {!hideNav && (
         <SmartGridNav 
           activeRoute="adaptive-engine" 
@@ -95,141 +95,126 @@ export const AdaptiveEngine: React.FC<AdaptiveEngineProps> = ({
         />
       )}
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-10">
-        {/* Header Hero */}
-        <section className="p-6 sm:p-8 bg-gradient-to-br from-[#fff7f2] via-white to-[#faf4fc] border border-[#ece6ed] rounded-2xl shadow-sm space-y-3 relative overflow-hidden">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white border border-[#ece6ed] text-[10px] font-mono font-bold text-[#9c4126] uppercase tracking-wider shadow-xs">
-            <Cpu className="w-3.5 h-3.5 text-[#f27438]" />
-            Deterministic Solver Core • Mathematical Architecture
-          </div>
-          <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black text-[#1f1b20] tracking-tight leading-tight">
-            High-Order Polynomial Constraint Satisfaction Engine
-          </h1>
-          <p className="text-xs sm:text-sm text-[#655d69] leading-relaxed max-w-3xl">
-            SmartGrid AI replaces heuristic trial-and-error with a hybrid deterministic SAT-solver and genetic algorithm. It evaluates trillions of timetable permutations across campus buildings, student commute graphs, and faculty contracts in under two seconds.
+      <div className="max-w-[1360px] mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+        {/* Page Title & Subtitle */}
+        <div className="pb-4 border-b border-border">
+          <h1 className="text-2xl sm:text-[30px] font-semibold text-primary tracking-tight">Optimization</h1>
+          <p className="text-[15px] text-secondary mt-1">
+            Polynomial constraint satisfaction engine and convergence architecture
           </p>
-        </section>
+        </div>
 
-        {/* 4-Stage Flow Pipeline */}
-        <section className="bg-white border border-[#ece6ed] rounded-2xl p-6 lg:p-8 shadow-sm space-y-8">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-[#ece6ed] pb-4">
+        {/* 4-Stage Pipeline Flow in ONE Bordered Container */}
+        <section className="bg-surface border border-border rounded-lg overflow-hidden">
+          <div className="px-6 py-4 border-b border-border flex items-center justify-between">
             <div>
-              <span className="text-[11px] font-mono uppercase tracking-widest text-[#9c4126] font-bold">End-to-End Pipeline</span>
-              <h2 className="text-xl font-black text-[#1f1b20] mt-0.5">Constraint Propagation Flow</h2>
+              <h2 className="text-base font-semibold text-primary">Constraint propagation flow</h2>
+              <p className="text-[13px] text-secondary mt-0.5">Four-stage heuristic and deterministic constraint resolution</p>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-[#eefcf2] text-xs font-mono font-bold text-[#18794e] border border-[#18794e]/20 shadow-xs">
-                <ShieldCheck className="w-3.5 h-3.5 text-[#18794e]" />
-                DETERMINISTIC_PARITY_ACTIVE
-              </span>
-            </div>
+            <span className="text-[13px] font-mono text-success flex items-center gap-2 font-medium">
+              <ShieldCheck className="w-4 h-4" />
+              <span>PARITY_ACTIVE</span>
+            </span>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 sm:gap-6">
-            <div className="bg-gradient-to-br from-[#faf4fc] via-white to-[#f4eaf7] border border-[#ece6ed] hover:border-[#dcd9dd] rounded-2xl p-6 space-y-3 transition-all duration-300 shadow-xs card-lift">
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#3b1e4a] to-[#7209b7] text-white flex items-center justify-center font-mono text-xs font-bold shadow-xs">
-                01
-              </div>
-              <h3 className="text-base font-bold text-[#1f1b20]">Hard SAT Boundaries</h3>
-              <p className="text-xs text-[#655d69] leading-relaxed">
-                Zero-tolerance bounding: Instructor non-overlap, room physical occupancy caps, laboratory specialized equipment prerequisites.
+          <div className="grid grid-cols-1 md:grid-cols-4 divide-y md:divide-y-0 md:divide-x divide-border">
+            <div className="p-5 sm:p-6 space-y-2">
+              <div className="text-[14px] font-mono font-medium text-brand">01</div>
+              <h3 className="text-[15px] font-semibold text-primary">Hard SAT boundaries</h3>
+              <p className="text-[14px] text-secondary leading-relaxed">
+                Zero-tolerance bounding: instructor non-overlap, room physical occupancy caps, and required lab equipment.
               </p>
-              <div className="text-xs font-mono text-[#7209b7] font-bold bg-[#f4ecf8] px-2.5 py-1 rounded w-fit">Zero-Tolerance Pass</div>
+              <div className="text-[13px] font-mono text-secondary pt-1">Zero-tolerance pass</div>
             </div>
 
-            <div className="bg-gradient-to-br from-[#fff7f2] via-white to-[#fff0eb] border border-[#ece6ed] hover:border-[#dcd9dd] rounded-2xl p-6 space-y-3 transition-all duration-300 shadow-xs card-lift">
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#f27438] to-[#ea580c] text-white flex items-center justify-center font-mono text-xs font-bold shadow-xs">
-                02
-              </div>
-              <h3 className="text-base font-bold text-[#1f1b20]">Circadian Chrono-Map</h3>
-              <p className="text-xs text-[#655d69] leading-relaxed">
-                Weighting cognitive load curves against cohort chronotypes and transit buffer steps to prevent 8:00 AM rush hour exhaustion.
+            <div className="p-5 sm:p-6 space-y-2">
+              <div className="text-[14px] font-mono font-medium text-brand">02</div>
+              <h3 className="text-[15px] font-semibold text-primary">Circadian chrono-map</h3>
+              <p className="text-[14px] text-secondary leading-relaxed">
+                Weighting cognitive load curves against cohort chronotypes and transit buffer steps to prevent early rush fatigue.
               </p>
-              <div className="text-xs font-mono text-[#ea580c] font-bold bg-[#fff7ed] px-2.5 py-1 rounded w-fit">Weighted Pareto Cost</div>
+              <div className="text-[13px] font-mono text-secondary pt-1">Weighted Pareto cost</div>
             </div>
 
-            <div className="bg-gradient-to-br from-[#fff5f0] via-white to-[#ffede5] border border-[#ece6ed] hover:border-[#dcd9dd] rounded-2xl p-6 space-y-3 transition-all duration-300 shadow-xs card-lift">
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#9c4126] to-[#c84c16] text-white flex items-center justify-center font-mono text-xs font-bold shadow-xs">
-                03
-              </div>
-              <h3 className="text-base font-bold text-[#1f1b20]">Genetic Permutations</h3>
-              <p className="text-xs text-[#655d69] leading-relaxed">
-                Multi-threaded chromosome crossover and adaptive mutations converging across 4,000+ candidate semester representations.
+            <div className="p-5 sm:p-6 space-y-2">
+              <div className="text-[14px] font-mono font-medium text-brand">03</div>
+              <h3 className="text-[15px] font-semibold text-primary">Genetic permutations</h3>
+              <p className="text-[14px] text-secondary leading-relaxed">
+                Multi-threaded chromosome crossover and adaptive mutations converging across 4,000+ candidate semester models.
               </p>
-              <div className="text-xs font-mono text-[#9c4126] font-bold bg-[#ffebe2] px-2.5 py-1 rounded w-fit">1.24ms Convergence</div>
+              <div className="text-[13px] font-mono text-secondary pt-1">1.24ms convergence</div>
             </div>
 
-            <div className="bg-gradient-to-br from-[#f1fbf5] via-white to-[#e8f7ee] border border-[#ece6ed] hover:border-[#dcd9dd] rounded-2xl p-6 space-y-3 transition-all duration-300 shadow-xs card-lift">
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#18794e] to-[#25a26c] text-white flex items-center justify-center font-mono text-xs font-bold shadow-xs">
-                04
-              </div>
-              <h3 className="text-base font-bold text-[#1f1b20]">Equilibrium Matrix</h3>
-              <p className="text-xs text-[#655d69] leading-relaxed">
-                Final master timetable lock, room thermal heating conservation pass, and instant iCal / SIS sync.
+            <div className="p-5 sm:p-6 space-y-2">
+              <div className="text-[14px] font-mono font-medium text-brand">04</div>
+              <h3 className="text-[15px] font-semibold text-primary">Equilibrium matrix</h3>
+              <p className="text-[14px] text-secondary leading-relaxed">
+                Final master timetable lock, room thermal heating conservation pass, and instant iCal / SIS synchronization.
               </p>
-              <div className="text-xs font-mono text-[#18794e] font-bold bg-[#e6f9ed] px-2.5 py-1 rounded w-fit">Ready for Deployment</div>
+              <div className="text-[13px] font-mono text-success font-medium pt-1">Deployed</div>
             </div>
           </div>
         </section>
 
-        {/* Live Genetic Solver Sandbox */}
-        <section className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-          <div className="lg:col-span-7 bg-white border border-[#ece6ed] rounded-2xl p-6 lg:p-8 shadow-sm space-y-6">
-            <div className="flex items-center justify-between border-b border-[#ece6ed] pb-3">
+        {/* 2-Column: Live Solver Sandbox & Fault Arbitration */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+          {/* Genetic Algorithm Sandbox */}
+          <section className="lg:col-span-7 bg-surface border border-border rounded-lg p-6 space-y-6">
+            <div className="flex items-center justify-between border-b border-border pb-4">
               <div>
-                <span className="text-[11px] font-mono uppercase tracking-widest text-[#9c4126] font-bold">Interactive Sandbox</span>
-                <h3 className="text-base font-bold text-[#1f1b20] mt-0.5">Genetic Algorithm Convergence Simulator</h3>
+                <h3 className="text-base font-semibold text-primary">Genetic convergence simulator</h3>
+                <p className="text-[13px] text-secondary mt-0.5">Simulate live generational epochs and fitness quotient</p>
               </div>
               <button 
                 onClick={() => setIsRunningSim(!isRunningSim)}
-                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all shadow-md active:scale-95 cursor-pointer ${
+                className={`h-[38px] px-3.5 rounded-md text-[14px] font-medium transition-colors shadow-xs flex items-center gap-2 cursor-pointer ${
                   isRunningSim 
-                    ? 'bg-[#18794e] text-white' 
-                    : 'bg-gradient-to-r from-[#9c4126] to-[#b3401f] text-white'
+                    ? 'bg-emerald-600 hover:bg-emerald-700 text-white' 
+                    : 'bg-brand hover:bg-brand-hover text-white'
                 }`}
               >
                 {isRunningSim ? (
                   <>
-                    <RefreshCw className="w-3.5 h-3.5 animate-spin text-white" />
-                    Simulating...
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span>Simulating...</span>
                   </>
                 ) : (
                   <>
-                    <Play className="w-3.5 h-3.5 fill-white" />
-                    Start Convergence
+                    <Play className="w-4 h-4 fill-white" />
+                    <span>Run simulation</span>
                   </>
                 )}
               </button>
             </div>
 
-            {/* Telemetry Metric Cards */}
-            <div className="grid grid-cols-3 gap-3">
-              <div className="p-4 bg-gradient-to-br from-[#faf4fc] via-white to-[#f4eaf7] rounded-xl border border-[#ece6ed] text-center shadow-xs card-lift">
-                <div className="text-2xl font-black font-mono text-[#3b1e4a]">{generation}</div>
-                <div className="text-[10px] font-mono uppercase text-[#7209b7] mt-1 font-bold">Generation Epoch</div>
+            {/* Telemetry Stat Strip */}
+            <div className="grid grid-cols-3 divide-x divide-border border border-border rounded-lg bg-surface text-center">
+              <div className="p-4">
+                <div className="text-[32px] font-semibold font-mono tracking-tight text-primary tabular-nums">{generation}</div>
+                <div className="text-[13px] text-secondary mt-0.5">Generation epoch</div>
               </div>
-              <div className="p-4 bg-gradient-to-br from-[#f1fbf5] via-white to-[#e8f7ee] rounded-xl border border-[#ece6ed] text-center shadow-xs card-lift">
-                <div className="text-2xl font-black font-mono text-[#18794e]">{fitnessScore}%</div>
-                <div className="text-[10px] font-mono uppercase text-[#18794e] mt-1 font-bold">Fitness Quotient</div>
+              <div className="p-4">
+                <div className="text-[32px] font-semibold font-mono tracking-tight text-success tabular-nums">{fitnessScore}%</div>
+                <div className="text-[13px] text-secondary mt-0.5">Fitness quotient</div>
               </div>
-              <div className="p-4 bg-gradient-to-br from-[#fff7f2] via-white to-[#fff0eb] rounded-xl border border-[#ece6ed] text-center shadow-xs card-lift">
-                <div className="text-2xl font-black font-mono text-[#9c4126]">{activeChromosomes}</div>
-                <div className="text-[10px] font-mono uppercase text-[#9c4126] mt-1 font-bold">Candidate Pool</div>
+              <div className="p-4">
+                <div className="text-[32px] font-semibold font-mono tracking-tight text-primary tabular-nums">{activeChromosomes}</div>
+                <div className="text-[13px] text-secondary mt-0.5">Candidate pool</div>
               </div>
             </div>
 
-            {/* Visual Convergence Waveform */}
+            {/* Convergence Chart */}
             <div className="space-y-2">
-              <div className="flex justify-between text-xs font-bold text-[#1f1b20]">
-                <span>Pareto Surface Convergence Curve</span>
-                <span className="font-mono text-[#18794e] bg-[#eaf8f0] px-2 py-0.5 rounded font-bold border border-[#ece6ed]">Delta: 0.00012 ε</span>
+              <div className="flex justify-between text-[14px]">
+                <span className="font-medium text-primary">Pareto convergence history</span>
+                <span className="font-mono text-[13px] text-success font-medium">Δ 0.00012 ε</span>
               </div>
-              <div className="h-24 bg-gradient-to-b from-[#fdfbfd] to-[#fbf8fc] border border-[#ece6ed] rounded-xl p-3 flex items-end gap-1.5 overflow-hidden">
+              <div className="h-24 bg-subtle border border-border rounded-md p-2.5 flex items-end gap-1.5 overflow-hidden">
                 {[68, 72, 75, 78, 82, 85, 87, 90, 91, 93, 94, 96, 97, 98, 98.4, 99.1, 99.4, 99.8, fitnessScore].map((val, idx) => (
-                  <div key={idx} className="flex-1 flex flex-col items-center gap-1 h-full justify-end">
+                  <div key={idx} className="flex-1 flex flex-col items-center justify-end h-full">
                     <div 
-                      className={`w-full rounded-t-sm transition-all duration-300 ${
-                        idx === 18 ? 'bg-gradient-to-t from-[#9c4126] to-[#f27438]' : 'bg-[#3b1e4a]/75 hover:bg-[#3b1e4a]'
+                      className={`w-full rounded-xs transition-all duration-200 ${
+                        idx === 18 ? 'bg-brand' : 'bg-slate-300 dark:bg-slate-600'
                       }`}
                       style={{ height: `${(val / 100) * 100}%` }}
                       title={`Epoch ${generation - (18 - idx)}: ${val}%`}
@@ -237,18 +222,18 @@ export const AdaptiveEngine: React.FC<AdaptiveEngineProps> = ({
                   </div>
                 ))}
               </div>
-              <div className="flex justify-between text-[10px] font-mono text-[#7c747f]">
-                <span>Initial Seed (T-0)</span>
-                <span>Epoch {generation} (Current Local Optimal)</span>
+              <div className="flex justify-between text-[13px] font-mono text-secondary">
+                <span>Seed (T-0)</span>
+                <span>Epoch {generation} (Current optimal)</span>
               </div>
             </div>
 
-            {/* Slider Parameters */}
-            <div className="space-y-3 pt-2">
-              <div>
-                <div className="flex justify-between text-xs font-bold text-[#1f1b20] mb-1">
-                  <span>Mutation Probability:</span>
-                  <span className="font-mono text-[#9c4126] font-bold">{(mutationRate * 100).toFixed(1)}%</span>
+            {/* Parameters */}
+            <div className="space-y-4 pt-2 border-t border-border">
+              <div className="space-y-2">
+                <div className="flex justify-between text-[14px]">
+                  <span className="text-primary font-medium">Mutation probability:</span>
+                  <span className="font-mono text-primary font-medium">{(mutationRate * 100).toFixed(1)}%</span>
                 </div>
                 <input 
                   type="range" 
@@ -256,14 +241,14 @@ export const AdaptiveEngine: React.FC<AdaptiveEngineProps> = ({
                   max="15" 
                   value={mutationRate * 100}
                   onChange={e => setMutationRate(Number(e.target.value) / 100)}
-                  className="w-full h-1.5"
+                  className="w-full h-2 cursor-pointer"
                 />
               </div>
 
-              <div>
-                <div className="flex justify-between text-xs font-bold text-[#1f1b20] mb-1">
-                  <span>Crossover Uniformity (Blend Alpha):</span>
-                  <span className="font-mono text-[#9c4126] font-bold">{(crossoverRate * 100).toFixed(0)}%</span>
+              <div className="space-y-2">
+                <div className="flex justify-between text-[14px]">
+                  <span className="text-primary font-medium">Crossover uniformity (blend alpha):</span>
+                  <span className="font-mono text-primary font-medium">{(crossoverRate * 100).toFixed(0)}%</span>
                 </div>
                 <input 
                   type="range" 
@@ -271,19 +256,18 @@ export const AdaptiveEngine: React.FC<AdaptiveEngineProps> = ({
                   max="98" 
                   value={crossoverRate * 100}
                   onChange={e => setCrossoverRate(Number(e.target.value) / 100)}
-                  className="w-full h-1.5"
+                  className="w-full h-2 cursor-pointer"
                 />
               </div>
             </div>
-          </div>
+          </section>
 
           {/* Conflict Arbitration Test Bench */}
-          <div className="lg:col-span-5 bg-white border border-[#ece6ed] rounded-2xl p-6 lg:p-8 shadow-sm space-y-6">
-            <div className="border-b border-[#ece6ed] pb-3">
-              <span className="text-[11px] font-mono uppercase tracking-widest text-[#9c4126] font-bold">Stress Test Bench</span>
-              <h3 className="text-base font-black text-[#1f1b20] mt-0.5">Real-Time Conflict Arbitration</h3>
-              <p className="text-xs text-[#655d69] mt-1">
-                Inject realistic campus scheduling faults and witness the deterministic auto-arbitration engine solve them.
+          <section className="lg:col-span-5 bg-surface border border-border rounded-lg p-6 space-y-5">
+            <div className="border-b border-border pb-4">
+              <h3 className="text-base font-semibold text-primary">Conflict arbitration test bench</h3>
+              <p className="text-[13px] text-secondary mt-0.5">
+                Inject scheduling collisions to verify automatic sub-second resolution
               </p>
             </div>
 
@@ -291,135 +275,81 @@ export const AdaptiveEngine: React.FC<AdaptiveEngineProps> = ({
               <button 
                 onClick={() => handleResolveConflict('prof_overlap')}
                 disabled={resolvingConflict}
-                className="w-full text-left p-3.5 rounded-xl border border-[#ece6ed] hover:border-[#dcd9dd] bg-gradient-to-r from-white to-[#fffaf8] hover:bg-[#fff5f0] transition-all flex items-center justify-between group cursor-pointer card-lift"
+                className="w-full text-left p-3.5 rounded-md border border-border hover:bg-subtle transition-colors flex items-center justify-between cursor-pointer group text-[14px]"
               >
                 <div>
-                  <div className="text-xs font-bold text-[#1f1b20] group-hover:text-[#9c4126]">
-                    Fault 01: Faculty Double-Book
+                  <div className="font-medium text-primary group-hover:text-brand">
+                    Inject: Faculty double-book
                   </div>
-                  <div className="text-[11px] text-[#7c747f]">
-                    Dr. Evans assigned to Hall B3 and Lab 2 at 10:00 AM
+                  <div className="text-[13px] text-secondary mt-0.5">
+                    Force 2 conflicting sections into same instructor slot
                   </div>
                 </div>
-                <Zap className="w-4 h-4 text-[#9c4126] shrink-0" />
+                <ArrowRight className="w-4 h-4 text-secondary group-hover:text-primary shrink-0" />
               </button>
 
               <button 
                 onClick={() => handleResolveConflict('room_surge')}
                 disabled={resolvingConflict}
-                className="w-full text-left p-3.5 rounded-xl border border-[#ece6ed] hover:border-[#dcd9dd] bg-gradient-to-r from-white to-[#fffaf8] hover:bg-[#fff5f0] transition-all flex items-center justify-between group cursor-pointer card-lift"
+                className="w-full text-left p-3.5 rounded-md border border-border hover:bg-subtle transition-colors flex items-center justify-between cursor-pointer group text-[14px]"
               >
                 <div>
-                  <div className="text-xs font-bold text-[#1f1b20] group-hover:text-[#9c4126]">
-                    Fault 02: Sudden Capacity Overflow
+                  <div className="font-medium text-primary group-hover:text-brand">
+                    Inject: Facility surge (overcapacity)
                   </div>
-                  <div className="text-[11px] text-[#7c747f]">
-                    Bio-Year1 enrolment exceeds Lab 4 fire safety by 18 seats
+                  <div className="text-[13px] text-secondary mt-0.5">
+                    Exceed Hall B3 seating cap by 34 students
                   </div>
                 </div>
-                <Zap className="w-4 h-4 text-[#9c4126] shrink-0" />
+                <ArrowRight className="w-4 h-4 text-secondary group-hover:text-primary shrink-0" />
               </button>
 
               <button 
                 onClick={() => handleResolveConflict('lab_hazard')}
                 disabled={resolvingConflict}
-                className="w-full text-left p-3.5 rounded-xl border border-[#ece6ed] hover:border-[#dcd9dd] bg-gradient-to-r from-white to-[#fffaf8] hover:bg-[#fff5f0] transition-all flex items-center justify-between group cursor-pointer card-lift"
+                className="w-full text-left p-3.5 rounded-md border border-border hover:bg-subtle transition-colors flex items-center justify-between cursor-pointer group text-[14px]"
               >
                 <div>
-                  <div className="text-xs font-bold text-[#1f1b20] group-hover:text-[#9c4126]">
-                    Fault 03: Transit Buffer Collapse
+                  <div className="font-medium text-primary group-hover:text-brand">
+                    Inject: Cleanroom emergency shutdown
                   </div>
-                  <div className="text-[11px] text-[#7c747f]">
-                    Quad A to Chem Lab B walking time exceeds 10-minute margin
+                  <div className="text-[13px] text-secondary mt-0.5">
+                    Simulate unexpected 48-hour lab maintenance
                   </div>
                 </div>
-                <Zap className="w-4 h-4 text-[#9c4126] shrink-0" />
+                <ArrowRight className="w-4 h-4 text-secondary group-hover:text-primary shrink-0" />
               </button>
             </div>
 
-            {/* Arbitration Terminal */}
-            <div className="bg-[#1f1b20] text-[#fbf8fc] rounded-xl p-4 font-mono text-[11px] space-y-1.5 h-44 overflow-y-auto border border-[#3b1e4a] shadow-inner">
-              <div className="text-[#f27438] font-bold pb-1 border-b border-[#3b1e4a]">
-                // SMARTGRID_ARBITRATION_CONSOLE
-              </div>
-              {resolutionLog.length === 0 ? (
-                <div className="text-[#7c747f] pt-4 text-center">
-                  Select a fault scenario above to trigger the topological conflict propagator.
+            {/* Arbitration Terminal Log */}
+            {resolutionLog.length > 0 && (
+              <div className="space-y-2.5 pt-2 border-t border-border">
+                <div className="flex items-center justify-between text-[13px] text-secondary">
+                  <span>Solver telemetry trace</span>
+                  <button 
+                    onClick={resetConflict}
+                    className="hover:underline cursor-pointer font-medium"
+                  >
+                    Clear trace
+                  </button>
                 </div>
-              ) : (
-                resolutionLog.map((log, i) => (
-                  <div key={i} className={`${log.includes('EQUILIBRIUM') ? 'text-[#18794e] font-bold' : log.includes('Flagged') ? 'text-[#f27438]' : 'text-[#ece6ed]'}`}>
-                    {log}
-                  </div>
-                ))
-              )}
-            </div>
-
-            {conflictScenario !== 'none' && (
-              <div className="flex justify-end">
-                <button 
-                  onClick={resetConflict}
-                  className="text-xs font-bold uppercase tracking-wider text-[#9c4126] hover:underline flex items-center gap-1 cursor-pointer"
-                >
-                  <RotateCcw className="w-3.5 h-3.5" />
-                  Clear Test Bench
-                </button>
+                <div className="bg-subtle rounded-md p-3.5 font-mono text-[13px] text-primary space-y-1.5 border border-border max-h-44 overflow-y-auto leading-relaxed">
+                  {resolutionLog.map((log, i) => (
+                    <div key={i}>
+                      {log}
+                    </div>
+                  ))}
+                  {resolvingConflict && (
+                    <div className="text-secondary animate-pulse">
+                      &gt; Computing Pareto swap...
+                    </div>
+                  )}
+                </div>
               </div>
             )}
-          </div>
-        </section>
-
-        {/* Spatial & Thermal Campus Footprint Card */}
-        <section className="bg-white border border-[#ece6ed] rounded-2xl p-6 lg:p-8 shadow-sm space-y-6">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div>
-              <span className="text-[11px] font-mono uppercase tracking-widest text-[#9c4126] font-bold">Resource Optimization</span>
-              <h2 className="text-xl sm:text-2xl font-black text-[#1f1b20]">Campus Thermal & Spatial Compaction</h2>
-              <p className="text-xs text-[#655d69] mt-0.5">
-                The Adaptive Engine groups consecutive courses into unified building wings, allowing dormant structures to power down HVAC systems.
-              </p>
-            </div>
-            <div className="text-left md:text-right">
-              <div className="text-2xl font-black font-mono text-[#18794e]">-34.1 MWh</div>
-              <div className="text-[10px] font-mono uppercase text-[#7c747f] font-bold">Weekly Energy Conserved</div>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="p-4 rounded-xl border border-[#ece6ed] hover:border-[#dcd9dd] bg-gradient-to-br from-[#f1fbf5] via-white to-[#e8f7ee] shadow-xs card-lift">
-              <div className="text-xs font-bold text-[#1f1b20]">Science Quad Wing C</div>
-              <div className="text-[11px] text-[#7c747f] mt-1 font-mono">Utilization: 96.4%</div>
-              <div className="w-full bg-[#ece6ed] rounded-full h-1.5 mt-2 overflow-hidden">
-                <div className="bg-[#18794e] h-1.5 rounded-full" style={{ width: '96.4%' }}></div>
-              </div>
-            </div>
-
-            <div className="p-4 rounded-xl border border-[#ece6ed] hover:border-[#dcd9dd] bg-gradient-to-br from-[#f1fbf5] via-white to-[#e8f7ee] shadow-xs card-lift">
-              <div className="text-xs font-bold text-[#1f1b20]">Engineering Hall 1</div>
-              <div className="text-[11px] text-[#7c747f] mt-1 font-mono">Utilization: 92.1%</div>
-              <div className="w-full bg-[#ece6ed] rounded-full h-1.5 mt-2 overflow-hidden">
-                <div className="bg-[#18794e] h-1.5 rounded-full" style={{ width: '92.1%' }}></div>
-              </div>
-            </div>
-
-            <div className="p-4 rounded-xl border border-[#ece6ed] hover:border-[#dcd9dd] bg-gradient-to-br from-[#fff7f2] via-white to-[#fff0eb] shadow-xs card-lift">
-              <div className="text-xs font-bold text-[#1f1b20]">Humanities Annex B</div>
-              <div className="text-[11px] text-[#7c747f] mt-1 font-mono">Dormant Mode: 14:00 - 18:00</div>
-              <div className="w-full bg-[#ece6ed] rounded-full h-1.5 mt-2 overflow-hidden">
-                <div className="bg-[#9c4126] h-1.5 rounded-full" style={{ width: '40%' }}></div>
-              </div>
-            </div>
-
-            <div className="p-4 rounded-xl border border-[#ece6ed] hover:border-[#dcd9dd] bg-gradient-to-br from-[#faf4fc] via-white to-[#f4eaf7] shadow-xs card-lift">
-              <div className="text-xs font-bold text-[#1f1b20]">Biomedical Cleanroom Lab</div>
-              <div className="text-[11px] text-[#7c747f] mt-1 font-mono">Filtered Cycles Optimized</div>
-              <div className="w-full bg-[#ece6ed] rounded-full h-1.5 mt-2 overflow-hidden">
-                <div className="bg-[#3b1e4a] h-1.5 rounded-full" style={{ width: '88%' }}></div>
-              </div>
-            </div>
-          </div>
-        </section>
-      </main>
+          </section>
+        </div>
+      </div>
     </div>
   );
 };

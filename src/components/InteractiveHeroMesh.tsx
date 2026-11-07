@@ -1,8 +1,8 @@
 import React, { useEffect, useRef } from 'react';
 
 /**
- * Realistic autonomous fluid harmonic wave canvas with high-DPI rendering,
- * harmonic intersection nodes, and fluid atmospheric lighting.
+ * Clean, subtle schematic vector grid canvas for B2B SaaS hero.
+ * Renders understated coordinate lines and subtle interactive intersection points.
  */
 export const InteractiveHeroMesh: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -15,7 +15,7 @@ export const InteractiveHeroMesh: React.FC = () => {
 
     let animationFrameId: number;
     let cssWidth = canvas.parentElement?.clientWidth || window.innerWidth;
-    let cssHeight = canvas.parentElement?.clientHeight || 600;
+    let cssHeight = canvas.parentElement?.clientHeight || 400;
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
 
     const updateSize = () => {
@@ -29,205 +29,77 @@ export const InteractiveHeroMesh: React.FC = () => {
 
     updateSize();
 
-    // Mouse influence with gentle spring damping
     const mouse = {
-      x: cssWidth * 0.5,
-      y: cssHeight * 0.5,
-      targetX: cssWidth * 0.5,
-      targetY: cssHeight * 0.5
+      x: -1000,
+      y: -1000
     };
 
     const handlePointerMove = (e: MouseEvent) => {
       const rect = canvas.getBoundingClientRect();
-      mouse.targetX = e.clientX - rect.left;
-      mouse.targetY = e.clientY - rect.top;
+      mouse.x = e.clientX - rect.left;
+      mouse.y = e.clientY - rect.top;
     };
 
-    const handleResize = () => {
-      updateSize();
+    const handlePointerLeave = () => {
+      mouse.x = -1000;
+      mouse.y = -1000;
     };
 
-    window.addEventListener('resize', handleResize);
+    window.addEventListener('resize', updateSize);
     const parent = canvas.parentElement;
     if (parent) {
       parent.addEventListener('mousemove', handlePointerMove);
+      parent.addEventListener('mouseleave', handlePointerLeave);
     }
 
-    // Wave parameters: layered harmonic ribbons with refined terracotta and plum tones
-    const waves = [
-      {
-        baseY: 0.52,
-        amplitude: 44,
-        frequency: 0.0035,
-        speed: 0.008,
-        offset: 0,
-        gradient: ['rgba(59, 30, 74, 0.08)', 'rgba(156, 65, 38, 0.04)', 'rgba(251, 248, 252, 0)'],
-        stroke: 'rgba(59, 30, 74, 0.22)',
-        lineWidth: 1.5,
-        nodes: true
-      },
-      {
-        baseY: 0.60,
-        amplitude: 36,
-        frequency: 0.0042,
-        speed: 0.011,
-        offset: 2.1,
-        gradient: ['rgba(156, 65, 38, 0.07)', 'rgba(242, 116, 56, 0.03)', 'rgba(251, 248, 252, 0)'],
-        stroke: 'rgba(156, 65, 38, 0.18)',
-        lineWidth: 1.25,
-        nodes: false
-      },
-      {
-        baseY: 0.68,
-        amplitude: 48,
-        frequency: 0.003,
-        speed: 0.007,
-        offset: 4.4,
-        gradient: ['rgba(59, 30, 74, 0.06)', 'rgba(101, 93, 105, 0.02)', 'rgba(251, 248, 252, 0)'],
-        stroke: 'rgba(59, 30, 74, 0.14)',
-        lineWidth: 1.0,
-        nodes: true
-      },
-      {
-        baseY: 0.44,
-        amplitude: 28,
-        frequency: 0.005,
-        speed: 0.013,
-        offset: 1.2,
-        gradient: ['rgba(242, 116, 56, 0.05)', 'rgba(59, 30, 74, 0.02)', 'rgba(251, 248, 252, 0)'],
-        stroke: 'rgba(242, 116, 56, 0.16)',
-        lineWidth: 1.0,
-        nodes: false
-      }
-    ];
-
-    let time = 0;
+    const gridSize = 40;
 
     const render = () => {
-      time += 1;
-
-      // Mouse smooth interpolation
-      mouse.x += (mouse.targetX - mouse.x) * 0.04;
-      mouse.y += (mouse.targetY - mouse.y) * 0.04;
-
       ctx.clearRect(0, 0, cssWidth, cssHeight);
 
-      // Subtle, realistic volumetric atmospheric lighting
-      const lightX = cssWidth * 0.5 + Math.sin(time * 0.006) * (cssWidth * 0.22) + (mouse.x - cssWidth * 0.5) * 0.15;
-      const lightY = cssHeight * 0.35 + Math.cos(time * 0.005) * 35 + (mouse.y - cssHeight * 0.5) * 0.15;
+      const isDark = document.documentElement.classList.contains('dark') || 
+        window.matchMedia('(prefers-color-scheme: dark)').matches;
 
-      const ambientLight = ctx.createRadialGradient(
-        lightX,
-        lightY,
-        25,
-        lightX,
-        lightY,
-        cssWidth * 0.6
-      );
-      ambientLight.addColorStop(0, 'rgba(255, 246, 240, 0.95)');
-      ambientLight.addColorStop(0.35, 'rgba(250, 242, 248, 0.55)');
-      ambientLight.addColorStop(0.7, 'rgba(246, 240, 248, 0.2)');
-      ambientLight.addColorStop(1, 'rgba(251, 248, 252, 0)');
+      const baseLineColor = isDark ? 'rgba(255, 255, 255, 0.04)' : 'rgba(0, 0, 0, 0.04)';
+      const dotColor = isDark ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0, 0, 0, 0.08)';
+      const activeDotColor = 'rgba(15, 118, 110, 0.4)';
 
-      ctx.fillStyle = ambientLight;
-      ctx.fillRect(0, 0, cssWidth, cssHeight);
-
-      // Subtle fine architectural grid matrix lines
-      ctx.strokeStyle = 'rgba(236, 230, 237, 0.5)';
       ctx.lineWidth = 1;
-      const gridSpacing = 64;
-      const gridOffset = (time * 0.15) % gridSpacing;
+      ctx.strokeStyle = baseLineColor;
 
+      // Draw subtle grid lines
       ctx.beginPath();
-      for (let x = gridOffset; x < cssWidth; x += gridSpacing) {
+      for (let x = 0; x <= cssWidth; x += gridSize) {
         ctx.moveTo(x, 0);
         ctx.lineTo(x, cssHeight);
       }
-      for (let y = gridOffset; y < cssHeight; y += gridSpacing) {
+      for (let y = 0; y <= cssHeight; y += gridSize) {
         ctx.moveTo(0, y);
         ctx.lineTo(cssWidth, y);
       }
       ctx.stroke();
 
-      // Collect points for glowing harmonic node markers
-      const glowNodes: Array<{ x: number; y: number; r: number; color: string }> = [];
+      // Draw subtle intersection dots with gentle mouse proximity highlight
+      for (let x = 0; x <= cssWidth; x += gridSize) {
+        for (let y = 0; y <= cssHeight; y += gridSize) {
+          const dx = mouse.x - x;
+          const dy = mouse.y - y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
 
-      // Draw each autonomous undulating wave ribbon
-      waves.forEach((wave) => {
-        const currentBaseY = cssHeight * wave.baseY;
-        const phase = time * wave.speed + wave.offset;
-
-        // Wave path
-        ctx.beginPath();
-        ctx.moveTo(0, cssHeight);
-        ctx.lineTo(0, currentBaseY);
-
-        const step = 8;
-        for (let x = 0; x <= cssWidth + step; x += step) {
-          const wave1 = Math.sin(x * wave.frequency + phase);
-          const wave2 = Math.cos(x * wave.frequency * 1.8 - phase * 0.6) * 0.45;
-          const wave3 = Math.sin(x * wave.frequency * 0.5 + phase * 1.2) * 0.3;
-
-          const distToMouse = Math.abs(x - mouse.x);
-          const mouseEffect = Math.max(0, 1 - distToMouse / 280) * (mouse.y - currentBaseY) * 0.22;
-
-          const y = currentBaseY + (wave1 + wave2 + wave3) * wave.amplitude + mouseEffect;
-          ctx.lineTo(x, y);
-
-          if (wave.nodes && Math.floor(x) % 192 < step) {
-            glowNodes.push({
-              x,
-              y,
-              r: 2.5 + Math.sin(time * 0.04 + x) * 0.8,
-              color: wave.stroke
-            });
+          if (dist < 120) {
+            const alpha = (1 - dist / 120);
+            ctx.fillStyle = activeDotColor;
+            ctx.beginPath();
+            ctx.arc(x, y, 1.5 + alpha * 1.5, 0, Math.PI * 2);
+            ctx.fill();
+          } else if ((x / gridSize + y / gridSize) % 3 === 0) {
+            ctx.fillStyle = dotColor;
+            ctx.beginPath();
+            ctx.arc(x, y, 1, 0, Math.PI * 2);
+            ctx.fill();
           }
         }
-
-        ctx.lineTo(cssWidth, cssHeight);
-        ctx.closePath();
-
-        // Shaded depth fill
-        const fillGrad = ctx.createLinearGradient(0, currentBaseY - wave.amplitude, 0, cssHeight);
-        fillGrad.addColorStop(0, wave.gradient[0]);
-        fillGrad.addColorStop(0.5, wave.gradient[1]);
-        fillGrad.addColorStop(1, wave.gradient[2]);
-
-        ctx.fillStyle = fillGrad;
-        ctx.fill();
-
-        // Delicate crest contour line
-        ctx.beginPath();
-        for (let x = 0; x <= cssWidth + step; x += step) {
-          const wave1 = Math.sin(x * wave.frequency + phase);
-          const wave2 = Math.cos(x * wave.frequency * 1.8 - phase * 0.6) * 0.45;
-          const wave3 = Math.sin(x * wave.frequency * 0.5 + phase * 1.2) * 0.3;
-
-          const distToMouse = Math.abs(x - mouse.x);
-          const mouseEffect = Math.max(0, 1 - distToMouse / 280) * (mouse.y - currentBaseY) * 0.22;
-
-          const y = currentBaseY + (wave1 + wave2 + wave3) * wave.amplitude + mouseEffect;
-          if (x === 0) ctx.moveTo(x, y);
-          else ctx.lineTo(x, y);
-        }
-
-        ctx.strokeStyle = wave.stroke;
-        ctx.lineWidth = wave.lineWidth;
-        ctx.stroke();
-      });
-
-      // Render glowing harmonic nodes along key wave crests
-      glowNodes.forEach(node => {
-        ctx.beginPath();
-        ctx.arc(node.x, node.y, node.r + 2, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
-        ctx.fill();
-
-        ctx.beginPath();
-        ctx.arc(node.x, node.y, node.r, 0, Math.PI * 2);
-        ctx.fillStyle = node.color;
-        ctx.fill();
-      });
+      }
 
       animationFrameId = requestAnimationFrame(render);
     };
@@ -236,18 +108,19 @@ export const InteractiveHeroMesh: React.FC = () => {
 
     return () => {
       cancelAnimationFrame(animationFrameId);
-      window.removeEventListener('resize', handleResize);
+      window.removeEventListener('resize', updateSize);
       if (parent) {
         parent.removeEventListener('mousemove', handlePointerMove);
+        parent.removeEventListener('mouseleave', handlePointerLeave);
       }
     };
   }, []);
 
   return (
-    <canvas
-      ref={canvasRef}
-      className="absolute inset-0 w-full h-full pointer-events-none -z-10"
-      aria-hidden="true"
+    <canvas 
+      ref={canvasRef} 
+      className="absolute inset-0 w-full h-full pointer-events-auto"
+      style={{ display: 'block' }}
     />
   );
 };

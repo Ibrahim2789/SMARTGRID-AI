@@ -1,35 +1,68 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
-
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { RouteType } from './components/SmartGridNav';
 import { PublicLandingPage } from './components/PublicLandingPage';
 import { AuthPage } from './components/AuthPage';
-import { TimetableMatrix } from './components/TimetableMatrix';
-import { GeneratorStudio } from './components/GeneratorStudio';
-import { AdaptiveEngine } from './components/AdaptiveEngine';
-import { StudentVoice } from './components/StudentVoice';
-import { CaseStudies } from './components/CaseStudies';
-import { InstitutionalPortal } from './components/InstitutionalPortal';
 import { AuthenticatedLayout } from './components/AuthenticatedLayout';
+import { HomeScreen } from './components/HomeScreen';
+import { SetupFlow } from './components/SetupFlow';
+import { GenerateScreen } from './components/GenerateScreen';
+import { TimetableMatrix } from './components/TimetableMatrix';
+import { FeedbackScreen } from './components/FeedbackScreen';
+import { SettingsScreen } from './components/SettingsScreen';
 
 export default function App() {
-  // App opens in unauthenticated state by default
   const [currentUser, setCurrentUser] = useState<{ 
     name: string; 
     role: string; 
     email: string; 
     institution?: string 
-  } | null>(null);
+  } | null>(() => {
+    try {
+      const saved = sessionStorage.getItem('smartgrid_user');
+      return saved ? JSON.parse(saved) : {
+        name: 'Dr. Katherine Reynolds',
+        role: 'Registrar',
+        email: 'k.reynolds@westernpoly.edu',
+        institution: 'Western Polytechnic'
+      };
+    } catch {
+      return {
+        name: 'Dr. Katherine Reynolds',
+        role: 'Registrar',
+        email: 'k.reynolds@westernpoly.edu',
+        institution: 'Western Polytechnic'
+      };
+    }
+  });
 
-  // Auth screen toggle
   const [showAuthPage, setShowAuthPage] = useState(false);
   const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
+  const [setupStep, setSetupStep] = useState(0);
 
-  // Authenticated workspace route
-  const [currentRoute, setCurrentRoute] = useState<RouteType>('portal');
+  // Normalize route strings
+  const normalizeRoute = (r: string): RouteType => {
+    if (r === 'portal' || r === 'solutions') return 'home';
+    if (r === 'timetable') return 'timetables';
+    if (r === 'generator' || r === 'adaptive-engine') return 'generate';
+    if (r === 'student-voice') return 'feedback';
+    if (r === 'case-studies') return 'settings';
+    const valid: RouteType[] = ['home', 'setup', 'generate', 'timetables', 'feedback', 'settings'];
+    return valid.includes(r as RouteType) ? (r as RouteType) : 'home';
+  };
+
+  const [currentRoute, setCurrentRoute] = useState<RouteType>(() => {
+    const hash = window.location.hash.replace('#', '');
+    return normalizeRoute(hash);
+  });
+
+  useEffect(() => {
+    const handleHashChange = () => {
+      const hash = window.location.hash.replace('#', '');
+      setCurrentRoute(normalizeRoute(hash));
+    };
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, []);
 
   const handleOpenAuth = (mode: 'signin' | 'signup' = 'signin') => {
     setAuthMode(mode);
@@ -39,19 +72,29 @@ export default function App() {
 
   const handleLogin = (user: { name: string; role: string; email: string; institution?: string }) => {
     setCurrentUser(user);
+    try {
+      sessionStorage.setItem('smartgrid_user', JSON.stringify(user));
+    } catch {}
     setShowAuthPage(false);
-    setCurrentRoute('portal');
+    setCurrentRoute('home');
+    window.location.hash = 'home';
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleSignOut = () => {
     setCurrentUser(null);
+    try {
+      sessionStorage.removeItem('smartgrid_user');
+    } catch {}
     setShowAuthPage(false);
+    window.location.hash = '';
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleNavigate = (route: RouteType) => {
-    setCurrentRoute(route);
+    const normalized = normalizeRoute(route);
+    setCurrentRoute(normalized);
+    window.location.hash = normalized;
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -66,7 +109,6 @@ export default function App() {
         />
       );
     }
-    // Single Page Application for before-login screen
     return (
       <PublicLandingPage 
         onOpenAuth={handleOpenAuth}
@@ -74,7 +116,7 @@ export default function App() {
     );
   }
 
-  // 2. If user IS logged in: Render full workspace with left-side menu & hamburger toggle
+  // 2. Authenticated App Workspace
   return (
     <AuthenticatedLayout
       activeRoute={currentRoute}
@@ -84,70 +126,47 @@ export default function App() {
       currentUser={currentUser}
       onSwitchUser={setCurrentUser}
     >
-      {currentRoute === 'portal' && (
-        <InstitutionalPortal 
+      {currentRoute === 'home' && (
+        <HomeScreen 
           onNavigate={handleNavigate}
-          onOpenAuth={handleOpenAuth}
-          onSignOut={handleSignOut}
-          currentUser={currentUser}
-          onSwitchUser={setCurrentUser}
-          hideNav={true}
+          onOpenSetupStep={stepIdx => {
+            setSetupStep(stepIdx);
+            handleNavigate('setup');
+          }}
         />
       )}
 
-      {currentRoute === 'timetable' && (
+      {currentRoute === 'setup' && (
+        <SetupFlow 
+          initialStep={setupStep}
+          onNavigate={handleNavigate}
+        />
+      )}
+
+      {currentRoute === 'generate' && (
+        <GenerateScreen 
+          onNavigate={handleNavigate}
+        />
+      )}
+
+      {currentRoute === 'timetables' && (
         <TimetableMatrix 
           onNavigate={handleNavigate}
-          onOpenAuth={handleOpenAuth}
-          onSignOut={handleSignOut}
           currentUser={currentUser}
+          onSignOut={handleSignOut}
           hideNav={true}
         />
       )}
 
-      {currentRoute === 'generator' && (
-        <GeneratorStudio 
+      {currentRoute === 'feedback' && (
+        <FeedbackScreen 
           onNavigate={handleNavigate}
-          onOpenAuth={handleOpenAuth}
-          onSignOut={handleSignOut}
-          currentUser={currentUser}
-          hideNav={true}
         />
       )}
 
-      {currentRoute === 'adaptive-engine' && (
-        <AdaptiveEngine 
+      {currentRoute === 'settings' && (
+        <SettingsScreen 
           onNavigate={handleNavigate}
-          onOpenAuth={handleOpenAuth}
-          onSignOut={handleSignOut}
-          currentUser={currentUser}
-          hideNav={true}
-        />
-      )}
-
-      {currentRoute === 'student-voice' && (
-        <StudentVoice 
-          onNavigate={handleNavigate}
-          onOpenAuth={handleOpenAuth}
-          onSignOut={handleSignOut}
-          currentUser={currentUser}
-          hideNav={true}
-        />
-      )}
-
-      {currentRoute === 'case-studies' && (
-        <CaseStudies 
-          onNavigate={handleNavigate}
-          onOpenAuth={handleOpenAuth}
-          onSignOut={handleSignOut}
-          currentUser={currentUser}
-          hideNav={true}
-        />
-      )}
-
-      {currentRoute === 'solutions' && (
-        <PublicLandingPage 
-          onOpenAuth={handleOpenAuth}
         />
       )}
     </AuthenticatedLayout>

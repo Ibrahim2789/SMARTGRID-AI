@@ -26,8 +26,7 @@ import {
   Calendar,
   Layers,
   CheckCircle2,
-  SlidersHorizontal,
-  ExternalLink
+  SlidersHorizontal
 } from 'lucide-react';
 import { ClassDetailsModal, ClassItem } from './ClassDetailsModal';
 import { InteractiveHeroMesh } from './InteractiveHeroMesh';
@@ -40,8 +39,6 @@ interface PublicLandingPageProps {
 export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({ onOpenAuth }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [activeSection, setActiveSection] = useState<'solutions' | 'adaptive-engine' | 'student-voice' | 'case-studies' | 'matrix-preview'>('solutions');
-  const [hoveredNav, setHoveredNav] = useState<string | null>(null);
-  const [isScrolled, setIsScrolled] = useState(false);
 
   // Hero Quick Simulation state
   const [heroTestRunning, setHeroTestRunning] = useState(false);
@@ -69,24 +66,24 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({ onOpenAuth
   const [polls, setPolls] = useState([
     {
       id: 'p1',
-      question: 'Protect 12:00 - 13:00 Daily Campus Lunch & Mental Recharge Window',
-      category: 'Wellbeing Policy',
+      question: 'Protect 12:00 - 13:00 daily campus lunch and recharge window',
+      category: 'Wellbeing policy',
       votesYes: 2841,
       votesNo: 112,
       userVoted: null as 'yes' | 'no' | null
     },
     {
       id: 'p2',
-      question: 'Cap Consecutive Academic Lecture Blocks at 3 Hours Maximum',
-      category: 'Cognitive Load',
+      question: 'Cap consecutive academic lecture blocks at 3 hours maximum',
+      category: 'Cognitive load',
       votesYes: 3410,
       votesNo: 189,
       userVoted: null as 'yes' | 'no' | null
     },
     {
       id: 'p3',
-      question: 'Ban Friday Afternoon (> 15:00) Heavy Midterms & Mandatory Recitations',
-      category: 'Schedule Balance',
+      question: 'Ban Friday afternoon (> 15:00) heavy midterms and recitations',
+      category: 'Schedule balance',
       votesYes: 4102,
       votesNo: 84,
       userVoted: null as 'yes' | 'no' | null
@@ -99,15 +96,6 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({ onOpenAuth
   // Timetable Matrix Preview state
   const [previewDept, setPreviewDept] = useState('All Departments');
   const [selectedClass, setSelectedClass] = useState<ClassItem | null>(null);
-
-  // Scroll detection for header
-  useEffect(() => {
-    const handleScroll = () => {
-      setIsScrolled(window.scrollY > 20);
-    };
-    window.addEventListener('scroll', handleScroll, { passive: true });
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, []);
 
   // Genetic sim tick
   useEffect(() => {
@@ -147,10 +135,10 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({ onOpenAuth
         ...prev,
         `[0.88ms] Found Pareto-optimal slot swap: Hall B3 -> Annex 102`,
         `[1.14ms] Validated zero cascade violations across 18 enrolled cohorts`,
-        `[1.32ms] EQUILIBRIUM_RESTORED: 100% collision-free guarantee reinstated.`
+        `[1.32ms] Equilibrium restored: 100% collision-free guarantee reinstated.`
       ]);
       setResolvingConflict(false);
-    }, 850);
+    }, 700);
   };
 
   const handleVote = (pollId: string, choice: 'yes' | 'no') => {
@@ -170,59 +158,59 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({ onOpenAuth
   const caseStudiesData = {
     wpi: {
       name: 'Western Polytechnic Institute',
-      tagline: '34,000 Students • 12 Academic Schools • 312 Legacy Clashes Solved',
+      tagline: '34,000 students • 12 academic schools • 312 legacy clashes solved',
       location: 'Massachusetts, USA',
       term: 'Fall 2025 - Spring 2026',
       heroStats: [
-        { label: 'Admin Preparation Time', before: '6 Weeks', after: '18 Minutes', delta: '-94%' },
-        { label: 'Cross-Disciplinary Clashes', before: '312 Collisions', after: '0 Collisions', delta: '100% Resolved' },
-        { label: 'Average Transit Walking Delay', before: '24 Minutes', after: '9 Minutes', delta: '-62.5%' },
-        { label: 'Accreditation Matrix Match', before: '91.4%', after: '100.0%', delta: '+8.6%' }
+        { label: 'Admin preparation time', before: '6 weeks', after: '18 mins', delta: '-94%' },
+        { label: 'Cross-disciplinary clashes', before: '312 clashes', after: '0 clashes', delta: '100% resolved' },
+        { label: 'Walking delay', before: '24 mins', after: '9 mins', delta: '-62.5%' },
+        { label: 'Accreditation match', before: '91.4%', after: '100.0%', delta: '+8.6%' }
       ],
-      description: 'Western Poly faced recurring bottlenecks between Mechanical Engineering and Computer Science majors attempting to take mandatory Robotics electives. SmartGrid AI solved the multi-building transit bottleneck across the north-south river footbridge, compacting lab classes into contiguous spatial zones and automating all faculty contractual work-hour rules.',
-      quote: "SmartGrid AI didn't just save our registrar staff hundreds of hours—it gave our students their lives back by eliminating 4-hour dead gaps between morning and evening lectures.",
+      description: 'Western Poly faced recurring bottlenecks between Mechanical Engineering and Computer Science majors attempting to take mandatory Robotics electives. SmartGrid solved the multi-building transit bottleneck across the river footbridge, compacting lab classes into contiguous spatial zones and automating faculty work-hour rules.',
+      quote: "SmartGrid didn't just save our registrar staff hundreds of hours—it gave our students their lives back by eliminating 4-hour dead gaps between morning and evening lectures.",
       author: 'Dr. Katherine Reynolds, Vice Provost of Academic Operations'
     },
     oxford: {
       name: 'Oxford Union Sciences & Research Division',
-      tagline: 'Multi-Tier Collegiate Division Synthesis • Cleanroom Allocation',
+      tagline: 'Collegiate division synthesis • Specialized laboratory allocation',
       location: 'Oxford, United Kingdom',
       term: 'Michaelmas & Hilary Terms',
       heroStats: [
-        { label: 'Cleanroom Utilization', before: '68%', after: '98.4%', delta: '+30.4%' },
-        { label: 'Specialized Lab Conflicts', before: '42 / Term', after: '0 / Term', delta: '100% Clear' },
-        { label: 'Inter-Collegiate Walking Time', before: '28 Mins', after: '12 Mins', delta: '-57%' },
-        { label: 'Faculty Workload Satisfaction', before: '76%', after: '99.1%', delta: '+23.1%' }
+        { label: 'Cleanroom utilization', before: '68%', after: '98.4%', delta: '+30.4%' },
+        { label: 'Specialized lab conflicts', before: '42 / term', after: '0 / term', delta: '100% clear' },
+        { label: 'Inter-college transit', before: '28 mins', after: '12 mins', delta: '-57%' },
+        { label: 'Faculty satisfaction', before: '76%', after: '99.1%', delta: '+23.1%' }
       ],
-      description: 'Synchronizing laboratory access across historic colleges with strict non-contiguous buildings and high-demand electron microscopes. SmartGrid AI’s deterministic solver generated conflict-free equipment batches with guaranteed 45-minute decontamination transitions between biochemistry cohorts.',
-      quote: "The mathematical rigor behind SmartGrid AI provided our department chairs with total confidence in our room allocation audits.",
+      description: 'Synchronizing laboratory access across historic colleges with strict non-contiguous buildings and high-demand electron microscopes. SmartGrid generated conflict-free equipment batches with guaranteed 45-minute decontamination transitions between cohorts.',
+      quote: "The mathematical rigor behind SmartGrid provided our department chairs with total confidence in our room allocation audits.",
       author: 'Prof. Alistair MacIntyre, Chair of Physical & Life Sciences'
     },
     sutd: {
       name: 'Singapore University of Technology & Design',
-      tagline: 'Dynamic Rapid Reconfiguration During Campus Retrofitting',
+      tagline: 'Rapid schedule reconfiguration during campus retrofitting',
       location: 'Singapore',
       term: 'Academic Year 2025',
       heroStats: [
-        { label: 'Reconfiguration Turnaround', before: '14 Days', after: '48 Hours', delta: '-85%' },
-        { label: 'Cancelled Studio Hours', before: '84 Hours', after: '0 Hours', delta: 'Zero Loss' },
-        { label: 'Makerspace Machine Uptime', before: '72%', after: '96.2%', delta: '+24.2%' },
-        { label: 'Student Cohort Sentiment', before: '3.4 / 5.0', after: '4.8 / 5.0', delta: '+41%' }
+        { label: 'Turnaround speed', before: '14 days', after: '48 hours', delta: '-85%' },
+        { label: 'Cancelled studio hours', before: '84 hours', after: '0 hours', delta: 'Zero loss' },
+        { label: 'Makerspace uptime', before: '72%', after: '96.2%', delta: '+24.2%' },
+        { label: 'Student sentiment', before: '3.4 / 5.0', after: '4.8 / 5.0', delta: '+41%' }
       ],
-      description: 'When central structural renovations closed 14 design studios 3 days before term launch, SmartGrid AI re-optimized the entire university schedule in 48 hours without cancelling a single class, balancing noise-isolated lecture halls and heavy fabrication workshops.',
-      quote: "An unprecedented crisis was turned into a masterclass in operational resilience thanks to SmartGrid's algorithmic solver.",
+      description: 'When central structural renovations closed 14 design studios 3 days before term launch, SmartGrid re-optimized the entire university schedule in 48 hours without cancelling a single class, balancing noise-isolated lecture halls and heavy fabrication workshops.',
+      quote: "An unprecedented crisis was turned into a masterclass in operational resilience thanks to SmartGrid's solver.",
       author: 'Eng. Chen Wei Ling, Director of Academic Planning'
     },
     tudelft: {
       name: 'TU Delft Technical Sciences',
-      tagline: 'Campus Thermal Compaction & Sustainable Energy Synthesis',
+      tagline: 'Campus thermal compaction & sustainable energy synthesis',
       location: 'Delft, Netherlands',
       term: 'Full Academic Year',
       heroStats: [
-        { label: 'Weekly Power Conserved', before: '0 MWh', after: '-34.1 MWh', delta: 'Energy Winner' },
-        { label: 'Facility Heating Consolidation', before: 'Fragmented', after: 'Zoned', delta: '100% Clustered' },
-        { label: 'Late-Evening Hall Stragglers', before: '41 Halls', after: '4 Halls', delta: '-90%' },
-        { label: 'Student Commute Punctuality', before: '83.2%', after: '97.6%', delta: '+14.4%' }
+        { label: 'Weekly power saved', before: '0 MWh', after: '-34.1 MWh', delta: 'Conserved' },
+        { label: 'Heating consolidation', before: 'Fragmented', after: 'Zoned', delta: '100% zoned' },
+        { label: 'Late hall stragglers', before: '41 halls', after: '4 halls', delta: '-90%' },
+        { label: 'Commute punctuality', before: '83.2%', after: '97.6%', delta: '+14.4%' }
       ],
       description: 'By passing campus thermal insulation curves and municipal grid peak pricing into the objective function, TU Delft unified lecture hours to power down dormant satellite buildings by 17:00 each day, cutting campus carbon footprint while elevating timetable predictability.',
       quote: "Achieving both carbon neutrality targets and student satisfaction at once was considered impossible until we deployed SmartGrid.",
@@ -232,174 +220,146 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({ onOpenAuth
 
   const currentStudy = caseStudiesData[selectedStudy];
 
-  // Helper sample classes for modal
   const sampleClasses: Record<string, ClassItem> = {
     'CS-301': {
       id: 'c1',
       code: 'CS-301',
       title: 'Data Structures & Algorithms',
-      room: 'Turing Hall B3',
+      room: 'Hall B3',
       prof: 'Dr. Evans',
       cohort: 'CS Sophomore Cohort A',
       capacity: 60,
       enrolled: 58,
       time: '09:00 - 10:30',
-      day: 'Monday & Wednesday',
+      day: 'Mon & Wed',
       type: 'Lecture',
       credits: 4,
-      accent: 'plum',
-      constraintStatus: 'Equilibrium Confirmed'
+      accent: 'plum'
     },
     'BIO-210': {
       id: 'c2',
       code: 'BIO-210',
-      title: 'Cellular Genomics & Sequencing',
-      room: 'Bio Lab 4 (Cleanroom)',
+      title: 'Cellular Genomics',
+      room: 'Bio Lab 4',
       prof: 'Dr. Zhao',
       cohort: 'Bioengineering Juniors',
       capacity: 32,
       enrolled: 30,
       time: '09:00 - 10:30',
-      day: 'Tuesday',
+      day: 'Tue',
       type: 'Laboratory',
       credits: 4,
-      accent: 'emerald',
-      constraintStatus: 'Optimal'
+      accent: 'emerald'
     },
     'ENG-102': {
       id: 'c3',
       code: 'ENG-102',
       title: 'Applied Engineering Statics',
-      room: 'Engineering Quad Hall A',
+      room: 'Quad Hall A',
       prof: 'Prof. Miller',
       cohort: 'MechE Freshman Track',
       capacity: 90,
       enrolled: 86,
       time: '09:00 - 10:30',
-      day: 'Thursday',
+      day: 'Thu',
       type: 'Lecture',
       credits: 3,
-      accent: 'terracotta',
-      constraintStatus: 'Equilibrium Confirmed'
+      accent: 'terracotta'
     },
     'MATH-204': {
       id: 'c4',
       code: 'MATH-204',
-      title: 'Multivariable Linear Algebra',
-      room: 'Kepler Auditorium A1',
+      title: 'Linear Algebra',
+      room: 'Hall A1',
       prof: 'Dr. Raman',
-      cohort: 'Applied Math Cohort',
+      cohort: 'Applied Math Track',
       capacity: 75,
       enrolled: 72,
       time: '11:00 - 12:30',
-      day: 'Monday & Friday',
+      day: 'Mon & Fri',
       type: 'Lecture',
       credits: 4,
-      accent: 'terracotta',
-      constraintStatus: 'Optimal'
+      accent: 'plum'
     }
   };
 
+  const getDeptClassStyle = (code: string) => {
+    if (code.startsWith('CS')) return 'dept-block-cs';
+    if (code.startsWith('BIO') || code.startsWith('CHEM')) return 'dept-block-bio';
+    if (code.startsWith('ENG')) return 'dept-block-eng';
+    if (code.startsWith('ARCH')) return 'dept-block-arch';
+    if (code.startsWith('MATH')) return 'dept-block-math';
+    return 'dept-block-hum';
+  };
+
   return (
-    <div className="min-h-screen bg-[#fbf8fc] text-[#1f1b20] font-sans antialiased selection:bg-[#f27438]/20">
+    <div className="min-h-screen bg-app text-primary antialiased">
       {/* Interactive Modal for timetable preview */}
       <ClassDetailsModal
         classItem={selectedClass}
         onClose={() => setSelectedClass(null)}
       />
 
-      {/* Sticky Top Navigation */}
-      <header className={`sticky top-0 z-50 transition-all duration-300 ${
-        isScrolled 
-          ? 'bg-[#fbf8fc]/95 backdrop-blur-md border-b border-[#ece6ed] shadow-[0_4px_24px_rgba(0,0,0,0.03)] px-6 lg:px-8 py-3.5' 
-          : 'bg-[#fbf8fc]/80 backdrop-blur-sm border-b border-[#ece6ed]/80 px-6 lg:px-8 py-5'
-      }`}>
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          {/* Brand Wordmark */}
+      {/* Top Navigation Bar (52px) */}
+      <header className="sticky top-0 z-50 bg-surface/95 backdrop-blur-sm border-b border-border h-[52px] px-4 sm:px-6 flex items-center justify-between">
+        <div className="max-w-[1360px] mx-auto w-full flex items-center justify-between">
+          {/* Brand */}
           <div 
-            className="flex items-center gap-3 cursor-pointer select-none group"
+            className="flex items-center gap-2.5 cursor-pointer select-none"
             onClick={() => scrollTo('solutions')}
           >
-            <div className="relative">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#3b1e4a] via-[#522567] to-[#1f0e27] flex items-center justify-center text-white shadow-sm group-hover:scale-105 group-hover:shadow-md transition-all">
-                <Compass className="w-5 h-5 text-[#f27438] group-hover:rotate-12 transition-transform duration-300" />
-              </div>
-              <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-[#18794e]" />
+            <div className="w-7 h-7 rounded-md bg-brand flex items-center justify-center text-white shrink-0">
+              <Compass className="w-4 h-4" />
             </div>
-            <div className="flex flex-col">
-              <span className="font-extrabold text-lg tracking-tight text-[#1f1b20] leading-none whitespace-nowrap">
-                SMARTGRID <span className="text-[#9c4126]">AI</span>
-              </span>
-              <span className="text-[9px] font-mono uppercase tracking-widest text-[#7c747f] mt-0.5 font-semibold">
-                Campus Equilibrium
-              </span>
-            </div>
+            <span className="font-semibold text-[15px] text-primary tracking-tight">
+              SmartGrid
+            </span>
           </div>
 
-          {/* Desktop Anchor Links */}
-          <nav className="hidden md:flex items-center gap-8 text-sm font-semibold text-[#655d69] whitespace-nowrap">
+          {/* Nav Links */}
+          <nav className="hidden md:flex items-center gap-7 text-[14px] text-secondary">
             {[
-              { id: 'solutions' as const, label: 'Solutions' },
-              { id: 'adaptive-engine' as const, label: 'Adaptive Engine' },
-              { id: 'student-voice' as const, label: 'Student Voice' },
-              { id: 'case-studies' as const, label: 'Case Studies' },
-              { id: 'matrix-preview' as const, label: 'Timetable Matrix' }
-            ].map(link => {
-              const isActive = activeSection === link.id;
-              const isHovered = hoveredNav === link.id;
-              return (
-                <div
-                  key={link.id}
-                  className="relative py-2"
-                  onMouseEnter={() => setHoveredNav(link.id)}
-                  onMouseLeave={() => setHoveredNav(null)}
-                >
-                  <button 
-                    onClick={() => { setActiveSection(link.id); scrollTo(link.id); }}
-                    className={`transition-colors whitespace-nowrap pb-1.5 font-bold cursor-pointer ${
-                      isActive ? 'text-[#3b1e4a]' : 'hover:text-[#1f1b20]'
-                    }`}
-                  >
-                    {link.label}
-                  </button>
-                  <span 
-                    className={`absolute bottom-0 left-0 h-[2.5px] rounded-full transition-all duration-200 ease-out pointer-events-none ${
-                      isActive 
-                        ? 'w-full bg-[#3b1e4a]' 
-                        : isHovered 
-                        ? 'w-full bg-gradient-to-r from-[#9c4126] to-[#f27438]' 
-                        : 'w-0 bg-transparent'
-                    }`}
-                  />
-                </div>
-              );
-            })}
+              { id: 'solutions' as const, label: 'Overview' },
+              { id: 'adaptive-engine' as const, label: 'Optimization' },
+              { id: 'student-voice' as const, label: 'Student feedback' },
+              { id: 'case-studies' as const, label: 'Campuses & accreditation' },
+              { id: 'matrix-preview' as const, label: 'Timetable preview' }
+            ].map(link => (
+              <button 
+                key={link.id}
+                onClick={() => { setActiveSection(link.id); scrollTo(link.id); }}
+                className={`transition-colors cursor-pointer py-1 font-medium ${
+                  activeSection === link.id ? 'text-brand' : 'hover:text-primary'
+                }`}
+              >
+                {link.label}
+              </button>
+            ))}
           </nav>
 
           {/* Right Action Buttons */}
-          <div className="hidden md:flex items-center gap-4">
+          <div className="hidden md:flex items-center gap-2.5">
             <button 
               onClick={() => onOpenAuth('signin')}
-              className="text-xs font-bold uppercase tracking-wider text-[#3b1e4a] hover:text-[#f27438] px-3.5 py-2 rounded-xl hover:bg-white/80 transition-all whitespace-nowrap cursor-pointer"
+              className="h-[36px] px-3.5 text-[14px] font-medium text-secondary hover:text-primary hover:bg-subtle rounded-md transition-colors cursor-pointer"
             >
-              Sign In
+              Sign in
             </button>
             <button 
               onClick={() => onOpenAuth('signup')}
-              className="flex items-center gap-2 bg-gradient-to-r from-[#9c4126] to-[#b3401f] hover:from-[#83341d] hover:to-[#9c4126] text-white px-5 py-2.5 rounded-xl text-xs font-bold tracking-wider uppercase transition-all shadow-md hover:shadow-lg active:scale-95 whitespace-nowrap cursor-pointer"
+              className="h-[36px] px-4 rounded-md bg-brand hover:bg-brand-hover text-white text-[14px] font-medium transition-colors shadow-xs cursor-pointer"
             >
-              <Sparkles className="w-3.5 h-3.5 text-[#fed8c8]" />
-              Launch Portal
+              Launch workspace
             </button>
           </div>
 
           {/* Mobile Menu Toggle */}
           <button 
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="md:hidden text-[#1f1b20] p-2 rounded-xl bg-white border border-[#ece6ed] shadow-xs focus:outline-none cursor-pointer"
+            className="md:hidden text-secondary hover:text-primary p-2 rounded-md hover:bg-subtle cursor-pointer"
             aria-label="Toggle Navigation"
           >
-            {mobileMenuOpen ? <X className="w-5 h-5 text-[#9c4126]" /> : <Menu className="w-5 h-5 text-[#3b1e4a]" />}
+            {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
           </button>
         </div>
 
@@ -410,35 +370,35 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({ onOpenAuth
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: 'auto' }}
               exit={{ opacity: 0, height: 0 }}
-              className="md:hidden pt-4 pb-3 border-t border-[#ece6ed] mt-3 space-y-2"
+              className="md:hidden absolute top-[52px] left-0 right-0 bg-surface border-b border-border p-4 space-y-2 shadow-lg"
             >
               {[
-                { id: 'solutions', label: 'Solutions' },
-                { id: 'adaptive-engine', label: 'Adaptive Engine' },
-                { id: 'student-voice', label: 'Student Voice' },
-                { id: 'case-studies', label: 'Case Studies' },
-                { id: 'matrix-preview', label: 'Timetable Matrix' }
+                { id: 'solutions', label: 'Overview' },
+                { id: 'adaptive-engine', label: 'Optimization' },
+                { id: 'student-voice', label: 'Student feedback' },
+                { id: 'case-studies', label: 'Campuses & accreditation' },
+                { id: 'matrix-preview', label: 'Timetable preview' }
               ].map(item => (
                 <button 
                   key={item.id}
                   onClick={() => scrollTo(item.id)}
-                  className="block w-full text-left text-xs font-bold text-[#1f1b20] py-2 px-3 rounded-xl hover:bg-white transition-all cursor-pointer"
+                  className="block w-full text-left text-[14px] py-2 px-3 rounded-md text-primary hover:bg-subtle transition-colors cursor-pointer font-medium"
                 >
                   {item.label}
                 </button>
               ))}
-              <div className="pt-2 flex flex-col gap-2 border-t border-[#ece6ed]">
+              <div className="pt-2 flex flex-col gap-2 border-t border-border">
                 <button 
                   onClick={() => { onOpenAuth('signin'); setMobileMenuOpen(false); }}
-                  className="w-full text-center py-2.5 text-xs font-bold uppercase tracking-wider text-[#3b1e4a] bg-white border border-[#ece6ed] rounded-xl shadow-xs"
+                  className="w-full h-[38px] text-[14px] font-medium text-primary bg-surface border border-border rounded-md hover:bg-subtle"
                 >
-                  Sign In
+                  Sign in
                 </button>
                 <button 
                   onClick={() => { onOpenAuth('signup'); setMobileMenuOpen(false); }}
-                  className="w-full bg-gradient-to-r from-[#9c4126] to-[#b3401f] text-white py-2.5 rounded-xl text-xs font-bold tracking-wider uppercase text-center shadow-md"
+                  className="w-full h-[38px] bg-brand hover:bg-brand-hover text-white rounded-md text-[14px] font-medium"
                 >
-                  Launch Campus Portal
+                  Launch workspace
                 </button>
               </div>
             </motion.div>
@@ -447,497 +407,293 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({ onOpenAuth
       </header>
 
       {/* Main Single-Page Content */}
-      <main className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-24 py-8 sm:py-12">
-        {/* Subtle Ambient Colorful Background Glows */}
-        <div className="absolute top-0 left-1/4 w-[550px] h-[550px] bg-gradient-to-tr from-[#ffe6dc]/40 via-[#fde2e4]/30 to-[#f3e8f8]/20 rounded-full blur-3xl -z-10 pointer-events-none" />
-        <div className="absolute top-80 right-10 w-[500px] h-[500px] bg-gradient-to-br from-[#edd5f2]/30 via-[#e2f1ea]/30 to-[#fdf0e6]/25 rounded-full blur-3xl -z-10 pointer-events-none" />
-        
-        {/* ================= SECTION: SOLUTIONS (HERO) ================= */}
-        <section id="solutions" className="relative scroll-mt-24 space-y-10 overflow-hidden rounded-3xl p-6 sm:p-10 lg:p-14 border border-[#ece6ed] bg-gradient-to-b from-white/95 via-[#fcfbfe]/90 to-white/95 shadow-sm">
-          {/* Autonomous Harmonic Wave Canvas */}
-          <InteractiveHeroMesh />
+      <main className="max-w-[1360px] mx-auto px-4 sm:px-6 lg:px-8 space-y-16 py-8 sm:py-12">
+        {/* ================= SECTION: OVERVIEW (HERO) ================= */}
+        <section id="solutions" className="scroll-mt-16 space-y-8">
+          <div className="relative rounded-lg border border-border bg-surface p-6 sm:p-10 lg:p-12 overflow-hidden shadow-xs">
+            {/* Subtle schematic vector grid */}
+            <InteractiveHeroMesh />
 
-          <motion.div 
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, ease: 'easeOut' }}
-            className="relative z-10 text-center max-w-4xl mx-auto space-y-5 pt-2"
-          >
-            {/* Eyebrow Pill */}
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#f6f2f7] border border-[#ece6ed] text-[11px] font-mono font-bold uppercase tracking-wider text-[#9c4126] shadow-xs">
-              <span className="w-2 h-2 rounded-full bg-[#9c4126] animate-pulse" />
-              <span>Algorithmic Campus Equilibrium v4.8</span>
-              <span aria-hidden="true" className="text-gray-300">·</span>
-              <span className="text-[#3b1e4a]">SAT-Solver Architecture</span>
-            </div>
-
-            {/* Headline */}
-            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-black text-[#1f1b20] tracking-tight leading-[1.12]">
-              Algorithmic Harmony for Higher Education.{' '}
-              <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#9c4126] via-[#f27438] to-[#ea580c]">
-                Student-Centric
-              </span>{' '}
-              Timetables in Minutes.
-            </h1>
-
-            <p className="text-sm sm:text-base text-[#655d69] leading-relaxed max-w-2xl mx-auto">
-              SmartGrid AI harmonizes faculty availability, physical campus limits, and student commute graphs into rigorously verified, conflict-free semester schedules.
-            </p>
-
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-3.5 pt-2">
-              <button 
-                onClick={() => onOpenAuth('signin')}
-                className="group flex items-center gap-2.5 bg-gradient-to-r from-[#9c4126] to-[#b3401f] hover:from-[#83341d] hover:to-[#9c4126] text-white px-7 py-3.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all shadow-md hover:shadow-lg active:scale-95 cursor-pointer"
-              >
-                <Zap className="w-4 h-4 text-[#fed8c8]" />
-                Experience Live Generation
-              </button>
-              <button 
-                onClick={() => scrollTo('adaptive-engine')}
-                className="flex items-center gap-2 bg-white/90 backdrop-blur-sm hover:bg-[#f6f2f7] text-[#3b1e4a] border border-[#ece6ed] hover:border-[#dcd9dd] px-7 py-3.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all shadow-xs cursor-pointer"
-              >
-                Explore Methodology
-                <ArrowRight className="w-4 h-4 text-[#7c747f] group-hover:translate-x-1 transition-transform" />
-              </button>
-            </div>
-          </motion.div>
-
-          {/* Architectural Solver Matrix Console */}
-          <div className="relative z-10 w-full bg-white/95 backdrop-blur-md border border-[#ece6ed] rounded-2xl p-6 shadow-sm space-y-5">
-            {/* Header Telemetry Bar */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#ece6ed] pb-4">
-              <div className="flex items-center gap-2.5">
-                <span className="w-2.5 h-2.5 rounded-full bg-[#18794e] animate-pulse" />
-                <span className="text-xs font-bold uppercase tracking-wider text-[#1f1b20]">
-                  Campus Solver Matrix // Telemetry Stream
-                </span>
-                <span className="text-[10px] font-mono text-[#18794e] font-bold bg-[#eefcf2] px-2 py-0.5 rounded shadow-xs">
-                  PARITY_LOCKED
-                </span>
-              </div>
-              <div className="text-[11px] font-mono text-[#7c747f]">
-                <span>EPOCH 142</span>
-                <span className="mx-2">·</span>
-                <span className="text-[#3b1e4a] font-bold">4,120 CANDIDATES</span>
-                <span className="mx-2">·</span>
-                <span className="text-[#18794e] font-bold">0 HARD COLLISIONS</span>
-              </div>
-            </div>
-
-            {/* 4 Tonal Metrics */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="p-4 bg-gradient-to-br from-[#faf4fc] via-white to-[#f4eaf7] border border-[#ece6ed] rounded-xl space-y-1 shadow-xs card-lift">
-                <div className="text-[10px] font-mono uppercase text-[#7c747f] font-bold">
-                  Scheduled Sections
-                </div>
-                <div className="text-3xl font-black font-mono text-[#3b1e4a]">1,420</div>
-                <div className="text-[11px] text-[#655d69]">34,180 Enrolled Students</div>
+            <div className="relative z-10 max-w-2xl mx-auto text-center space-y-4">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-md bg-subtle border border-border text-[13px] text-secondary">
+                <span>Combinatorial solver engine</span>
+                <span className="text-tertiary">•</span>
+                <span className="text-primary font-medium">Higher ed timetabling</span>
               </div>
 
-              <div className="p-4 bg-gradient-to-br from-[#fff7f2] via-white to-[#fff0eb] border border-[#ece6ed] rounded-xl space-y-1 shadow-xs card-lift">
-                <div className="text-[10px] font-mono uppercase text-[#7c747f] font-bold">
-                  Pareto Equilibrium
-                </div>
-                <div className="text-3xl font-black font-mono text-[#9c4126]">99.98%</div>
-                <div className="text-[11px] text-[#655d69]">Circadian Peak Matched</div>
-              </div>
+              <h1 className="text-2xl sm:text-4xl font-semibold text-primary tracking-tight leading-tight">
+                University timetable scheduling for registrars and academic operations
+              </h1>
 
-              <div className="p-4 bg-gradient-to-br from-[#f1fbf5] via-white to-[#e8f7ee] border border-[#ece6ed] rounded-xl space-y-1 shadow-xs card-lift">
-                <div className="text-[10px] font-mono uppercase text-[#7c747f] font-bold">
-                  SAT Resolution Speed
-                </div>
-                <div className="text-3xl font-black font-mono text-[#18794e]">1.24 ms</div>
-                <div className="text-[11px] text-[#18794e] font-bold">Polynomial Guarantee</div>
-              </div>
+              <p className="text-[15px] sm:text-base text-secondary leading-relaxed">
+                SmartGrid evaluates faculty contractual limits, campus room capacity, and student commute graphs to generate conflict-free semester schedules in seconds.
+              </p>
 
-              <div className="p-4 bg-gradient-to-br from-[#fffbf0] via-white to-[#fff4df] border border-[#ece6ed] rounded-xl space-y-1 shadow-xs card-lift">
-                <div className="text-[10px] font-mono uppercase text-[#7c747f] font-bold">
-                  Power Conserved
-                </div>
-                <div className="text-3xl font-black font-mono text-[#92400e]">-34.1 MWh</div>
-                <div className="text-[11px] text-[#655d69]">Delft Thermal Clustering</div>
-              </div>
-            </div>
-
-            {/* Interactive Micro-Simulation Bar inside Console */}
-            <div className="pt-1 flex flex-col md:flex-row items-center justify-between gap-4 p-3.5 bg-[#fbf8fc] border border-[#ece6ed] rounded-xl">
-              <div className="flex-1 w-full space-y-1">
-                <div className="flex justify-between text-[11px] font-bold text-[#1f1b20]">
-                  <span>Faculty Workload Cap Scalar: <span className="font-mono text-[#9c4126]">{heroWorkloadParam}%</span></span>
-                  <span className="text-[10px] font-mono text-[#18794e] font-bold bg-[#eefcf2] px-2 py-0.5 rounded">Auto-Compaction Active</span>
-                </div>
-                <input
-                  type="range"
-                  min="50"
-                  max="100"
-                  value={heroWorkloadParam}
-                  onChange={e => setHeroWorkloadParam(Number(e.target.value))}
-                  className="w-full h-1.5"
-                />
-              </div>
-
-              <div className="flex items-center gap-2.5 w-full md:w-auto justify-end">
-                <button
-                  onClick={() => {
-                    setHeroTestRunning(true);
-                    setTimeout(() => {
-                      setHeroTestRunning(false);
-                      setHeroTestSuccess(true);
-                      setTimeout(() => setHeroTestSuccess(false), 3000);
-                    }, 650);
-                  }}
-                  disabled={heroTestRunning}
-                  className="flex items-center gap-1.5 bg-[#3b1e4a] hover:bg-[#2a1335] text-white px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all shadow-sm active:scale-95 disabled:opacity-75 whitespace-nowrap cursor-pointer"
+              <div className="flex items-center justify-center gap-3 pt-2">
+                <button 
+                  onClick={() => onOpenAuth('signup')}
+                  className="h-[38px] px-4 rounded-md bg-brand hover:bg-brand-hover text-white text-[14px] font-medium flex items-center gap-2 transition-colors shadow-xs cursor-pointer"
                 >
-                  <Cpu className={`w-3.5 h-3.5 ${heroTestRunning ? 'animate-spin text-[#fed8c8]' : ''}`} />
-                  {heroTestRunning ? 'Testing SAT...' : heroTestSuccess ? 'Self-Healing Verified ✓' : 'Run Parity Test'}
+                  <span>Launch workspace</span>
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+                <button 
+                  onClick={() => scrollTo('adaptive-engine')}
+                  className="h-[38px] px-4 rounded-md bg-surface border border-border hover:bg-subtle text-primary text-[14px] font-medium transition-colors cursor-pointer"
+                >
+                  View methodology
                 </button>
               </div>
             </div>
           </div>
 
-          {/* Validation Strip */}
-          <div className="relative z-10 border-y border-[#ece6ed] py-4 grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
-            <div className="text-[11px] font-mono uppercase tracking-wider text-[#655d69] font-semibold">Oxford Union Validated</div>
-            <div className="text-[11px] font-mono uppercase tracking-wider text-[#655d69] font-semibold">FERPA & Title IV Compliant</div>
-            <div className="text-[11px] font-mono uppercase tracking-wider text-[#655d69] font-semibold">100% Deterministic Guarantee</div>
-            <div className="text-[11px] font-mono uppercase tracking-wider text-[#655d69] font-semibold">Multi-Tier Cohort Synthesis</div>
-          </div>
-
-          {/* The Three Architectural Pillars */}
-          <div className="relative z-10 space-y-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <span className="text-[10px] font-mono uppercase tracking-widest text-[#9c4126] font-bold">System Architecture</span>
-                <h2 className="text-xl sm:text-2xl font-black text-[#1f1b20] mt-0.5">Engineered for Campus Equilibrium</h2>
-              </div>
-              <span className="text-xs font-mono text-[#7c747f] hidden sm:block">SAT Objective Functions</span>
+          {/* Unified Bordered Stat Strip with Comparisons */}
+          <div className="bg-surface border border-border rounded-lg grid grid-cols-2 md:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x divide-border">
+            <div className="p-5 sm:p-6 space-y-1">
+              <div className="text-[14px] text-secondary">Scheduled sections</div>
+              <div className="text-[32px] font-semibold text-primary tracking-tight font-mono tabular-nums">1,420</div>
+              <div className="text-[13px] text-secondary mt-0.5">34,180 enrolled students</div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {/* Card 1: Student Preference Weighting */}
-              <div 
-                onClick={() => scrollTo('student-voice')}
-                className="bg-gradient-to-br from-[#fff7f2] via-white to-[#fff0eb] border border-[#ece6ed] hover:border-[#dcd9dd] rounded-2xl p-6 shadow-sm card-lift cursor-pointer group space-y-4 flex flex-col justify-between"
-              >
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#9c4126] to-[#f27438] text-white flex items-center justify-center shadow-xs group-hover:scale-105 transition-transform">
-                      <Activity className="w-5 h-5 text-white" />
-                    </div>
-                    <span className="text-[11px] font-mono font-bold text-[#9c4126] bg-white px-2 py-0.5 rounded shadow-xs border border-[#ece6ed]">
-                      92.8% Fit
-                    </span>
-                  </div>
+            <div className="p-5 sm:p-6 space-y-1">
+              <div className="text-[14px] text-secondary">Solver parity</div>
+              <div className="text-[32px] font-semibold text-success tracking-tight font-mono tabular-nums">99.88%</div>
+              <div className="text-[13px] text-secondary mt-0.5">Deterministic convergence</div>
+            </div>
 
-                  <div>
-                    <h3 className="text-base font-bold text-[#1f1b20] group-hover:text-[#9c4126] transition-colors">
-                      Student Preference Weighting
-                    </h3>
-                    <p className="text-xs text-[#655d69] mt-1 leading-relaxed">
-                      Integrates cohort feedback, commute transit buffers, and circadian learning peaks directly into solver cost functions to slash dropout rates.
-                    </p>
-                  </div>
+            <div className="p-5 sm:p-6 space-y-1">
+              <div className="text-[14px] text-secondary">Mean solve speed</div>
+              <div className="text-[32px] font-semibold font-mono text-primary tracking-tight tabular-nums">1.24 ms</div>
+              <div className="text-[13px] text-secondary mt-0.5">Polynomial SAT bounding</div>
+            </div>
 
-                  {/* Micro Visual Widget */}
-                  <div className="p-3 bg-white/90 border border-[#ece6ed] rounded-xl space-y-2 text-xs shadow-xs">
-                    <div className="flex justify-between text-[10px] font-mono text-[#7c747f]">
-                      <span>Circadian Chrono-Distribution</span>
-                      <span className="text-[#18794e] font-bold">Protected</span>
-                    </div>
-                    <div className="grid grid-cols-3 gap-1.5 text-center text-[10px] font-mono">
-                      <div className="p-1.5 rounded-lg bg-[#fff7f2] border border-[#ece6ed] text-[#1f1b20]">
-                        <div className="font-bold">08:00 - 13:00</div>
-                        <div className="text-[9px] text-[#7c747f]">Early Peak</div>
-                      </div>
-                      <div className="p-1.5 rounded-lg bg-[#f6f2f7] border border-[#ece6ed] text-[#3b1e4a]">
-                        <div className="font-bold">12:00 - 13:00</div>
-                        <div className="text-[9px] text-[#18794e] font-bold">Lunch Lock</div>
-                      </div>
-                      <div className="p-1.5 rounded-lg bg-[#fff7f2] border border-[#ece6ed] text-[#1f1b20]">
-                        <div className="font-bold">14:00 - 18:00</div>
-                        <div className="text-[9px] text-[#7c747f]">Lab Blocks</div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+            <div className="p-5 sm:p-6 space-y-1">
+              <div className="text-[14px] text-secondary">Energy conserved</div>
+              <div className="text-[32px] font-semibold text-primary tracking-tight font-mono tabular-nums">-34.1 MWh</div>
+              <div className="text-[13px] text-secondary mt-0.5">Spatial thermal clustering</div>
+            </div>
+          </div>
 
-                <div className="pt-2 border-t border-[#ece6ed] flex items-center justify-between text-xs">
-                  <span className="text-[11px] font-mono text-[#7c747f]">20min Transit Window</span>
-                  <span className="font-bold text-[#9c4126] group-hover:translate-x-1 transition-all flex items-center gap-1">
-                    Configure <ArrowRight className="w-3.5 h-3.5" />
-                  </span>
-                </div>
+          {/* Interactive Parity Test Bench */}
+          <div className="p-5 rounded-lg border border-border bg-surface flex flex-col md:flex-row items-center justify-between gap-5">
+            <div className="flex-1 w-full space-y-2">
+              <div className="flex justify-between text-[14px]">
+                <span className="font-medium text-primary">Faculty consecutive teaching cap: <span className="font-mono text-primary font-medium">{heroWorkloadParam}%</span></span>
+                <span className="text-success text-[13px] font-medium">Constraint active</span>
               </div>
+              <input
+                type="range"
+                min="50"
+                max="100"
+                value={heroWorkloadParam}
+                onChange={e => setHeroWorkloadParam(Number(e.target.value))}
+                className="w-full h-2 cursor-pointer"
+              />
+            </div>
 
-              {/* Card 2: Real-Time Conflict Arbitration */}
-              <div 
-                onClick={() => scrollTo('adaptive-engine')}
-                className="bg-gradient-to-br from-[#faf4fc] via-white to-[#f4eaf7] border border-[#ece6ed] hover:border-[#dcd9dd] rounded-2xl p-6 shadow-sm card-lift cursor-pointer group space-y-4 flex flex-col justify-between"
-              >
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#3b1e4a] to-[#7209b7] text-white flex items-center justify-center shadow-xs group-hover:scale-105 transition-transform">
-                      <ShieldCheck className="w-5 h-5 text-white" />
-                    </div>
-                    <span className="text-[11px] font-mono font-bold text-[#18794e] bg-white px-2 py-0.5 rounded shadow-xs border border-[#ece6ed]">
-                      0 Clashes
-                    </span>
-                  </div>
+            <button
+              onClick={() => {
+                setHeroTestRunning(true);
+                setTimeout(() => {
+                  setHeroTestRunning(false);
+                  setHeroTestSuccess(true);
+                  setTimeout(() => setHeroTestSuccess(false), 3000);
+                }, 600);
+              }}
+              disabled={heroTestRunning}
+              className="h-[38px] px-4 rounded-md border border-border bg-surface hover:bg-subtle text-primary text-[14px] font-medium flex items-center gap-2 transition-colors cursor-pointer shrink-0"
+            >
+              <Cpu className={`w-4 h-4 text-secondary ${heroTestRunning ? 'animate-spin text-brand' : ''}`} />
+              <span>{heroTestRunning ? 'Evaluating...' : heroTestSuccess ? 'Parity verified ✓' : 'Run constraint test'}</span>
+            </button>
+          </div>
 
-                  <div>
-                    <h3 className="text-base font-bold text-[#1f1b20] group-hover:text-[#7209b7] transition-colors">
-                      Real-Time Conflict Arbitration
-                    </h3>
-                    <p className="text-xs text-[#655d69] mt-1 leading-relaxed">
-                      100% collision-free room, instructor, and lab allocation via high-order polynomial constraint satisfaction across departmental curriculums.
-                    </p>
-                  </div>
-
-                  {/* Micro Visual Widget */}
-                  <div className="p-3 bg-white/90 border border-[#ece6ed] rounded-xl space-y-1.5 text-xs font-mono shadow-xs">
-                    <div className="flex items-center justify-between text-[11px]">
-                      <span className="text-[#655d69]">Faculty Workload Caps</span>
-                      <span className="text-[#18794e] font-bold">✓ 100% Verified</span>
-                    </div>
-                    <div className="flex items-center justify-between text-[11px]">
-                      <span className="text-[#655d69]">Lab Hardware Allocations</span>
-                      <span className="text-[#18794e] font-bold">✓ 0 Double-Books</span>
-                    </div>
-                    <div className="flex items-center justify-between text-[11px]">
-                      <span className="text-[#655d69]">Cross-Major Tracks</span>
-                      <span className="text-[#18794e] font-bold">✓ Auto-Mapped</span>
-                    </div>
-                  </div>
+          {/* The Three Pillars (Compact 3-Card Grid) */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+            <div 
+              onClick={() => scrollTo('student-voice')}
+              className="p-5 rounded-lg border border-border bg-surface hover:bg-subtle text-left transition-colors cursor-pointer group flex flex-col justify-between"
+            >
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <Activity className="w-5 h-5 text-secondary group-hover:text-brand" />
+                  <span className="text-[13px] text-success font-medium">92.8% fit</span>
                 </div>
-
-                <div className="pt-2 border-t border-[#ece6ed] flex items-center justify-between text-xs">
-                  <span className="text-[11px] font-mono text-[#7c747f]">DETERMINISTIC_SAT</span>
-                  <span className="font-bold text-[#7209b7] group-hover:translate-x-1 transition-all flex items-center gap-1">
-                    Test Bench <ArrowRight className="w-3.5 h-3.5" />
-                  </span>
-                </div>
+                <h3 className="text-base font-semibold text-primary">Student preference weighting</h3>
+                <p className="text-[14px] text-secondary mt-1.5 leading-relaxed">
+                  Integrates commute buffers and circadian learning peaks into solver cost functions.
+                </p>
               </div>
+              <span className="text-[14px] text-brand font-medium mt-4">Configure preferences →</span>
+            </div>
 
-              {/* Card 3: Dynamic Campus Analytics */}
-              <div 
-                onClick={() => scrollTo('matrix-preview')}
-                className="bg-gradient-to-br from-[#f1fbf5] via-white to-[#e8f7ee] border border-[#ece6ed] hover:border-[#dcd9dd] rounded-2xl p-6 shadow-sm card-lift cursor-pointer group space-y-4 flex flex-col justify-between"
-              >
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#18794e] to-[#25a26c] text-white flex items-center justify-center shadow-xs group-hover:scale-105 transition-transform">
-                      <Zap className="w-5 h-5 text-white" />
-                    </div>
-                    <span className="text-[11px] font-mono font-bold text-[#18794e] bg-white px-2 py-0.5 rounded shadow-xs border border-[#ece6ed]">
-                      -34.1 MWh
-                    </span>
-                  </div>
-
-                  <div>
-                    <h3 className="text-base font-bold text-[#1f1b20] group-hover:text-[#18794e] transition-colors">
-                      Dynamic Campus Analytics
-                    </h3>
-                    <p className="text-xs text-[#655d69] mt-1 leading-relaxed">
-                      Calculates spatial utilization density, heating and cooling across dormant halls, and transit delays to reduce campus operating overhead.
-                    </p>
-                  </div>
-
-                  {/* Micro Visual Widget */}
-                  <div className="p-3 bg-white/90 border border-[#ece6ed] rounded-xl space-y-2 text-xs shadow-xs">
-                    <div className="flex justify-between text-[10px] font-mono text-[#7c747f]">
-                      <span>Building Thermal Compaction</span>
-                      <span className="text-[#18794e] font-bold">Delft Benchmark</span>
-                    </div>
-                    <div className="w-full bg-[#ece6ed] h-1.5 rounded-full overflow-hidden flex">
-                      <div className="bg-[#18794e] h-1.5 w-[76%] rounded-full"></div>
-                      <div className="bg-[#dcd6df] h-1.5 w-[24%]"></div>
-                    </div>
-                    <div className="flex justify-between text-[10px] font-mono text-[#655d69]">
-                      <span>Dormant Hall Shutdown: 17:00</span>
-                      <span className="text-[#18794e] font-bold">98.4% Room Use</span>
-                    </div>
-                  </div>
+            <div 
+              onClick={() => scrollTo('adaptive-engine')}
+              className="p-5 rounded-lg border border-border bg-surface hover:bg-subtle text-left transition-colors cursor-pointer group flex flex-col justify-between"
+            >
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <ShieldCheck className="w-5 h-5 text-secondary group-hover:text-brand" />
+                  <span className="text-[13px] text-success font-medium">0 clashes</span>
                 </div>
-
-                <div className="pt-2 border-t border-[#ece6ed] flex items-center justify-between text-xs">
-                  <span className="text-[11px] font-mono text-[#7c747f]">Zoned Heating Parity</span>
-                  <span className="font-bold text-[#18794e] group-hover:translate-x-1 transition-all flex items-center gap-1">
-                    View Matrix <ArrowRight className="w-3.5 h-3.5" />
-                  </span>
-                </div>
+                <h3 className="text-base font-semibold text-primary">Conflict arbitration</h3>
+                <p className="text-[14px] text-secondary mt-1.5 leading-relaxed">
+                  Collision-free room, instructor, and lab allocation via high-order polynomial constraint satisfaction.
+                </p>
               </div>
+              <span className="text-[14px] text-brand font-medium mt-4">Test arbitration →</span>
+            </div>
+
+            <div 
+              onClick={() => scrollTo('matrix-preview')}
+              className="p-5 rounded-lg border border-border bg-surface hover:bg-subtle text-left transition-colors cursor-pointer group flex flex-col justify-between"
+            >
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <Zap className="w-5 h-5 text-secondary group-hover:text-brand" />
+                  <span className="text-[13px] text-secondary font-medium">98.4% util</span>
+                </div>
+                <h3 className="text-base font-semibold text-primary">Campus analytics</h3>
+                <p className="text-[14px] text-secondary mt-1.5 leading-relaxed">
+                  Calculates room utilization density and powers down dormant buildings by late afternoon.
+                </p>
+              </div>
+              <span className="text-[14px] text-brand font-medium mt-4">View matrix →</span>
             </div>
           </div>
         </section>
 
-        {/* ================= SECTION: ADAPTIVE ENGINE ================= */}
-        <section id="adaptive-engine" className="scroll-mt-24 space-y-10 pt-4">
-          <div className="space-y-3 max-w-3xl">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#f6f2f7] border border-[#ece6ed] text-[11px] font-mono font-bold text-[#9c4126] uppercase tracking-wider">
-              <Cpu className="w-3.5 h-3.5 text-[#f27438]" />
-              Deterministic Solver Core • Mathematical Architecture
-            </div>
-            <h2 className="text-3xl font-black text-[#1f1b20] tracking-tight">
-              High-Order Polynomial Constraint Satisfaction Engine
-            </h2>
-            <p className="text-sm text-[#655d69] leading-relaxed">
-              SmartGrid AI replaces heuristic trial-and-error with a hybrid deterministic SAT-solver and genetic algorithm. It evaluates trillions of timetable permutations across campus buildings, student commute graphs, and faculty contracts in under two seconds.
+        {/* ================= SECTION: OPTIMIZATION (ADAPTIVE ENGINE) ================= */}
+        <section id="adaptive-engine" className="scroll-mt-16 space-y-6">
+          <div className="pb-4 border-b border-border">
+            <h2 className="text-2xl font-semibold text-primary">Optimization architecture</h2>
+            <p className="text-[15px] text-secondary mt-1">
+              High-order polynomial constraint satisfaction engine and genetic algorithm
             </p>
           </div>
 
-          {/* 4-Stage Pipeline */}
-          <div className="bg-white border border-[#ece6ed] rounded-2xl p-6 lg:p-8 shadow-sm space-y-6">
-            <div className="flex items-center justify-between border-b border-[#ece6ed] pb-3">
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-bold uppercase tracking-wider text-[#1f1b20]">Constraint Propagation Flow</span>
-                <span className="text-[10px] font-mono text-[#7c747f]">Deterministic SAT Core</span>
-              </div>
-              <span className="text-xs font-mono font-bold text-[#18794e] bg-[#eefcf2] px-3 py-1 rounded-xl flex items-center gap-1.5 shadow-xs">
-                <span className="w-2 h-2 rounded-full bg-[#18794e] animate-pulse" />
-                DETERMINISTIC_PARITY_ACTIVE
-              </span>
+          {/* 4-Stage Pipeline in a Single Bordered Box */}
+          <div className="bg-surface border border-border rounded-lg grid grid-cols-1 md:grid-cols-4 divide-y md:divide-y-0 md:divide-x divide-border">
+            <div className="p-5 sm:p-6 space-y-1.5">
+              <div className="text-[14px] font-mono font-medium text-brand">01</div>
+              <h3 className="text-[15px] font-semibold text-primary">Hard SAT boundaries</h3>
+              <p className="text-[14px] text-secondary leading-relaxed">
+                Zero-tolerance bounding: instructor non-overlap and room capacity caps.
+              </p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              <div className="relative bg-gradient-to-br from-[#faf4fc] via-white to-[#f4eaf7] border border-[#ece6ed] hover:border-[#dcd9dd] rounded-xl p-5 space-y-3 transition-all duration-300 card-lift group">
-                <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-[#3b1e4a] to-[#7209b7] text-white flex items-center justify-center font-mono text-xs font-bold shadow-xs group-hover:scale-105 transition-transform">01</div>
-                <div>
-                  <div className="text-xs font-bold text-[#1f1b20]">Hard SAT Boundaries</div>
-                  <div className="text-[11px] text-[#655d69] mt-0.5">Zero overlapping faculty contracts or double-booked facilities.</div>
-                </div>
-                <div className="text-[10px] font-mono text-[#7209b7] font-bold bg-[#f4ecf8] px-2 py-0.5 rounded w-fit">Polynomial Proof</div>
-              </div>
+            <div className="p-5 sm:p-6 space-y-1.5">
+              <div className="text-[14px] font-mono font-medium text-brand">02</div>
+              <h3 className="text-[15px] font-semibold text-primary">Circadian chrono-map</h3>
+              <p className="text-[14px] text-secondary leading-relaxed">
+                Weights high-cognition courses against student alertness curves.
+              </p>
+            </div>
 
-              <div className="relative bg-gradient-to-br from-[#fff7f2] via-white to-[#fff0eb] border border-[#ece6ed] hover:border-[#dcd9dd] rounded-xl p-5 space-y-3 transition-all duration-300 card-lift group">
-                <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-[#f27438] to-[#ea580c] text-white flex items-center justify-center font-mono text-xs font-bold shadow-xs group-hover:scale-105 transition-transform">02</div>
-                <div>
-                  <div className="text-xs font-bold text-[#1f1b20]">Circadian Chrono-Map</div>
-                  <div className="text-[11px] text-[#655d69] mt-0.5">Weights high-cognition courses against mental alertness curves.</div>
-                </div>
-                <div className="text-[10px] font-mono text-[#f27438] font-bold bg-[#fff0ea] px-2 py-0.5 rounded w-fit">Biometric Sleep Curve</div>
-              </div>
+            <div className="p-5 sm:p-6 space-y-1.5">
+              <div className="text-[14px] font-mono font-medium text-brand">03</div>
+              <h3 className="text-[15px] font-semibold text-primary">Genetic permutations</h3>
+              <p className="text-[14px] text-secondary leading-relaxed">
+                Multi-threaded chromosome crossover evaluated at 1.24 ms per epoch.
+              </p>
+            </div>
 
-              <div className="relative bg-gradient-to-br from-[#fff5f0] via-white to-[#ffede5] border border-[#ece6ed] hover:border-[#dcd9dd] rounded-xl p-5 space-y-3 transition-all duration-300 card-lift group">
-                <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-[#9c4126] to-[#c84c16] text-white flex items-center justify-center font-mono text-xs font-bold shadow-xs group-hover:scale-105 transition-transform">03</div>
-                <div>
-                  <div className="text-xs font-bold text-[#1f1b20]">Genetic Permutations</div>
-                  <div className="text-[11px] text-[#655d69] mt-0.5">Multi-threaded chromosome crossover evaluated at 1.24 ms per epoch.</div>
-                </div>
-                <div className="text-[10px] font-mono text-[#9c4126] font-bold bg-[#ffebe2] px-2 py-0.5 rounded w-fit">4,120 Chromosomes</div>
-              </div>
-
-              <div className="relative bg-gradient-to-br from-[#f1fbf5] via-white to-[#e8f7ee] border border-[#ece6ed] hover:border-[#dcd9dd] rounded-xl p-5 space-y-3 transition-all duration-300 card-lift group">
-                <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-[#18794e] to-[#10b981] text-white flex items-center justify-center font-mono text-xs font-bold shadow-xs group-hover:scale-105 transition-transform">04</div>
-                <div>
-                  <div className="text-xs font-bold text-[#1f1b20]">Equilibrium Matrix</div>
-                  <div className="text-[11px] text-[#655d69] mt-0.5">Zero hard conflicts locked with instant LMS calendar synchronization.</div>
-                </div>
-                <div className="text-[10px] font-mono text-[#18794e] font-bold bg-[#e6f9ed] px-2 py-0.5 rounded w-fit">Locked Parity</div>
-              </div>
+            <div className="p-5 sm:p-6 space-y-1.5">
+              <div className="text-[14px] font-mono font-medium text-brand">04</div>
+              <h3 className="text-[15px] font-semibold text-primary">Equilibrium matrix</h3>
+              <p className="text-[14px] text-secondary leading-relaxed">
+                Zero hard conflicts locked with instant LMS calendar synchronization.
+              </p>
             </div>
           </div>
 
-          {/* Live Simulator & Conflict Test Bench */}
+          {/* Simulator & Conflict Arbitration */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-            {/* Genetic Algorithm Convergence Simulator */}
-            <div className="lg:col-span-7 bg-white border border-[#ece6ed] rounded-2xl p-6 lg:p-8 shadow-sm space-y-5">
-              <div className="flex items-center justify-between border-b border-[#ece6ed] pb-3">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold uppercase tracking-wider text-[#1f1b20]">Convergence Simulator</span>
-                  <span className="text-[10px] font-mono text-[#7c747f]">Genetic Epochs</span>
-                </div>
+            {/* Genetic Convergence Simulator */}
+            <div className="lg:col-span-7 bg-surface border border-border rounded-lg p-6 space-y-5">
+              <div className="flex items-center justify-between border-b border-border pb-4">
+                <h3 className="text-base font-semibold text-primary">Convergence simulator</h3>
                 <button 
                   onClick={() => setIsRunningSim(!isRunningSim)}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all shadow-sm active:scale-95 cursor-pointer ${
-                    isRunningSim 
-                      ? 'bg-[#18794e] text-white hover:bg-[#13613e]' 
-                      : 'bg-gradient-to-r from-[#9c4126] to-[#b3401f] text-white hover:from-[#83341d] hover:to-[#9c4126]'
+                  className={`h-[38px] px-3.5 rounded-md text-[14px] font-medium transition-colors shadow-xs flex items-center gap-2 cursor-pointer ${
+                    isRunningSim ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : 'bg-brand hover:bg-brand-hover text-white'
                   }`}
                 >
-                  {isRunningSim ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5 fill-white" />}
-                  {isRunningSim ? 'Simulating Iteration' : 'Start Simulation'}
+                  {isRunningSim ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4 fill-white" />}
+                  <span>{isRunningSim ? 'Simulating' : 'Start simulation'}</span>
                 </button>
               </div>
 
-              {/* Metric Grid */}
-              <div className="grid grid-cols-3 gap-3 text-center">
-                <div className="p-4 bg-gradient-to-br from-[#faf4fc] to-[#f4eaf7] border border-[#ece6ed] rounded-xl shadow-xs">
-                  <div className="text-2xl font-black font-mono text-[#3b1e4a]">{generation}</div>
-                  <div className="text-[10px] font-mono uppercase text-[#7c747f] mt-1 font-bold">Epoch Generation</div>
+              <div className="grid grid-cols-3 divide-x divide-border border border-border rounded-lg bg-surface text-center">
+                <div className="p-4">
+                  <div className="text-[32px] font-semibold font-mono text-primary tabular-nums">{generation}</div>
+                  <div className="text-[13px] text-secondary mt-0.5">Generation epoch</div>
                 </div>
-                <div className="p-4 bg-gradient-to-br from-[#f1fbf5] to-[#e8f7ee] border border-[#ece6ed] rounded-xl shadow-xs">
-                  <div className="text-2xl font-black font-mono text-[#18794e]">{fitnessScore}%</div>
-                  <div className="text-[10px] font-mono uppercase text-[#18794e] mt-1 font-bold">Pareto Fitness</div>
+                <div className="p-4">
+                  <div className="text-[32px] font-semibold font-mono text-success tabular-nums">{fitnessScore}%</div>
+                  <div className="text-[13px] text-secondary mt-0.5">Pareto fitness</div>
                 </div>
-                <div className="p-4 bg-gradient-to-br from-[#fff7f2] to-[#fff0eb] border border-[#ece6ed] rounded-xl shadow-xs">
-                  <div className="text-2xl font-black font-mono text-[#9c4126]">{activeChromosomes}</div>
-                  <div className="text-[10px] font-mono uppercase text-[#9c4126] mt-1 font-bold">Active Parallel Nodes</div>
+                <div className="p-4">
+                  <div className="text-[32px] font-semibold font-mono text-primary tabular-nums">{activeChromosomes}</div>
+                  <div className="text-[13px] text-secondary mt-0.5">Parallel nodes</div>
                 </div>
               </div>
 
-              {/* Interactive Mutation Slider */}
               <div className="space-y-2 pt-1">
-                <div className="flex justify-between text-xs font-bold text-[#1f1b20]">
-                  <span>Mutation Probability: <span className="font-mono text-[#9c4126]">{(mutationRate * 100).toFixed(1)}%</span></span>
-                  <span className="font-mono text-[11px] text-[#7c747f]">Theoretical Optimum: 4.0%</span>
+                <div className="flex justify-between text-[14px]">
+                  <span className="text-primary font-medium">Mutation probability:</span>
+                  <span className="font-mono text-primary font-medium">{(mutationRate * 100).toFixed(1)}%</span>
                 </div>
                 <input 
                   type="range" min="1" max="15" value={mutationRate * 100} 
                   onChange={e => setMutationRate(Number(e.target.value) / 100)}
-                  className="w-full h-1.5"
+                  className="w-full h-2 cursor-pointer"
                 />
               </div>
             </div>
 
-            {/* Real-Time Conflict Arbitration Bench */}
-            <div className="lg:col-span-5 bg-white border border-[#ece6ed] rounded-2xl p-6 lg:p-8 shadow-sm space-y-4">
-              <div className="border-b border-[#ece6ed] pb-3 flex items-center justify-between">
-                <div>
-                  <span className="text-xs font-bold uppercase tracking-wider text-[#1f1b20]">Stress Test Bench</span>
-                  <div className="text-xs text-[#655d69]">Inject live fault to observe algorithmic self-healing.</div>
-                </div>
-                <span className="text-[10px] font-mono font-bold text-[#f27438] bg-[#fff5f0] border border-[#ece6ed] px-2 py-0.5 rounded shadow-xs">
-                  Self-Healing
-                </span>
+            {/* Conflict Arbitration Bench */}
+            <div className="lg:col-span-5 bg-surface border border-border rounded-lg p-6 space-y-5">
+              <div className="border-b border-border pb-4">
+                <h3 className="text-base font-semibold text-primary">Stress test bench</h3>
+                <p className="text-[13px] text-secondary mt-0.5">Inject live faults to observe automatic arbitration</p>
               </div>
 
-              <div className="space-y-2">
+              <div className="space-y-2.5">
                 <button
                   onClick={() => handleResolveConflict('prof_overlap')}
                   disabled={resolvingConflict}
-                  className="w-full text-left p-3 rounded-xl border border-[#ece6ed] hover:border-[#dcd9dd] bg-gradient-to-r from-white to-[#fffaf8] hover:bg-[#fff5f0] transition-all text-xs group cursor-pointer shadow-xs"
+                  className="w-full text-left p-3.5 rounded-md border border-border hover:bg-subtle transition-colors text-[14px] cursor-pointer flex items-center justify-between"
                 >
-                  <div className="font-bold text-[#1f1b20] group-hover:text-[#9c4126] flex items-center justify-between">
-                    <span>Fault 01: Faculty Double-Book</span>
-                    <span className="text-[10px] font-mono text-[#9c4126] font-bold">Inject ⚡</span>
+                  <div>
+                    <div className="font-medium text-primary">Fault 01: Faculty double-book</div>
+                    <div className="text-[13px] text-secondary mt-0.5">Instructor assigned to two rooms at once</div>
                   </div>
-                  <div className="text-[11px] text-[#7c747f] mt-0.5">Dr. Evans assigned to 2 rooms simultaneously</div>
+                  <span className="text-[13px] text-brand font-medium">Inject</span>
                 </button>
+
                 <button
                   onClick={() => handleResolveConflict('room_surge')}
                   disabled={resolvingConflict}
-                  className="w-full text-left p-3 rounded-xl border border-[#ece6ed] hover:border-[#dcd9dd] bg-gradient-to-r from-white to-[#fffaf8] hover:bg-[#fff5f0] transition-all text-xs group cursor-pointer shadow-xs"
+                  className="w-full text-left p-3.5 rounded-md border border-border hover:bg-subtle transition-colors text-[14px] cursor-pointer flex items-center justify-between"
                 >
-                  <div className="font-bold text-[#1f1b20] group-hover:text-[#9c4126] flex items-center justify-between">
-                    <span>Fault 02: Sudden Capacity Overflow</span>
-                    <span className="text-[10px] font-mono text-[#9c4126] font-bold">Inject ⚡</span>
+                  <div>
+                    <div className="font-medium text-primary">Fault 02: Sudden capacity surge</div>
+                    <div className="text-[13px] text-secondary mt-0.5">Enrollment exceeds physical room seats</div>
                   </div>
-                  <div className="text-[11px] text-[#7c747f] mt-0.5">Enrolment exceeds physical room seats</div>
+                  <span className="text-[13px] text-brand font-medium">Inject</span>
                 </button>
               </div>
 
-              {/* Console log */}
-              <div className="bg-[#1f1b20] text-[#fbf8fc] rounded-xl p-3.5 font-mono text-[10px] space-y-1.5 h-36 overflow-y-auto border border-[#3b1e4a] shadow-inner">
-                <div className="text-[#f27438] font-bold flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#f27438] animate-pulse"></span>
-                  // SMARTGRID_ARBITRATION_CONSOLE
-                </div>
+              {/* Console Log */}
+              <div className="bg-subtle text-primary rounded-md p-3.5 font-mono text-[13px] space-y-1.5 h-36 overflow-y-auto border border-border leading-relaxed">
                 {resolutionLog.length === 0 ? (
-                  <div className="text-[#7c747f] pt-2">Ready. Select a simulated fault above to trigger solver.</div>
+                  <div className="text-secondary">Ready. Select a simulated fault above to trigger solver.</div>
                 ) : (
                   resolutionLog.map((log, i) => (
-                    <div key={i} className={log.includes('EQUILIBRIUM') ? 'text-[#18794e] font-bold' : 'text-[#ece6ed]'}>{log}</div>
+                    <div key={i} className={log.includes('restored') ? 'text-success font-medium' : 'text-primary'}>
+                      {log}
+                    </div>
                   ))
                 )}
               </div>
@@ -945,196 +701,154 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({ onOpenAuth
           </div>
         </section>
 
-        {/* ================= SECTION: STUDENT VOICE ================= */}
-        <section id="student-voice" className="scroll-mt-24 space-y-10 pt-4">
-          <div className="space-y-3 max-w-3xl">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#f6f2f7] border border-[#ece6ed] text-[11px] font-mono font-bold text-[#9c4126] uppercase tracking-wider">
-              <HeartHandshake className="w-3.5 h-3.5 text-[#f27438]" />
-              Student-Centric Telemetry • Circadian Equilibrium
-            </div>
-            <h2 className="text-3xl font-black text-[#1f1b20] tracking-tight">
-              Prioritizing Student Wellbeing Over Administrative Convenience
-            </h2>
-            <p className="text-sm text-[#655d69] leading-relaxed">
-              Traditional software forces students into back-to-back cross-campus sprints and 8:00 AM post-commute exams. SmartGrid AI ingests student transit realities, sleep science, and real-time cohort sentiment directly into solver cost functions.
+        {/* ================= SECTION: STUDENT FEEDBACK ================= */}
+        <section id="student-voice" className="scroll-mt-16 space-y-6">
+          <div className="pb-4 border-b border-border">
+            <h2 className="text-2xl font-semibold text-primary">Student feedback & chronotypes</h2>
+            <p className="text-[15px] text-secondary mt-1">
+              Ingesting student transit realities, sleep curves, and verified senate referendums
             </p>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
             {/* Chronotypes Card */}
-            <div className="lg:col-span-6 bg-white border border-[#ece6ed] rounded-2xl p-6 lg:p-8 shadow-sm space-y-5">
-              <div className="border-b border-[#ece6ed] pb-3">
-                <span className="text-xs font-bold uppercase tracking-wider text-[#1f1b20]">Chronotype Energy Optimization</span>
-                <div className="text-xs text-[#655d69] mt-0.5">Select a chronotype to align quantitative coursework with peak alertness.</div>
+            <div className="lg:col-span-6 bg-surface border border-border rounded-lg p-6 space-y-5">
+              <div className="border-b border-border pb-4">
+                <h3 className="text-base font-semibold text-primary">Chronotype energy optimization</h3>
+                <p className="text-[13px] text-secondary mt-0.5">Align quantitative coursework with peak alertness</p>
               </div>
 
               <div className="grid grid-cols-3 gap-3">
-                <button
-                  onClick={() => setSelectedChronotype('early')}
-                  className={`p-3.5 rounded-xl border border-[#ece6ed] hover:border-[#dcd9dd] text-center transition-all duration-200 group cursor-pointer shadow-xs ${
-                    selectedChronotype === 'early' 
-                      ? 'bg-gradient-to-br from-[#fff7f2] via-white to-[#fff0eb] shadow-md ring-1 ring-[#9c4126]' 
-                      : 'bg-[#fbf8fc] hover:bg-white'
-                  }`}
-                >
-                  <Sun className={`w-5 h-5 mx-auto mb-1.5 transition-transform group-hover:scale-110 ${selectedChronotype === 'early' ? 'text-[#f27438]' : 'text-[#7c747f]'}`} />
-                  <div className="text-xs font-bold text-[#1f1b20]">Early Peak</div>
-                  <div className="text-[10px] font-mono text-[#7c747f] mt-0.5">08:00 - 13:00</div>
-                  {selectedChronotype === 'early' && (
-                    <div className="mt-1 text-[9px] font-mono font-bold text-[#9c4126] bg-[#ffebe2] px-1.5 py-0.5 rounded w-fit mx-auto">Active</div>
-                  )}
-                </button>
-                <button
-                  onClick={() => setSelectedChronotype('balanced')}
-                  className={`p-3.5 rounded-xl border border-[#ece6ed] hover:border-[#dcd9dd] text-center transition-all duration-200 group cursor-pointer shadow-xs ${
-                    selectedChronotype === 'balanced' 
-                      ? 'bg-gradient-to-br from-[#f1fbf5] via-white to-[#e8f7ee] shadow-md ring-1 ring-[#18794e]' 
-                      : 'bg-[#fbf8fc] hover:bg-white'
-                  }`}
-                >
-                  <Coffee className={`w-5 h-5 mx-auto mb-1.5 transition-transform group-hover:scale-110 ${selectedChronotype === 'balanced' ? 'text-[#18794e]' : 'text-[#7c747f]'}`} />
-                  <div className="text-xs font-bold text-[#1f1b20]">Balanced</div>
-                  <div className="text-[10px] font-mono text-[#7c747f] mt-0.5">10:00 - 16:00</div>
-                  {selectedChronotype === 'balanced' && (
-                    <div className="mt-1 text-[9px] font-mono font-bold text-[#18794e] bg-[#e6f9ed] px-1.5 py-0.5 rounded w-fit mx-auto">Active</div>
-                  )}
-                </button>
-                <button
-                  onClick={() => setSelectedChronotype('evening')}
-                  className={`p-3.5 rounded-xl border border-[#ece6ed] hover:border-[#dcd9dd] text-center transition-all duration-200 group cursor-pointer shadow-xs ${
-                    selectedChronotype === 'evening' 
-                      ? 'bg-gradient-to-br from-[#faf4fc] via-white to-[#f4eaf7] shadow-md ring-1 ring-[#7209b7]' 
-                      : 'bg-[#fbf8fc] hover:bg-white'
-                  }`}
-                >
-                  <Moon className={`w-5 h-5 mx-auto mb-1.5 transition-transform group-hover:scale-110 ${selectedChronotype === 'evening' ? 'text-[#3b1e4a]' : 'text-[#7c747f]'}`} />
-                  <div className="text-xs font-bold text-[#1f1b20]">Evening Focus</div>
-                  <div className="text-[10px] font-mono text-[#7c747f] mt-0.5">12:30 - 18:30</div>
-                  {selectedChronotype === 'evening' && (
-                    <div className="mt-1 text-[9px] font-mono font-bold text-[#7209b7] bg-[#f4ecf8] px-1.5 py-0.5 rounded w-fit mx-auto">Active</div>
-                  )}
-                </button>
+                {[
+                  { id: 'early' as const, label: 'Morning peak', time: '08:00 - 13:00', icon: Sun },
+                  { id: 'balanced' as const, label: 'Balanced', time: '10:00 - 16:00', icon: Coffee },
+                  { id: 'evening' as const, label: 'Evening focus', time: '12:30 - 18:30', icon: Moon }
+                ].map(item => {
+                  const Icon = item.icon;
+                  const isSel = selectedChronotype === item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      onClick={() => setSelectedChronotype(item.id)}
+                      className={`p-3 rounded-md border text-center transition-colors cursor-pointer text-[14px] ${
+                        isSel 
+                          ? 'border-brand bg-brand/5 text-primary' 
+                          : 'border-border bg-surface hover:bg-subtle text-secondary'
+                      }`}
+                    >
+                      <Icon className={`w-5 h-5 mx-auto mb-1.5 ${isSel ? 'text-brand' : 'text-secondary'}`} />
+                      <div className="font-medium text-primary">{item.label}</div>
+                      <div className="text-[13px] font-mono text-secondary mt-1">{item.time}</div>
+                    </button>
+                  );
+                })}
               </div>
 
-              {/* Campus Lunch Recharge Switch */}
-              <div className="p-3.5 bg-gradient-to-r from-[#fbf8fc] to-[#f4fbf6] rounded-xl border border-[#ece6ed] flex items-center justify-between">
+              {/* Lunch Buffer Toggle */}
+              <div className="p-4 bg-surface rounded-md border border-border flex items-center justify-between">
                 <div>
-                  <div className="text-xs font-bold text-[#1f1b20] flex items-center gap-1.5">
-                    <span>Campus Noon Recharge Lock</span>
-                    <span className="text-[9px] font-mono font-bold text-[#18794e] bg-[#eefcf2] px-1.5 py-0.5 rounded">Protected</span>
-                  </div>
-                  <div className="text-[11px] text-[#7c747f]">Mandatory universal break 12:00 - 13:00 for lunch & recharge</div>
+                  <div className="text-[14px] font-medium text-primary">Daily noon recharge lock</div>
+                  <div className="text-[13px] text-secondary mt-0.5">Universal 12:00 - 13:00 break protected</div>
                 </div>
                 <button
                   onClick={() => setLunchBufferLocked(!lunchBufferLocked)}
-                  className={`w-11 h-6 rounded-full transition-colors relative cursor-pointer ${lunchBufferLocked ? 'bg-[#18794e]' : 'bg-[#dcd6df]'}`}
+                  className={`w-11 h-6 rounded-full transition-colors relative cursor-pointer ${
+                    lunchBufferLocked ? 'bg-brand' : 'bg-slate-300 dark:bg-slate-700'
+                  }`}
+                  aria-label="Toggle lunch buffer"
                 >
-                  <div className={`w-5 h-5 rounded-full bg-white absolute top-0.5 shadow-xs transition-transform ${lunchBufferLocked ? 'left-5.5' : 'left-0.5'}`} />
+                  <div className={`w-5 h-5 rounded-full bg-white absolute top-0.5 transition-transform ${
+                    lunchBufferLocked ? 'left-5.5' : 'left-0.5'
+                  }`} />
                 </button>
               </div>
             </div>
 
             {/* Commuter Transit Buffer */}
-            <div className="lg:col-span-6 bg-white border border-[#ece6ed] rounded-2xl p-6 lg:p-8 shadow-sm space-y-5">
-              <div className="border-b border-[#ece6ed] pb-3">
-                <span className="text-xs font-bold uppercase tracking-wider text-[#1f1b20]">Commuter Buffer & Walking Steps</span>
-                <div className="text-xs text-[#655d69] mt-0.5">Calculates transit windows between campus quads and transit hubs.</div>
+            <div className="lg:col-span-6 bg-surface border border-border rounded-lg p-6 space-y-5">
+              <div className="border-b border-border pb-4">
+                <h3 className="text-base font-semibold text-primary">Commuter buffer & walking steps</h3>
+                <p className="text-[13px] text-secondary mt-0.5">Calculates transit windows between campus quads and transit hubs</p>
               </div>
 
               <div className="space-y-2">
-                <div className="flex justify-between text-xs font-bold text-[#1f1b20]">
-                  <span>Door-to-Campus Travel Time:</span>
-                  <span className="font-mono text-[#9c4126] font-bold bg-[#fff5f0] border border-[#ece6ed] px-2 py-0.5 rounded">{commuteDuration} mins</span>
+                <div className="flex justify-between text-[14px]">
+                  <span className="text-primary font-medium">Door-to-campus transit duration:</span>
+                  <span className="font-mono text-primary font-medium">{commuteDuration} mins</span>
                 </div>
                 <input
                   type="range" min="10" max="90" step="5" value={commuteDuration}
                   onChange={e => setCommuteDuration(Number(e.target.value))}
-                  className="w-full h-1.5"
+                  className="w-full h-2 cursor-pointer"
                 />
               </div>
 
-              <div className="divide-y divide-[#ece6ed] bg-[#fbf8fc] border border-[#ece6ed] rounded-xl text-xs overflow-hidden">
-                <div className="p-3 flex items-center justify-between hover:bg-[#fff9f7] transition-colors">
-                  <div className="flex items-center gap-2 font-semibold">
-                    <span className="w-2 h-2 rounded-full bg-[#f27438]"></span>
-                    <span>Science Quad B ↔ South Engineering</span>
-                  </div>
-                  <span className="font-mono text-[#18794e] font-bold bg-[#eefcf2] px-2 py-0.5 rounded">12 mins (Buffer: 20 mins)</span>
+              <div className="divide-y divide-border border border-border rounded-md text-[14px] overflow-hidden">
+                <div className="p-3 px-3.5 flex items-center justify-between">
+                  <span className="text-primary">Science Quad B ↔ South Engineering</span>
+                  <span className="font-mono text-secondary text-[13px]">12 mins (Buffer: 20m)</span>
                 </div>
-                <div className="p-3 flex items-center justify-between hover:bg-[#fff9f7] transition-colors">
-                  <div className="flex items-center gap-2 font-semibold">
-                    <span className="w-2 h-2 rounded-full bg-[#7209b7]"></span>
-                    <span>Architecture Atrium ↔ Chemistry Lab</span>
-                  </div>
-                  <span className="font-mono text-[#18794e] font-bold bg-[#eefcf2] px-2 py-0.5 rounded">8 mins (Buffer: 15 mins)</span>
+                <div className="p-3 px-3.5 flex items-center justify-between">
+                  <span className="text-primary">Architecture Atrium ↔ Chemistry Lab</span>
+                  <span className="font-mono text-secondary text-[13px]">8 mins (Buffer: 15m)</span>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Student Governance Referendums */}
-          <div className="bg-white border border-[#ece6ed] rounded-2xl p-6 lg:p-8 shadow-sm space-y-6">
-            <div className="border-b border-[#ece6ed] pb-3 flex items-center justify-between">
+          {/* Student Polls */}
+          <div className="bg-surface border border-border rounded-lg p-6 space-y-5">
+            <div className="flex items-center justify-between border-b border-border pb-4">
               <div>
-                <span className="text-xs font-bold uppercase tracking-wider text-[#1f1b20]">Student Governance Matrix</span>
-                <div className="text-xs text-[#655d69]">Verified student senate voting results pass directly into solver penalties.</div>
+                <h3 className="text-base font-semibold text-primary">Student polls & referendums</h3>
+                <p className="text-[13px] text-secondary mt-0.5">Verified student senate voting results pass directly into solver penalties</p>
               </div>
-              <span className="text-xs font-mono font-bold text-[#18794e] bg-[#eefcf2] px-3 py-1 rounded-xl shadow-xs">
-                10,353 Verified Student Ballots
-              </span>
+              <span className="text-[13px] font-mono text-secondary">10,353 verified votes</span>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {polls.map((poll, pIdx) => {
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+              {polls.map(poll => {
                 const total = poll.votesYes + poll.votesNo;
                 const pctYes = Math.round((poll.votesYes / total) * 100);
-                const washes = [
-                  'bg-gradient-to-br from-[#fff7f2] via-white to-[#fff0eb]',
-                  'bg-gradient-to-br from-[#faf4fc] via-white to-[#f4eaf7]',
-                  'bg-gradient-to-br from-[#f1fbf5] via-white to-[#e8f7ee]'
-                ];
-                const tagColors = [
-                  'text-[#9c4126] bg-white',
-                  'text-[#7209b7] bg-white',
-                  'text-[#18794e] bg-white'
-                ];
                 return (
-                  <div key={poll.id} className={`p-5 rounded-2xl border border-[#ece6ed] hover:border-[#dcd9dd] ${washes[pIdx % washes.length]} space-y-3.5 flex flex-col justify-between shadow-xs card-lift`}>
+                  <div key={poll.id} className="p-5 rounded-lg border border-border bg-surface space-y-3.5 flex flex-col justify-between">
                     <div>
-                      <span className={`text-[10px] font-mono uppercase font-bold px-2 py-0.5 rounded shadow-xs border border-[#ece6ed] ${tagColors[pIdx % tagColors.length]}`}>
+                      <span className="text-[13px] text-brand font-medium">
                         {poll.category}
                       </span>
-                      <div className="text-xs font-bold text-[#1f1b20] mt-2.5 leading-snug">{poll.question}</div>
+                      <div className="text-[15px] font-semibold text-primary mt-1 leading-snug">
+                        {poll.question}
+                      </div>
                     </div>
-                    <div className="space-y-2">
-                      <div className="flex justify-between text-xs font-mono">
-                        <span className="text-[#18794e] font-bold">{pctYes}% Yes</span>
-                        <span className="text-[#7c747f]">{total.toLocaleString()} votes</span>
+
+                    <div className="space-y-2.5 pt-1">
+                      <div className="flex justify-between text-[13px] font-mono">
+                        <span className="text-success font-medium">{pctYes}% Yes</span>
+                        <span className="text-secondary">{total.toLocaleString()} votes</span>
                       </div>
-                      <div className="w-full bg-[#ece6ed] rounded-full h-2 overflow-hidden flex">
-                        <div className="bg-gradient-to-r from-[#18794e] to-[#25a26c] h-2 transition-all duration-300 rounded-full" style={{ width: `${pctYes}%` }}></div>
-                        <div className="bg-[#dcd6df] h-2" style={{ width: `${100 - pctYes}%` }}></div>
+                      <div className="w-full bg-subtle rounded-full h-2 overflow-hidden flex">
+                        <div className="bg-success h-full transition-all duration-300" style={{ width: `${pctYes}%` }} />
                       </div>
-                      <div className="grid grid-cols-2 gap-2 pt-1">
+                      <div className="grid grid-cols-2 gap-2.5 pt-1">
                         <button
                           onClick={() => handleVote(poll.id, 'yes')}
-                          className={`py-2 rounded-xl text-xs font-bold border border-[#ece6ed] transition-all cursor-pointer shadow-xs ${
+                          className={`h-9 px-3 rounded-md text-[14px] font-medium border transition-colors cursor-pointer ${
                             poll.userVoted === 'yes' 
-                              ? 'bg-[#18794e] text-white shadow-xs' 
-                              : 'bg-white text-[#18794e] hover:bg-[#eefcf2]'
+                              ? 'bg-brand text-white border-brand' 
+                              : 'bg-surface border-border text-primary hover:bg-subtle'
                           }`}
                         >
-                          Vote Yes ✓
+                          Vote yes
                         </button>
                         <button
                           onClick={() => handleVote(poll.id, 'no')}
-                          className={`py-2 rounded-xl text-xs font-bold border border-[#ece6ed] transition-all cursor-pointer shadow-xs ${
+                          className={`h-9 px-3 rounded-md text-[14px] font-medium border transition-colors cursor-pointer ${
                             poll.userVoted === 'no' 
-                              ? 'bg-[#3b1e4a] text-white shadow-xs' 
-                              : 'bg-white text-[#655d69] hover:bg-[#f6f2f7]'
+                              ? 'bg-primary text-surface border-primary' 
+                              : 'bg-surface border-border text-secondary hover:text-primary hover:bg-subtle'
                           }`}
                         >
-                          Vote No ✗
+                          Vote no
                         </button>
                       </div>
                     </div>
@@ -1145,36 +859,30 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({ onOpenAuth
           </div>
         </section>
 
-        {/* ================= SECTION: CASE STUDIES ================= */}
-        <section id="case-studies" className="scroll-mt-24 space-y-10 pt-4">
-          <div className="space-y-3 max-w-3xl">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#f6f2f7] border border-[#ece6ed] text-[11px] font-mono font-bold text-[#9c4126] uppercase tracking-wider">
-              <Award className="w-3.5 h-3.5 text-[#f27438]" />
-              Peer-Reviewed Campus Deployments
-            </div>
-            <h2 className="text-3xl font-black text-[#1f1b20] tracking-tight">
-              Institutional Case Studies & Algorithmic Benchmarks
-            </h2>
-            <p className="text-sm text-[#655d69] leading-relaxed">
-              Discover how leading research universities, polytechnics, and collegiate networks eliminated scheduling friction, preserved faculty satisfaction, and protected student mental health.
+        {/* ================= SECTION: CAMPUSES & ACCREDITATION ================= */}
+        <section id="case-studies" className="scroll-mt-16 space-y-6">
+          <div className="pb-4 border-b border-border">
+            <h2 className="text-2xl font-semibold text-primary">Campuses & accreditation</h2>
+            <p className="text-[15px] text-secondary mt-1">
+              Peer-reviewed deployments and operational benchmarks
             </p>
           </div>
 
-          <div className="bg-white border border-[#ece6ed] rounded-2xl p-6 lg:p-8 shadow-sm space-y-6">
-            <div className="flex items-center gap-2 overflow-x-auto pb-1 border-b border-[#ece6ed]">
+          <div className="bg-surface border border-border rounded-lg p-6 sm:p-7 space-y-6">
+            <div className="flex items-center gap-2 overflow-x-auto pb-1 border-b border-border">
               {[
-                { id: 'wpi' as const, label: 'Western Poly (34k Students)' },
+                { id: 'wpi' as const, label: 'Western Poly (34k students)' },
                 { id: 'oxford' as const, label: 'Oxford Union Sciences' },
                 { id: 'sutd' as const, label: 'Singapore Tech (SUTD)' },
-                { id: 'tudelft' as const, label: 'TU Delft (Thermal Compaction)' }
+                { id: 'tudelft' as const, label: 'TU Delft (Thermal compaction)' }
               ].map(item => (
                 <button
                   key={item.id}
                   onClick={() => setSelectedStudy(item.id)}
-                  className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all border cursor-pointer ${
+                  className={`h-[38px] px-3.5 rounded-md text-[14px] font-medium whitespace-nowrap transition-colors cursor-pointer ${
                     selectedStudy === item.id
-                      ? 'bg-[#3b1e4a] text-white border-[#3b1e4a] shadow-xs'
-                      : 'bg-white text-[#655d69] border-[#ece6ed] hover:border-[#dcd6df]'
+                      ? 'bg-subtle text-brand border border-border font-medium'
+                      : 'text-secondary hover:text-primary hover:bg-subtle border border-transparent'
                   }`}
                 >
                   {item.label}
@@ -1182,76 +890,71 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({ onOpenAuth
               ))}
             </div>
 
-            <div className="space-y-6">
+            <div className="space-y-5">
               <div>
-                <span className="text-[11px] font-mono uppercase tracking-widest text-[#9c4126] font-bold">
+                <div className="text-[13px] text-secondary">
                   {currentStudy.location} • {currentStudy.term}
-                </span>
-                <h3 className="text-2xl font-black text-[#1f1b20] mt-0.5">{currentStudy.name}</h3>
-                <p className="text-xs text-[#655d69] mt-0.5">{currentStudy.tagline}</p>
+                </div>
+                <h3 className="text-xl font-semibold text-primary mt-1">{currentStudy.name}</h3>
+                <p className="text-[14px] text-secondary mt-0.5">{currentStudy.tagline}</p>
               </div>
 
-              {/* Stats */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                {currentStudy.heroStats.map((stat, i) => {
-                  const cardStyles = [
-                    'bg-gradient-to-br from-[#faf4fc] via-white to-[#f4eaf7]',
-                    'bg-gradient-to-br from-[#f1fbf5] via-white to-[#e8f7ee]',
-                    'bg-gradient-to-br from-[#fff7f2] via-white to-[#fff0eb]',
-                    'bg-gradient-to-br from-[#fffbf0] via-white to-[#fff4df]'
-                  ];
-                  return (
-                    <div key={i} className={`p-4 rounded-xl border border-[#ece6ed] hover:border-[#dcd9dd] ${cardStyles[i % cardStyles.length]} space-y-1.5 shadow-xs card-lift`}>
-                      <div className="text-[10px] font-mono uppercase text-[#7c747f] font-bold">{stat.label}</div>
-                      <div className="flex items-baseline justify-between">
-                        <div className="text-xl font-black font-mono text-[#1f1b20]">{stat.after}</div>
-                        <div className="text-[11px] font-mono font-bold text-[#18794e] bg-[#eefcf2] px-2 py-0.5 rounded-md shadow-xs">{stat.delta}</div>
-                      </div>
-                      <div className="text-[10px] font-mono text-[#7c747f]">Prior: <span className="line-through">{stat.before}</span></div>
+              {/* Stat Strip */}
+              <div className="bg-surface border border-border rounded-lg grid grid-cols-2 md:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x divide-border">
+                {currentStudy.heroStats.map((stat, i) => (
+                  <div key={i} className="p-4 sm:p-5 space-y-1">
+                    <div className="text-[14px] text-secondary">{stat.label}</div>
+                    <div className="flex items-baseline justify-between pt-1">
+                      <div className="text-[32px] font-semibold text-primary font-mono tabular-nums tracking-tight">{stat.after}</div>
+                      <span className="px-2 py-0.5 rounded text-[13px] font-mono font-medium bg-emerald-50 dark:bg-emerald-950/40 text-success border border-emerald-200 dark:border-emerald-800">
+                        {stat.delta}
+                      </span>
                     </div>
-                  );
-                })}
+                    <div className="text-[13px] text-tertiary">
+                      Prior: <span className="line-through">{stat.before}</span>
+                    </div>
+                  </div>
+                ))}
               </div>
 
-              <div className="p-4 rounded-xl bg-gradient-to-br from-[#fff8f5] via-white to-[#fff2ec] border border-[#ece6ed] text-xs text-[#655d69] italic shadow-xs">
-                "{currentStudy.quote}"
-                <div className="text-[11px] font-bold font-sans not-italic text-[#1f1b20] mt-1">— {currentStudy.author}</div>
+              <div className="p-4 sm:p-5 rounded-md border-l-2 border-brand bg-subtle text-[15px] text-secondary italic space-y-1.5">
+                <p>"{currentStudy.quote}"</p>
+                <div className="text-[14px] font-medium not-italic text-primary pt-0.5">— {currentStudy.author}</div>
               </div>
 
-              <p className="text-xs text-[#655d69] leading-relaxed">
+              <p className="text-[15px] text-secondary leading-relaxed">
                 {currentStudy.description}
               </p>
             </div>
           </div>
         </section>
 
-        {/* ================= SECTION: TIMETABLE MATRIX PREVIEW ================= */}
-        <section id="matrix-preview" className="scroll-mt-24 space-y-8 pt-4">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-[#ece6ed] pb-4">
+        {/* ================= SECTION: TIMETABLE PREVIEW ================= */}
+        <section id="matrix-preview" className="scroll-mt-16 space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-border">
             <div>
-              <span className="text-[11px] font-mono uppercase tracking-widest text-[#9c4126] font-bold">Interactive Matrix Preview</span>
-              <h2 className="text-2xl font-black text-[#1f1b20] mt-0.5">Sample Institutional Timetable</h2>
-              <p className="text-xs text-[#655d69]">Click any section slot below to inspect details.</p>
+              <h2 className="text-2xl font-semibold text-primary">Sample timetable matrix</h2>
+              <p className="text-[15px] text-secondary mt-1">Click any section to inspect details</p>
             </div>
             <button
               onClick={() => onOpenAuth('signin')}
-              className="flex items-center gap-2 bg-gradient-to-r from-[#9c4126] to-[#b3401f] text-white px-5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all shadow-md hover:shadow-lg active:scale-95 cursor-pointer"
+              className="h-[38px] px-4 rounded-md bg-brand hover:bg-brand-hover text-white text-[14px] font-medium flex items-center gap-2 transition-colors shadow-xs cursor-pointer"
             >
-              <Lock className="w-3.5 h-3.5 text-[#fed8c8]" />
-              Sign In to Unlock Full Workspace
+              <Lock className="w-4 h-4" />
+              <span>Sign in to unlock full workspace</span>
             </button>
           </div>
 
-          {/* Department Filter Pills */}
-          <div className="flex items-center gap-2 overflow-x-auto py-1">
+          {/* Department Filter */}
+          <div className="flex items-center gap-1.5 overflow-x-auto py-0.5">
             {['All Departments', 'Computer Science', 'Bioengineering', 'Architecture'].map(dept => (
               <button
                 key={dept}
                 onClick={() => setPreviewDept(dept)}
-                className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all border cursor-pointer ${
+                className={`h-[38px] px-3.5 rounded-md text-[14px] font-medium whitespace-nowrap transition-colors cursor-pointer ${
                   previewDept === dept
-                    ? 'bg-[#3b1e4a] text-white border-[#3b1e4a] shadow-xs'
-                    : 'bg-white text-[#655d69] border-[#ece6ed] hover:border-[#dcd9dd]'
+                    ? 'bg-subtle text-brand border border-border font-medium'
+                    : 'text-secondary hover:text-primary hover:bg-subtle border border-transparent'
                 }`}
               >
                 {dept}
@@ -1259,176 +962,104 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({ onOpenAuth
             ))}
           </div>
 
-          {/* Live Preview Grid */}
-          <div className="bg-white border border-[#ece6ed] rounded-2xl shadow-sm overflow-hidden">
+          {/* Preview Grid */}
+          <div className="bg-surface border border-border rounded-lg shadow-xs overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[960px] border-collapse text-left">
+              <table className="w-full min-w-[900px] border-collapse text-left">
                 <thead>
-                  <tr className="border-b border-[#ece6ed] bg-[#fbf8fc]">
-                    <th className="py-3 px-4 w-36 text-[10px] font-mono uppercase tracking-wider text-[#7c747f] font-bold">Time Window</th>
+                  <tr className="border-b border-border bg-subtle h-11">
+                    <th className="py-2.5 px-4 w-36 text-[14px] font-medium text-secondary">Time</th>
                     {['Mon', 'Tue', 'Wed', 'Thu', 'Fri'].map(day => (
-                      <th key={day} className="py-3 px-4 min-w-[160px] text-xs font-bold text-[#1f1b20] border-l border-[#ece6ed]">
+                      <th key={day} className="py-2.5 px-3.5 min-w-[160px] text-[14px] font-medium text-primary border-l border-border">
                         {day}
                       </th>
                     ))}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-[#ece6ed]">
-                  {/* Slot 09:00 - 10:30 */}
-                  <tr className="hover:bg-[#fcfaff]/50 transition-colors">
-                    <td className="py-4 px-4 text-xs font-mono font-bold text-[#655d69] align-top">09:00 - 10:30</td>
-                    <td className="py-3 px-3 min-w-[160px] border-l border-[#ece6ed] align-top">
+                <tbody className="divide-y divide-border">
+                  <tr className="hover:bg-subtle/40 transition-colors">
+                    <td className="py-3.5 px-4 text-[14px] font-mono text-secondary align-top">09:00 - 10:30</td>
+                    <td className="py-2.5 px-2.5 min-w-[160px] border-l border-border align-top">
                       <div 
                         onClick={() => setSelectedClass(sampleClasses['CS-301'])}
-                        className="p-3 rounded-xl border border-[#ece6ed] hover:border-[#3b1e4a] bg-gradient-to-br from-[#faf4fc] to-[#f4eaf7] text-xs space-y-1.5 shadow-xs transition-all card-lift cursor-pointer"
+                        className={`p-2.5 rounded-md transition-colors cursor-pointer text-[14px] space-y-1 ${getDeptClassStyle('CS-301')}`}
                       >
-                        <div className="font-bold truncate text-[#3b1e4a] flex items-center justify-between">
-                          <span>CS-301 // Data Structures</span>
-                          <span className="w-1.5 h-1.5 rounded-full bg-[#7209b7]" />
+                        <div className="flex items-center justify-between">
+                          <span className="font-mono font-medium text-[14px]">CS-301</span>
+                          <span className="text-[13px] text-secondary">Lecture</span>
                         </div>
-                        <div className="text-[11px] text-[#7c747f] flex justify-between">
-                          <span>Hall B3</span>
-                          <span className="font-mono text-[#7209b7] font-bold">Dr. Evans</span>
+                        <div className="font-medium truncate text-[14px]">Data Structures</div>
+                        <div className="text-[13px] text-secondary flex justify-between pt-0.5">
+                          <span className="font-mono">Hall B3</span>
+                          <span>Dr. Evans</span>
                         </div>
                       </div>
                     </td>
-                    <td className="py-3 px-3 min-w-[160px] border-l border-[#ece6ed] align-top">
+
+                    <td className="py-2.5 px-2.5 min-w-[160px] border-l border-border align-top">
                       <div 
                         onClick={() => setSelectedClass(sampleClasses['BIO-210'])}
-                        className="p-3 rounded-xl border border-[#ece6ed] hover:border-[#18794e] bg-gradient-to-br from-[#f1fbf5] to-[#e8f7ee] text-xs space-y-1.5 shadow-xs transition-all card-lift cursor-pointer"
+                        className={`p-2.5 rounded-md transition-colors cursor-pointer text-[14px] space-y-1 ${getDeptClassStyle('BIO-210')}`}
                       >
-                        <div className="font-bold truncate text-[#0f5431] flex items-center justify-between">
-                          <span>BIO-210 // Cell Genomics</span>
-                          <span className="w-1.5 h-1.5 rounded-full bg-[#18794e]" />
+                        <div className="flex items-center justify-between">
+                          <span className="font-mono font-medium text-[14px]">BIO-210</span>
+                          <span className="text-[13px] text-secondary">Lab</span>
                         </div>
-                        <div className="text-[11px] text-[#7c747f] flex justify-between">
-                          <span>Lab 4</span>
-                          <span className="font-mono text-[#18794e] font-bold">Dr. Zhao</span>
+                        <div className="font-medium truncate text-[14px]">Cell Genomics</div>
+                        <div className="text-[13px] text-secondary flex justify-between pt-0.5">
+                          <span className="font-mono">Lab 4</span>
+                          <span>Dr. Zhao</span>
                         </div>
                       </div>
                     </td>
-                    <td className="py-3 px-3 min-w-[160px] border-l border-[#ece6ed] align-top">
+
+                    <td className="py-2.5 px-2.5 min-w-[160px] border-l border-border align-top">
                       <div 
                         onClick={() => setSelectedClass(sampleClasses['CS-301'])}
-                        className="p-3 rounded-xl border border-[#ece6ed] hover:border-[#3b1e4a] bg-gradient-to-br from-[#faf4fc] to-[#f4eaf7] text-xs space-y-1.5 shadow-xs transition-all card-lift cursor-pointer"
+                        className={`p-2.5 rounded-md transition-colors cursor-pointer text-[14px] space-y-1 ${getDeptClassStyle('CS-301')}`}
                       >
-                        <div className="font-bold truncate text-[#3b1e4a] flex items-center justify-between">
-                          <span>CS-301 // Data Structures</span>
-                          <span className="w-1.5 h-1.5 rounded-full bg-[#7209b7]" />
+                        <div className="flex items-center justify-between">
+                          <span className="font-mono font-medium text-[14px]">CS-301</span>
+                          <span className="text-[13px] text-secondary">Lecture</span>
                         </div>
-                        <div className="text-[11px] text-[#7c747f] flex justify-between">
-                          <span>Hall B3</span>
-                          <span className="font-mono text-[#7209b7] font-bold">Dr. Evans</span>
+                        <div className="font-medium truncate text-[14px]">Data Structures</div>
+                        <div className="text-[13px] text-secondary flex justify-between pt-0.5">
+                          <span className="font-mono">Hall B3</span>
+                          <span>Dr. Evans</span>
                         </div>
                       </div>
                     </td>
-                    <td className="py-3 px-3 min-w-[160px] border-l border-[#ece6ed] align-top">
+
+                    <td className="py-2.5 px-2.5 min-w-[160px] border-l border-border align-top">
                       <div 
                         onClick={() => setSelectedClass(sampleClasses['ENG-102'])}
-                        className="p-3 rounded-xl border border-[#ece6ed] hover:border-[#9c4126] bg-gradient-to-br from-[#fff7f2] to-[#fff0eb] text-xs space-y-1.5 shadow-xs transition-all card-lift cursor-pointer"
+                        className={`p-2.5 rounded-md transition-colors cursor-pointer text-[14px] space-y-1 ${getDeptClassStyle('ENG-102')}`}
                       >
-                        <div className="font-bold truncate text-[#9c4126] flex items-center justify-between">
-                          <span>ENG-102 // Applied Statics</span>
-                          <span className="w-1.5 h-1.5 rounded-full bg-[#f27438]" />
+                        <div className="flex items-center justify-between">
+                          <span className="font-mono font-medium text-[14px]">ENG-102</span>
+                          <span className="text-[13px] text-secondary">Lecture</span>
                         </div>
-                        <div className="text-[11px] text-[#7c747f] flex justify-between">
-                          <span>Quad A</span>
-                          <span className="font-mono text-[#f27438] font-bold">Prof. Miller</span>
+                        <div className="font-medium truncate text-[14px]">Applied Statics</div>
+                        <div className="text-[13px] text-secondary flex justify-between pt-0.5">
+                          <span className="font-mono">Quad A</span>
+                          <span>Prof. Miller</span>
                         </div>
                       </div>
                     </td>
-                    <td className="py-3 px-3 min-w-[160px] border-l border-[#ece6ed] align-top">
-                      <div 
-                        onClick={() => setSelectedClass(sampleClasses['MATH-204'])}
-                        className="p-3 rounded-xl border border-[#ece6ed] hover:border-[#92400e] bg-gradient-to-br from-[#fffbf0] to-[#fff4df] text-xs space-y-1.5 shadow-xs transition-all card-lift cursor-pointer"
-                      >
-                        <div className="font-bold truncate text-[#92400e] flex items-center justify-between">
-                          <span>MATH-204 // Linear Algebra</span>
-                          <span className="w-1.5 h-1.5 rounded-full bg-[#b45309]" />
-                        </div>
-                        <div className="text-[11px] text-[#7c747f] flex justify-between">
-                          <span>Hall A1</span>
-                          <span className="font-mono text-[#b45309] font-bold">Dr. Raman</span>
-                        </div>
-                      </div>
-                    </td>
-                  </tr>
 
-                  {/* Slot 11:00 - 12:30 */}
-                  <tr className="hover:bg-[#fcfaff]/50 transition-colors">
-                    <td className="py-4 px-4 text-xs font-mono font-bold text-[#655d69] align-top">11:00 - 12:30</td>
-                    <td className="py-3 px-3 min-w-[160px] border-l border-[#ece6ed] align-top">
+                    <td className="py-2.5 px-2.5 min-w-[160px] border-l border-border align-top">
                       <div 
                         onClick={() => setSelectedClass(sampleClasses['MATH-204'])}
-                        className="p-3 rounded-xl border border-[#ece6ed] hover:border-[#92400e] bg-gradient-to-br from-[#fffbf0] to-[#fff4df] text-xs space-y-1.5 shadow-xs transition-all card-lift cursor-pointer"
+                        className={`p-2.5 rounded-md transition-colors cursor-pointer text-[14px] space-y-1 ${getDeptClassStyle('MATH-204')}`}
                       >
-                        <div className="font-bold truncate text-[#92400e] flex items-center justify-between">
-                          <span>MATH-204 // Linear Algebra</span>
-                          <span className="w-1.5 h-1.5 rounded-full bg-[#b45309]" />
+                        <div className="flex items-center justify-between">
+                          <span className="font-mono font-medium text-[14px]">MATH-204</span>
+                          <span className="text-[13px] text-secondary">Lecture</span>
                         </div>
-                        <div className="text-[11px] text-[#7c747f] flex justify-between">
-                          <span>Hall A1</span>
-                          <span className="font-mono text-[#b45309] font-bold">Dr. Raman</span>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="py-3 px-3 min-w-[160px] border-l border-[#ece6ed] align-top">
-                      <div 
-                        onClick={() => setSelectedClass(sampleClasses['CS-301'])}
-                        className="p-3 rounded-xl border border-[#ece6ed] hover:border-[#3b1e4a] bg-gradient-to-br from-[#faf4fc] to-[#f4eaf7] text-xs space-y-1.5 shadow-xs transition-all card-lift cursor-pointer"
-                      >
-                        <div className="font-bold truncate text-[#3b1e4a] flex items-center justify-between">
-                          <span>CS-412 // Distributed Systems</span>
-                          <span className="w-1.5 h-1.5 rounded-full bg-[#7209b7]" />
-                        </div>
-                        <div className="text-[11px] text-[#7c747f] flex justify-between">
-                          <span>Lab 2</span>
-                          <span className="font-mono text-[#7209b7] font-bold">Dr. Evans</span>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="py-3 px-3 min-w-[160px] border-l border-[#ece6ed] align-top">
-                      <div 
-                        onClick={() => setSelectedClass(sampleClasses['BIO-210'])}
-                        className="p-3 rounded-xl border border-[#ece6ed] hover:border-[#18794e] bg-gradient-to-br from-[#f1fbf5] to-[#e8f7ee] text-xs space-y-1.5 shadow-xs transition-all card-lift cursor-pointer"
-                      >
-                        <div className="font-bold truncate text-[#0f5431] flex items-center justify-between">
-                          <span>BIO-320 // Biomaterials</span>
-                          <span className="w-1.5 h-1.5 rounded-full bg-[#18794e]" />
-                        </div>
-                        <div className="text-[11px] text-[#7c747f] flex justify-between">
-                          <span>Lab 4</span>
-                          <span className="font-mono text-[#18794e] font-bold">Dr. Zhao</span>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="py-3 px-3 min-w-[160px] border-l border-[#ece6ed] align-top">
-                      <div 
-                        onClick={() => setSelectedClass(sampleClasses['CS-301'])}
-                        className="p-3 rounded-xl border border-[#ece6ed] hover:border-[#3b1e4a] bg-gradient-to-br from-[#faf4fc] to-[#f4eaf7] text-xs space-y-1.5 shadow-xs transition-all card-lift cursor-pointer"
-                      >
-                        <div className="font-bold truncate text-[#3b1e4a] flex items-center justify-between">
-                          <span>CS-412 // Distributed Systems</span>
-                          <span className="w-1.5 h-1.5 rounded-full bg-[#7209b7]" />
-                        </div>
-                        <div className="text-[11px] text-[#7c747f] flex justify-between">
-                          <span>Lab 2</span>
-                          <span className="font-mono text-[#7209b7] font-bold">Dr. Evans</span>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="py-3 px-3 min-w-[160px] border-l border-[#ece6ed] align-top">
-                      <div 
-                        onClick={() => setSelectedClass(sampleClasses['MATH-204'])}
-                        className="p-3 rounded-xl border border-[#ece6ed] hover:border-[#92400e] bg-gradient-to-br from-[#fffbf0] to-[#fff4df] text-xs space-y-1.5 shadow-xs transition-all card-lift cursor-pointer"
-                      >
-                        <div className="font-bold truncate text-[#92400e] flex items-center justify-between">
-                          <span>MATH-204 // Linear Algebra</span>
-                          <span className="w-1.5 h-1.5 rounded-full bg-[#b45309]" />
-                        </div>
-                        <div className="text-[11px] text-[#7c747f] flex justify-between">
-                          <span>Hall A1</span>
-                          <span className="font-mono text-[#b45309] font-bold">Dr. Raman</span>
+                        <div className="font-medium truncate text-[14px]">Linear Algebra</div>
+                        <div className="text-[13px] text-secondary flex justify-between pt-0.5">
+                          <span className="font-mono">Hall A1</span>
+                          <span>Dr. Raman</span>
                         </div>
                       </div>
                     </td>
@@ -1439,60 +1070,52 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({ onOpenAuth
           </div>
         </section>
 
-        {/* ================= FINAL CALL TO ACTION ================= */}
-        <section className="relative overflow-hidden bg-gradient-to-r from-[#ffffff] via-[#fff8f5] to-[#fbf5fc] border border-[#ece6ed] rounded-3xl p-8 lg:p-14 shadow-lg text-center space-y-6">
-          <div className="absolute top-0 right-0 w-80 h-80 bg-gradient-to-bl from-[#f27438]/15 via-[#3b1e4a]/10 to-transparent rounded-full blur-2xl pointer-events-none" />
-          <div className="max-w-2xl mx-auto space-y-3 relative z-10">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white border border-[#ece6ed] text-[10px] font-mono font-bold text-[#9c4126] uppercase tracking-wider shadow-xs">
-              <Sparkles className="w-3.5 h-3.5 text-[#f27438]" />
-              INSTITUTIONAL RAPID ONBOARDING
-            </div>
-            <h2 className="text-3xl lg:text-4xl font-black text-[#1f1b20] tracking-tight">Ready to harmonise your academic schedule?</h2>
-            <p className="text-xs sm:text-sm text-[#655d69] leading-relaxed">
-              Join leading universities using SmartGrid AI to eliminate schedule collisions and optimize faculty and student satisfaction in under two seconds.
+        {/* Final CTA Box */}
+        <section className="bg-surface border border-border rounded-lg p-8 sm:p-12 text-center space-y-5">
+          <div className="max-w-xl mx-auto space-y-2">
+            <h2 className="text-2xl font-semibold text-primary">Ready to optimize your academic schedule?</h2>
+            <p className="text-[15px] text-secondary leading-relaxed">
+              Join university registrars using SmartGrid to eliminate timetable collisions and streamline campus operations.
             </p>
           </div>
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 relative z-10">
+          <div className="flex items-center justify-center gap-3 pt-2">
             <button
               onClick={() => onOpenAuth('signup')}
-              className="flex items-center gap-2.5 bg-gradient-to-r from-[#9c4126] to-[#b3401f] hover:from-[#83341d] hover:to-[#9c4126] text-white px-8 py-3.5 rounded-xl text-xs font-bold uppercase tracking-wider shadow-md hover:shadow-lg transition-all active:scale-95 cursor-pointer"
+              className="h-[38px] px-4 rounded-md bg-brand hover:bg-brand-hover text-white text-[14px] font-medium transition-colors shadow-xs cursor-pointer"
             >
-              <Sparkles className="w-4 h-4 text-[#fed8c8]" />
-              Launch Campus Pilot
+              Launch workspace
             </button>
             <button
               onClick={() => onOpenAuth('signin')}
-              className="flex items-center gap-2 bg-white hover:bg-[#f6f2f7] text-[#3b1e4a] border border-[#ece6ed] hover:border-[#dcd9dd] px-8 py-3.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all shadow-xs cursor-pointer"
+              className="h-[38px] px-4 rounded-md bg-surface border border-border hover:bg-subtle text-primary text-[14px] font-medium transition-colors cursor-pointer"
             >
-              Sign In with Institutional SSO
+              Sign in with SSO
             </button>
           </div>
         </section>
       </main>
 
-      {/* Global Minimal Footer */}
-      <footer className="border-t border-[#ece6ed] bg-white py-10 px-6 lg:px-8 text-xs text-[#655d69]">
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-[#3b1e4a] to-[#522567] flex items-center justify-center text-white shadow-xs">
-              <Compass className="w-4 h-4 text-[#f27438]" />
+      {/* Minimal Footer */}
+      <footer className="border-t border-border bg-surface py-6 px-4 sm:px-6 lg:px-8 text-[13px] text-secondary">
+        <div className="max-w-[1360px] mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
+          <div className="flex items-center gap-2.5">
+            <div className="w-6 h-6 rounded-md bg-brand flex items-center justify-center text-white shrink-0">
+              <Compass className="w-3.5 h-3.5" />
             </div>
-            <span className="font-extrabold text-sm tracking-tight text-[#1f1b20]">
-              SMARTGRID <span className="text-[#9c4126]">AI</span>
-            </span>
-            <span className="text-[10px] font-mono text-[#7c747f] ml-2">v4.8 Deterministic Higher Ed Solver</span>
+            <span className="font-semibold text-[14px] text-primary">SmartGrid</span>
+            <span className="text-[13px] text-tertiary ml-2">University timetable scheduling platform</span>
           </div>
 
-          <div className="flex items-center gap-6 text-[11px] font-bold">
-            <button onClick={() => scrollTo('solutions')} className="hover:text-[#1f1b20] cursor-pointer">Solutions</button>
-            <button onClick={() => scrollTo('adaptive-engine')} className="hover:text-[#1f1b20] cursor-pointer">Engine</button>
-            <button onClick={() => scrollTo('student-voice')} className="hover:text-[#1f1b20] cursor-pointer">Student Voice</button>
-            <button onClick={() => scrollTo('case-studies')} className="hover:text-[#1f1b20] cursor-pointer">Case Studies</button>
-            <button onClick={() => onOpenAuth('signin')} className="hover:text-[#1f1b20] cursor-pointer">Sign In</button>
+          <div className="flex items-center gap-5 text-[13px]">
+            <button onClick={() => scrollTo('solutions')} className="hover:text-primary cursor-pointer">Overview</button>
+            <button onClick={() => scrollTo('adaptive-engine')} className="hover:text-primary cursor-pointer">Optimization</button>
+            <button onClick={() => scrollTo('student-voice')} className="hover:text-primary cursor-pointer">Student feedback</button>
+            <button onClick={() => scrollTo('case-studies')} className="hover:text-primary cursor-pointer">Campuses</button>
+            <button onClick={() => onOpenAuth('signin')} className="hover:text-primary cursor-pointer">Sign in</button>
           </div>
 
-          <div className="text-[11px] text-[#7c747f] font-mono">
-            © {new Date().getFullYear()} SmartGrid AI Systems Inc.
+          <div className="text-[13px] text-tertiary font-mono">
+            © {new Date().getFullYear()} SmartGrid Systems
           </div>
         </div>
       </footer>

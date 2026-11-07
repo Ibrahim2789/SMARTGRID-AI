@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
-import { SmartGridNav, RouteType } from './SmartGridNav';
-import { Filter, Download, Sparkles, Building, Clock, AlertCircle, Search, CheckCircle2 } from 'lucide-react';
-import { ClassDetailsModal, ClassItem } from './ClassDetailsModal';
-import { motion, AnimatePresence } from 'motion/react';
+import { RouteType } from './SmartGridNav';
+import { useInstitutionalData, institutionalStore } from '../data/store';
+import { buildMatrixSchedule, getDepartmentBlockClass } from '../data/solverAdapter';
+import { ClassItem } from './ClassDetailsModal';
+import { DayOfWeek } from '../types/institutional';
+import { X, ChevronDown, Check, AlertCircle, Download, FileSpreadsheet } from 'lucide-react';
 
 interface TimetableMatrixProps {
   onNavigate?: (route: RouteType) => void;
@@ -12,276 +14,410 @@ interface TimetableMatrixProps {
   hideNav?: boolean;
 }
 
-const scheduleData: Record<string, Record<string, ClassItem[]>> = {
-  '09:00 - 10:30': {
-    Mon: [{ id: '1', code: 'CS-301', title: 'Data Structures', room: 'Hall B3', prof: 'Dr. Evans', cohort: 'CS-Year2', accent: 'plum', credits: 4, type: 'Lecture' }],
-    Tue: [{ id: '2', code: 'BIO-210', title: 'Cell Genomics', room: 'Lab 4', prof: 'Dr. Zhao', cohort: 'Bio-Year1', accent: 'emerald', credits: 3, type: 'Laboratory' }],
-    Wed: [{ id: '3', code: 'CS-301', title: 'Data Structures', room: 'Hall B3', prof: 'Dr. Evans', cohort: 'CS-Year2', accent: 'plum', credits: 4, type: 'Lecture' }],
-    Thu: [{ id: '4', code: 'ENG-102', title: 'Applied Statics', room: 'Quad A', prof: 'Prof. Miller', cohort: 'Eng-Year1', accent: 'terracotta', credits: 3, type: 'Lecture' }],
-    Fri: [{ id: '5', code: 'ARCH-405', title: 'Spatial Studio', room: 'Atrium', prof: 'Dr. Vance', cohort: 'Arch-Year3', accent: 'plum', credits: 5, type: 'Studio' }]
-  },
-  '11:00 - 12:30': {
-    Mon: [
-      { id: '6', code: 'MATH-204', title: 'Linear Algebra', room: 'Hall A1', prof: 'Dr. Raman', cohort: 'All-STEM', accent: 'plum', credits: 4, type: 'Lecture' },
-      { id: '7', code: 'HUM-110', title: 'Ethics in AI', room: 'Annex 2', prof: 'Dr. Gomez', cohort: 'Arts-Year1', accent: 'terracotta', credits: 3, type: 'Recitation' }
-    ],
-    Tue: [{ id: '8', code: 'CS-412', title: 'Distributed Systems', room: 'Lab 2', prof: 'Dr. Evans', cohort: 'CS-Year4', accent: 'plum', credits: 4, type: 'Lecture' }],
-    Wed: [{ id: '9', code: 'BIO-320', title: 'Biomaterials', room: 'Lab 4', prof: 'Dr. Zhao', cohort: 'Bio-Year3', accent: 'emerald', credits: 3, type: 'Laboratory' }],
-    Thu: [{ id: '10', code: 'CS-412', title: 'Distributed Systems', room: 'Lab 2', prof: 'Dr. Evans', cohort: 'CS-Year4', accent: 'plum', credits: 4, type: 'Lecture' }],
-    Fri: [{ id: '11', code: 'MATH-204', title: 'Linear Algebra', room: 'Hall A1', prof: 'Dr. Raman', cohort: 'All-STEM', accent: 'plum', credits: 4, type: 'Lecture' }]
-  },
-  '13:30 - 15:00': {
-    Mon: [{ id: '12', code: 'CHEM-201', title: 'Organic Chemistry', room: 'Chem Lab B', prof: 'Dr. Scott', cohort: 'Bio-Year2', accent: 'emerald', credits: 4, type: 'Laboratory' }],
-    Tue: [{ id: '13', code: 'ENG-302', title: 'Fluid Dynamics', room: 'Eng Hall 1', prof: 'Prof. Miller', cohort: 'Eng-Year3', accent: 'terracotta', credits: 4, type: 'Lecture' }],
-    Wed: [{ id: '14', code: 'CHEM-201', title: 'Organic Chemistry', room: 'Chem Lab B', prof: 'Dr. Scott', cohort: 'Bio-Year2', accent: 'emerald', credits: 4, type: 'Laboratory' }],
-    Thu: [{ id: '15', code: 'ARCH-405', title: 'Spatial Studio', room: 'Atrium', prof: 'Dr. Vance', cohort: 'Arch-Year3', accent: 'plum', credits: 5, type: 'Studio' }],
-    Fri: [{ id: '16', code: 'ENG-302', title: 'Fluid Dynamics', room: 'Eng Hall 1', prof: 'Prof. Miller', cohort: 'Eng-Year3', accent: 'terracotta', credits: 4, type: 'Lecture' }]
-  }
-};
+export const TimetableMatrix: React.FC<TimetableMatrixProps> = () => {
+  const store = useInstitutionalData();
+  const { scheduleData, conflicts } = buildMatrixSchedule(store);
 
-export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
-  onNavigate,
-  onOpenAuth,
-  onSignOut,
-  currentUser,
-  hideNav = false
-}) => {
-  const [selectedCohort, setSelectedCohort] = useState('All Departments');
-  const [selectedClass, setSelectedClass] = useState<ClassItem | null>(null);
-  const [isSweeping, setIsSweeping] = useState(false);
-  const [sweepNotice, setSweepNotice] = useState<string | null>(null);
-  const [searchFilter, setSearchFilter] = useState('');
+  const [viewBy, setViewBy] = useState<'all' | 'department' | 'room' | 'instructor' | 'group'>('all');
+  const [filterValue, setFilterValue] = useState<string>('all');
+  const [exportOpen, setExportOpen] = useState(false);
+  const [publishSuccess, setPublishSuccess] = useState(false);
+  const [selectedBlock, setSelectedBlock] = useState<ClassItem | null>(null);
 
-  const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
-  const timeSlots = Object.keys(scheduleData);
+  // Edit side panel state for a block
+  const [editDay, setEditDay] = useState<DayOfWeek>('Mon');
+  const [editSlot, setEditSlot] = useState<string>('09:00 - 10:30');
+  const [editRoomId, setEditRoomId] = useState<string>('');
 
-  const handleRunSweep = () => {
-    setIsSweeping(true);
-    setTimeout(() => {
-      setIsSweeping(false);
-      setSweepNotice('1,420 lectures synchronized with zero instructor overlap. Parity verified.');
-      setTimeout(() => setSweepNotice(null), 4000);
-    }, 900);
+  const days = store.timeStructure.workingDays;
+  const periods = store.timeStructure.periods;
+
+  const handleOpenBlock = (cls: ClassItem) => {
+    setSelectedBlock(cls);
+    setEditDay(cls.day as DayOfWeek || 'Mon');
+    setEditSlot(cls.time || periods[0]);
+    const currentRoom = store.rooms.find(r => r.code === cls.room);
+    setEditRoomId(currentRoom?.id || store.rooms[0]?.id || '');
   };
 
-  const handleExport = () => {
-    setSweepNotice('Exporting campus timetable matrix as iCal & CSV...');
-    setTimeout(() => {
-      setSweepNotice('Export completed. Master schedule downloaded.');
-      setTimeout(() => setSweepNotice(null), 3000);
-    }, 1000);
+  const handleSaveSlotMove = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedBlock) return;
+
+    institutionalStore.updateSectionSlot(selectedBlock.id, {
+      day: editDay,
+      timeSlot: editSlot,
+      roomId: editRoomId
+    });
+
+    setSelectedBlock(null);
   };
 
+  const handlePublish = () => {
+    if (conflicts.length > 0) return;
+    setPublishSuccess(true);
+    setTimeout(() => setPublishSuccess(false), 4000);
+  };
+
+  const handleExport = (format: string) => {
+    setExportOpen(false);
+    let csvContent = 'data:text/csv;charset=utf-8,Code,Title,Room,Instructor,Cohort,Day,Time\n';
+    periods.forEach(p => {
+      days.forEach(d => {
+        const items = scheduleData[p]?.[d] || [];
+        items.forEach(c => {
+          csvContent += `"${c.code}","${c.title}","${c.room}","${c.prof}","${c.cohort}","${d}","${p}"\n`;
+        });
+      });
+    });
+    const encoded = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encoded);
+    link.setAttribute('download', `timetable_export.${format.toLowerCase()}`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // Filter logic
   const filterClass = (cls: ClassItem) => {
-    if (searchFilter) {
-      const q = searchFilter.toLowerCase();
-      const match = cls.code.toLowerCase().includes(q) || 
-                    cls.title.toLowerCase().includes(q) || 
-                    cls.prof.toLowerCase().includes(q) || 
-                    cls.room.toLowerCase().includes(q);
-      if (!match) return false;
+    if (filterValue === 'all') return true;
+    if (viewBy === 'department') {
+      const course = store.courses.find(c => c.code === cls.code);
+      return course?.departmentId === filterValue;
     }
-
-    if (selectedCohort === 'Computer Science' && !cls.cohort.includes('CS') && !cls.code.includes('CS') && !cls.cohort.includes('All')) return false;
-    if (selectedCohort === 'Bioengineering' && !cls.cohort.includes('Bio') && !cls.code.includes('BIO') && !cls.code.includes('CHEM') && !cls.cohort.includes('All')) return false;
-    if (selectedCohort === 'Architecture' && !cls.cohort.includes('Arch') && !cls.code.includes('ARCH') && !cls.cohort.includes('All')) return false;
-    if (selectedCohort === 'Mechanical Engineering' && !cls.cohort.includes('Eng') && !cls.code.includes('ENG') && !cls.cohort.includes('All')) return false;
+    if (viewBy === 'room') return cls.room === filterValue;
+    if (viewBy === 'instructor') return cls.prof === filterValue;
+    if (viewBy === 'group') return cls.cohort === filterValue;
     return true;
   };
 
   return (
-    <div className="min-h-screen bg-[#fbf8fc] text-[#1f1b20] font-sans antialiased">
-      {!hideNav && (
-        <SmartGridNav 
-          activeRoute="timetable" 
-          onNavigate={onNavigate} 
-          onOpenAuth={onOpenAuth}
-          onSignOut={onSignOut}
-          currentUser={currentUser}
-        />
+    <div className="max-w-[1360px] mx-auto px-6 py-8 md:py-10 space-y-6">
+      {/* Page Title & Toolbar */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-[#E8EAEE]">
+        <div>
+          <h1 className="text-[28px] font-semibold text-[#1B2430] tracking-tight">
+            Timetables
+          </h1>
+          <p className="text-[16px] text-[#556070] mt-1">
+            Weekly campus master schedule and room allocation matrix.
+          </p>
+        </div>
+
+        {/* Toolbar: One View-by Dropdown + Outlined Export Menu + ONE Primary Action (Publish) */}
+        <div className="flex items-center gap-3">
+          {/* View-by Selector */}
+          <div className="flex items-center gap-2">
+            <select
+              value={viewBy}
+              onChange={e => {
+                setViewBy(e.target.value as any);
+                setFilterValue('all');
+              }}
+              className="form-input text-[14px] !h-[44px] !w-auto"
+            >
+              <option value="all">View all</option>
+              <option value="department">View by Department</option>
+              <option value="room">View by Room</option>
+              <option value="instructor">View by Instructor</option>
+              <option value="group">View by Student Group</option>
+            </select>
+
+            {/* Sub-filter if viewBy is not 'all' */}
+            {viewBy === 'department' && (
+              <select
+                value={filterValue}
+                onChange={e => setFilterValue(e.target.value)}
+                className="form-input text-[14px] !h-[44px] !w-auto"
+              >
+                <option value="all">All Departments</option>
+                {store.departments.map(d => (
+                  <option key={d.id} value={d.id}>{d.name}</option>
+                ))}
+              </select>
+            )}
+
+            {viewBy === 'room' && (
+              <select
+                value={filterValue}
+                onChange={e => setFilterValue(e.target.value)}
+                className="form-input text-[14px] !h-[44px] !w-auto"
+              >
+                <option value="all">All Rooms</option>
+                {store.rooms.map(r => (
+                  <option key={r.id} value={r.code}>{r.code}</option>
+                ))}
+              </select>
+            )}
+
+            {viewBy === 'instructor' && (
+              <select
+                value={filterValue}
+                onChange={e => setFilterValue(e.target.value)}
+                className="form-input text-[14px] !h-[44px] !w-auto"
+              >
+                <option value="all">All Instructors</option>
+                {store.instructors.map(i => (
+                  <option key={i.id} value={i.name}>{i.name}</option>
+                ))}
+              </select>
+            )}
+
+            {viewBy === 'group' && (
+              <select
+                value={filterValue}
+                onChange={e => setFilterValue(e.target.value)}
+                className="form-input text-[14px] !h-[44px] !w-auto"
+              >
+                <option value="all">All Groups</option>
+                {store.studentGroups.map(g => (
+                  <option key={g.id} value={g.code}>{g.code}</option>
+                ))}
+              </select>
+            )}
+          </div>
+
+          {/* Export Outlined Menu */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setExportOpen(!exportOpen)}
+              className="btn-secondary"
+            >
+              <Download className="w-4 h-4 text-[#556070]" />
+              <span>Export</span>
+              <ChevronDown className="w-3.5 h-3.5 text-[#7A8594]" />
+            </button>
+            {exportOpen && (
+              <div className="absolute right-0 mt-1 w-44 bg-white border border-[#E8EAEE] rounded-md shadow-lg py-1 z-30 text-[14px]">
+                <button
+                  onClick={() => handleExport('csv')}
+                  className="w-full text-left px-4 py-2 hover:bg-[#F6F7F9] text-[#1B2430] cursor-pointer"
+                >
+                  Export CSV
+                </button>
+                <button
+                  onClick={() => handleExport('ical')}
+                  className="w-full text-left px-4 py-2 hover:bg-[#F6F7F9] text-[#1B2430] cursor-pointer"
+                >
+                  Export iCalendar (.ics)
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* ONE Primary Action: Publish (disabled with tooltip while conflicts remain) */}
+          <div className="relative group">
+            <button
+              onClick={handlePublish}
+              disabled={conflicts.length > 0}
+              className="btn-primary"
+            >
+              Publish
+            </button>
+            {conflicts.length > 0 && (
+              <div className="absolute right-0 bottom-full mb-2 hidden group-hover:block w-64 p-2 bg-[#1B2430] text-white text-[13px] rounded shadow-md pointer-events-none z-40">
+                Publish is disabled because {conflicts.length} conflict{conflicts.length > 1 ? 's' : ''} remain to be resolved.
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Confirmation Banner */}
+      {publishSuccess && (
+        <div className="p-4 bg-[#F0FDF4] border border-[#BBF7D0] rounded-md text-[15px] text-[#15803D] flex items-center gap-2">
+          <Check className="w-5 h-5 stroke-[3]" />
+          <span>Timetable published successfully. Synced to institutional registry.</span>
+        </div>
       )}
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
-        {/* Workspace Subheader */}
-        <div className="p-6 sm:p-8 bg-gradient-to-br from-[#fff7f2] via-white to-[#faf4fc] border border-[#ece6ed] rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm relative overflow-hidden">
-          <div>
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white border border-[#ece6ed] text-[10px] font-mono font-bold uppercase tracking-wider text-[#9c4126] shadow-xs mb-2">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#9c4126]" />
-              Master Schedule Matrix • Term 2 (2025/2026)
-            </div>
-            <h1 className="text-2xl sm:text-3xl font-black text-[#1f1b20]">Institutional Timetable Matrix</h1>
-            <p className="text-xs text-[#655d69] mt-0.5">5-day synchronized campus allocation with zero lecture overlaps</p>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-3">
-            <button 
-              onClick={handleExport}
-              className="flex items-center gap-2 bg-white border border-[#ece6ed] hover:border-[#dcd9dd] text-[#3b1e4a] px-4 py-2.5 rounded-xl text-xs font-bold shadow-xs hover:bg-[#f6f2f7] transition-all cursor-pointer"
-            >
-              <Download className="w-3.5 h-3.5" />
-              Export CSV / iCal
-            </button>
-            <button 
-              onClick={handleRunSweep}
-              disabled={isSweeping}
-              className="flex items-center gap-2 bg-gradient-to-r from-[#9c4126] to-[#b3401f] hover:from-[#83341d] hover:to-[#9c4126] text-white px-5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider shadow-md hover:shadow-lg transition-all active:scale-95 disabled:opacity-75 cursor-pointer"
-            >
-              <Sparkles className={`w-3.5 h-3.5 text-[#fed8c8] ${isSweeping ? 'animate-spin' : ''}`} />
-              {isSweeping ? 'Running Sweep...' : 'Run Conflict Sweep'}
-            </button>
-          </div>
-        </div>
-
-        {/* Sweep Notice Toast */}
-        <AnimatePresence>
-          {sweepNotice && (
-            <motion.div 
-              initial={{ opacity: 0, y: -8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              className="p-3.5 bg-[#eefcf2] text-[#0f5431] rounded-xl text-xs font-mono flex items-center gap-2 border border-[#18794e]/30 shadow-xs"
-            >
-              <CheckCircle2 className="w-4 h-4 text-[#18794e]" />
-              <span className="font-bold">PARITY_STATUS:</span>
-              <span>{sweepNotice}</span>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* Search & Filter Bar */}
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
-          {/* Department Filter Pills */}
-          <div className="flex items-center gap-2 overflow-x-auto py-1 w-full sm:w-auto">
-            {['All Departments', 'Computer Science', 'Bioengineering', 'Architecture', 'Mechanical Engineering'].map(tag => (
-              <button
-                key={tag}
-                onClick={() => setSelectedCohort(tag)}
-                className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all border cursor-pointer ${
-                  selectedCohort === tag
-                    ? 'bg-[#3b1e4a] text-white border-[#3b1e4a] shadow-xs'
-                    : 'bg-white text-[#655d69] border-[#ece6ed] hover:border-[#dcd9dd]'
-                }`}
-              >
-                {tag}
-              </button>
-            ))}
-          </div>
-
-          {/* Quick search input */}
-          <div className="relative w-full sm:w-64">
-            <Search className="w-3.5 h-3.5 text-[#7c747f] absolute left-3 top-2.5" />
-            <input
-              type="text"
-              placeholder="Search course, prof, room..."
-              value={searchFilter}
-              onChange={e => setSearchFilter(e.target.value)}
-              className="w-full pl-9 pr-3 py-1.5 text-xs rounded-xl border border-[#ece6ed] focus:outline-none focus:border-[#3b1e4a] bg-white text-[#1f1b20]"
-            />
-          </div>
-        </div>
-
-        {/* Timetable Grid */}
-        <div className="bg-white border border-[#ece6ed] rounded-2xl shadow-sm overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[960px] border-collapse text-left">
-              <thead>
-                <tr className="border-b border-[#ece6ed] bg-[#fbf8fc]">
-                  <th className="py-3 px-4 w-36 text-[10px] font-mono uppercase tracking-wider text-[#7c747f] font-bold">Time Window</th>
-                  {days.map(day => (
-                    <th key={day} className="py-3 px-4 min-w-[160px] text-xs font-bold text-[#1f1b20] border-l border-[#ece6ed]">
-                      {day}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[#ece6ed]">
-                {timeSlots.map(time => (
-                  <tr key={time} className="hover:bg-[#fcfaff]/50 transition-colors">
-                    <td className="py-4 px-4 text-xs font-mono font-bold text-[#655d69] whitespace-nowrap align-top">
-                      {time}
-                    </td>
-                    {days.map(day => {
-                      const classes = (scheduleData[time]?.[day] || []).filter(filterClass);
-                      return (
-                        <td key={day} className="py-3 px-3 min-w-[160px] border-l border-[#ece6ed] align-top">
-                          <div className="space-y-2">
-                            {classes.map(cls => (
-                              <div
-                                key={cls.id}
-                                onClick={() => setSelectedClass({ ...cls, day, time })}
-                                className={`p-3 rounded-xl border border-[#ece6ed] hover:border-[#dcd9dd] text-xs space-y-1.5 transition-all cursor-pointer shadow-xs card-lift ${
-                                  cls.accent === 'plum'
-                                    ? 'bg-gradient-to-br from-[#faf4fc] to-[#f4eaf7] text-[#1f1b20]'
-                                    : cls.accent === 'emerald'
-                                    ? 'bg-gradient-to-br from-[#f1fbf5] to-[#e8f7ee] text-[#0f5431]'
-                                    : 'bg-gradient-to-br from-[#fff7f2] to-[#fff0eb] text-[#9c4126]'
-                                }`}
-                              >
-                                <div className="font-bold truncate flex items-center justify-between">
-                                  <span>{cls.code}</span>
-                                  <span className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded shadow-xs ${
-                                    cls.accent === 'plum' ? 'bg-[#ede0f2] text-[#3b1e4a]' : cls.accent === 'emerald' ? 'bg-[#d2f3dd] text-[#18794e]' : 'bg-[#fed8c8] text-[#9c4126]'
-                                  }`}>
-                                    {cls.type}
-                                  </span>
-                                </div>
-                                <div className="text-[11px] font-medium truncate text-[#1f1b20]">{cls.title}</div>
-                                <div className="text-[10px] text-[#7c747f] flex items-center justify-between pt-0.5 font-mono">
-                                  <span className="truncate max-w-[90px]">{cls.room}</span>
-                                  <span className="font-bold">{cls.prof}</span>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </td>
-                      );
-                    })}
-                  </tr>
+      {/* Hero: Master Week Grid */}
+      <div className="content-card overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse text-left">
+            <thead>
+              <tr className="bg-[#F6F7F9] border-b border-[#E8EAEE]">
+                <th className="py-3.5 px-4 font-semibold text-[14px] text-[#556070] w-36 border-r border-[#E8EAEE]">
+                  Time period
+                </th>
+                {days.map(day => (
+                  <th key={day} className="py-3.5 px-4 font-semibold text-[14px] text-[#1B2430] border-r border-[#E8EAEE] min-w-[190px]">
+                    {day}
+                  </th>
                 ))}
-              </tbody>
-            </table>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[#E8EAEE]">
+              {periods.map(period => (
+                <tr key={period} className="hover:bg-[#FDFDFD]">
+                  {/* Period Time Column */}
+                  <td className="py-3.5 px-4 font-mono text-[14px] font-medium text-[#556070] bg-[#F6F7F9] border-r border-[#E8EAEE] align-top">
+                    {period}
+                  </td>
+
+                  {/* Day Columns */}
+                  {days.map(day => {
+                    const classes = (scheduleData[period]?.[day] || []).filter(filterClass);
+                    return (
+                      <td key={day} className="py-2.5 px-3 border-r border-[#E8EAEE] align-top h-[110px]">
+                        {classes.length === 0 ? (
+                          <div className="h-full flex items-center justify-center text-[13px] text-[#D5D9E0]">
+                            —
+                          </div>
+                        ) : (
+                          <div className="space-y-2">
+                            {classes.map(cls => {
+                              const blockColor = getDepartmentBlockClass(cls.code);
+                              return (
+                                <div
+                                  key={cls.id}
+                                  onClick={() => handleOpenBlock(cls)}
+                                  className={`${blockColor} p-2.5 rounded-md text-left cursor-pointer hover:shadow-xs transition-shadow`}
+                                >
+                                  <div className="flex items-center justify-between">
+                                    <span className="font-mono text-[14px] font-bold">
+                                      {cls.code}
+                                    </span>
+                                    <span className="font-mono text-[13px] text-[#556070]">
+                                      {cls.room}
+                                    </span>
+                                  </div>
+                                  <div className="text-[14px] font-medium text-[#1B2430] truncate mt-0.5">
+                                    {cls.title}
+                                  </div>
+                                  <div className="text-[13px] text-[#556070] truncate mt-1">
+                                    {cls.prof} • {cls.cohort}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Side Slide-Out Panel to Edit or Move a Block */}
+      {selectedBlock && (
+        <div className="fixed inset-0 z-50 flex justify-end bg-black/25">
+          <div className="w-full max-w-md bg-white h-full shadow-xl flex flex-col justify-between p-6 overflow-y-auto">
+            <div>
+              <div className="flex items-center justify-between pb-4 border-b border-[#E8EAEE]">
+                <div>
+                  <h3 className="text-[18px] font-semibold text-[#1B2430]">
+                    {selectedBlock.code}
+                  </h3>
+                  <p className="text-[14px] text-[#556070] mt-0.5">
+                    {selectedBlock.title}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setSelectedBlock(null)}
+                  className="text-[#7A8594] hover:text-[#1B2430] cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Details List */}
+              <div className="py-4 space-y-3 text-[14px] border-b border-[#E8EAEE]">
+                <div className="flex justify-between">
+                  <span className="text-[#7A8594]">Instructor</span>
+                  <span className="font-medium text-[#1B2430]">{selectedBlock.prof}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-[#7A8594]">Student Cohort</span>
+                  <span className="font-medium text-[#1B2430]">{selectedBlock.cohort}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-[#7A8594]">Enrollment</span>
+                  <span className="font-mono text-[#1B2430]">{selectedBlock.enrolled} / {selectedBlock.capacity} seats</span>
+                </div>
+              </div>
+
+              {/* Edit / Move Form */}
+              <form id="moveForm" onSubmit={handleSaveSlotMove} className="space-y-4 pt-4">
+                <h4 className="text-[15px] font-semibold text-[#1B2430]">
+                  Reallocate slot or room
+                </h4>
+
+                <div>
+                  <label className="block text-[14px] font-medium text-[#1B2430] mb-1.5">
+                    Day of week
+                  </label>
+                  <select
+                    value={editDay}
+                    onChange={e => setEditDay(e.target.value as DayOfWeek)}
+                    className="form-input"
+                  >
+                    {days.map(d => (
+                      <option key={d} value={d}>{d}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[14px] font-medium text-[#1B2430] mb-1.5">
+                    Time period
+                  </label>
+                  <select
+                    value={editSlot}
+                    onChange={e => setEditSlot(e.target.value)}
+                    className="form-input font-mono"
+                  >
+                    {periods.map(p => (
+                      <option key={p} value={p}>{p}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[14px] font-medium text-[#1B2430] mb-1.5">
+                    Allocated room
+                  </label>
+                  <select
+                    value={editRoomId}
+                    onChange={e => setEditRoomId(e.target.value)}
+                    className="form-input"
+                  >
+                    {store.rooms.map(r => (
+                      <option key={r.id} value={r.id}>
+                        {r.code} ({r.name}) — Cap: {r.capacity}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </form>
+            </div>
+
+            {/* Bottom Actions */}
+            <div className="pt-4 border-t border-[#E8EAEE] flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setSelectedBlock(null)}
+                className="btn-secondary"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                form="moveForm"
+                className="btn-primary"
+              >
+                Update allocation
+              </button>
+            </div>
           </div>
         </div>
-
-        {/* Lower Metric Bar */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="bg-gradient-to-br from-[#fff7f2] via-white to-[#fff0eb] border border-[#ece6ed] rounded-2xl p-5 shadow-xs flex items-center gap-4 card-lift">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#9c4126] to-[#f27438] text-white flex items-center justify-center shadow-xs shrink-0">
-              <Clock className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="text-xs font-bold text-[#1f1b20]">Zero Schedule Collisions</div>
-              <div className="text-[11px] text-[#7c747f]">1,420 lectures synchronized with zero instructor overlap</div>
-            </div>
-          </div>
-
-          <div className="bg-gradient-to-br from-[#faf4fc] via-white to-[#f4eaf7] border border-[#ece6ed] rounded-2xl p-5 shadow-xs flex items-center gap-4 card-lift">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#3b1e4a] to-[#7209b7] text-white flex items-center justify-center shadow-xs shrink-0">
-              <Building className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="text-xs font-bold text-[#1f1b20]">98.2% Room Utilization</div>
-              <div className="text-[11px] text-[#7c747f]">Cleanroom & lab space allocated during optimal student hours</div>
-            </div>
-          </div>
-
-          <div className="bg-gradient-to-br from-[#f1fbf5] via-white to-[#e8f7ee] border border-[#ece6ed] rounded-2xl p-5 shadow-xs flex items-center gap-4 card-lift">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#18794e] to-[#25a26c] text-white flex items-center justify-center shadow-xs shrink-0">
-              <AlertCircle className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="text-xs font-bold text-[#1f1b20]">Deterministic Parity</div>
-              <div className="text-[11px] font-mono text-[#18794e] font-bold">SOLVER_PASS_STABLE // 99.98%</div>
-            </div>
-          </div>
-        </div>
-      </main>
-
-      {/* Class Inspector Modal */}
-      <ClassDetailsModal
-        classItem={selectedClass}
-        onClose={() => setSelectedClass(null)}
-      />
+      )}
     </div>
   );
 };

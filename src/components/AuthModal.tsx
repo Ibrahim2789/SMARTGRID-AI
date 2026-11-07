@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Shield, Lock, Compass, CheckCircle2, User, Building, ArrowRight, Mail, School, Sparkles, Eye, EyeOff, Zap } from 'lucide-react';
+import { X, Lock, Compass, CheckCircle2, User, Mail, School, Eye, EyeOff, Zap } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface AuthModalProps {
@@ -39,24 +39,21 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       name: 'Dr. Katherine Reynolds',
       role: 'Chief University Registrar',
       institution: 'Western Polytechnic Institute',
-      email: 'k.reynolds@westernpoly.edu',
-      desc: 'Full matrix governance, solver dispatch, Title IV compliance'
+      email: 'k.reynolds@westernpoly.edu'
     },
     {
       id: 'dean' as const,
       name: 'Prof. Alistair MacIntyre',
       role: 'Dean of Science & Engineering',
       institution: 'Oxford Union Sciences',
-      email: 'a.macintyre@oxford.ac.uk',
-      desc: 'Faculty availability approvals & cleanroom lab contention'
+      email: 'a.macintyre@oxford.ac.uk'
     },
     {
       id: 'student' as const,
       name: 'Maya Lin',
       role: 'Student Senate Academic Delegate',
       institution: 'Western Polytechnic Institute',
-      email: 'm.lin@westernpoly.edu',
-      desc: 'Cohort chronotype referendums & transit buffer auditing'
+      email: 'm.lin@westernpoly.edu'
     }
   ];
 
@@ -94,7 +91,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       }
       setIsSubmitting(false);
       onClose();
-    }, 550);
+    }, 400);
   };
 
   return (
@@ -105,146 +102,143 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         onClick={onClose}
-        className="fixed inset-0 bg-black/45 backdrop-blur-xs"
+        className="fixed inset-0 bg-black/40 backdrop-blur-xs"
       />
 
       <motion.div 
-        initial={{ opacity: 0, scale: 0.96, y: 8 }}
+        initial={{ opacity: 0, scale: 0.98, y: 8 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.96, y: 8 }}
-        transition={{ duration: 0.2 }}
-        className="relative bg-white border border-[#ece6ed] rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden z-10"
+        exit={{ opacity: 0, scale: 0.98, y: 8 }}
+        transition={{ duration: 0.15 }}
+        className="relative bg-surface border border-border rounded-lg shadow-xl max-w-md w-full overflow-hidden z-10"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="px-6 py-5 border-b border-[#ece6ed] flex items-center justify-between bg-gradient-to-r from-white via-[#fffbfa] to-[#fbf8fc]">
+        <div className="px-6 py-5 border-b border-border flex items-center justify-between bg-surface">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#3b1e4a] via-[#522567] to-[#1f0e27] flex items-center justify-center text-white shadow-xs">
-              <Compass className="w-5 h-5 text-[#f27438]" />
+            <div className="w-8 h-8 rounded-md bg-brand flex items-center justify-center text-white shrink-0">
+              <Compass className="w-4 h-4" />
             </div>
             <div>
-              <h2 className="text-base font-black text-[#1f1b20]">
-                {mode === 'signin' ? 'Institutional Sign In' : 'Create Campus Account'}
+              <h2 className="text-base font-semibold text-primary">
+                {mode === 'signin' ? 'Sign in to SmartGrid' : 'Create campus account'}
               </h2>
-              <p className="text-[10px] font-mono text-[#7c747f]">
-                Algorithmic Campus Equilibrium • Single Sign-On
+              <p className="text-[13px] text-secondary mt-0.5">
+                Institutional single sign-on & workspace access
               </p>
             </div>
           </div>
           <button 
             onClick={onClose}
-            className="text-[#7c747f] hover:text-[#1f1b20] p-1.5 rounded-lg hover:bg-[#ece6ed] transition-colors cursor-pointer"
+            className="text-secondary hover:text-primary p-1.5 rounded-md hover:bg-subtle transition-colors cursor-pointer"
+            aria-label="Close"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
         {/* Tab Switcher */}
-        <div className="px-6 pt-4 pb-1 flex border-b border-[#ece6ed] gap-6 text-xs font-bold">
+        <div className="px-6 pt-3 pb-1 flex border-b border-border gap-6 text-[14px]">
           <button
             type="button"
             onClick={() => setMode('signin')}
-            className={`pb-2.5 transition-colors relative cursor-pointer ${
+            className={`pb-2.5 transition-colors relative cursor-pointer font-medium ${
               mode === 'signin'
-                ? 'text-[#3b1e4a] font-bold border-b-2 border-[#3b1e4a]'
-                : 'text-[#655d69] hover:text-[#1f1b20]'
+                ? 'text-brand border-b-2 border-brand'
+                : 'text-secondary hover:text-primary'
             }`}
           >
-            Sign In with SSO
+            Sign in
           </button>
           <button
             type="button"
             onClick={() => setMode('signup')}
-            className={`pb-2.5 transition-colors relative cursor-pointer ${
+            className={`pb-2.5 transition-colors relative cursor-pointer font-medium ${
               mode === 'signup'
-                ? 'text-[#3b1e4a] font-bold border-b-2 border-[#3b1e4a]'
-                : 'text-[#655d69] hover:text-[#1f1b20]'
+                ? 'text-brand border-b-2 border-brand'
+                : 'text-secondary hover:text-primary'
             }`}
           >
-            Register Institution
+            Register campus
           </button>
         </div>
 
-        {/* Body Form */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-5">
+        {/* Form Body */}
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
           {mode === 'signin' ? (
             <>
-              {/* 1-Click Fast Auth Selector */}
+              {/* Quick Demo Selector */}
               <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <label className="text-[10px] font-mono uppercase tracking-wider text-[#655d69] font-bold flex items-center gap-1">
-                    <Zap className="w-3 h-3 text-[#f27438]" /> Quick Demo Profiles (1-Click)
-                  </label>
-                  <span className="text-[10px] font-bold text-[#18794e] bg-[#eefcf2] px-2 py-0.5 rounded shadow-xs">
-                    Instant Access
-                  </span>
+                <div className="flex items-center justify-between text-[13px] text-secondary">
+                  <span>Demo accounts</span>
+                  <span className="text-brand font-medium">1-click switch</span>
                 </div>
 
                 <div className="space-y-2">
-                  {quickDemoAccounts.map(account => (
-                    <button
-                      key={account.id}
-                      type="button"
-                      onClick={() => handleQuickSelect(account)}
-                      className={`w-full p-3 rounded-xl border text-left transition-all flex items-center justify-between cursor-pointer card-lift ${
-                        selectedRole === account.id
-                          ? 'border-[#9c4126] bg-[#fff7f2] ring-1 ring-[#9c4126] shadow-xs'
-                          : 'border-[#ece6ed] bg-[#fbf8fc] hover:border-[#dcd9dd]'
-                      }`}
-                    >
-                      <div className="space-y-0.5">
-                        <div className="text-xs font-bold text-[#1f1b20] flex items-center gap-1.5">
-                          <span>{account.name}</span>
-                          <span className="text-[11px] font-normal text-[#655d69]">• {account.institution}</span>
+                  {quickDemoAccounts.map(account => {
+                    const isSelected = selectedRole === account.id;
+                    return (
+                      <button
+                        key={account.id}
+                        type="button"
+                        onClick={() => handleQuickSelect(account)}
+                        className={`w-full p-3 rounded-md border text-left transition-colors flex items-center justify-between cursor-pointer text-[14px] ${
+                          isSelected
+                            ? 'border-brand bg-brand/5 text-primary'
+                            : 'border-border bg-surface hover:bg-subtle text-primary'
+                        }`}
+                      >
+                        <div className="min-w-0 pr-2">
+                          <div className="font-medium truncate">{account.name}</div>
+                          <div className="text-[13px] text-secondary truncate">{account.role} • {account.institution}</div>
                         </div>
-                        <div className="text-[10px] text-[#7c747f] font-mono">{account.role}</div>
-                      </div>
-                      <div className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ${
-                        selectedRole === account.id ? 'border-[#9c4126] bg-[#9c4126] text-white' : 'border-[#dcd9df]'
-                      }`}>
-                        {selectedRole === account.id && <CheckCircle2 className="w-3 h-3" />}
-                      </div>
-                    </button>
-                  ))}
+                        <div className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ${
+                          isSelected ? 'border-brand bg-brand text-white' : 'border-border'
+                        }`}>
+                          {isSelected && <CheckCircle2 className="w-3 h-3" />}
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
               {/* Email & Password */}
-              <div className="space-y-3 pt-1">
+              <div className="space-y-3.5 pt-1">
                 <div>
-                  <label className="block text-xs font-bold text-[#1f1b20] mb-1">
-                    Institutional Email Address
+                  <label className="block text-[14px] font-medium text-primary mb-1.5">
+                    Institutional email
                   </label>
                   <div className="relative">
-                    <Mail className="w-4 h-4 text-[#7c747f] absolute left-3 top-2.5" />
+                    <Mail className="w-4 h-4 text-secondary absolute left-3 top-2.5" />
                     <input 
                       type="email" 
                       value={email}
                       onChange={e => setEmail(e.target.value)}
                       required
                       placeholder="name@university.edu"
-                      className="w-full pl-9 pr-3.5 py-2 text-xs rounded-xl border border-[#ece6ed] text-[#1f1b20] focus:outline-none focus:border-[#3b1e4a] bg-[#fbf8fc]"
+                      className="w-full h-[38px] pl-9 pr-3 text-[14px] rounded-md border border-border text-primary focus:outline-none focus:ring-2 focus:ring-brand focus:border-brand bg-surface"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-[#1f1b20] mb-1">
-                    SSO Password / SAML Credential
+                  <label className="block text-[14px] font-medium text-primary mb-1.5">
+                    Password
                   </label>
                   <div className="relative">
-                    <Lock className="w-4 h-4 text-[#7c747f] absolute left-3 top-2.5" />
+                    <Lock className="w-4 h-4 text-secondary absolute left-3 top-2.5" />
                     <input 
                       type={showPassword ? 'text' : 'password'} 
                       value={password}
                       onChange={e => setPassword(e.target.value)}
                       required
-                      className="w-full pl-9 pr-10 py-2 text-xs rounded-xl border border-[#ece6ed] text-[#1f1b20] focus:outline-none focus:border-[#3b1e4a] bg-[#fbf8fc] font-mono"
+                      className="w-full h-[38px] pl-9 pr-9 text-[14px] rounded-md border border-border text-primary focus:outline-none focus:ring-2 focus:ring-brand focus:border-brand bg-surface font-mono"
                     />
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-2 text-[#7c747f] hover:text-[#1f1b20]"
+                      className="absolute right-3 top-2.5 text-secondary hover:text-primary cursor-pointer"
                     >
                       {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
@@ -253,53 +247,53 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               </div>
             </>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-3.5">
               <div>
-                <label className="block text-xs font-bold text-[#1f1b20] mb-1">
-                  Full Name
+                <label className="block text-[14px] font-medium text-primary mb-1.5">
+                  Full name
                 </label>
                 <div className="relative">
-                  <User className="w-4 h-4 text-[#7c747f] absolute left-3 top-2.5" />
+                  <User className="w-4 h-4 text-secondary absolute left-3 top-2.5" />
                   <input 
                     type="text" 
                     value={fullName}
                     onChange={e => setFullName(e.target.value)}
                     required
                     placeholder="e.g. Dr. Eleanor Vance"
-                    className="w-full pl-9 pr-3.5 py-2 text-xs rounded-xl border border-[#ece6ed] text-[#1f1b20] focus:outline-none focus:border-[#3b1e4a] bg-[#fbf8fc]"
+                    className="w-full h-[38px] pl-9 pr-3 text-[14px] rounded-md border border-border text-primary focus:outline-none focus:ring-2 focus:ring-brand focus:border-brand bg-surface"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-[#1f1b20] mb-1">
-                  Institutional Email
+                <label className="block text-[14px] font-medium text-primary mb-1.5">
+                  Institutional email
                 </label>
                 <div className="relative">
-                  <Mail className="w-4 h-4 text-[#7c747f] absolute left-3 top-2.5" />
+                  <Mail className="w-4 h-4 text-secondary absolute left-3 top-2.5" />
                   <input 
                     type="email" 
                     value={signupEmail}
                     onChange={e => setSignupEmail(e.target.value)}
                     required
                     placeholder="e.g. e.vance@stanford.edu"
-                    className="w-full pl-9 pr-3.5 py-2 text-xs rounded-xl border border-[#ece6ed] text-[#1f1b20] focus:outline-none focus:border-[#3b1e4a] bg-[#fbf8fc]"
+                    className="w-full h-[38px] pl-9 pr-3 text-[14px] rounded-md border border-border text-primary focus:outline-none focus:ring-2 focus:ring-brand focus:border-brand bg-surface"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-[#1f1b20] mb-1">
-                  Institution Name
+                <label className="block text-[14px] font-medium text-primary mb-1.5">
+                  Institution name
                 </label>
                 <div className="relative">
-                  <School className="w-4 h-4 text-[#7c747f] absolute left-3 top-2.5" />
+                  <School className="w-4 h-4 text-secondary absolute left-3 top-2.5" />
                   <input 
                     type="text" 
                     value={institutionName}
                     onChange={e => setInstitutionName(e.target.value)}
                     required
-                    className="w-full pl-9 pr-3.5 py-2 text-xs rounded-xl border border-[#ece6ed] text-[#1f1b20] focus:outline-none focus:border-[#3b1e4a] bg-[#fbf8fc]"
+                    className="w-full h-[38px] pl-9 pr-3 text-[14px] rounded-md border border-border text-primary focus:outline-none focus:ring-2 focus:ring-brand focus:border-brand bg-surface"
                   />
                 </div>
               </div>
@@ -307,21 +301,20 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           )}
 
           {/* Action buttons */}
-          <div className="pt-2 flex items-center justify-end gap-3 border-t border-[#ece6ed]">
+          <div className="pt-3 flex items-center justify-end gap-2.5 border-t border-border">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 text-xs font-bold uppercase tracking-wider text-[#655d69] hover:bg-[#f6f2f7] rounded-xl transition-all cursor-pointer"
+              className="h-[38px] px-4 text-[14px] font-medium text-secondary hover:text-primary hover:bg-subtle rounded-md transition-colors cursor-pointer"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={isSubmitting}
-              className="flex items-center gap-2 bg-gradient-to-r from-[#9c4126] to-[#b3401f] hover:from-[#83341d] hover:to-[#9c4126] text-white px-5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all shadow-md hover:shadow-lg active:scale-95 disabled:opacity-75 cursor-pointer"
+              className="h-[38px] px-4 bg-brand hover:bg-brand-hover text-white rounded-md text-[14px] font-medium transition-colors shadow-xs disabled:opacity-60 cursor-pointer"
             >
-              <Sparkles className="w-3.5 h-3.5 text-[#fed8c8]" />
-              {isSubmitting ? 'Authenticating...' : mode === 'signin' ? 'Launch Workspace' : 'Create Workspace'}
+              {isSubmitting ? 'Authenticating...' : mode === 'signin' ? 'Sign in' : 'Create workspace'}
             </button>
           </div>
         </form>

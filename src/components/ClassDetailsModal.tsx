@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, Clock, MapPin, User, Users, CheckCircle, Sparkles } from 'lucide-react';
+import { X, Clock, MapPin, User, Users, CheckCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 export interface ClassItem {
@@ -40,31 +40,45 @@ export const ClassDetailsModal: React.FC<ClassDetailsModalProps> = ({
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         onClick={onClose}
-        className="fixed inset-0 bg-black/45 backdrop-blur-xs"
+        className="fixed inset-0 bg-black/40 backdrop-blur-xs"
       />
 
       {/* Modal Container */}
       <motion.div 
-        initial={{ opacity: 0, scale: 0.95, y: 10 }}
+        initial={{ opacity: 0, scale: 0.98, y: 8 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.95, y: 10 }}
-        transition={{ duration: 0.2, ease: 'easeOut' }}
-        className="relative bg-white border border-[#ece6ed] rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden z-10"
+        exit={{ opacity: 0, scale: 0.98, y: 8 }}
+        transition={{ duration: 0.15, ease: 'easeOut' }}
+        className="relative bg-surface border border-border rounded-lg shadow-xl max-w-lg w-full overflow-hidden z-10"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="px-6 py-5 border-b border-[#ece6ed] flex items-start justify-between bg-gradient-to-r from-white via-[#fffbfa] to-[#fbf8fc]">
+        <div className="px-6 py-5 border-b border-border flex items-start justify-between bg-surface">
           <div className="space-y-1">
-            <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase tracking-wider bg-white border border-[#ece6ed] text-[#9c4126] shadow-xs mb-1">
-              <span className={`w-1.5 h-1.5 rounded-full ${classItem.accent === 'plum' ? 'bg-[#3b1e4a]' : classItem.accent === 'emerald' ? 'bg-[#18794e]' : 'bg-[#c84c16]'}`}></span>
-              {classItem.type || 'Academic Lecture'} • {classItem.credits || 4} Credits
+            <div className="flex items-center gap-2">
+              <span className="font-mono text-[14px] font-medium text-brand">
+                {classItem.code}
+              </span>
+              <span className="text-tertiary">•</span>
+              <span className="text-[13px] text-secondary">
+                {classItem.type || 'Lecture'}
+              </span>
+              <span className="text-tertiary">•</span>
+              <span className="text-[13px] text-secondary">
+                {classItem.credits || 4} credits
+              </span>
             </div>
-            <h2 className="text-xl font-black text-[#1f1b20]">{classItem.code}: {classItem.title}</h2>
-            <p className="text-xs text-[#655d69]">Assigned to Cohort: <strong className="text-[#1f1b20]">{classItem.cohort}</strong></p>
+            <h2 className="text-lg font-semibold text-primary">
+              {classItem.title}
+            </h2>
+            <p className="text-[13px] text-secondary">
+              Cohort: <span className="font-medium text-primary">{classItem.cohort}</span>
+            </p>
           </div>
           <button 
             onClick={onClose}
-            className="text-[#7c747f] hover:text-[#1f1b20] p-2 rounded-xl hover:bg-[#ece6ed] transition-colors cursor-pointer"
+            className="text-secondary hover:text-primary p-2 rounded-md hover:bg-subtle transition-colors cursor-pointer"
+            aria-label="Close details"
           >
             <X className="w-4 h-4" />
           </button>
@@ -74,84 +88,88 @@ export const ClassDetailsModal: React.FC<ClassDetailsModalProps> = ({
         <div className="p-6 space-y-5">
           {/* Key Meta Grid */}
           <div className="grid grid-cols-2 gap-3">
-            <div className="p-3.5 bg-[#fbf8fc] rounded-xl border border-[#ece6ed] space-y-1">
-              <div className="text-[10px] font-mono uppercase text-[#7c747f] font-bold flex items-center gap-1.5">
-                <Clock className="w-3.5 h-3.5 text-[#9c4126]" />
-                Schedule Slot
+            <div className="p-3.5 bg-subtle rounded-md border border-border space-y-1">
+              <div className="text-[13px] text-secondary flex items-center gap-1.5">
+                <Clock className="w-4 h-4 text-secondary" />
+                <span>Time slot</span>
               </div>
-              <div className="text-xs font-bold text-[#1f1b20]">{classItem.day ? `${classItem.day} • ` : ''}{classItem.time || '09:00 - 10:30'}</div>
+              <div className="text-[14px] font-mono font-medium text-primary">
+                {classItem.day ? `${classItem.day} • ` : ''}{classItem.time || '09:00 - 10:30'}
+              </div>
             </div>
 
-            <div className="p-3.5 bg-[#fbf8fc] rounded-xl border border-[#ece6ed] space-y-1">
-              <div className="text-[10px] font-mono uppercase text-[#7c747f] font-bold flex items-center gap-1.5">
-                <MapPin className="w-3.5 h-3.5 text-[#3b1e4a]" />
-                Facility & Room
+            <div className="p-3.5 bg-subtle rounded-md border border-border space-y-1">
+              <div className="text-[13px] text-secondary flex items-center gap-1.5">
+                <MapPin className="w-4 h-4 text-secondary" />
+                <span>Facility & room</span>
               </div>
-              <div className="text-xs font-bold text-[#1f1b20]">{classItem.room}</div>
+              <div className="text-[14px] font-mono font-medium text-primary">
+                {classItem.room}
+              </div>
             </div>
 
-            <div className="p-3.5 bg-[#fbf8fc] rounded-xl border border-[#ece6ed] space-y-1">
-              <div className="text-[10px] font-mono uppercase text-[#7c747f] font-bold flex items-center gap-1.5">
-                <User className="w-3.5 h-3.5 text-[#18794e]" />
-                Faculty Member
+            <div className="p-3.5 bg-subtle rounded-md border border-border space-y-1">
+              <div className="text-[13px] text-secondary flex items-center gap-1.5">
+                <User className="w-4 h-4 text-secondary" />
+                <span>Instructor</span>
               </div>
-              <div className="text-xs font-bold text-[#1f1b20]">{classItem.prof}</div>
+              <div className="text-[14px] font-medium text-primary">
+                {classItem.prof}
+              </div>
             </div>
 
-            <div className="p-3.5 bg-[#fbf8fc] rounded-xl border border-[#ece6ed] space-y-1">
-              <div className="text-[10px] font-mono uppercase text-[#7c747f] font-bold flex items-center gap-1.5">
-                <Users className="w-3.5 h-3.5 text-[#c84c16]" />
-                Enrolled Capacity
+            <div className="p-3.5 bg-subtle rounded-md border border-border space-y-1">
+              <div className="text-[13px] text-secondary flex items-center gap-1.5">
+                <Users className="w-4 h-4 text-secondary" />
+                <span>Enrolled capacity</span>
               </div>
-              <div className="text-xs font-bold text-[#1f1b20] font-mono">{classItem.enrolled || 48} / {classItem.capacity || 50} seats</div>
+              <div className="text-[14px] font-mono font-medium text-primary">
+                {classItem.enrolled || 48} / {classItem.capacity || 50} seats
+              </div>
             </div>
           </div>
 
-          {/* Solver Verification Badge */}
-          <div className="p-4 rounded-xl border border-[#ece6ed] bg-gradient-to-br from-[#f1fbf5] to-[#e8f7ee] flex items-start gap-3 shadow-xs">
-            <CheckCircle className="w-5 h-5 text-[#18794e] shrink-0 mt-0.5" />
-            <div className="text-xs space-y-1">
-              <div className="font-bold text-[#0f5431]">
-                Deterministic Solver Validation: 100% Collision-Free
+          {/* Solver Verification Banner */}
+          <div className="p-3.5 rounded-md border border-emerald-200 dark:border-emerald-900 bg-emerald-50/50 dark:bg-emerald-950/20 flex items-start gap-2.5">
+            <CheckCircle className="w-4 h-4 text-success shrink-0 mt-0.5" />
+            <div className="text-[14px] space-y-0.5">
+              <div className="font-medium text-emerald-900 dark:text-emerald-200">
+                Deterministic validation: collision-free
               </div>
-              <p className="text-[#3c6b4e] text-xs leading-relaxed">
-                Zero hard constraints violated. Adjacent walking buffer: 18 minutes (exceeds 10-min minimum campus threshold). Circadian energy alignment: 94.2%.
+              <p className="text-emerald-800/90 dark:text-emerald-300/90 text-[13px] leading-relaxed">
+                Zero hard constraints violated. Adjacent walking buffer: 18 minutes (exceeds 10-min campus threshold). Circadian energy alignment: 94.2%.
               </p>
             </div>
           </div>
 
           {/* Student Commute Impact */}
-          <div className="border border-[#ece6ed] rounded-xl p-4 bg-white space-y-2">
-            <div className="text-xs font-mono uppercase tracking-wider text-[#7c747f] font-bold flex items-center justify-between">
-              <span>Transit Buffer Analysis</span>
-              <span className="text-[#18794e] font-bold">Optimal Margin</span>
+          <div className="border border-border rounded-md p-4 bg-surface space-y-2.5">
+            <div className="text-[13px] text-secondary flex items-center justify-between">
+              <span>Transit buffer margin</span>
+              <span className="font-mono text-success text-[13px] font-medium">+16 mins prior</span>
             </div>
-            <div className="flex items-center justify-between text-xs text-[#1f1b20]">
-              <span>Campus Shuttle Arrival Margin:</span>
-              <span className="font-mono font-bold text-[#18794e]">+16 mins prior</span>
-            </div>
-            <div className="w-full bg-[#ece6ed] rounded-full h-1.5 overflow-hidden">
-              <div className="bg-[#18794e] h-1.5 rounded-full" style={{ width: '88%' }}></div>
+            <div className="w-full bg-subtle rounded-full h-1.5 overflow-hidden">
+              <div className="bg-success h-1.5 rounded-full" style={{ width: '88%' }} />
             </div>
           </div>
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 bg-[#fbf8fc] border-t border-[#ece6ed] flex items-center justify-end gap-3">
+        <div className="px-6 py-4 bg-subtle border-t border-border flex items-center justify-end gap-2.5">
           <button 
             onClick={onClose}
-            className="px-4 py-2 border border-[#ece6ed] rounded-xl text-xs font-bold uppercase tracking-wider text-[#655d69] hover:bg-white transition-colors cursor-pointer"
+            className="h-[38px] px-4 rounded-md border border-border bg-surface hover:bg-subtle text-[14px] text-primary transition-colors cursor-pointer font-medium"
           >
-            Close Details
+            Close
           </button>
           <button 
             onClick={() => {
               onLocateInMatrix?.(classItem.code);
               onClose();
             }}
-            className="px-4 py-2 bg-gradient-to-r from-[#9c4126] to-[#b3401f] text-white rounded-xl text-xs font-bold uppercase tracking-wider hover:from-[#83341d] hover:to-[#9c4126] transition-all shadow-md cursor-pointer"
+            className="h-[38px] px-4 rounded-md bg-brand hover:bg-brand-hover text-white text-[14px] font-medium transition-colors shadow-xs cursor-pointer"
           >
-            Inspect in Matrix
+            Inspect in matrix
           </button>
         </div>
       </motion.div>

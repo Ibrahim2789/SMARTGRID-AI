@@ -1,16 +1,13 @@
 import React, { useState } from 'react';
 import { SmartGridNav, RouteType } from './SmartGridNav';
 import { 
-  Shield, 
-  Sparkles, 
-  Users, 
   Building, 
   Clock, 
   CheckCircle2, 
   RefreshCw, 
   Sliders, 
   ArrowRight, 
-  Check,
+  ShieldCheck,
   Calendar,
   Layers,
   FileSpreadsheet
@@ -31,7 +28,6 @@ export const InstitutionalPortal: React.FC<InstitutionalPortalProps> = ({
   onOpenAuth,
   onSignOut,
   currentUser,
-  onSwitchUser,
   hideNav = false
 }) => {
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'synced'>('idle');
@@ -48,17 +44,17 @@ export const InstitutionalPortal: React.FC<InstitutionalPortalProps> = ({
     setSyncStatus('syncing');
     setTimeout(() => {
       setSyncStatus('synced');
-      setTimeout(() => setSyncStatus('idle'), 3500);
-    }, 1200);
+      setTimeout(() => setSyncStatus('idle'), 3000);
+    }, 1000);
   };
 
   const handleExport = (format: string) => {
-    setExportNotice(`Exported ${format} snapshot for Ellucian Banner / Canvas`);
+    setExportNotice(`Exported ${format} snapshot for SIS/LMS distribution`);
     setTimeout(() => setExportNotice(null), 3000);
   };
 
   return (
-    <div className="min-h-screen bg-[#fbf8fc] text-[#1f1b20] font-sans antialiased">
+    <div className="min-h-screen bg-app text-primary antialiased">
       {!hideNav && (
         <SmartGridNav 
           activeRoute="portal" 
@@ -69,283 +65,252 @@ export const InstitutionalPortal: React.FC<InstitutionalPortalProps> = ({
         />
       )}
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-10">
-        {/* Welcome Header */}
-        <section className="bg-gradient-to-br from-[#fff7f2] via-white to-[#faf4fc] border border-[#ece6ed] rounded-2xl p-6 lg:p-8 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-6 relative overflow-hidden">
-          <div className="space-y-2 relative z-10">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#eefcf2] text-[11px] font-mono font-bold text-[#18794e] uppercase tracking-wider border border-[#18794e]/20 shadow-xs">
-              <Shield className="w-3.5 h-3.5 text-[#18794e]" />
-              Institutional Command Portal • Verified Session
+      <div className="max-w-[1360px] mx-auto px-4 sm:px-8 py-8 space-y-8">
+        {/* Plain Human Page Header: Title + Subtitle + Action (No banner card) */}
+        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 pb-4 border-b border-border">
+          <div>
+            <div className="text-[13px] text-secondary font-medium mb-1">
+              {activeUser.name} • {activeUser.role} • {activeUser.institution || 'Western Polytechnic'}
             </div>
-            <h1 className="text-2xl lg:text-3xl font-black text-[#1f1b20]">
-              Welcome back, {activeUser.name}
-            </h1>
-            <p className="text-xs text-[#655d69]">
-              Role: <span className="font-bold text-[#1f1b20]">{activeUser.role}</span> • Affiliation: <span className="font-mono text-[#3b1e4a] font-bold">{activeUser.institution || 'Western Polytechnic Institute'}</span>
+            <h1 className="text-[30px] font-semibold text-primary tracking-tight leading-none">Overview</h1>
+            <p className="text-[15px] text-secondary mt-1.5">
+              Active academic term state, SIS synchronization, and compliance audit
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3 relative z-10">
+          <div className="flex items-center gap-3">
             <button
               onClick={handleSyncLMS}
               disabled={syncStatus === 'syncing'}
-              className="flex items-center gap-2 bg-white border border-[#ece6ed] hover:border-[#dcd9dd] hover:bg-[#f6f2f7] text-[#3b1e4a] px-4 py-2.5 rounded-xl text-xs font-bold shadow-xs transition-all cursor-pointer"
+              className="h-10 px-4 rounded-md border border-border bg-surface hover:bg-subtle text-primary text-[14px] font-medium flex items-center gap-2 transition-colors cursor-pointer"
             >
-              <RefreshCw className={`w-3.5 h-3.5 ${syncStatus === 'syncing' ? 'animate-spin text-[#9c4126]' : ''}`} />
-              {syncStatus === 'syncing' ? 'Syncing SIS/LMS...' : syncStatus === 'synced' ? 'SIS Synced! ✓' : 'Sync SIS / LMS'}
+              <RefreshCw className={`w-4 h-4 text-secondary ${syncStatus === 'syncing' ? 'animate-spin text-brand' : ''}`} />
+              <span>{syncStatus === 'syncing' ? 'Syncing...' : syncStatus === 'synced' ? 'SIS synced' : 'Sync SIS / LMS'}</span>
             </button>
+
             <button
               onClick={() => onNavigate?.('generator')}
-              className="flex items-center gap-2 bg-gradient-to-r from-[#9c4126] to-[#b3401f] hover:from-[#83341d] hover:to-[#9c4126] text-white px-5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider shadow-md hover:shadow-lg transition-all active:scale-95 cursor-pointer"
+              className="h-10 px-4 rounded-md bg-brand hover:bg-brand-hover text-white text-[14px] font-medium flex items-center gap-2 transition-colors cursor-pointer"
             >
-              <Sparkles className="w-3.5 h-3.5 text-[#fed8c8]" />
-              New Solve Run
+              <Sliders className="w-4 h-4" />
+              <span>New solve run</span>
             </button>
           </div>
-        </section>
+        </div>
 
-        {/* Real-Time Campus Operations Grid */}
-        <section className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <span className="text-[11px] font-mono uppercase tracking-widest text-[#9c4126] font-bold">System Telemetry</span>
-              <h2 className="text-xl font-black text-[#1f1b20]">Active Academic Term State (Term 2)</h2>
-            </div>
-            <span className="text-xs font-mono text-[#18794e] font-bold bg-[#eefcf2] px-3 py-1 rounded-xl shadow-xs border border-[#18794e]/20">
-              EQUILIBRIUM: 100% COLLISION FREE
-            </span>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {/* Card 1 */}
-            <div className="relative bg-gradient-to-br from-[#faf4fc] via-white to-[#f4eaf7] border border-[#ece6ed] hover:border-[#dcd9dd] rounded-2xl p-5 shadow-xs card-lift space-y-1">
-              <div className="text-[10px] font-mono uppercase text-[#7c747f] font-bold flex items-center justify-between">
-                <span>Enrolled Students</span>
-                <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-[#3b1e4a] to-[#7209b7] text-white flex items-center justify-center shadow-xs">
-                  <Users className="w-4 h-4" />
-                </div>
-              </div>
-              <div className="text-3xl font-black font-mono text-[#3b1e4a]">34,180</div>
-              <div className="text-[11px] text-[#7209b7] font-bold">12 Academic Schools</div>
-            </div>
-
-            {/* Card 2 */}
-            <div className="relative bg-gradient-to-br from-[#fff7f2] via-white to-[#fff0eb] border border-[#ece6ed] hover:border-[#dcd9dd] rounded-2xl p-5 shadow-xs card-lift space-y-1">
-              <div className="text-[10px] font-mono uppercase text-[#7c747f] font-bold flex items-center justify-between">
-                <span>Lecture & Lab Sections</span>
-                <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-[#9c4126] to-[#f27438] text-white flex items-center justify-center shadow-xs">
-                  <Clock className="w-4 h-4" />
-                </div>
-              </div>
-              <div className="text-3xl font-black font-mono text-[#9c4126]">1,420</div>
-              <div className="text-[11px] text-[#18794e] font-bold">0 Conflicting Overlaps</div>
-            </div>
-
-            {/* Card 3 */}
-            <div className="relative bg-gradient-to-br from-[#f1fbf5] via-white to-[#e8f7ee] border border-[#ece6ed] hover:border-[#dcd9dd] rounded-2xl p-5 shadow-xs card-lift space-y-1">
-              <div className="text-[10px] font-mono uppercase text-[#7c747f] font-bold flex items-center justify-between">
-                <span>Physical Facilities</span>
-                <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-[#18794e] to-[#25a26c] text-white flex items-center justify-center shadow-xs">
-                  <Building className="w-4 h-4" />
-                </div>
-              </div>
-              <div className="text-3xl font-black font-mono text-[#18794e]">114 Rooms</div>
-              <div className="text-[11px] text-[#18794e] font-bold">98.2% Optimal Utilization</div>
-            </div>
-
-            {/* Card 4 */}
-            <div className="relative bg-gradient-to-br from-[#fffbf0] via-white to-[#fff4df] border border-[#ece6ed] hover:border-[#dcd9dd] rounded-2xl p-5 shadow-xs card-lift space-y-1">
-              <div className="text-[10px] font-mono uppercase text-[#7c747f] font-bold flex items-center justify-between">
-                <span>Solver Parity Check</span>
-                <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-[#d97706] to-[#f59e0b] text-white flex items-center justify-center shadow-xs">
-                  <CheckCircle2 className="w-4 h-4" />
-                </div>
-              </div>
-              <div className="text-3xl font-black font-mono text-[#d97706]">99.88%</div>
-              <div className="text-[11px] font-mono text-[#7c747f]">Pareto Global Maxima</div>
-            </div>
-          </div>
-        </section>
-
-        {/* Operations Hub: Quick Navigation Cards */}
-        <section className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div 
-            onClick={() => onNavigate?.('timetable')}
-            className="relative bg-gradient-to-br from-[#fff8f5] via-white to-[#fff2ec] border border-[#ece6ed] hover:border-[#dcd9dd] rounded-2xl p-6 shadow-sm card-lift cursor-pointer transition-all duration-300 group space-y-4"
-          >
-            <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-[#9c4126] to-[#f27438] text-white flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform">
-              <Clock className="w-5 h-5" />
-            </div>
-            <div>
-              <h3 className="text-base font-bold text-[#1f1b20] group-hover:text-[#9c4126] transition-colors">
-                Timetable Matrix Workspace
-              </h3>
-              <p className="text-xs text-[#655d69] mt-1 leading-relaxed">
-                Inspect the full five-day master schedule, filter by department, review room allocations, and export data.
-              </p>
-            </div>
-            <div className="flex items-center text-xs font-bold uppercase tracking-wider text-[#9c4126] gap-1 pt-1 group-hover:translate-x-1 transition-transform">
-              <span>Open Master Matrix</span>
-              <ArrowRight className="w-3.5 h-3.5" />
-            </div>
-          </div>
-
-          <div 
-            onClick={() => onNavigate?.('generator')}
-            className="relative bg-gradient-to-br from-[#faf5fc] via-white to-[#f4ebf8] border border-[#ece6ed] hover:border-[#dcd9dd] rounded-2xl p-6 shadow-sm card-lift cursor-pointer transition-all duration-300 group space-y-4"
-          >
-            <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-[#3b1e4a] to-[#7209b7] text-white flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform">
-              <Sliders className="w-5 h-5" />
-            </div>
-            <div>
-              <h3 className="text-base font-bold text-[#1f1b20] group-hover:text-[#7209b7] transition-colors">
-                Generator Studio
-              </h3>
-              <p className="text-xs text-[#655d69] mt-1 leading-relaxed">
-                Tune constraint scalar multipliers, adjust circadian weighting, and run combinatorial genetic convergence.
-              </p>
-            </div>
-            <div className="flex items-center text-xs font-bold uppercase tracking-wider text-[#7209b7] gap-1 pt-1 group-hover:translate-x-1 transition-transform">
-              <span>Open Solver Studio</span>
-              <ArrowRight className="w-3.5 h-3.5" />
-            </div>
-          </div>
-
-          <div 
-            onClick={() => onNavigate?.('student-voice')}
-            className="relative bg-gradient-to-br from-[#f0fbf4] via-white to-[#e8f8ee] border border-[#ece6ed] hover:border-[#dcd9dd] rounded-2xl p-6 shadow-sm card-lift cursor-pointer transition-all duration-300 group space-y-4"
-          >
-            <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-[#18794e] to-[#25a26c] text-white flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform">
-              <Users className="w-5 h-5" />
-            </div>
-            <div>
-              <h3 className="text-base font-bold text-[#1f1b20] group-hover:text-[#18794e] transition-colors">
-                Student Voice Telemetry
-              </h3>
-              <p className="text-xs text-[#655d69] mt-1 leading-relaxed">
-                Review verified student referendums, transit buffer thresholds, and circadian peak alertness profiles.
-              </p>
-            </div>
-            <div className="flex items-center text-xs font-bold uppercase tracking-wider text-[#18794e] gap-1 pt-1 group-hover:translate-x-1 transition-transform">
-              <span>Inspect Student Input</span>
-              <ArrowRight className="w-3.5 h-3.5" />
-            </div>
-          </div>
-        </section>
-
-        {/* SIS / LMS Sync & Export Tools */}
-        <section className="bg-white border border-[#ece6ed] rounded-2xl p-6 lg:p-8 shadow-sm space-y-6">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-[#ece6ed] pb-4">
-            <div>
-              <span className="text-[11px] font-mono uppercase tracking-widest text-[#9c4126] font-bold">Enterprise Integrations</span>
-              <h2 className="text-xl font-black text-[#1f1b20]">LMS & SIS Ecosystem Connectors</h2>
-            </div>
-            <span className="text-xs font-mono text-[#7c747f]">Ellucian Banner v9.4 • Canvas REST API</span>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="p-4 bg-gradient-to-b from-[#fdfbfd] to-[#fbf8fc] border border-[#ece6ed] hover:border-[#dcd9dd] rounded-xl space-y-3 card-lift">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-[#1f1b20]">Ellucian Banner SIS</span>
-                <span className="inline-flex items-center gap-1 text-[10px] font-mono font-bold text-[#18794e] bg-[#eefcf2] px-2 py-0.5 rounded">
-                  <Check className="w-3 h-3" /> Live Sync
-                </span>
-              </div>
-              <p className="text-[11px] text-[#655d69]">
-                Course section numbers, CRNs, instructor IDs, and prerequisite chains synchronized.
-              </p>
-              <button 
-                onClick={() => handleExport('Banner XML')}
-                className="w-full text-center py-2 text-xs font-bold text-[#3b1e4a] border border-[#ece6ed] hover:border-[#dcd9dd] rounded-xl hover:bg-white transition-colors cursor-pointer"
-              >
-                Export Banner XML
-              </button>
-            </div>
-
-            <div className="p-4 bg-gradient-to-b from-[#fdfbfd] to-[#fbf8fc] border border-[#ece6ed] hover:border-[#dcd9dd] rounded-xl space-y-3 card-lift">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-[#1f1b20]">Canvas LMS</span>
-                <span className="inline-flex items-center gap-1 text-[10px] font-mono font-bold text-[#18794e] bg-[#eefcf2] px-2 py-0.5 rounded">
-                  <Check className="w-3 h-3" /> Published
-                </span>
-              </div>
-              <p className="text-[11px] text-[#655d69]">
-                1,420 course shells created with automated student roster syncing.
-              </p>
-              <button 
-                onClick={() => handleExport('Canvas CSV')}
-                className="w-full text-center py-2 text-xs font-bold text-[#3b1e4a] border border-[#ece6ed] hover:border-[#dcd9dd] rounded-xl hover:bg-white transition-colors cursor-pointer"
-              >
-                Export Canvas Roster CSV
-              </button>
-            </div>
-
-            <div className="p-4 bg-gradient-to-b from-[#fdfbfd] to-[#fbf8fc] border border-[#ece6ed] hover:border-[#dcd9dd] rounded-xl space-y-3 card-lift">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-[#1f1b20]">Campus Facility Access</span>
-                <span className="inline-flex items-center gap-1 text-[10px] font-mono font-bold text-[#18794e] bg-[#eefcf2] px-2 py-0.5 rounded">
-                  <Check className="w-3 h-3" /> Locks Armed
-                </span>
-              </div>
-              <p className="text-[11px] text-[#655d69]">
-                RFID door locks configured to unlock 15 minutes before scheduled laboratory hours.
-              </p>
-              <button 
-                onClick={() => handleExport('Access Control JSON')}
-                className="w-full text-center py-2 text-xs font-bold text-[#3b1e4a] border border-[#ece6ed] hover:border-[#dcd9dd] rounded-xl hover:bg-white transition-colors cursor-pointer"
-              >
-                Export Security Roster
-              </button>
-            </div>
-          </div>
-
-          <AnimatePresence>
-            {exportNotice && (
-              <motion.div 
-                initial={{ opacity: 0, y: -6 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -6 }}
-                className="p-3 bg-[#eefcf2] text-[#0f5431] rounded-xl text-xs font-mono flex items-center justify-between border border-[#18794e]/30 shadow-xs"
-              >
+        {/* Export Notification Toast */}
+        <AnimatePresence>
+          {exportNotice && (
+            <motion.div 
+              initial={{ opacity: 0, y: -4 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -4 }}
+              className="p-3.5 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200 rounded-md text-[14px] flex items-center justify-between"
+            >
+              <div className="flex items-center gap-2.5">
+                <CheckCircle2 className="w-4 h-4 text-success" />
                 <span>{exportNotice}</span>
-                <span className="font-bold">EXPORT_SUCCESS ✓</span>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </section>
+              </div>
+              <span className="font-mono text-[13px] text-success font-medium">SUCCESS</span>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
-        {/* Accreditation Audit Log */}
-        <section className="bg-white border border-[#ece6ed] rounded-2xl p-6 lg:p-8 shadow-sm space-y-4">
-          <div className="border-b border-[#ece6ed] pb-3">
-            <span className="text-[11px] font-mono uppercase tracking-widest text-[#9c4126] font-bold">Accreditation & Compliance</span>
-            <h3 className="text-lg font-black text-[#1f1b20]">Title IV & FERPA Continuous Verification</h3>
+        {/* Unified Stat Strip with Dividers & Comparisons (vs last term) */}
+        <section className="bg-surface border border-border rounded-lg grid grid-cols-2 lg:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x divide-border">
+          <div className="p-5 sm:p-6 space-y-1">
+            <div className="text-[14px] text-secondary font-medium">Enrolled students</div>
+            <div className="text-[34px] font-semibold text-primary tracking-tight tabular-nums">
+              34,180
+            </div>
+            <div className="text-[13px] text-secondary">+4.2% vs last term (12 schools)</div>
           </div>
 
-          <div className="divide-y divide-[#ece6ed] text-xs">
-            <div className="py-3 flex items-center justify-between">
-              <div>
-                <span className="font-bold text-[#1f1b20]">Title IV Credit Hour Minimums:</span>
-                <span className="text-[#655d69] ml-2">All 1,420 sections verified for required 45 instructional contact hours per 3-credit unit.</span>
-              </div>
-              <span className="font-mono text-[#18794e] font-bold bg-[#eaf8f0] px-2 py-0.5 rounded border border-[#ece6ed]">AUDIT_PASS</span>
+          <div className="p-5 sm:p-6 space-y-1">
+            <div className="text-[14px] text-secondary font-medium">Scheduled sections</div>
+            <div className="text-[34px] font-semibold text-primary tracking-tight tabular-nums">
+              1,420
             </div>
-            <div className="py-3 flex items-center justify-between">
-              <div>
-                <span className="font-bold text-[#1f1b20]">Faculty Workload Caps:</span>
-                <span className="text-[#655d69] ml-2">Zero faculty members scheduled over 3 consecutive hours or beyond contractual limits.</span>
-              </div>
-              <span className="font-mono text-[#18794e] font-bold bg-[#eaf8f0] px-2 py-0.5 rounded border border-[#ece6ed]">AUDIT_PASS</span>
+            <div className="text-[13px] text-success font-medium">0 clashes vs 14 last term</div>
+          </div>
+
+          <div className="p-5 sm:p-6 space-y-1">
+            <div className="text-[14px] text-secondary font-medium">Facility utilization</div>
+            <div className="text-[34px] font-semibold text-primary tracking-tight tabular-nums">
+              98.2%
             </div>
-            <div className="py-3 flex items-center justify-between">
-              <div>
-                <span className="font-bold text-[#1f1b20]">ADA Accessible Path Buffers:</span>
-                <span className="text-[#655d69] ml-2">100% of mobility-impaired student routes guaranteed elevator transit margins.</span>
-              </div>
-              <span className="font-mono text-[#18794e] font-bold bg-[#eaf8f0] px-2 py-0.5 rounded border border-[#ece6ed]">AUDIT_PASS</span>
+            <div className="text-[13px] text-secondary">+6.1% vs last term (114 rooms)</div>
+          </div>
+
+          <div className="p-5 sm:p-6 space-y-1">
+            <div className="text-[14px] text-secondary font-medium">Solver score</div>
+            <div className="text-[34px] font-semibold text-primary tracking-tight tabular-nums">
+              99.88%
             </div>
+            <div className="text-[13px] text-success font-medium">Deterministic parity verified</div>
           </div>
         </section>
-      </main>
+
+        {/* Varied Layout: Wide Table (LMS/SIS) + Narrow Side Panel (Title IV Audit & Shortcuts) */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+          {/* Wide Table: SIS & LMS Ecosystem Connectors */}
+          <section className="lg:col-span-8 bg-surface border border-border rounded-lg overflow-hidden">
+            <div className="px-6 py-4 border-b border-border flex items-center justify-between">
+              <div>
+                <h2 className="text-[16px] font-semibold text-primary">SIS and LMS synchronization</h2>
+                <p className="text-[13px] text-secondary mt-0.5">Automated student roster, section numbering, and door access feeds</p>
+              </div>
+              <span className="text-[13px] font-mono text-secondary">REST API v2.4</span>
+            </div>
+
+            <div className="divide-y divide-border">
+              <div className="p-5 sm:px-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2.5">
+                    <span className="text-[15px] font-medium text-primary">Ellucian Banner SIS</span>
+                    <span className="px-2 py-0.5 rounded text-[13px] font-medium bg-emerald-50 dark:bg-emerald-950/40 text-success border border-emerald-200 dark:border-emerald-800 flex items-center gap-1">
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      Live sync
+                    </span>
+                  </div>
+                  <p className="text-[14px] text-secondary">
+                    Course sections, CRNs, instructor IDs, and prerequisite chains synchronized every 15 minutes.
+                  </p>
+                </div>
+                <button 
+                  onClick={() => handleExport('Banner XML')}
+                  className="h-9 px-3.5 rounded-md border border-border bg-surface hover:bg-subtle text-[14px] font-medium text-primary transition-colors cursor-pointer shrink-0"
+                >
+                  Export Banner XML
+                </button>
+              </div>
+
+              <div className="p-5 sm:px-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2.5">
+                    <span className="text-[15px] font-medium text-primary">Canvas LMS</span>
+                    <span className="px-2 py-0.5 rounded text-[13px] font-medium bg-emerald-50 dark:bg-emerald-950/40 text-success border border-emerald-200 dark:border-emerald-800 flex items-center gap-1">
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      Published
+                    </span>
+                  </div>
+                  <p className="text-[14px] text-secondary">
+                    1,420 course shells created with automated student enrollment rosters.
+                  </p>
+                </div>
+                <button 
+                  onClick={() => handleExport('Canvas CSV')}
+                  className="h-9 px-3.5 rounded-md border border-border bg-surface hover:bg-subtle text-[14px] font-medium text-primary transition-colors cursor-pointer shrink-0"
+                >
+                  Export Canvas CSV
+                </button>
+              </div>
+
+              <div className="p-5 sm:px-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2.5">
+                    <span className="text-[15px] font-medium text-primary">Campus electronic door access</span>
+                    <span className="px-2 py-0.5 rounded text-[13px] font-medium bg-emerald-50 dark:bg-emerald-950/40 text-success border border-emerald-200 dark:border-emerald-800 flex items-center gap-1">
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      Armed
+                    </span>
+                  </div>
+                  <p className="text-[14px] text-secondary">
+                    RFID locks configured to unlock 15 minutes prior to scheduled laboratory and lecture hours.
+                  </p>
+                </div>
+                <button 
+                  onClick={() => handleExport('Security JSON')}
+                  className="h-9 px-3.5 rounded-md border border-border bg-surface hover:bg-subtle text-[14px] font-medium text-primary transition-colors cursor-pointer shrink-0"
+                >
+                  Export security roster
+                </button>
+              </div>
+            </div>
+          </section>
+
+          {/* Narrow Side Column: Title IV Audit & Quick Navigation */}
+          <div className="lg:col-span-4 space-y-6">
+            {/* Accreditation Audit Card */}
+            <section className="bg-surface border border-border rounded-lg p-5 space-y-4">
+              <div className="border-b border-border pb-3 flex items-center justify-between">
+                <div>
+                  <h2 className="text-[16px] font-semibold text-primary">Compliance audit</h2>
+                  <p className="text-[13px] text-secondary mt-0.5">Continuous Title IV verification</p>
+                </div>
+                <span className="text-[13px] font-medium text-success flex items-center gap-1">
+                  <ShieldCheck className="w-4 h-4" />
+                  Pass
+                </span>
+              </div>
+
+              <div className="space-y-3 text-[14px]">
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium text-primary">Title IV credit hours</span>
+                    <span className="text-[13px] font-mono font-medium text-success">PASS</span>
+                  </div>
+                  <p className="text-[13px] text-secondary">
+                    All 1,420 sections verified for required 45 instructional contact hours per 3-credit unit.
+                  </p>
+                </div>
+
+                <div className="h-px bg-border" />
+
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium text-primary">Faculty workload caps</span>
+                    <span className="text-[13px] font-mono font-medium text-success">PASS</span>
+                  </div>
+                  <p className="text-[13px] text-secondary">
+                    Zero faculty members scheduled over 3 consecutive hours or beyond contractual limits.
+                  </p>
+                </div>
+
+                <div className="h-px bg-border" />
+
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium text-primary">ADA mobility paths</span>
+                    <span className="text-[13px] font-mono font-medium text-success">PASS</span>
+                  </div>
+                  <p className="text-[13px] text-secondary">
+                    100% of mobility-impaired student routes guaranteed elevator transit margins.
+                  </p>
+                </div>
+              </div>
+            </section>
+
+            {/* Quick Links Card */}
+            <section className="bg-surface border border-border rounded-lg p-5 space-y-3">
+              <h2 className="text-[15px] font-semibold text-primary">Quick navigation</h2>
+              <div className="space-y-1.5">
+                <button
+                  onClick={() => onNavigate?.('timetable')}
+                  className="w-full h-10 px-3 rounded-md border border-border hover:bg-subtle text-left text-[14px] text-primary flex items-center justify-between transition-colors cursor-pointer"
+                >
+                  <span className="font-medium">Master timetable grid</span>
+                  <ArrowRight className="w-4 h-4 text-secondary" />
+                </button>
+                <button
+                  onClick={() => onNavigate?.('generator')}
+                  className="w-full h-10 px-3 rounded-md border border-border hover:bg-subtle text-left text-[14px] text-primary flex items-center justify-between transition-colors cursor-pointer"
+                >
+                  <span className="font-medium">Auto-scheduler studio</span>
+                  <ArrowRight className="w-4 h-4 text-secondary" />
+                </button>
+                <button
+                  onClick={() => onNavigate?.('student-voice')}
+                  className="w-full h-10 px-3 rounded-md border border-border hover:bg-subtle text-left text-[14px] text-primary flex items-center justify-between transition-colors cursor-pointer"
+                >
+                  <span className="font-medium">Student feedback & polls</span>
+                  <ArrowRight className="w-4 h-4 text-secondary" />
+                </button>
+              </div>
+            </section>
+          </div>
+        </div>
+      </div>
     </div>
   );
 };
