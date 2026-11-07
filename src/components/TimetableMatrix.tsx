@@ -63,6 +63,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
   const { scheduleData, conflicts } = buildMatrixSchedule(store);
 
   const [calendarMode, setCalendarMode] = useState<'week' | 'day' | 'agenda'>('week');
+  const [weekColumnSpan, setWeekColumnSpan] = useState<7 | 5>(7);
   const [focusedDay, setFocusedDay] = useState<string>('Mon');
   // Default to 'cohort' (Individual Class/Section Timetable) so each class/section timetable is displayed clearly
   const [perspective, setPerspective] = useState<'cohort' | 'master' | 'instructor' | 'room'>('cohort');
@@ -81,6 +82,40 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [exportNotice, setExportNotice] = useState<string | null>(null);
   const exportDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Parent container width tracking for dynamic 7-column responsive calculation
+  const gridContainerRef = useRef<HTMLDivElement>(null);
+  const [containerWidth, setContainerWidth] = useState<number>(0);
+
+  useEffect(() => {
+    const el = gridContainerRef.current;
+    if (!el) return;
+
+    const updateWidth = () => {
+      if (gridContainerRef.current) {
+        const w = Math.floor(gridContainerRef.current.getBoundingClientRect().width);
+        if (w > 0) setContainerWidth(w);
+      }
+    };
+
+    updateWidth();
+
+    const observer = new ResizeObserver(entries => {
+      for (const entry of entries) {
+        const width = Math.floor(entry.contentRect.width);
+        if (width > 0) {
+          setContainerWidth(width);
+        }
+      }
+    });
+
+    observer.observe(el);
+    window.addEventListener('resize', updateWidth);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', updateWidth);
+    };
+  }, [calendarMode, perspective]);
 
   // Keep selectedCohortId synchronized if store.selectedClassGroupId changes externally
   useEffect(() => {
@@ -126,9 +161,12 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
     handleSelectCohort(departmentFilteredGroups[nextIdx].id);
   };
 
-  const days = store.timeStructure.workingDays.length > 0
-    ? store.timeStructure.workingDays
-    : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
+  const FULL_SEVEN_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const FIVE_WORKING_DAYS =
+    store.timeStructure.workingDays.length > 0
+      ? store.timeStructure.workingDays
+      : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
+  const days = weekColumnSpan === 7 ? FULL_SEVEN_DAYS : FIVE_WORKING_DAYS;
   const timeSlots = store.timeStructure.periods.length > 0
     ? store.timeStructure.periods
     : UNIVERSITY_SLOTS.map(s => s.period);
@@ -793,8 +831,30 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
             )}
           </div>
 
-          {/* Right Controls: Week/Day/Agenda + Search */}
+          {/* Right Controls: 7-Day/5-Day Span + Week/Day/Agenda + Search */}
           <div className="flex flex-wrap items-center gap-2">
+            {calendarMode === 'week' && (
+              <div className="inline-flex items-center p-1 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA]">
+                {[
+                  { span: 7 as const, label: '7-Day (Mon–Sun)' },
+                  { span: 5 as const, label: '5-Day (Mon–Fri)' }
+                ].map(opt => (
+                  <button
+                    key={opt.span}
+                    type="button"
+                    onClick={() => setWeekColumnSpan(opt.span)}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
+                      weekColumnSpan === opt.span
+                        ? 'bg-white text-[#171717] font-semibold border border-[#E4E2DA]'
+                        : 'text-[#77766F] hover:text-[#171717]'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            )}
+
             <div className="inline-flex items-center p-1 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA]">
               {[
                 { id: 'week' as const, label: 'Week' },
@@ -817,7 +877,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
 
             {calendarMode === 'day' && (
               <div className="inline-flex items-center gap-1 bg-[#F7F6EF] p-1 rounded-xl border border-[#E4E2DA]">
-                {days.map(d => (
+                {FULL_SEVEN_DAYS.map(d => (
                   <button
                     key={d}
                     onClick={() => setFocusedDay(d)}
@@ -983,223 +1043,275 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
           </div>
         </div>
       ) : (
-        <div className="sf-card-white overflow-hidden">
-          {/* Notice: w-full table-fixed with NO horizontal or vertical scrollbars */}
-          <table className="w-full table-fixed border-collapse text-left">
-            <thead>
-              <tr className="border-b border-[#E4E2DA] bg-[#F7F6EF]">
-                <th className="py-2.5 px-2.5 w-[112px] lg:w-[126px] text-[11px] font-semibold text-[#77766F]">
-                  Time & Break
-                </th>
-                {visibleDays.map(day => (
-                  <th
-                    key={day}
-                    className="py-2.5 px-2.5 text-sm font-serif-editorial text-[#171717] border-l border-[#E4E2DA]"
-                  >
-                    <div className="flex items-center justify-between gap-1">
-                      <span>{day}</span>
-                      {day === 'Fri' && (
-                        <span className="text-[10px] font-sans font-mono-tabular font-normal text-[#77766F]">
-                          PM: 14:30–16:55
-                        </span>
-                      )}
-                    </div>
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[#E4E2DA]">
-              {UNIVERSITY_SLOTS.map(slotMeta => {
-                const time = slotMeta.period;
-                const isFirstAfternoon = slotMeta.slotNumber === 5;
+        <div ref={gridContainerRef} className="sf-card-white w-full overflow-hidden">
+          {(() => {
+            const numDayCols = Math.max(1, visibleDays.length);
+            // Dynamically calculate time column and per-day column widths from the measured parent container width
+            const timeColWidthPx =
+              containerWidth > 0
+                ? Math.max(78, Math.min(104, Math.floor(containerWidth * 0.088)))
+                : 92;
+            const remainingWidthPx =
+              containerWidth > 0 ? Math.max(0, containerWidth - timeColWidthPx) : 0;
+            const dayColWidthPx =
+              remainingWidthPx > 0 ? Math.floor(remainingWidthPx / numDayCols) : 0;
+            const isCompactCol = numDayCols >= 7 || (dayColWidthPx > 0 && dayColWidthPx < 138);
 
-                return (
-                  <React.Fragment key={slotMeta.slotNumber}>
-                    {/* Fixed University Lunch & Prayer Break Row (1:00 PM – 2:00 PM) */}
-                    {isFirstAfternoon && (
-                      <tr className="bg-[#F7F6EF] border-y border-[#E4E2DA]">
-                        <td className="py-1.5 px-2.5 border-r border-[#E4E2DA] align-middle bg-[#E8D36B]/35">
-                          <div className="text-[11px] font-mono-tabular font-bold text-[#171717]">
-                            1:00 – 2:00 PM
-                          </div>
-                          <div className="text-[10px] text-[#77766F]">
-                            Lunch & Prayer
-                          </div>
-                        </td>
-                        <td
-                          colSpan={visibleDays.length}
-                          className="py-1.5 px-4 text-center align-middle"
+            return (
+              <table className="w-full table-fixed border-collapse text-left">
+                <colgroup>
+                  <col
+                    style={{
+                      width: containerWidth > 0 ? `${timeColWidthPx}px` : '9%'
+                    }}
+                  />
+                  {visibleDays.map(day => (
+                    <col
+                      key={day}
+                      style={{
+                        width:
+                          dayColWidthPx > 0
+                            ? `${dayColWidthPx}px`
+                            : `${(91 / numDayCols).toFixed(3)}%`
+                      }}
+                    />
+                  ))}
+                </colgroup>
+                <thead>
+                  <tr className="border-b border-[#E4E2DA] bg-[#F7F6EF]">
+                    <th className="py-2 px-2 text-[10.5px] font-semibold text-[#77766F] truncate">
+                      Time & Break
+                    </th>
+                    {visibleDays.map(day => {
+                      const isWeekend = day === 'Sat' || day === 'Sun';
+                      return (
+                        <th
+                          key={day}
+                          className={`py-2 px-2 text-xs sm:text-sm font-serif-editorial text-[#171717] border-l border-[#E4E2DA] overflow-hidden ${
+                            isWeekend ? 'bg-[#F7F6EF]/75 text-[#77766F]' : ''
+                          }`}
                         >
-                          <div className="inline-flex items-center gap-2 text-[11px] font-medium text-[#77766F]">
-                            <Coffee className="w-3.5 h-3.5 text-[#171717]" />
-                            <span className="text-[#171717] font-semibold">
-                              University Lunch & Prayer Break (1:00 PM – 2:00 PM)
-                            </span>
-                            <span className="hidden sm:inline">· Fixed university-wide break (no classes scheduled)</span>
+                          <div className="flex items-center justify-between gap-1 min-w-0">
+                            <span className="truncate">{day}</span>
+                            {day === 'Fri' && (
+                              <span className="text-[9.5px] font-sans font-mono-tabular font-normal text-[#77766F] truncate">
+                                14:30 PM
+                              </span>
+                            )}
+                            {isWeekend && (
+                              <span className="text-[9.5px] font-sans font-normal text-[#77766F] truncate">
+                                Weekend
+                              </span>
+                            )}
                           </div>
-                        </td>
-                      </tr>
-                    )}
+                        </th>
+                      );
+                    })}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#E4E2DA]">
+                  {UNIVERSITY_SLOTS.map(slotMeta => {
+                    const time = slotMeta.period;
+                    const isFirstAfternoon = slotMeta.slotNumber === 5;
 
-                    {/* Regular Hourly Slot Row — Compact to fit entire 9 AM – 5 PM day without vertical scrolling */}
-                    <tr>
-                      {/* Left Column: Lecture Time + Short Break */}
-                      <td className="py-1.5 px-2.5 text-[11px] font-mono-tabular text-[#171717] align-top bg-[#F7F6EF]/40">
-                        <div className="font-semibold text-[11.5px] text-[#171717] leading-tight">
-                          {slotMeta.period}
-                        </div>
-                        <div className="text-[10px] text-[#77766F] mt-0.5 leading-tight">
-                          Break {slotMeta.shortBreak.replace(' AM', '').replace(' PM', '')}
-                        </div>
-                      </td>
-
-                      {/* Day Cells */}
-                      {visibleDays.map(day => {
-                        const cellKey = `${day}__${slotMeta.slotNumber}`;
-
-                        // Skip cell if covered by a 3-hour continuous Lab above
-                        if (skippedCells.has(cellKey)) {
-                          return null;
-                        }
-
-                        const labSpanInfo = labSpanByCell.get(cellKey);
-
-                        // Render a 3-Hour Continuous Lab cell (`rowSpan={3}`)
-                        if (labSpanInfo) {
-                          const { labItem, concurrentItems, continuousWindow } = labSpanInfo;
-                          const pastel = getCoursePastel(labItem.code);
-
-                          return (
-                            <td
-                              key={day}
-                              rowSpan={3}
-                              className="p-1.5 border-l border-[#E4E2DA] align-stretch bg-white"
-                            >
-                              <div
-                                onClick={() => setSelectedClass(labItem)}
-                                style={{
-                                  backgroundColor: pastel.bg,
-                                  borderColor: pastel.border
-                                }}
-                                className="h-full p-2.5 rounded-xl border text-[#171717] flex flex-col justify-between transition-transform hover:-translate-y-0.5 cursor-pointer"
-                              >
-                                <div className="space-y-1">
-                                  <div className="flex items-center justify-between gap-1">
-                                    <span className="font-mono-tabular text-[10.5px] font-bold text-[#171717]/85 flex items-center gap-1 truncate">
-                                      {labItem.code}
-                                      {labItem.isLocked && <Lock className="w-2.5 h-2.5 shrink-0" />}
-                                    </span>
-                                    <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-white/85 text-[#171717] shrink-0">
-                                      Lab · 3h
-                                    </span>
-                                  </div>
-
-                                  <div className="font-serif-editorial text-xs sm:text-[13px] font-semibold leading-snug text-[#171717] line-clamp-2">
-                                    {labItem.title}
-                                  </div>
-
-                                  <div className="text-[10.5px] text-[#171717]/85 truncate">
-                                    {labItem.prof}
-                                  </div>
-                                </div>
-
-                                <div className="space-y-1 pt-1.5 border-t border-black/10 text-[10.5px]">
-                                  <div className="font-mono-tabular font-semibold text-[#171717] truncate">
-                                    {continuousWindow}
-                                  </div>
-                                  <div className="text-[#171717]/85 flex items-center justify-between gap-1">
-                                    <span className="font-mono-tabular font-medium truncate">
-                                      {labItem.room}
-                                    </span>
-                                    {perspective === 'master' && concurrentItems.length > 0 ? (
-                                      <span className="text-[10px] px-1 rounded bg-white/70 shrink-0">
-                                        +{concurrentItems.length}
-                                      </span>
-                                    ) : (
-                                      <span className="text-[10px] text-[#171717]/70 truncate">
-                                        {labItem.cohort}
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
+                    return (
+                      <React.Fragment key={slotMeta.slotNumber}>
+                        {/* Fixed University Lunch & Prayer Break Row (1:00 PM – 2:00 PM) */}
+                        {isFirstAfternoon && (
+                          <tr className="bg-[#F7F6EF] border-y border-[#E4E2DA]">
+                            <td className="py-1.5 px-2 border-r border-[#E4E2DA] align-middle bg-[#E8D36B]/35 overflow-hidden">
+                              <div className="text-[10.5px] font-mono-tabular font-bold text-[#171717] truncate">
+                                1:00 – 2:00 PM
+                              </div>
+                              <div className="text-[9.5px] text-[#77766F] truncate">
+                                Lunch & Prayer
                               </div>
                             </td>
-                          );
-                        }
-
-                        // Standard 1-Slot (50-Minute Lecture) Cell
-                        const classes = (scheduleData[time]?.[day] || []).filter(filterClass);
-                        const isInstructorBlackedOut =
-                          perspective === 'instructor' &&
-                          currentInstructorObj?.unavailableSlots.some(
-                            u => u.day === day && u.timeSlot === time
-                          );
-
-                        const visibleItems = classes.slice(0, 1);
-                        const extraCount = classes.length - visibleItems.length;
-
-                        return (
-                          <td
-                            key={day}
-                            className="p-1.5 border-l border-[#E4E2DA] align-top"
-                          >
-                            {isInstructorBlackedOut && (
-                              <div className="p-1.5 rounded-lg bg-[#F7F6EF] border border-[#E4E2DA] text-[10px] text-[#77766F] text-center">
-                                Unavailable
+                            <td
+                              colSpan={visibleDays.length}
+                              className="py-1.5 px-3 text-center align-middle"
+                            >
+                              <div className="inline-flex items-center gap-2 text-[11px] font-medium text-[#77766F]">
+                                <Coffee className="w-3.5 h-3.5 text-[#171717] shrink-0" />
+                                <span className="text-[#171717] font-semibold">
+                                  University Lunch & Prayer Break (1:00 PM – 2:00 PM)
+                                </span>
+                                <span className="hidden md:inline">
+                                  · Fixed university-wide break (no lectures or labs scheduled)
+                                </span>
                               </div>
-                            )}
+                            </td>
+                          </tr>
+                        )}
 
-                            {visibleItems.map(cls => {
-                              const pastel = getCoursePastel(cls.code);
-                              const isLab = cls.sessionType === 'Lab' || cls.spanSlots === 3;
-                              return (
-                                <div
-                                  key={cls.id}
-                                  onClick={() => setSelectedClass(cls)}
-                                  style={{
-                                    backgroundColor: pastel.bg,
-                                    borderColor: pastel.border
-                                  }}
-                                  className="p-2 rounded-xl border text-[#171717] space-y-1 transition-transform hover:-translate-y-0.5 cursor-pointer"
-                                >
-                                  <div className="flex items-center justify-between gap-1 text-[10px] text-[#171717]/80 font-mono-tabular">
-                                    <span className="font-bold flex items-center gap-1 truncate">
-                                      {cls.code}
-                                      {cls.isLocked && <Lock className="w-2.5 h-2.5 shrink-0" />}
-                                    </span>
-                                    <span className="px-1 py-0.2 rounded bg-white/65 text-[#171717] font-medium shrink-0">
-                                      {isLab ? 'Lab' : 'Lec'}
-                                    </span>
-                                  </div>
-
-                                  <div className="font-semibold text-[11.5px] leading-tight text-[#171717] truncate">
-                                    {cls.title}
-                                  </div>
-
-                                  <div className="text-[10px] text-[#171717]/80 flex items-center justify-between gap-1 pt-0.5 border-t border-black/10">
-                                    <span className="truncate">{cls.prof}</span>
-                                    <span className="font-mono-tabular font-semibold shrink-0">
-                                      {cls.room}
-                                    </span>
-                                  </div>
-
-                                  {perspective === 'master' && extraCount > 0 && (
-                                    <div className="text-[9.5px] font-mono-tabular font-semibold text-[#171717]/75 bg-white/60 rounded px-1.5 py-0.5 text-center">
-                                      +{extraCount} more class sections
-                                    </div>
-                                  )}
-                                </div>
-                              );
-                            })}
+                        {/* Regular Hourly Slot Row — Dynamically sized to fit all 7 columns & 9 AM–5 PM slots */}
+                        <tr>
+                          {/* Left Column: Lecture Time + Short Break */}
+                          <td className="py-1.5 px-2 text-[10.5px] font-mono-tabular text-[#171717] align-top bg-[#F7F6EF]/40 overflow-hidden">
+                            <div className="font-semibold text-[10.5px] text-[#171717] leading-tight truncate">
+                              {slotMeta.period.replace(' AM', '').replace(' PM', '')}
+                            </div>
+                            <div className="text-[9.5px] text-[#77766F] mt-0.5 leading-tight truncate">
+                              Brk {slotMeta.shortBreak.replace(' AM', '').replace(' PM', '')}
+                            </div>
                           </td>
-                        );
-                      })}
-                    </tr>
-                  </React.Fragment>
-                );
-              })}
-            </tbody>
-          </table>
+
+                          {/* Day Cells */}
+                          {visibleDays.map(day => {
+                            const cellKey = `${day}__${slotMeta.slotNumber}`;
+                            const isWeekend = day === 'Sat' || day === 'Sun';
+
+                            // Skip cell if covered by a 3-hour continuous Lab above
+                            if (skippedCells.has(cellKey)) {
+                              return null;
+                            }
+
+                            const labSpanInfo = labSpanByCell.get(cellKey);
+
+                            // Render a 3-Hour Continuous Lab cell (`rowSpan={3}`)
+                            if (labSpanInfo) {
+                              const { labItem, concurrentItems, continuousWindow } = labSpanInfo;
+                              const pastel = getCoursePastel(labItem.code);
+
+                              return (
+                                <td
+                                  key={day}
+                                  rowSpan={3}
+                                  className="p-1 border-l border-[#E4E2DA] align-stretch bg-white overflow-hidden"
+                                >
+                                  <div
+                                    onClick={() => setSelectedClass(labItem)}
+                                    style={{
+                                      backgroundColor: pastel.bg,
+                                      borderColor: pastel.border
+                                    }}
+                                    className={`h-full ${
+                                      isCompactCol ? 'p-1.5' : 'p-2'
+                                    } rounded-xl border text-[#171717] flex flex-col justify-between transition-transform hover:-translate-y-0.5 cursor-pointer min-w-0 overflow-hidden`}
+                                  >
+                                    <div className="space-y-1 min-w-0">
+                                      <div className="flex items-center justify-between gap-1 min-w-0">
+                                        <span className="font-mono-tabular text-[10px] font-bold text-[#171717]/85 flex items-center gap-0.5 truncate">
+                                          {labItem.code}
+                                          {labItem.isLocked && <Lock className="w-2.5 h-2.5 shrink-0" />}
+                                        </span>
+                                        <span className="text-[9.5px] font-semibold px-1 py-0.5 rounded bg-white/85 text-[#171717] shrink-0">
+                                          Lab 3h
+                                        </span>
+                                      </div>
+
+                                      <div className="font-serif-editorial text-[11.5px] sm:text-xs font-semibold leading-snug text-[#171717] line-clamp-2 break-words">
+                                        {labItem.title}
+                                      </div>
+
+                                      <div className="text-[10px] text-[#171717]/85 truncate">
+                                        {labItem.prof}
+                                      </div>
+                                    </div>
+
+                                    <div className="space-y-0.5 pt-1.5 border-t border-black/10 text-[9.5px] min-w-0">
+                                      <div className="font-mono-tabular font-semibold text-[#171717] truncate">
+                                        {continuousWindow}
+                                      </div>
+                                      <div className="text-[#171717]/85 flex items-center justify-between gap-1 min-w-0">
+                                        <span className="font-mono-tabular font-medium truncate">
+                                          {labItem.room}
+                                        </span>
+                                        {perspective === 'master' && concurrentItems.length > 0 ? (
+                                          <span className="text-[9px] px-1 rounded bg-white/70 shrink-0">
+                                            +{concurrentItems.length}
+                                          </span>
+                                        ) : (
+                                          <span className="text-[9px] text-[#171717]/70 truncate">
+                                            {labItem.cohort}
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+                                </td>
+                              );
+                            }
+
+                            // Standard 1-Slot (50-Minute Lecture) Cell
+                            const classes = (scheduleData[time]?.[day] || []).filter(filterClass);
+                            const isInstructorBlackedOut =
+                              perspective === 'instructor' &&
+                              currentInstructorObj?.unavailableSlots.some(
+                                u => u.day === day && u.timeSlot === time
+                              );
+
+                            const visibleItems = classes.slice(0, 1);
+                            const extraCount = classes.length - visibleItems.length;
+
+                            return (
+                              <td
+                                key={day}
+                                className={`p-1 border-l border-[#E4E2DA] align-top overflow-hidden ${
+                                  isWeekend && visibleItems.length === 0 ? 'bg-[#F7F6EF]/25' : ''
+                                }`}
+                              >
+                                {isInstructorBlackedOut && (
+                                  <div className="p-1 rounded-lg bg-[#F7F6EF] border border-[#E4E2DA] text-[9.5px] text-[#77766F] text-center truncate">
+                                    Unavailable
+                                  </div>
+                                )}
+
+                                {visibleItems.map(cls => {
+                                  const pastel = getCoursePastel(cls.code);
+                                  const isLab = cls.sessionType === 'Lab' || cls.spanSlots === 3;
+                                  return (
+                                    <div
+                                      key={cls.id}
+                                      onClick={() => setSelectedClass(cls)}
+                                      style={{
+                                        backgroundColor: pastel.bg,
+                                        borderColor: pastel.border
+                                      }}
+                                      className={`${
+                                        isCompactCol ? 'p-1.5' : 'p-2'
+                                      } rounded-xl border text-[#171717] space-y-0.5 transition-transform hover:-translate-y-0.5 cursor-pointer min-w-0 overflow-hidden`}
+                                    >
+                                      <div className="flex items-center justify-between gap-1 text-[9.5px] text-[#171717]/80 font-mono-tabular min-w-0">
+                                        <span className="font-bold flex items-center gap-0.5 truncate">
+                                          {cls.code}
+                                          {cls.isLocked && <Lock className="w-2.5 h-2.5 shrink-0" />}
+                                        </span>
+                                        <span className="px-1 rounded bg-white/65 text-[#171717] font-medium shrink-0">
+                                          {isLab ? 'Lab' : 'Lec'}
+                                        </span>
+                                      </div>
+
+                                      <div className="font-semibold text-[11px] leading-tight text-[#171717] truncate">
+                                        {cls.title}
+                                      </div>
+
+                                      <div className="text-[9.5px] text-[#171717]/80 flex items-center justify-between gap-1 pt-0.5 border-t border-black/10 min-w-0">
+                                        <span className="truncate">{cls.prof}</span>
+                                        <span className="font-mono-tabular font-semibold truncate max-w-[52%]">
+                                          {cls.room}
+                                        </span>
+                                      </div>
+
+                                      {perspective === 'master' && extraCount > 0 && (
+                                        <div className="text-[9px] font-mono-tabular font-semibold text-[#171717]/75 bg-white/60 rounded px-1 py-0.5 text-center truncate">
+                                          +{extraCount} more
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      </React.Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
+            );
+          })()}
         </div>
       )}
 

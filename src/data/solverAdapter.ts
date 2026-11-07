@@ -30,9 +30,8 @@ export function buildMatrixSchedule(store: InstitutionalDataStore): {
   const periods = store.timeStructure.periods.length > 0
     ? store.timeStructure.periods
     : UNIVERSITY_PERIODS;
-  const days = store.timeStructure.workingDays.length > 0
-    ? store.timeStructure.workingDays
-    : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
+  const allWeekDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const days = Array.from(new Set([...(store.timeStructure.workingDays || []), ...allWeekDays]));
 
   periods.forEach(period => {
     scheduleData[period] = {};

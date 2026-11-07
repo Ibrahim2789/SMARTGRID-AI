@@ -1,6 +1,6 @@
 export type TermStatus = 'draft' | 'active' | 'archived';
 export type RoomType = 'lecture' | 'lab' | 'seminar' | 'studio';
-export type DayOfWeek = 'Mon' | 'Tue' | 'Wed' | 'Thu' | 'Fri' | 'Sat';
+export type DayOfWeek = 'Mon' | 'Tue' | 'Wed' | 'Thu' | 'Fri' | 'Sat' | 'Sun';
 export type DegreeLevel = 'Undergraduate' | 'Graduate' | 'Postgraduate';
 export type ConstraintKind = 'hard' | 'soft';
 export type ScenarioStatus = 'draft' | 'published' | 'archived';
