@@ -7,24 +7,28 @@ import {
   getLabBlockByStartPeriod
 } from '../types/institutional';
 
+/**
+ * StudyFetch-aligned soft pastel course palette optimized for both
+ * laptop screen legibility and landscape print contrast.
+ */
 const PASTEL_EXPORT_PALETTE = [
-  { argb: 'FFB8EEEE', borderArgb: 'FF88D4D4', name: 'Cyan' },
-  { argb: 'FFF2D8FA', borderArgb: 'FFD5B2E3', name: 'Lavender' },
-  { argb: 'FFB8F2E6', borderArgb: 'FF8BD6C5', name: 'Mint' },
-  { argb: 'FFB7F77C', borderArgb: 'FF92DB52', name: 'Lime' },
-  { argb: 'FFE8D36B', borderArgb: 'FFCDB548', name: 'Mustard' }
+  { argb: 'FFDDF7F7', borderArgb: 'FF88D4D4', badgeArgb: 'FFB8EEEE', name: 'Cyan' },
+  { argb: 'FFF7EAFC', borderArgb: 'FFD5B2E3', badgeArgb: 'FFF2D8FA', name: 'Lavender' },
+  { argb: 'FFDDF9F2', borderArgb: 'FF8BD6C5', badgeArgb: 'FFB8F2E6', name: 'Mint' },
+  { argb: 'FFE6FCC8', borderArgb: 'FF92DB52', badgeArgb: 'FFB7F77C', name: 'Lime' },
+  { argb: 'FFF7EEB8', borderArgb: 'FFCDB548', badgeArgb: 'FFE8D36B', name: 'Mustard' }
 ];
 
 function getCourseArgb(code: string) {
+  const cleanCode = code.replace(/-L$/i, '');
   let hash = 0;
-  for (let i = 0; i < code.length; i++) {
-    hash = (hash * 31 + code.charCodeAt(i)) >>> 0;
+  for (let i = 0; i < cleanCode.length; i++) {
+    hash = (hash * 31 + cleanCode.charCodeAt(i)) >>> 0;
   }
   return PASTEL_EXPORT_PALETTE[hash % PASTEL_EXPORT_PALETTE.length];
 }
 
 function sanitizeWorksheetName(rawName: string, usedNames: Set<string>): string {
-  // Remove invalid Excel/Google Sheets characters: \ / ? * : [ ]
   const cleaned = rawName.replace(/[\\/?*:[\]]/g, '').trim() || 'Class Section';
   let candidate = cleaned.slice(0, 31);
   let counter = 2;
@@ -37,14 +41,46 @@ function sanitizeWorksheetName(rawName: string, usedNames: Set<string>): string 
   return candidate;
 }
 
+function getExcelColumnLetter(colNumber: number): string {
+  let num = colNumber;
+  let letters = '';
+  while (num > 0) {
+    const mod = (num - 1) % 26;
+    letters = String.fromCharCode(65 + mod) + letters;
+    num = Math.floor((num - mod) / 26);
+  }
+  return letters || 'A';
+}
+
+function compactText(text: string, maxLength: number): string {
+  const cleaned = text.replace(/\s+/g, ' ').trim();
+  if (cleaned.length <= maxLength) return cleaned;
+  return `${cleaned.slice(0, maxLength - 1).trim()}…`;
+}
+
+function cleanCourseTitle(title: string, maxLength: number): string {
+  const stripped = title.replace(/\s*\(Lab\)\s*$/i, '').trim();
+  return compactText(stripped, maxLength);
+}
+
 const DAY_FULL_LABELS: Record<string, string> = {
-  Mon: 'Monday',
-  Tue: 'Tuesday',
-  Wed: 'Wednesday',
-  Thu: 'Thursday',
-  Fri: 'Friday',
-  Sat: 'Saturday',
-  Sun: 'Sunday'
+  Mon: 'MONDAY',
+  Tue: 'TUESDAY',
+  Wed: 'WEDNESDAY',
+  Thu: 'THURSDAY',
+  Fri: 'FRIDAY',
+  Sat: 'SATURDAY',
+  Sun: 'SUNDAY'
+};
+
+const COMPACT_SLOT_TIMES: Record<number, { timeRange: string; breakRange: string; friRange?: string }> = {
+  1: { timeRange: '09:00 – 09:50', breakRange: 'Break 09:50–10:00' },
+  2: { timeRange: '10:00 – 10:50', breakRange: 'Break 10:50–11:00' },
+  3: { timeRange: '11:00 – 11:50', breakRange: 'Break 11:50–12:00' },
+  4: { timeRange: '12:00 – 12:50', breakRange: 'Break 12:50–01:00' },
+  5: { timeRange: '02:00 – 02:50', breakRange: 'Break 02:50–03:00', friRange: 'Fri: 02:30–03:15' },
+  6: { timeRange: '03:00 – 03:50', breakRange: 'Break 03:50–04:00', friRange: 'Fri: 03:20–04:05' },
+  7: { timeRange: '04:00 – 04:50', breakRange: 'Break 04:50–05:00', friRange: 'Fri: 04:10–04:55' }
 };
 
 export interface GoogleSheetsExportResult {
@@ -53,30 +89,143 @@ export interface GoogleSheetsExportResult {
   totalSessionsCount: number;
 }
 
-function populateWeeklyGridOnWorksheet(params: {
+/**
+ * Configures worksheet page setup, print margins, centering, repeat header rows,
+ * and exact print area so every sheet fits on 1 landscape page and 1 laptop screen.
+ */
+function configureCompactLandscapeWorksheet(
+  worksheet: ExcelJS.Worksheet,
+  days: string[],
+  lastGridRow: number
+) {
+  const totalCols = days.length + 1;
+  const lastColLetter = getExcelColumnLetter(totalCols);
+
+  // Calculate balanced column widths so total width is ~127 chars (fits standard laptop screen without horizontal scrolling)
+  const timeColWidth = 17;
+  const availableDayChars = 112;
+  const dayColWidth = Math.max(16, Math.min(23, Math.floor(availableDayChars / days.length)));
+
+  worksheet.columns = [
+    { key: 'slotCol', width: timeColWidth },
+    ...days.map((d, idx) => ({ key: `day_${idx}`, width: dayColWidth }))
+  ];
+
+  worksheet.pageSetup = {
+    paperSize: 9, // A4
+    orientation: 'landscape',
+    fitToPage: true,
+    fitToWidth: 1,
+    fitToHeight: 1,
+    horizontalCentered: true,
+    verticalCentered: false,
+    printTitlesRow: '1:3',
+    printArea: `A1:${lastColLetter}${lastGridRow}`,
+    margins: {
+      left: 0.28,
+      right: 0.28,
+      top: 0.32,
+      bottom: 0.32,
+      header: 0.18,
+      footer: 0.18
+    }
+  };
+}
+
+/**
+ * Adds a compact 2-row header block (Title + Subtitle) and 1-row Day header,
+ * followed by the 7 time slots + 1 compact Lunch Break row (Total = 11 rows).
+ */
+function populateCompactLandscapeTimetable(params: {
   worksheet: ExcelJS.Worksheet;
+  titleLeft: string;
+  titleRight: string;
+  subtitleText: string;
   days: string[];
   scheduleData: Record<string, Record<string, ClassItem[]>>;
   itemPredicate: (cls: ClassItem) => boolean;
   isSingleClassSheet: boolean;
 }) {
-  const { worksheet, days, scheduleData, itemPredicate, isSingleClassSheet } = params;
+  const {
+    worksheet,
+    titleLeft,
+    titleRight,
+    subtitleText,
+    days,
+    scheduleData,
+    itemPredicate,
+    isSingleClassSheet
+  } = params;
+
   const totalCols = days.length + 1;
 
-  // Table Header Row (Time / Slot + Days)
+  // ---------------------------------------------------------------------------
+  // ROW 1: Compact Title & Class/Section Identification Bar (Height: 22pt)
+  // ---------------------------------------------------------------------------
+  const titleRow = worksheet.addRow(['']);
+  worksheet.mergeCells(1, 1, 1, totalCols);
+  titleRow.height = 22;
+
+  const titleCell = titleRow.getCell(1);
+  titleCell.value = {
+    richText: [
+      {
+        font: { name: 'Calibri', size: 11, bold: true, color: { argb: 'FFFFFFFF' } },
+        text: `  ${titleLeft}`
+      },
+      {
+        font: { name: 'Calibri', size: 9.5, bold: false, color: { argb: 'FFD4D1C7' } },
+        text: `   —   ${titleRight}`
+      }
+    ]
+  };
+  titleCell.fill = {
+    type: 'pattern',
+    pattern: 'solid',
+    fgColor: { argb: 'FF171717' }
+  };
+  titleCell.alignment = { vertical: 'middle', horizontal: 'left' };
+
+  // ---------------------------------------------------------------------------
+  // ROW 2: Compact Metadata & Operating Hours Bar (Height: 16pt)
+  // ---------------------------------------------------------------------------
+  const subRow = worksheet.addRow([`  ${subtitleText}`]);
+  worksheet.mergeCells(2, 1, 2, totalCols);
+  subRow.height = 16;
+
+  const subCell = subRow.getCell(1);
+  subCell.font = {
+    name: 'Calibri',
+    size: 8.5,
+    bold: false,
+    color: { argb: 'FF333330' }
+  };
+  subCell.fill = {
+    type: 'pattern',
+    pattern: 'solid',
+    fgColor: { argb: 'FFEDEAE0' }
+  };
+  subCell.alignment = { vertical: 'middle', horizontal: 'left' };
+  subCell.border = {
+    bottom: { style: 'thin', color: { argb: 'FFD6D3C9' } }
+  };
+
+  // ---------------------------------------------------------------------------
+  // ROW 3: Compact Day Column Headers (Height: 21pt)
+  // ---------------------------------------------------------------------------
   const headerValues = [
-    'TIME SLOT & SESSION',
+    'TIME SLOT',
     ...days.map(d => {
-      const base = (DAY_FULL_LABELS[d] || d).toUpperCase();
-      return d === 'Fri' ? `${base} (FRI SHIFT 14:30)` : base;
+      const label = DAY_FULL_LABELS[d] || d.toUpperCase();
+      return d === 'Fri' ? 'FRIDAY (PM 2:30)' : label;
     })
   ];
   const headerRow = worksheet.addRow(headerValues);
-  headerRow.height = 28;
+  headerRow.height = 21;
   headerRow.eachCell((cell, colNumber) => {
     cell.font = {
-      name: 'Arial',
-      size: 10,
+      name: 'Calibri',
+      size: 9,
       bold: true,
       color: { argb: 'FFFFFFFF' }
     };
@@ -87,8 +236,7 @@ function populateWeeklyGridOnWorksheet(params: {
     };
     cell.alignment = {
       vertical: 'middle',
-      horizontal: colNumber === 1 ? 'left' : 'center',
-      indent: colNumber === 1 ? 1 : 0
+      horizontal: 'center'
     };
     cell.border = {
       top: { style: 'thin', color: { argb: 'FF171717' } },
@@ -96,9 +244,15 @@ function populateWeeklyGridOnWorksheet(params: {
       left: { style: 'thin', color: { argb: 'FF3E3E3E' } },
       right: { style: 'thin', color: { argb: 'FF3E3E3E' } }
     };
+    if (colNumber === 1) {
+      cell.border = {
+        ...cell.border,
+        right: { style: 'medium', color: { argb: 'FF171717' } }
+      };
+    }
   });
 
-  // Track which (slotNumber, dayIndex) cells are covered by a 3-hour Lab vertical merge
+  // Track cells covered by a 3-hour Continuous Lab vertical merge
   const coveredByMerge = new Set<string>();
   const pendingLabMerges: Array<{
     startRowNumber: number;
@@ -107,27 +261,35 @@ function populateWeeklyGridOnWorksheet(params: {
     cls: ClassItem;
   }> = [];
 
-  const renderSlotRow = (slotMeta: (typeof UNIVERSITY_SLOTS)[number]) => {
-    const friNote =
-      slotMeta.slotNumber === 5
-        ? '\n(Fri: 2:30 – 3:15 PM)'
-        : slotMeta.slotNumber === 6
-        ? '\n(Fri: 3:20 – 4:05 PM)'
-        : slotMeta.slotNumber === 7
-        ? '\n(Fri: 4:10 – 4:55 PM)'
-        : '';
-    const rowLabel = `Slot ${slotMeta.slotNumber} (${slotMeta.session})\n${slotMeta.period}${friNote}\nShort Break: ${slotMeta.shortBreak}`;
-    const row = worksheet.addRow([rowLabel]);
-    const currentRowNum = row.number;
-    row.height = 68;
+  // Compact row height: 42pt for individual class sheets, 45pt for master overview
+  // 7 slots * 42pt = 294pt + 59pt headers + 19pt lunch = 372pt total (~495px, fits laptop screen at 100% zoom)
+  const slotRowHeight = isSingleClassSheet ? 42 : 45;
 
-    // Style Time Column (Col 1)
+  const renderSlotRow = (slotMeta: (typeof UNIVERSITY_SLOTS)[number]) => {
+    const compactTiming = COMPACT_SLOT_TIMES[slotMeta.slotNumber] || {
+      timeRange: slotMeta.period,
+      breakRange: `Break ${slotMeta.shortBreak}`
+    };
+
+    const row = worksheet.addRow(['']);
+    const currentRowNum = row.number;
+    row.height = slotRowHeight;
+
+    // Column 1: Consistent, compact Time Label with prominent time and subtle break note
     const timeCell = row.getCell(1);
-    timeCell.font = {
-      name: 'Arial',
-      size: 9.5,
-      bold: true,
-      color: { argb: 'FF171717' }
+    timeCell.value = {
+      richText: [
+        {
+          font: { name: 'Calibri', size: 8.5, bold: true, color: { argb: 'FF171717' } },
+          text: `${compactTiming.timeRange}\n`
+        },
+        {
+          font: { name: 'Calibri', size: 7.5, bold: false, color: { argb: 'FF77766F' } },
+          text: compactTiming.friRange
+            ? `Slot ${slotMeta.slotNumber} • ${compactTiming.friRange}`
+            : `Slot ${slotMeta.slotNumber} • ${compactTiming.breakRange}`
+        }
+      ]
     };
     timeCell.fill = {
       type: 'pattern',
@@ -136,18 +298,17 @@ function populateWeeklyGridOnWorksheet(params: {
     };
     timeCell.alignment = {
       vertical: 'middle',
-      horizontal: 'left',
-      wrapText: true,
-      indent: 1
+      horizontal: 'center',
+      wrapText: true
     };
     timeCell.border = {
       top: { style: 'thin', color: { argb: 'FFE4E2DA' } },
       bottom: { style: 'thin', color: { argb: 'FFE4E2DA' } },
-      left: { style: 'thin', color: { argb: 'FFE4E2DA' } },
+      left: { style: 'thin', color: { argb: 'FFD6D3C9' } },
       right: { style: 'medium', color: { argb: 'FFD4D1C7' } }
     };
 
-    // Populate Day Columns
+    // Day Columns (Cols 2..N)
     days.forEach((day, dIdx) => {
       const colNum = dIdx + 2;
       const cell = row.getCell(colNum);
@@ -163,6 +324,11 @@ function populateWeeklyGridOnWorksheet(params: {
         pattern: 'solid',
         fgColor: { argb: 'FFFFFFFF' }
       };
+      cell.alignment = {
+        vertical: 'middle',
+        horizontal: 'center',
+        wrapText: true
+      };
 
       if (coveredByMerge.has(`${slotMeta.slotNumber}_${dIdx}`)) {
         return;
@@ -175,35 +341,57 @@ function populateWeeklyGridOnWorksheet(params: {
         return;
       }
 
-      // Prioritize a 3-hour continuous Lab if one starts in this slot
+      // Check if a 3-hour continuous Lab starts in this slot (Slots 1, 2 in Morning or Slot 5 in Afternoon)
       const labItem = cellClasses.find(c => c.sessionType === 'Lab' || c.spanSlots === 3);
-      if (labItem && slotMeta.slotNumber <= 5) {
+      const canMergeLab =
+        Boolean(labItem) &&
+        (slotMeta.slotNumber === 1 || slotMeta.slotNumber === 2 || slotMeta.slotNumber === 5);
+
+      if (labItem && canMergeLab) {
         coveredByMerge.add(`${slotMeta.slotNumber + 1}_${dIdx}`);
         coveredByMerge.add(`${slotMeta.slotNumber + 2}_${dIdx}`);
 
         const labBlock = getLabBlockByStartPeriod(slotMeta.period);
         const continuousWindow =
-          labItem.continuousTimeLabel ||
-          labBlock?.continuousLabel ||
-          (day === 'Fri' && slotMeta.slotNumber === 5 ? '2:30 PM – 4:55 PM' : '3 Hours Continuous');
+          day === 'Fri' && slotMeta.slotNumber === 5
+            ? '02:30 – 04:55 PM'
+            : labItem.continuousTimeLabel || labBlock?.continuousLabel || '3 Hours Continuous';
 
-        const otherLecturesCount = cellClasses.length - 1;
-        const extraNote = !isSingleClassSheet && otherLecturesCount > 0 ? `\n(+${otherLecturesCount} other section)` : '';
-        const cohortTag = isSingleClassSheet ? '' : ` · Class: ${labItem.cohort}`;
+        const otherCount = cellClasses.length - 1;
+        const cleanTitle = cleanCourseTitle(labItem.title, 28);
+        const cleanProf = compactText(labItem.prof, 22);
 
-        cell.value = `${labItem.title} (${labItem.code})\n[LAB · 3 HOURS CONTINUOUS]\n${continuousWindow} (180 mins · No Internal Breaks)\nInstructor: ${labItem.prof}\nLaboratory: ${labItem.room}${cohortTag}${extraNote}`;
+        const richParts: ExcelJS.RichText[] = [
+          {
+            font: { name: 'Calibri', size: 9.5, bold: true, color: { argb: 'FF171717' } },
+            text: `${cleanTitle} (${labItem.code})\n`
+          },
+          {
+            font: { name: 'Calibri', size: 8, bold: true, color: { argb: 'FF292929' } },
+            text: `[LAB • 3H CONTINUOUS] ${continuousWindow}\n`
+          },
+          {
+            font: { name: 'Calibri', size: 8, bold: false, color: { argb: 'FF333330' } },
+            text: isSingleClassSheet
+              ? `${cleanProf}  •  ${labItem.room}`
+              : `${cleanProf}  •  ${labItem.room} (${labItem.cohort})`
+          }
+        ];
+
+        if (!isSingleClassSheet && otherCount > 0) {
+          richParts.push({
+            font: { name: 'Calibri', size: 7.5, italic: true, color: { argb: 'FF57564F' } },
+            text: `\n+${otherCount} concurrent section${otherCount > 1 ? 's' : ''}`
+          });
+        }
+
+        cell.value = { richText: richParts };
 
         const pastel = getCourseArgb(labItem.code);
         cell.fill = {
           type: 'pattern',
           pattern: 'solid',
           fgColor: { argb: pastel.argb }
-        };
-        cell.font = {
-          name: 'Arial',
-          size: 9.5,
-          bold: true,
-          color: { argb: 'FF171717' }
         };
         cell.alignment = {
           vertical: 'middle',
@@ -218,28 +406,61 @@ function populateWeeklyGridOnWorksheet(params: {
           cls: labItem
         });
       } else {
+        // Regular 50-minute Lecture cell
         const primary = cellClasses[0];
         const pastel = getCourseArgb(primary.code);
-        const timeText =
-          day === 'Fri' && slotMeta.slotNumber === 5
-            ? '2:30 – 3:15 PM'
-            : day === 'Fri' && slotMeta.slotNumber === 6
-            ? '3:20 – 4:05 PM'
-            : day === 'Fri' && slotMeta.slotNumber === 7
-            ? '4:10 – 4:55 PM'
-            : slotMeta.period;
 
         if (isSingleClassSheet || cellClasses.length === 1) {
-          const cohortSuffix = isSingleClassSheet ? '' : ` · Class: ${primary.cohort}`;
-          cell.value = `${primary.title} (${primary.code})\n[LECTURE · 50 MINS] ${timeText}\nInstructor: ${primary.prof}\nRoom: ${primary.room}${cohortSuffix}`;
+          const cleanTitle = cleanCourseTitle(primary.title, 24);
+          const cleanProf = compactText(primary.prof, 18);
+          const cohortSuffix = isSingleClassSheet ? '' : ` [${primary.cohort}]`;
+
+          cell.value = {
+            richText: [
+              {
+                font: { name: 'Calibri', size: 9, bold: true, color: { argb: 'FF171717' } },
+                text: `${cleanTitle} (${primary.code})\n`
+              },
+              {
+                font: { name: 'Calibri', size: 7.5, bold: false, color: { argb: 'FF444440' } },
+                text: `${cleanProf} • ${primary.room}${cohortSuffix}`
+              }
+            ]
+          };
         } else {
-          const summaryLines = cellClasses.slice(0, 3).map(
-            c => `[${c.cohort}] ${c.title} (${c.code})\n${c.prof} · ${c.room}`
-          );
-          if (cellClasses.length > 3) {
-            summaryLines.push(`+${cellClasses.length - 3} more class sections`);
+          // Master Weekly Overview cell with multiple concurrent sections
+          const first = cellClasses[0];
+          const second = cellClasses[1];
+          const extraCount = cellClasses.length - 2;
+
+          const richParts: ExcelJS.RichText[] = [
+            {
+              font: { name: 'Calibri', size: 8, bold: true, color: { argb: 'FF171717' } },
+              text: `${first.cohort}: ${compactText(first.title, 15)} (${first.code})\n`
+            },
+            {
+              font: { name: 'Calibri', size: 7, bold: false, color: { argb: 'FF444440' } },
+              text: `${compactText(first.prof, 14)} • ${first.room}\n`
+            },
+            {
+              font: { name: 'Calibri', size: 8, bold: true, color: { argb: 'FF171717' } },
+              text: `${second.cohort}: ${compactText(second.title, 15)} (${second.code})`
+            }
+          ];
+
+          if (extraCount > 0) {
+            richParts.push({
+              font: { name: 'Calibri', size: 7, italic: true, color: { argb: 'FF57564F' } },
+              text: `\n(+${extraCount} more in class tabs)`
+            });
+          } else {
+            richParts.push({
+              font: { name: 'Calibri', size: 7, bold: false, color: { argb: 'FF444440' } },
+              text: `\n${compactText(second.prof, 14)} • ${second.room}`
+            });
           }
-          cell.value = summaryLines.join('\n────────────\n');
+
+          cell.value = { richText: richParts };
         }
 
         cell.fill = {
@@ -247,40 +468,41 @@ function populateWeeklyGridOnWorksheet(params: {
           pattern: 'solid',
           fgColor: { argb: pastel.argb }
         };
-        cell.font = {
-          name: 'Arial',
-          size: 9,
-          bold: isSingleClassSheet,
-          color: { argb: 'FF171717' }
-        };
         cell.alignment = {
           vertical: 'middle',
-          horizontal: 'left',
-          wrapText: true,
-          indent: 1
+          horizontal: 'center',
+          wrapText: true
+        };
+        cell.border = {
+          top: { style: 'thin', color: { argb: pastel.borderArgb } },
+          bottom: { style: 'thin', color: { argb: pastel.borderArgb } },
+          left: { style: 'thin', color: { argb: pastel.borderArgb } },
+          right: { style: 'thin', color: { argb: pastel.borderArgb } }
         };
       }
     });
   };
 
-  // Render Morning Session (Slots 1..4: 9:00 AM – 1:00 PM)
+  // Render Morning Session Slots 1–4 (09:00 AM – 01:00 PM)
   UNIVERSITY_SLOTS.filter(s => s.session === 'Morning').forEach(slotMeta => {
     renderSlotRow(slotMeta);
   });
 
-  // Render Prominent Fixed University Lunch & Prayer Break Row (1:00 PM – 2:00 PM)
+  // ---------------------------------------------------------------------------
+  // ROW 8: Compact Fixed University Lunch & Prayer Break (01:00 PM – 02:00 PM)
+  // ---------------------------------------------------------------------------
   const lunchRow = worksheet.addRow([
-    '1:00 PM – 2:00 PM\nLUNCH & PRAYER BREAK',
-    'FIXED UNIVERSITY LUNCH & PRAYER BREAK (1:00 PM – 2:00 PM) — NO LECTURES OR LABS SCHEDULED'
+    '01:00 – 02:00 PM',
+    'LUNCH & PRAYER BREAK (1:00 PM – 2:00 PM)  •  Fixed University Break — No Lectures or Labs Scheduled'
   ]);
   const lunchRowNum = lunchRow.number;
   worksheet.mergeCells(lunchRowNum, 2, lunchRowNum, totalCols);
-  lunchRow.height = 36;
+  lunchRow.height = 19;
 
   const lunchTimeCell = lunchRow.getCell(1);
   lunchTimeCell.font = {
-    name: 'Arial',
-    size: 9.5,
+    name: 'Calibri',
+    size: 8,
     bold: true,
     color: { argb: 'FF171717' }
   };
@@ -291,24 +513,22 @@ function populateWeeklyGridOnWorksheet(params: {
   };
   lunchTimeCell.alignment = {
     vertical: 'middle',
-    horizontal: 'left',
-    wrapText: true,
-    indent: 1
+    horizontal: 'center'
   };
   lunchTimeCell.border = {
-    top: { style: 'medium', color: { argb: 'FF171717' } },
-    bottom: { style: 'medium', color: { argb: 'FF171717' } },
-    left: { style: 'thin', color: { argb: 'FF171717' } },
-    right: { style: 'medium', color: { argb: 'FF171717' } }
+    top: { style: 'thin', color: { argb: 'FFB59F3B' } },
+    bottom: { style: 'thin', color: { argb: 'FFB59F3B' } },
+    left: { style: 'thin', color: { argb: 'FFB59F3B' } },
+    right: { style: 'medium', color: { argb: 'FFB59F3B' } }
   };
 
   for (let c = 2; c <= totalCols; c++) {
     const cell = lunchRow.getCell(c);
     cell.font = {
-      name: 'Arial',
-      size: 10,
+      name: 'Calibri',
+      size: 8.5,
       bold: true,
-      color: { argb: 'FF171717' }
+      color: { argb: 'FF333330' }
     };
     cell.fill = {
       type: 'pattern',
@@ -317,23 +537,22 @@ function populateWeeklyGridOnWorksheet(params: {
     };
     cell.alignment = {
       vertical: 'middle',
-      horizontal: 'center',
-      wrapText: true
+      horizontal: 'center'
     };
     cell.border = {
-      top: { style: 'medium', color: { argb: 'FF171717' } },
-      bottom: { style: 'medium', color: { argb: 'FF171717' } },
-      left: { style: 'thin', color: { argb: 'FFD4D1C7' } },
-      right: { style: 'thin', color: { argb: 'FFD4D1C7' } }
+      top: { style: 'thin', color: { argb: 'FFC7C3B6' } },
+      bottom: { style: 'thin', color: { argb: 'FFC7C3B6' } },
+      left: { style: 'thin', color: { argb: 'FFD6D3C9' } },
+      right: { style: 'thin', color: { argb: 'FFD6D3C9' } }
     };
   }
 
-  // Render Afternoon Session (Slots 5..7: 2:00 PM – 5:00 PM)
+  // Render Afternoon Session Slots 5–7 (02:00 PM – 05:00 PM)
   UNIVERSITY_SLOTS.filter(s => s.session === 'Afternoon').forEach(slotMeta => {
     renderSlotRow(slotMeta);
   });
 
-  // Execute all vertical merges for 3-hour Continuous Labs
+  // Execute vertical merges for 3-hour Continuous Labs
   pendingLabMerges.forEach(mergeItem => {
     worksheet.mergeCells(
       mergeItem.startRowNumber,
@@ -345,13 +564,17 @@ function populateWeeklyGridOnWorksheet(params: {
     for (let r = mergeItem.startRowNumber; r <= mergeItem.endRowNumber; r++) {
       const mergedCell = worksheet.getRow(r).getCell(mergeItem.colNumber);
       mergedCell.border = {
-        top: { style: 'medium', color: { argb: pastel.borderArgb } },
-        bottom: { style: 'medium', color: { argb: pastel.borderArgb } },
+        top: r === mergeItem.startRowNumber ? { style: 'medium', color: { argb: pastel.borderArgb } } : undefined,
+        bottom: r === mergeItem.endRowNumber ? { style: 'medium', color: { argb: pastel.borderArgb } } : undefined,
         left: { style: 'medium', color: { argb: pastel.borderArgb } },
         right: { style: 'medium', color: { argb: pastel.borderArgb } }
       };
     }
   });
+
+  // Configure Landscape Print Setup & Column Widths for the exact timetable range (Rows 1..11)
+  const lastGridRow = worksheet.rowCount;
+  configureCompactLandscapeWorksheet(worksheet, days, lastGridRow);
 }
 
 export async function exportTimetableToGoogleSheetsWorkbook(params: {
@@ -372,13 +595,23 @@ export async function exportTimetableToGoogleSheetsWorkbook(params: {
   const activeTerm = store.terms.find(t => t.status === 'active') || store.terms[0];
   const termName = activeTerm?.name || 'Fall Semester 2026';
   const institutionName = store.institutionProfile?.name || 'University of Engineering & Computing';
-  const days = store.timeStructure.workingDays.length > 0
-    ? store.timeStructure.workingDays
-    : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
+
+  // Use the active working days (Mon–Fri by default, plus Sat/Sun if any classes are scheduled on weekends)
+  const baseWorkingDays =
+    store.timeStructure.workingDays.length > 0
+      ? store.timeStructure.workingDays
+      : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
+
+  const weekendDaysWithClasses = (['Sat', 'Sun'] as const).filter(
+    d =>
+      !baseWorkingDays.includes(d) &&
+      UNIVERSITY_SLOTS.some(s => (scheduleData[s.period]?.[d] || []).length > 0)
+  );
+  const days = [...baseWorkingDays, ...weekendDaysWithClasses];
 
   const usedSheetNames = new Set<string>();
 
-  // Collect all scheduled items
+  // Collect all scheduled items in scope
   const allScheduledItems: ClassItem[] = [];
   days.forEach(day => {
     UNIVERSITY_SLOTS.forEach(slotMeta => {
@@ -391,103 +624,7 @@ export async function exportTimetableToGoogleSheetsWorkbook(params: {
     });
   });
 
-  // ============================================================================
-  // WORKSHEET 1: WEEKLY OVERVIEW (MASTER UNIVERSITY TIMETABLE)
-  // ============================================================================
-  const overviewTitle = sanitizeWorksheetName('Weekly Overview', usedSheetNames);
-  const overviewSheet = workbook.addWorksheet(overviewTitle, {
-    views: [{ state: 'frozen', xSplit: 1, ySplit: 5 }],
-    pageSetup: {
-      paperSize: 9,
-      orientation: 'landscape',
-      fitToPage: true,
-      fitToWidth: 1,
-      fitToHeight: 1
-    }
-  });
-
-  overviewSheet.columns = [
-    { key: 'slotCol', width: 30 },
-    ...days.map((d, idx) => ({ key: `day_${idx}`, width: 34 }))
-  ];
-
-  const totalCols = days.length + 1;
-
-  // Row 1: Main Title Banner
-  const titleRow = overviewSheet.addRow([
-    `${institutionName.toUpperCase()} — WEEKLY UNIVERSITY TIMETABLE OVERVIEW`
-  ]);
-  overviewSheet.mergeCells(1, 1, 1, totalCols);
-  titleRow.height = 32;
-  titleRow.getCell(1).font = {
-    name: 'Arial',
-    size: 14,
-    bold: true,
-    color: { argb: 'FFFFFFFF' }
-  };
-  titleRow.getCell(1).fill = {
-    type: 'pattern',
-    pattern: 'solid',
-    fgColor: { argb: 'FF171717' }
-  };
-  titleRow.getCell(1).alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
-
-  // Row 2: Subtitle / Academic Metadata
-  const metaRow = overviewSheet.addRow([
-    `Semester: ${termName}   |   Scope: ${scopeLabel.replace(/_/g, ' ')}   |   University Hours: 9:00 AM – 5:00 PM (Lunch & Prayer Break: 1:00 PM – 2:00 PM)`
-  ]);
-  overviewSheet.mergeCells(2, 1, 2, totalCols);
-  metaRow.height = 22;
-  metaRow.getCell(1).font = {
-    name: 'Arial',
-    size: 10,
-    bold: false,
-    color: { argb: 'FF171717' }
-  };
-  metaRow.getCell(1).fill = {
-    type: 'pattern',
-    pattern: 'solid',
-    fgColor: { argb: 'FFEDEAE0' }
-  };
-  metaRow.getCell(1).alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
-
-  // Row 3: Session Rules Legend Bar
-  const rulesRow = overviewSheet.addRow([
-    'University Rules:  • Regular Lecture = 50 mins + 10m Short Break   • Laboratory = 3 Hours Continuous (vertically merged across 3 slots)   • Individual Class/Section Timetables follow in separate worksheets'
-  ]);
-  overviewSheet.mergeCells(3, 1, 3, totalCols);
-  rulesRow.height = 20;
-  rulesRow.getCell(1).font = {
-    name: 'Arial',
-    size: 9,
-    italic: true,
-    color: { argb: 'FF57564F' }
-  };
-  rulesRow.getCell(1).fill = {
-    type: 'pattern',
-    pattern: 'solid',
-    fgColor: { argb: 'FFF7F6EF' }
-  };
-  rulesRow.getCell(1).alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
-
-  // Row 4: Spacer
-  const spacerRow = overviewSheet.addRow([]);
-  spacerRow.height = 8;
-
-  // Populate Weekly Grid on Worksheet 1
-  populateWeeklyGridOnWorksheet({
-    worksheet: overviewSheet,
-    days,
-    scheduleData,
-    itemPredicate: cls => scope === 'all' || filterClass(cls),
-    isSingleClassSheet: false
-  });
-
-  // ============================================================================
-  // WORKSHEETS 2..N: ONE SEPARATE WORKSHEET FOR EACH CLASS / SECTION (StudentGroup)
-  // ============================================================================
-  // Determine which classes/sections to include:
-  // Always include every StudentGroup that has at least 1 scheduled session in scope (or all studentGroups if scope === 'all')
+  // Determine which classes/sections to include as individual tabs
   const groupsToExport: StudentGroup[] = store.studentGroups.filter(grp => {
     const hasSessionsInScope = allScheduledItems.some(item => item.studentGroupId === grp.id);
     if (scope === 'all') {
@@ -497,191 +634,56 @@ export async function exportTimetableToGoogleSheetsWorkbook(params: {
     return hasSessionsInScope;
   });
 
-  // Fallback: if filtering narrowed to 0 groups, export all groups with scheduled sessions
   const finalGroups =
     groupsToExport.length > 0
       ? groupsToExport
       : store.studentGroups.filter(grp => store.sections.some(s => s.studentGroupId === grp.id && s.assignedSlot));
 
+  // ============================================================================
+  // WORKSHEET 1: WEEKLY OVERVIEW (COMPACT LANDSCAPE MASTER TIMETABLE)
+  // ============================================================================
+  const overviewTitle = sanitizeWorksheetName('Weekly Overview', usedSheetNames);
+  const overviewSheet = workbook.addWorksheet(overviewTitle, {
+    views: [{ state: 'frozen', xSplit: 1, ySplit: 3, showGridLines: true }]
+  });
+
+  populateCompactLandscapeTimetable({
+    worksheet: overviewSheet,
+    titleLeft: `${institutionName.toUpperCase()} — WEEKLY TIMETABLE OVERVIEW`,
+    titleRight: `${termName}  •  ${finalGroups.length} Class Sections`,
+    subtitleText: `Scope: ${scopeLabel.replace(/_/g, ' ')}   |   Operating Hours: 09:00 AM – 05:00 PM   |   Lectures: 50m (+10m Break)   |   Labs: 3h Continuous (Merged)   |   Fixed Lunch: 01:00 – 02:00 PM`,
+    days,
+    scheduleData,
+    itemPredicate: cls => scope === 'all' || filterClass(cls),
+    isSingleClassSheet: false
+  });
+
+  // ============================================================================
+  // WORKSHEETS 2..N: ONE COMPACT LANDSCAPE WORKSHEET PER CLASS / SECTION
+  // ============================================================================
   finalGroups.forEach(group => {
     const prog = store.programs.find(p => p.id === group.programId);
     const dept = store.departments.find(d => d.id === prog?.departmentId);
 
-    // Tab Name: e.g. "2K24-BEE-A" or "BSCS - Section A" (<= 31 chars)
     const sheetName = sanitizeWorksheetName(group.code, usedSheetNames);
     const classSheet = workbook.addWorksheet(sheetName, {
-      views: [{ state: 'frozen', xSplit: 1, ySplit: 5 }],
-      pageSetup: {
-        paperSize: 9,
-        orientation: 'landscape',
-        fitToPage: true,
-        fitToWidth: 1,
-        fitToHeight: 1
-      }
+      views: [{ state: 'frozen', xSplit: 1, ySplit: 3, showGridLines: true }]
     });
 
-    classSheet.columns = [
-      { key: 'slotCol', width: 30 },
-      ...days.map((d, idx) => ({ key: `day_${idx}`, width: 34 }))
-    ];
+    const deptLabel = dept?.name || prog?.name || 'Engineering & Computing';
+    const semLabel = group.semester ? `Semester ${group.semester}` : `Year ${group.year}`;
+    const secLabel = group.section ? `Section ${group.section}` : group.code;
+    const roomLabel = group.homeRoom || 'Assigned Lecture Hall';
 
-    // Row 1: Class / Section Banner
-    const classBanner = classSheet.addRow([
-      `CLASS / SECTION TIMETABLE: ${group.code} — ${group.name.toUpperCase()}`
-    ]);
-    classSheet.mergeCells(1, 1, 1, totalCols);
-    classBanner.height = 30;
-    classBanner.getCell(1).font = {
-      name: 'Arial',
-      size: 13,
-      bold: true,
-      color: { argb: 'FFFFFFFF' }
-    };
-    classBanner.getCell(1).fill = {
-      type: 'pattern',
-      pattern: 'solid',
-      fgColor: { argb: 'FF171717' }
-    };
-    classBanner.getCell(1).alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
-
-    // Row 2: Class / Section Metadata Bar
-    const classMeta = classSheet.addRow([
-      `Department: ${dept?.name || 'Engineering & Computing'} (${dept?.code || prog?.code || ''})   |   Semester: ${
-        group.semester ? `Semester ${group.semester}` : `Year ${group.year}`
-      }   |   Section: ${group.section || group.code}   |   Home Room: ${
-        group.homeRoom || 'Designated Classroom'
-      }   |   Term: ${termName}`
-    ]);
-    classSheet.mergeCells(2, 1, 2, totalCols);
-    classMeta.height = 22;
-    classMeta.getCell(1).font = {
-      name: 'Arial',
-      size: 10,
-      bold: true,
-      color: { argb: 'FF171717' }
-    };
-    classMeta.getCell(1).fill = {
-      type: 'pattern',
-      pattern: 'solid',
-      fgColor: { argb: 'FFB8EEEE' }
-    };
-    classMeta.getCell(1).alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
-
-    // Row 3: Operating Hours & Lab Rule Note
-    const classRules = classSheet.addRow([
-      'Morning Session: 9:00 AM – 1:00 PM (Slots 1–4)   •   Fixed Lunch & Prayer Break: 1:00 PM – 2:00 PM   •   Afternoon Session: 2:00 PM – 5:00 PM (Fri Afternoon: 2:30 PM – 4:55 PM)   •   3-Hour Labs Merged Vertically'
-    ]);
-    classSheet.mergeCells(3, 1, 3, totalCols);
-    classRules.height = 19;
-    classRules.getCell(1).font = {
-      name: 'Arial',
-      size: 9,
-      italic: true,
-      color: { argb: 'FF57564F' }
-    };
-    classRules.getCell(1).fill = {
-      type: 'pattern',
-      pattern: 'solid',
-      fgColor: { argb: 'FFF7F6EF' }
-    };
-    classRules.getCell(1).alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
-
-    // Row 4: Spacer
-    const classSpacer = classSheet.addRow([]);
-    classSpacer.height = 8;
-
-    // Populate this Class/Section's complete Weekly Timetable Grid (with vertically merged 3-hour labs!)
-    populateWeeklyGridOnWorksheet({
+    populateCompactLandscapeTimetable({
       worksheet: classSheet,
+      titleLeft: `CLASS TIMETABLE: ${group.code}`,
+      titleRight: `${group.name} (${semLabel} • ${secLabel})`,
+      subtitleText: `Department: ${deptLabel}   |   Home Room: ${roomLabel}   |   Term: ${termName}   |   Lectures: 50m (+10m Break)   •   Labs: 3h Continuous   •   Lunch: 01:00 – 02:00 PM`,
       days,
       scheduleData,
       itemPredicate: cls => cls.studentGroupId === group.id,
       isSingleClassSheet: true
-    });
-
-    // Add a clean Course & Faculty Summary Table below the weekly grid for this Class/Section
-    classSheet.addRow([]);
-    const summaryHeaderBanner = classSheet.addRow([
-      `ASSIGNED COURSES, INSTRUCTORS & LABORATORIES FOR ${group.code}`
-    ]);
-    classSheet.mergeCells(summaryHeaderBanner.number, 1, summaryHeaderBanner.number, totalCols);
-    summaryHeaderBanner.height = 24;
-    summaryHeaderBanner.getCell(1).font = {
-      name: 'Arial',
-      size: 10,
-      bold: true,
-      color: { argb: 'FF171717' }
-    };
-    summaryHeaderBanner.getCell(1).fill = {
-      type: 'pattern',
-      pattern: 'solid',
-      fgColor: { argb: 'FFEDEAE0' }
-    };
-    summaryHeaderBanner.getCell(1).alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
-
-    const summaryColRow = classSheet.addRow([
-      'Course Code',
-      'Course Name',
-      'Session Type & Duration',
-      'Day & Time Window',
-      'Instructor Name',
-      'Room / Laboratory'
-    ]);
-    summaryColRow.height = 24;
-    summaryColRow.eachCell(cell => {
-      cell.font = { name: 'Arial', size: 9.5, bold: true, color: { argb: 'FFFFFFFF' } };
-      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF292929' } };
-      cell.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
-    });
-
-    const classItems: ClassItem[] = [];
-    days.forEach(d => {
-      UNIVERSITY_SLOTS.forEach(s => {
-        const matches = (scheduleData[s.period]?.[d] || []).filter(c => c.studentGroupId === group.id);
-        matches.forEach(m => classItems.push(m));
-      });
-    });
-
-    classItems.forEach(item => {
-      const isLab = item.sessionType === 'Lab' || item.spanSlots === 3;
-      const labBlock = isLab ? getLabBlockByStartPeriod(item.time || '') : undefined;
-      const timeWindow = isLab
-        ? (item.continuousTimeLabel || labBlock?.continuousLabel || item.time || '')
-        : (item.time || '');
-      const durationLabel = isLab
-        ? 'Lab · 3 Hours Continuous (180 mins)'
-        : 'Lecture · 50 mins (+ 10m Break)';
-
-      const r = classSheet.addRow([
-        item.code,
-        item.title,
-        durationLabel,
-        `${DAY_FULL_LABELS[item.day || 'Mon'] || item.day} · ${timeWindow}`,
-        item.prof,
-        item.room
-      ]);
-      r.height = 22;
-      const pastel = getCourseArgb(item.code);
-      r.eachCell((cell, colNumber) => {
-        cell.font = {
-          name: 'Arial',
-          size: 9,
-          bold: colNumber === 1 || (colNumber === 3 && isLab),
-          color: { argb: 'FF171717' }
-        };
-        cell.fill = {
-          type: 'pattern',
-          pattern: 'solid',
-          fgColor: { argb: colNumber === 1 || (colNumber === 3 && isLab) ? pastel.argb : 'FFFFFFFF' }
-        };
-        cell.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
-        cell.border = {
-          top: { style: 'thin', color: { argb: 'FFE4E2DA' } },
-          bottom: { style: 'thin', color: { argb: 'FFE4E2DA' } },
-          left: { style: 'thin', color: { argb: 'FFE4E2DA' } },
-          right: { style: 'thin', color: { argb: 'FFE4E2DA' } }
-        };
-      });
     });
   });
 

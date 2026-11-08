@@ -1,404 +1,381 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  Compass, 
-  Sparkles, 
-  ArrowRight, 
-  Activity, 
-  ShieldCheck, 
-  Zap, 
-  Cpu, 
-  Play, 
-  RefreshCw, 
-  HeartHandshake, 
-  Sun, 
-  Moon, 
-  Coffee, 
-  Check, 
-  Download, 
-  Award, 
-  Clock, 
-  Building, 
-  AlertCircle, 
-  Lock, 
-  Menu, 
+import React, { useState } from 'react';
+import {
+  ArrowRight,
+  Check,
+  Coffee,
+  FileSpreadsheet,
+  Menu,
   X,
-  ChevronDown,
-  Calendar,
-  Layers,
-  CheckCircle2,
-  SlidersHorizontal
+  Sparkles,
+  ChevronRight,
+  AlertTriangle,
+  CheckCircle2
 } from 'lucide-react';
+import { motion, useReducedMotion, AnimatePresence } from 'motion/react';
+import { useInstitutionalData } from '../data/store';
+import { buildMatrixSchedule } from '../data/solverAdapter';
+import { UNIVERSITY_SLOTS, getLabBlockByStartPeriod } from '../types/institutional';
 import { ClassDetailsModal, ClassItem } from './ClassDetailsModal';
-import { InteractiveHeroMesh } from './InteractiveHeroMesh';
-import { motion, AnimatePresence } from 'motion/react';
+import { exportTimetableToGoogleSheetsWorkbook } from '../utils/googleSheetsExport';
 
 interface PublicLandingPageProps {
   onOpenAuth: (mode?: 'signin' | 'signup') => void;
 }
 
+const PASTEL_PALETTE = [
+  { bg: '#B8EEEE', border: '#95DFDF' },
+  { bg: '#F2D8FA', border: '#DFB9EC' },
+  { bg: '#B8F2E6', border: '#93DEC9' },
+  { bg: '#B7F77C', border: '#98DF58' },
+  { bg: '#E8D36B', border: '#D4BC4C' }
+];
+
+function getCoursePastel(code: string) {
+  const clean = code.replace(/-L$/i, '');
+  let hash = 0;
+  for (let i = 0; i < clean.length; i++) {
+    hash = (hash * 31 + clean.charCodeAt(i)) >>> 0;
+  }
+  return PASTEL_PALETTE[hash % PASTEL_PALETTE.length];
+}
+
+const RevealSection: React.FC<{
+  children: React.ReactNode;
+  className?: string;
+  delay?: number;
+}> = ({ children, className = '', delay = 0 }) => {
+  const shouldReduceMotion = useReducedMotion();
+
+  if (shouldReduceMotion) {
+    return <div className={className}>{children}</div>;
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 24 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, amount: 0.16 }}
+      transition={{ duration: 0.55, delay, ease: [0.16, 1, 0.3, 1] }}
+      className={className}
+    >
+      {children}
+    </motion.div>
+  );
+};
+
 export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({ onOpenAuth }) => {
+  const store = useInstitutionalData();
+  const { scheduleData } = buildMatrixSchedule(store);
+  const shouldReduceMotion = useReducedMotion();
+
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [activeSection, setActiveSection] = useState<'solutions' | 'adaptive-engine' | 'student-voice' | 'case-studies' | 'matrix-preview'>('solutions');
-
-  // Hero Quick Simulation state
-  const [heroTestRunning, setHeroTestRunning] = useState(false);
-  const [heroTestSuccess, setHeroTestSuccess] = useState(false);
-  const [heroWorkloadParam, setHeroWorkloadParam] = useState(85);
-
-  // Adaptive Engine simulation state
-  const [isRunningSim, setIsRunningSim] = useState(false);
-  const [generation, setGeneration] = useState(142);
-  const [fitnessScore, setFitnessScore] = useState(99.88);
-  const [activeChromosomes, setActiveChromosomes] = useState(4120);
-  const [mutationRate, setMutationRate] = useState(0.04);
-
-  // Conflict test bench state
-  const [conflictScenario, setConflictScenario] = useState<'none' | 'prof_overlap' | 'room_surge'>('none');
-  const [resolvingConflict, setResolvingConflict] = useState(false);
-  const [resolutionLog, setResolutionLog] = useState<string[]>([]);
-
-  // Student Voice state
-  const [selectedChronotype, setSelectedChronotype] = useState<'early' | 'balanced' | 'evening'>('balanced');
-  const [commuteDuration, setCommuteDuration] = useState(35);
-  const [lunchBufferLocked, setLunchBufferLocked] = useState(true);
-
-  // Referendum state
-  const [polls, setPolls] = useState([
-    {
-      id: 'p1',
-      question: 'Protect 12:00 - 13:00 daily campus lunch and recharge window',
-      category: 'Wellbeing policy',
-      votesYes: 2841,
-      votesNo: 112,
-      userVoted: null as 'yes' | 'no' | null
-    },
-    {
-      id: 'p2',
-      question: 'Cap consecutive academic lecture blocks at 3 hours maximum',
-      category: 'Cognitive load',
-      votesYes: 3410,
-      votesNo: 189,
-      userVoted: null as 'yes' | 'no' | null
-    },
-    {
-      id: 'p3',
-      question: 'Ban Friday afternoon (> 15:00) heavy midterms and recitations',
-      category: 'Schedule balance',
-      votesYes: 4102,
-      votesNo: 84,
-      userVoted: null as 'yes' | 'no' | null
-    }
-  ]);
-
-  // Case Studies state
-  const [selectedStudy, setSelectedStudy] = useState<'wpi' | 'oxford' | 'sutd' | 'tudelft'>('wpi');
-
-  // Timetable Matrix Preview state
-  const [previewDept, setPreviewDept] = useState('All Departments');
   const [selectedClass, setSelectedClass] = useState<ClassItem | null>(null);
 
-  // Genetic sim tick
-  useEffect(() => {
-    let interval: any;
-    if (isRunningSim) {
-      interval = setInterval(() => {
-        setGeneration(prev => prev + 1);
-        setActiveChromosomes(prev => Math.floor(4000 + Math.random() * 250));
-        setFitnessScore(prev => {
-          const next = prev + (Math.random() * 0.04 - 0.015);
-          return Math.min(99.99, Math.max(97.5, Number(next.toFixed(2))));
-        });
-      }, 350);
-    }
-    return () => clearInterval(interval);
-  }, [isRunningSim]);
+  // Featured class sections for the interactive product demonstration
+  const featuredSections = [
+    store.studentGroups.find(g => g.code === '2K24-BEE-A'),
+    store.studentGroups.find(g => g.code === '2K25-BSCS-A'),
+    store.studentGroups.find(g => g.code === '2K24-BESE-A'),
+    store.studentGroups.find(g => g.code === '2K25-BCE-A')
+  ].filter(Boolean) as typeof store.studentGroups;
 
-  const scrollTo = (id: string) => {
+  const fallbackGroups =
+    featuredSections.length > 0 ? featuredSections : store.studentGroups.slice(0, 4);
+
+  const [activeDemoGroupId, setActiveDemoGroupId] = useState<string>(
+    fallbackGroups[0]?.id || store.studentGroups[0]?.id || ''
+  );
+
+  // Problem Section interactive comparison toggle
+  const [problemView, setProblemView] = useState<'conflict' | 'resolved'>('conflict');
+
+  // Solution Section interactive optimization sweep feedback
+  const [isOptimizingDemo, setIsOptimizingDemo] = useState(false);
+  const [demoOptimized, setDemoOptimized] = useState(false);
+  const [isExportingSample, setIsExportingSample] = useState(false);
+
+  // How It Works active step highlight
+  const [activeStepIndex, setActiveStepIndex] = useState<number>(0);
+
+  const activeDemoGroup =
+    store.studentGroups.find(g => g.id === activeDemoGroupId) || store.studentGroups[0];
+  const activeDemoProg = store.programs.find(p => p.id === activeDemoGroup?.programId);
+  const activeDemoDept = store.departments.find(d => d.id === activeDemoProg?.departmentId);
+
+  const scrollToSection = (id: string) => {
     const el = document.getElementById(id);
     if (el) {
-      el.scrollIntoView({ behavior: 'smooth' });
+      el.scrollIntoView({ behavior: shouldReduceMotion ? 'auto' : 'smooth' });
     }
     setMobileMenuOpen(false);
   };
 
-  const handleResolveConflict = (type: 'prof_overlap' | 'room_surge') => {
-    setConflictScenario(type);
-    setResolvingConflict(true);
-    setResolutionLog([
-      `[0.00ms] Injected: ${type.toUpperCase()} into constraint pipeline`,
-      `[0.12ms] Hard collision detected in sub-matrix D-4`,
-      `[0.45ms] Evaluating 1,280 adjacent chromosome permutations...`
-    ]);
-
+  const handleRunDemoOptimization = () => {
+    setIsOptimizingDemo(true);
+    setDemoOptimized(false);
     setTimeout(() => {
-      setResolutionLog(prev => [
-        ...prev,
-        `[0.88ms] Found Pareto-optimal slot swap: Hall B3 -> Annex 102`,
-        `[1.14ms] Validated zero cascade violations across 18 enrolled cohorts`,
-        `[1.32ms] Equilibrium restored: 100% collision-free guarantee reinstated.`
-      ]);
-      setResolvingConflict(false);
-    }, 700);
+      setIsOptimizingDemo(false);
+      setDemoOptimized(true);
+      setTimeout(() => setDemoOptimized(false), 4500);
+    }, 550);
   };
 
-  const handleVote = (pollId: string, choice: 'yes' | 'no') => {
-    setPolls(prev => prev.map(p => {
-      if (p.id !== pollId) return p;
-      if (p.userVoted === choice) return p;
-      const prevVoted = p.userVoted;
-      return {
-        ...p,
-        userVoted: choice,
-        votesYes: choice === 'yes' ? p.votesYes + 1 : (prevVoted === 'yes' ? p.votesYes - 1 : p.votesYes),
-        votesNo: choice === 'no' ? p.votesNo + 1 : (prevVoted === 'no' ? p.votesNo - 1 : p.votesNo)
-      };
-    }));
-  };
-
-  const caseStudiesData = {
-    wpi: {
-      name: 'Western Polytechnic Institute',
-      tagline: '34,000 students • 12 academic schools • 312 legacy clashes solved',
-      location: 'Massachusetts, USA',
-      term: 'Fall 2025 - Spring 2026',
-      heroStats: [
-        { label: 'Admin preparation time', before: '6 weeks', after: '18 mins', delta: '-94%' },
-        { label: 'Cross-disciplinary clashes', before: '312 clashes', after: '0 clashes', delta: '100% resolved' },
-        { label: 'Walking delay', before: '24 mins', after: '9 mins', delta: '-62.5%' },
-        { label: 'Accreditation match', before: '91.4%', after: '100.0%', delta: '+8.6%' }
-      ],
-      description: 'Western Poly faced recurring bottlenecks between Mechanical Engineering and Computer Science majors attempting to take mandatory Robotics electives. SmartGrid solved the multi-building transit bottleneck across the river footbridge, compacting lab classes into contiguous spatial zones and automating faculty work-hour rules.',
-      quote: "SmartGrid didn't just save our registrar staff hundreds of hours—it gave our students their lives back by eliminating 4-hour dead gaps between morning and evening lectures.",
-      author: 'Dr. Katherine Reynolds, Vice Provost of Academic Operations'
-    },
-    oxford: {
-      name: 'Oxford Union Sciences & Research Division',
-      tagline: 'Collegiate division synthesis • Specialized laboratory allocation',
-      location: 'Oxford, United Kingdom',
-      term: 'Michaelmas & Hilary Terms',
-      heroStats: [
-        { label: 'Cleanroom utilization', before: '68%', after: '98.4%', delta: '+30.4%' },
-        { label: 'Specialized lab conflicts', before: '42 / term', after: '0 / term', delta: '100% clear' },
-        { label: 'Inter-college transit', before: '28 mins', after: '12 mins', delta: '-57%' },
-        { label: 'Faculty satisfaction', before: '76%', after: '99.1%', delta: '+23.1%' }
-      ],
-      description: 'Synchronizing laboratory access across historic colleges with strict non-contiguous buildings and high-demand electron microscopes. SmartGrid generated conflict-free equipment batches with guaranteed 45-minute decontamination transitions between cohorts.',
-      quote: "The mathematical rigor behind SmartGrid provided our department chairs with total confidence in our room allocation audits.",
-      author: 'Prof. Alistair MacIntyre, Chair of Physical & Life Sciences'
-    },
-    sutd: {
-      name: 'Singapore University of Technology & Design',
-      tagline: 'Rapid schedule reconfiguration during campus retrofitting',
-      location: 'Singapore',
-      term: 'Academic Year 2025',
-      heroStats: [
-        { label: 'Turnaround speed', before: '14 days', after: '48 hours', delta: '-85%' },
-        { label: 'Cancelled studio hours', before: '84 hours', after: '0 hours', delta: 'Zero loss' },
-        { label: 'Makerspace uptime', before: '72%', after: '96.2%', delta: '+24.2%' },
-        { label: 'Student sentiment', before: '3.4 / 5.0', after: '4.8 / 5.0', delta: '+41%' }
-      ],
-      description: 'When central structural renovations closed 14 design studios 3 days before term launch, SmartGrid re-optimized the entire university schedule in 48 hours without cancelling a single class, balancing noise-isolated lecture halls and heavy fabrication workshops.',
-      quote: "An unprecedented crisis was turned into a masterclass in operational resilience thanks to SmartGrid's solver.",
-      author: 'Eng. Chen Wei Ling, Director of Academic Planning'
-    },
-    tudelft: {
-      name: 'TU Delft Technical Sciences',
-      tagline: 'Campus thermal compaction & sustainable energy synthesis',
-      location: 'Delft, Netherlands',
-      term: 'Full Academic Year',
-      heroStats: [
-        { label: 'Weekly power saved', before: '0 MWh', after: '-34.1 MWh', delta: 'Conserved' },
-        { label: 'Heating consolidation', before: 'Fragmented', after: 'Zoned', delta: '100% zoned' },
-        { label: 'Late hall stragglers', before: '41 halls', after: '4 halls', delta: '-90%' },
-        { label: 'Commute punctuality', before: '83.2%', after: '97.6%', delta: '+14.4%' }
-      ],
-      description: 'By passing campus thermal insulation curves and municipal grid peak pricing into the objective function, TU Delft unified lecture hours to power down dormant satellite buildings by 17:00 each day, cutting campus carbon footprint while elevating timetable predictability.',
-      quote: "Achieving both carbon neutrality targets and student satisfaction at once was considered impossible until we deployed SmartGrid.",
-      author: 'Ir. Maarten van de Berg, Sustainable Infrastructure Lead'
+  const handleDownloadSampleSheets = async () => {
+    if (!activeDemoGroup) return;
+    try {
+      setIsExportingSample(true);
+      await exportTimetableToGoogleSheetsWorkbook({
+        store,
+        scheduleData,
+        filterClass: cls => cls.studentGroupId === activeDemoGroup.id,
+        scope: 'filtered',
+        scopeLabel: `Class_${activeDemoGroup.code}`,
+        studentOrUserName: 'Public Preview'
+      });
+    } finally {
+      setIsExportingSample(false);
     }
   };
 
-  const currentStudy = caseStudiesData[selectedStudy];
-
-  const sampleClasses: Record<string, ClassItem> = {
-    'CS-301': {
-      id: 'c1',
-      code: 'CS-301',
-      title: 'Data Structures & Algorithms',
-      room: 'Hall B3',
-      prof: 'Dr. Evans',
-      cohort: 'CS Sophomore Cohort A',
-      capacity: 60,
-      enrolled: 58,
-      time: '09:00 - 10:30',
-      day: 'Mon & Wed',
-      type: 'Lecture',
-      credits: 4,
-      accent: 'plum'
-    },
-    'BIO-210': {
-      id: 'c2',
-      code: 'BIO-210',
-      title: 'Cellular Genomics',
-      room: 'Bio Lab 4',
-      prof: 'Dr. Zhao',
-      cohort: 'Bioengineering Juniors',
-      capacity: 32,
-      enrolled: 30,
-      time: '09:00 - 10:30',
-      day: 'Tue',
-      type: 'Laboratory',
-      credits: 4,
-      accent: 'emerald'
-    },
-    'ENG-102': {
-      id: 'c3',
-      code: 'ENG-102',
-      title: 'Applied Engineering Statics',
-      room: 'Quad Hall A',
-      prof: 'Prof. Miller',
-      cohort: 'MechE Freshman Track',
-      capacity: 90,
-      enrolled: 86,
-      time: '09:00 - 10:30',
-      day: 'Thu',
-      type: 'Lecture',
-      credits: 3,
-      accent: 'terracotta'
-    },
-    'MATH-204': {
-      id: 'c4',
-      code: 'MATH-204',
-      title: 'Linear Algebra',
-      room: 'Hall A1',
-      prof: 'Dr. Raman',
-      cohort: 'Applied Math Track',
-      capacity: 75,
-      enrolled: 72,
-      time: '11:00 - 12:30',
-      day: 'Mon & Fri',
-      type: 'Lecture',
-      credits: 4,
-      accent: 'plum'
+  // Precompute 3-hour continuous Lab rowSpans for the active demo class section
+  const previewDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
+  const skippedCells = new Set<string>();
+  const labSpanByCell = new Map<
+    string,
+    {
+      labItem: ClassItem;
+      continuousWindow: string;
     }
-  };
+  >();
 
-  const getDeptClassStyle = (code: string) => {
-    if (code.startsWith('CS')) return 'dept-block-cs';
-    if (code.startsWith('BIO') || code.startsWith('CHEM')) return 'dept-block-bio';
-    if (code.startsWith('ENG')) return 'dept-block-eng';
-    if (code.startsWith('ARCH')) return 'dept-block-arch';
-    if (code.startsWith('MATH')) return 'dept-block-math';
-    return 'dept-block-hum';
-  };
+  previewDays.forEach(day => {
+    UNIVERSITY_SLOTS.forEach((slotMeta, sIdx) => {
+      const cellKey = `${day}__${slotMeta.slotNumber}`;
+      if (skippedCells.has(cellKey)) return;
+
+      const classesAtStart = (scheduleData[slotMeta.period]?.[day] || []).filter(
+        c => c.studentGroupId === activeDemoGroup?.id
+      );
+      const labItem = classesAtStart.find(c => c.sessionType === 'Lab' || c.spanSlots === 3);
+
+      const canSpanThreeRows =
+        Boolean(labItem) &&
+        ((slotMeta.slotNumber >= 1 && slotMeta.slotNumber <= 2) || slotMeta.slotNumber === 5) &&
+        sIdx + 2 < UNIVERSITY_SLOTS.length;
+
+      if (labItem && canSpanThreeRows) {
+        const slot2Meta = UNIVERSITY_SLOTS[sIdx + 1];
+        const slot3Meta = UNIVERSITY_SLOTS[sIdx + 2];
+        skippedCells.add(`${day}__${slot2Meta.slotNumber}`);
+        skippedCells.add(`${day}__${slot3Meta.slotNumber}`);
+
+        const labBlock = getLabBlockByStartPeriod(slotMeta.period);
+        const continuousWindow =
+          labItem.continuousTimeLabel ||
+          labBlock?.continuousLabel ||
+          (day === 'Fri' && slotMeta.slotNumber === 5 ? '2:30 PM – 4:55 PM' : '9:00 AM – 11:50 AM');
+
+        labSpanByCell.set(cellKey, {
+          labItem,
+          continuousWindow
+        });
+      }
+    });
+  });
+
+  const howItWorksSteps = [
+    {
+      number: '01',
+      title: 'Configure Academic Catalog, Rooms & Cohorts',
+      summary:
+        'Define university departments, degree programs, lecture halls, specialized laboratories, faculty rosters, and student sections.',
+      detailTitle: '4 Departments · 45 Class Sections · 38 Rooms & Labs',
+      detailItems: [
+        'Electrical, Computer, Software Engineering & Computer Science cohorts (2K22–2K25)',
+        'Dedicated lecture halls matched to section enrollment capacities',
+        'Specialized laboratories reserved for 3-hour practical coursework'
+      ],
+      accentBg: '#B8EEEE'
+    },
+    {
+      number: '02',
+      title: 'Enforce University Timing & Hard Constraints',
+      summary:
+        'Lock university-wide operating hours, fixed lunch windows, 50-minute lecture intervals, and uninterrupted 3-hour laboratory blocks.',
+      detailTitle: '9:00 AM – 5:00 PM Academic Day Structure',
+      detailItems: [
+        'Morning Session (Slots 1–4: 9:00 AM – 1:00 PM) with 10-minute short breaks',
+        'Fixed University Lunch & Prayer Break (1:00 PM – 2:00 PM) protected across all cohorts',
+        'Afternoon Session (Slots 5–7: 2:00 PM – 5:00 PM, Friday shift 2:30 PM – 4:55 PM)'
+      ],
+      accentBg: '#F2D8FA'
+    },
+    {
+      number: '03',
+      title: 'Generate & Export Individual Class Timetables',
+      summary:
+        'Synthesize zero-clash weekly schedules for every class section and export landscape-formatted Google Sheets workbooks in one click.',
+      detailTitle: 'Weekly Overview + 1 Worksheet Per Class/Section',
+      detailItems: [
+        'Instant section-by-section timetable switching on a zero-scroll weekly grid',
+        'Vertically merged 3-hour continuous lab blocks on screen and in spreadsheets',
+        'Print-ready landscape Google Sheets (.xlsx) and PDF exports fitted to a single page'
+      ],
+      accentBg: '#B7F77C'
+    }
+  ];
 
   return (
-    <div className="min-h-screen bg-app text-primary antialiased">
-      {/* Interactive Modal for timetable preview */}
+    <div className="min-h-screen bg-[#F7F6EF] text-[#171717] antialiased selection:bg-[#B8EEEE] selection:text-[#171717]">
+      {/* Interactive Session Inspector Modal */}
       <ClassDetailsModal
         classItem={selectedClass}
         onClose={() => setSelectedClass(null)}
       />
 
-      {/* Top Navigation Bar (52px) */}
-      <header className="sticky top-0 z-50 bg-surface/95 backdrop-blur-sm border-b border-border h-[52px] px-4 sm:px-6 flex items-center justify-between">
-        <div className="max-w-[1360px] mx-auto w-full flex items-center justify-between">
-          {/* Brand */}
-          <div 
-            className="flex items-center gap-2.5 cursor-pointer select-none"
-            onClick={() => scrollTo('solutions')}
+      {/* =====================================================================
+          STICKY NAVIGATION HEADER
+         ===================================================================== */}
+      <header className="sticky top-0 z-50 h-16 bg-[#F7F6EF]/92 backdrop-blur-md border-b border-[#E4E2DA] px-4 sm:px-8">
+        <div className="max-w-[1280px] mx-auto h-full flex items-center justify-between gap-8">
+          {/* Zone 1: Brand Wordmark */}
+          <a
+            href="#top"
+            onClick={e => {
+              e.preventDefault();
+              window.scrollTo({ top: 0, behavior: shouldReduceMotion ? 'auto' : 'smooth' });
+            }}
+            className="flex items-center gap-2.5 text-[#171717] whitespace-nowrap shrink-0"
           >
-            <div className="w-7 h-7 rounded-md bg-brand flex items-center justify-center text-white shrink-0">
-              <Compass className="w-4 h-4" />
-            </div>
-            <span className="font-semibold text-[15px] text-primary tracking-tight">
-              SmartGrid
+            <span className="w-8 h-8 rounded-lg bg-[#171717] text-white font-serif-editorial text-lg flex items-center justify-center">
+              S
             </span>
-          </div>
+            <span className="font-serif-editorial text-xl tracking-tight">SmartGrid AI</span>
+          </a>
 
-          {/* Nav Links */}
-          <nav className="hidden md:flex items-center gap-7 text-[14px] text-secondary">
-            {[
-              { id: 'solutions' as const, label: 'Overview' },
-              { id: 'adaptive-engine' as const, label: 'Optimization' },
-              { id: 'student-voice' as const, label: 'Student feedback' },
-              { id: 'case-studies' as const, label: 'Campuses & accreditation' },
-              { id: 'matrix-preview' as const, label: 'Timetable preview' }
-            ].map(link => (
-              <button 
-                key={link.id}
-                onClick={() => { setActiveSection(link.id); scrollTo(link.id); }}
-                className={`transition-colors cursor-pointer py-1 font-medium ${
-                  activeSection === link.id ? 'text-brand' : 'hover:text-primary'
-                }`}
-              >
-                {link.label}
-              </button>
-            ))}
+          {/* Zone 2: Concise Single-Line Navigation Links */}
+          <nav className="hidden md:flex items-center gap-8 text-sm font-medium text-[#77766F]">
+            <button
+              type="button"
+              onClick={() => scrollToSection('problem')}
+              className="hover:text-[#171717] transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+            >
+              The Problem
+            </button>
+            <button
+              type="button"
+              onClick={() => scrollToSection('solution')}
+              className="hover:text-[#171717] transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+            >
+              Product Demo
+            </button>
+            <button
+              type="button"
+              onClick={() => scrollToSection('capabilities')}
+              className="hover:text-[#171717] transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+            >
+              Capabilities
+            </button>
+            <button
+              type="button"
+              onClick={() => scrollToSection('how-it-works')}
+              className="hover:text-[#171717] transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+            >
+              How It Works
+            </button>
           </nav>
 
-          {/* Right Action Buttons */}
-          <div className="hidden md:flex items-center gap-2.5">
-            <button 
+          {/* Zone 3: Auth Actions */}
+          <div className="hidden md:flex items-center gap-3 shrink-0">
+            <button
+              type="button"
               onClick={() => onOpenAuth('signin')}
-              className="h-[36px] px-3.5 text-[14px] font-medium text-secondary hover:text-primary hover:bg-subtle rounded-md transition-colors cursor-pointer"
+              className="px-3.5 py-2 text-sm font-medium text-[#171717] hover:text-[#77766F] transition-colors whitespace-nowrap shrink-0 cursor-pointer"
             >
-              Sign in
+              Log in
             </button>
-            <button 
+            <button
+              type="button"
               onClick={() => onOpenAuth('signup')}
-              className="h-[36px] px-4 rounded-md bg-brand hover:bg-brand-hover text-white text-[14px] font-medium transition-colors shadow-xs cursor-pointer"
+              className="btn-primary h-10 px-5 text-sm whitespace-nowrap shrink-0"
             >
-              Launch workspace
+              <span>Get Started</span>
+              <ArrowRight className="w-4 h-4" />
             </button>
           </div>
 
-          {/* Mobile Menu Toggle */}
-          <button 
+          {/* Mobile Menu Button */}
+          <button
+            type="button"
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="md:hidden text-secondary hover:text-primary p-2 rounded-md hover:bg-subtle cursor-pointer"
-            aria-label="Toggle Navigation"
+            className="md:hidden p-2 rounded-lg border border-[#E4E2DA] bg-white text-[#171717] cursor-pointer"
+            aria-label="Toggle Menu"
           >
             {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
           </button>
         </div>
 
-        {/* Mobile Dropdown */}
+        {/* Mobile Navigation Drawer */}
         <AnimatePresence>
           {mobileMenuOpen && (
-            <motion.div 
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              exit={{ opacity: 0, height: 0 }}
-              className="md:hidden absolute top-[52px] left-0 right-0 bg-surface border-b border-border p-4 space-y-2 shadow-lg"
+            <motion.div
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.18 }}
+              className="md:hidden absolute top-16 left-0 right-0 bg-white border-b border-[#E4E2DA] px-6 py-5 space-y-3 shadow-lg"
             >
-              {[
-                { id: 'solutions', label: 'Overview' },
-                { id: 'adaptive-engine', label: 'Optimization' },
-                { id: 'student-voice', label: 'Student feedback' },
-                { id: 'case-studies', label: 'Campuses & accreditation' },
-                { id: 'matrix-preview', label: 'Timetable preview' }
-              ].map(item => (
-                <button 
-                  key={item.id}
-                  onClick={() => scrollTo(item.id)}
-                  className="block w-full text-left text-[14px] py-2 px-3 rounded-md text-primary hover:bg-subtle transition-colors cursor-pointer font-medium"
+              <div className="flex flex-col space-y-2 text-sm font-medium text-[#171717]">
+                <button
+                  type="button"
+                  onClick={() => scrollToSection('problem')}
+                  className="text-left py-2 hover:text-[#77766F]"
                 >
-                  {item.label}
+                  The Problem
                 </button>
-              ))}
-              <div className="pt-2 flex flex-col gap-2 border-t border-border">
-                <button 
-                  onClick={() => { onOpenAuth('signin'); setMobileMenuOpen(false); }}
-                  className="w-full h-[38px] text-[14px] font-medium text-primary bg-surface border border-border rounded-md hover:bg-subtle"
+                <button
+                  type="button"
+                  onClick={() => scrollToSection('solution')}
+                  className="text-left py-2 hover:text-[#77766F]"
                 >
-                  Sign in
+                  Product Demo
                 </button>
-                <button 
-                  onClick={() => { onOpenAuth('signup'); setMobileMenuOpen(false); }}
-                  className="w-full h-[38px] bg-brand hover:bg-brand-hover text-white rounded-md text-[14px] font-medium"
+                <button
+                  type="button"
+                  onClick={() => scrollToSection('capabilities')}
+                  className="text-left py-2 hover:text-[#77766F]"
                 >
-                  Launch workspace
+                  Capabilities
+                </button>
+                <button
+                  type="button"
+                  onClick={() => scrollToSection('how-it-works')}
+                  className="text-left py-2 hover:text-[#77766F]"
+                >
+                  How It Works
+                </button>
+              </div>
+              <div className="pt-3 border-t border-[#E4E2DA] flex flex-col gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    onOpenAuth('signin');
+                  }}
+                  className="btn-secondary w-full h-10 text-sm"
+                >
+                  Log in
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    onOpenAuth('signup');
+                  }}
+                  className="btn-primary w-full h-10 text-sm"
+                >
+                  <span>Get Started</span>
+                  <ArrowRight className="w-4 h-4" />
                 </button>
               </div>
             </motion.div>
@@ -406,716 +383,983 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({ onOpenAuth
         </AnimatePresence>
       </header>
 
-      {/* Main Single-Page Content */}
-      <main className="max-w-[1360px] mx-auto px-4 sm:px-6 lg:px-8 space-y-16 py-8 sm:py-12">
-        {/* ================= SECTION: OVERVIEW (HERO) ================= */}
-        <section id="solutions" className="scroll-mt-16 space-y-8">
-          <div className="relative rounded-lg border border-border bg-surface p-6 sm:p-10 lg:p-12 overflow-hidden shadow-xs">
-            {/* Subtle schematic vector grid */}
-            <InteractiveHeroMesh />
-
-            <div className="relative z-10 max-w-2xl mx-auto text-center space-y-4">
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-md bg-subtle border border-border text-[13px] text-secondary">
-                <span>Combinatorial solver engine</span>
-                <span className="text-tertiary">•</span>
-                <span className="text-primary font-medium">Higher ed timetabling</span>
+      <main id="top">
+        {/* ===================================================================
+            SECTION 1 — HERO (ONE CLEAR VALUE PROPOSITION & DOMINANT CTA)
+           =================================================================== */}
+        <section className="pt-14 pb-24 sm:pt-20 sm:pb-32 px-4 sm:px-8">
+          <div className="max-w-[1200px] mx-auto space-y-14">
+            {/* Hero Focal Copy & Primary Action */}
+            <motion.div
+              initial={shouldReduceMotion ? false : { opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.55, ease: [0.16, 1, 0.3, 1] }}
+              className="max-w-3xl mx-auto text-center space-y-6"
+            >
+              <div className="text-xs sm:text-sm font-medium text-[#77766F] tracking-wide">
+                University Scheduling & Timetable Optimization Platform
               </div>
 
-              <h1 className="text-2xl sm:text-4xl font-semibold text-primary tracking-tight leading-tight">
-                University timetable scheduling for registrars and academic operations
+              <h1
+                className="font-serif-editorial text-[#171717] tracking-tight leading-[1.06] text-balance"
+                style={{ fontSize: 'clamp(2.5rem, 4.8vw, 4.25rem)' }}
+              >
+                Conflict-free university timetables for every class section, generated in seconds.
               </h1>
 
-              <p className="text-[15px] sm:text-base text-secondary leading-relaxed">
-                SmartGrid evaluates faculty contractual limits, campus room capacity, and student commute graphs to generate conflict-free semester schedules in seconds.
+              <p className="text-base sm:text-lg text-[#77766F] max-w-2xl mx-auto leading-relaxed">
+                Coordinate 50-minute lectures, uninterrupted three-hour laboratories, faculty availability, and fixed campus lunch breaks across dozens of degree cohorts—without a single room or instructor overlap.
               </p>
 
-              <div className="flex items-center justify-center gap-3 pt-2">
-                <button 
+              <div className="pt-2 flex flex-wrap items-center justify-center gap-4">
+                <button
+                  type="button"
                   onClick={() => onOpenAuth('signup')}
-                  className="h-[38px] px-4 rounded-md bg-brand hover:bg-brand-hover text-white text-[14px] font-medium flex items-center gap-2 transition-colors shadow-xs cursor-pointer"
+                  className="h-12 px-7 rounded-xl bg-[#171717] hover:bg-[#292929] text-white text-sm font-semibold inline-flex items-center gap-2.5 transition-all cursor-pointer shadow-xs"
                 >
-                  <span>Launch workspace</span>
+                  <span>Create Your Schedule</span>
                   <ArrowRight className="w-4 h-4" />
                 </button>
-                <button 
-                  onClick={() => scrollTo('adaptive-engine')}
-                  className="h-[38px] px-4 rounded-md bg-surface border border-border hover:bg-subtle text-primary text-[14px] font-medium transition-colors cursor-pointer"
+
+                <button
+                  type="button"
+                  onClick={() => scrollToSection('how-it-works')}
+                  className="h-12 px-6 rounded-xl bg-transparent hover:bg-[#EDEAE0] text-[#171717] text-sm font-medium inline-flex items-center gap-2 transition-colors cursor-pointer"
                 >
-                  View methodology
+                  <span>See How It Works</span>
                 </button>
               </div>
-            </div>
-          </div>
+            </motion.div>
 
-          {/* Unified Bordered Stat Strip with Comparisons */}
-          <div className="bg-surface border border-border rounded-lg grid grid-cols-2 md:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x divide-border">
-            <div className="p-5 sm:p-6 space-y-1">
-              <div className="text-[14px] text-secondary">Scheduled sections</div>
-              <div className="text-[32px] font-semibold text-primary tracking-tight font-mono tabular-nums">1,420</div>
-              <div className="text-[13px] text-secondary mt-0.5">34,180 enrolled students</div>
-            </div>
-
-            <div className="p-5 sm:p-6 space-y-1">
-              <div className="text-[14px] text-secondary">Solver parity</div>
-              <div className="text-[32px] font-semibold text-success tracking-tight font-mono tabular-nums">99.88%</div>
-              <div className="text-[13px] text-secondary mt-0.5">Deterministic convergence</div>
-            </div>
-
-            <div className="p-5 sm:p-6 space-y-1">
-              <div className="text-[14px] text-secondary">Mean solve speed</div>
-              <div className="text-[32px] font-semibold font-mono text-primary tracking-tight tabular-nums">1.24 ms</div>
-              <div className="text-[13px] text-secondary mt-0.5">Polynomial SAT bounding</div>
-            </div>
-
-            <div className="p-5 sm:p-6 space-y-1">
-              <div className="text-[14px] text-secondary">Energy conserved</div>
-              <div className="text-[32px] font-semibold text-primary tracking-tight font-mono tabular-nums">-34.1 MWh</div>
-              <div className="text-[13px] text-secondary mt-0.5">Spatial thermal clustering</div>
-            </div>
-          </div>
-
-          {/* Interactive Parity Test Bench */}
-          <div className="p-5 rounded-lg border border-border bg-surface flex flex-col md:flex-row items-center justify-between gap-5">
-            <div className="flex-1 w-full space-y-2">
-              <div className="flex justify-between text-[14px]">
-                <span className="font-medium text-primary">Faculty consecutive teaching cap: <span className="font-mono text-primary font-medium">{heroWorkloadParam}%</span></span>
-                <span className="text-success text-[13px] font-medium">Constraint active</span>
-              </div>
-              <input
-                type="range"
-                min="50"
-                max="100"
-                value={heroWorkloadParam}
-                onChange={e => setHeroWorkloadParam(Number(e.target.value))}
-                className="w-full h-2 cursor-pointer"
-              />
-            </div>
-
-            <button
-              onClick={() => {
-                setHeroTestRunning(true);
-                setTimeout(() => {
-                  setHeroTestRunning(false);
-                  setHeroTestSuccess(true);
-                  setTimeout(() => setHeroTestSuccess(false), 3000);
-                }, 600);
-              }}
-              disabled={heroTestRunning}
-              className="h-[38px] px-4 rounded-md border border-border bg-surface hover:bg-subtle text-primary text-[14px] font-medium flex items-center gap-2 transition-colors cursor-pointer shrink-0"
+            {/* Hero Visual Anchor: Interactive Live Class Timetable Preview */}
+            <motion.div
+              initial={shouldReduceMotion ? false : { opacity: 0, y: 28 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.65, delay: 0.12, ease: [0.16, 1, 0.3, 1] }}
+              className="bg-white border border-[#E4E2DA] rounded-2xl overflow-hidden shadow-xs"
             >
-              <Cpu className={`w-4 h-4 text-secondary ${heroTestRunning ? 'animate-spin text-brand' : ''}`} />
-              <span>{heroTestRunning ? 'Evaluating...' : heroTestSuccess ? 'Parity verified ✓' : 'Run constraint test'}</span>
-            </button>
-          </div>
-
-          {/* The Three Pillars (Compact 3-Card Grid) */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-            <div 
-              onClick={() => scrollTo('student-voice')}
-              className="p-5 rounded-lg border border-border bg-surface hover:bg-subtle text-left transition-colors cursor-pointer group flex flex-col justify-between"
-            >
-              <div>
-                <div className="flex items-center justify-between mb-3">
-                  <Activity className="w-5 h-5 text-secondary group-hover:text-brand" />
-                  <span className="text-[13px] text-success font-medium">92.8% fit</span>
+              {/* Preview Window Top Bar */}
+              <div className="px-4 sm:px-6 py-3.5 bg-[#171717] text-white flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-white/25" />
+                    <span className="w-2.5 h-2.5 rounded-full bg-white/25" />
+                    <span className="w-2.5 h-2.5 rounded-full bg-white/25" />
+                  </div>
+                  <span className="text-xs font-mono-tabular text-white/90 font-medium">
+                    Class Section Timetable — {activeDemoGroup?.code} ({activeDemoGroup?.name})
+                  </span>
                 </div>
-                <h3 className="text-base font-semibold text-primary">Student preference weighting</h3>
-                <p className="text-[14px] text-secondary mt-1.5 leading-relaxed">
-                  Integrates commute buffers and circadian learning peaks into solver cost functions.
-                </p>
-              </div>
-              <span className="text-[14px] text-brand font-medium mt-4">Configure preferences →</span>
-            </div>
 
-            <div 
-              onClick={() => scrollTo('adaptive-engine')}
-              className="p-5 rounded-lg border border-border bg-surface hover:bg-subtle text-left transition-colors cursor-pointer group flex flex-col justify-between"
-            >
-              <div>
-                <div className="flex items-center justify-between mb-3">
-                  <ShieldCheck className="w-5 h-5 text-secondary group-hover:text-brand" />
-                  <span className="text-[13px] text-success font-medium">0 clashes</span>
+                {/* Quick Section Switcher inside the Hero Preview */}
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-[11px] text-white/60 mr-1 hidden md:inline">
+                    Switch section:
+                  </span>
+                  {fallbackGroups.map(grp => {
+                    const active = grp.id === activeDemoGroup?.id;
+                    return (
+                      <button
+                        key={grp.id}
+                        type="button"
+                        onClick={() => setActiveDemoGroupId(grp.id)}
+                        className={`px-2.5 py-1 rounded-lg text-[11px] font-mono-tabular transition-colors cursor-pointer ${
+                          active
+                            ? 'bg-[#B7F77C] text-[#171717] font-bold'
+                            : 'bg-[#292929] text-white/80 hover:text-white'
+                        }`}
+                      >
+                        {grp.code}
+                      </button>
+                    );
+                  })}
                 </div>
-                <h3 className="text-base font-semibold text-primary">Conflict arbitration</h3>
-                <p className="text-[14px] text-secondary mt-1.5 leading-relaxed">
-                  Collision-free room, instructor, and lab allocation via high-order polynomial constraint satisfaction.
-                </p>
               </div>
-              <span className="text-[14px] text-brand font-medium mt-4">Test arbitration →</span>
-            </div>
 
-            <div 
-              onClick={() => scrollTo('matrix-preview')}
-              className="p-5 rounded-lg border border-border bg-surface hover:bg-subtle text-left transition-colors cursor-pointer group flex flex-col justify-between"
-            >
-              <div>
-                <div className="flex items-center justify-between mb-3">
-                  <Zap className="w-5 h-5 text-secondary group-hover:text-brand" />
-                  <span className="text-[13px] text-secondary font-medium">98.4% util</span>
-                </div>
-                <h3 className="text-base font-semibold text-primary">Campus analytics</h3>
-                <p className="text-[14px] text-secondary mt-1.5 leading-relaxed">
-                  Calculates room utilization density and powers down dormant buildings by late afternoon.
-                </p>
+              {/* Compact Zero-Scroll 5-Day Timetable Matrix */}
+              <div className="p-3 sm:p-5 overflow-x-auto">
+                <table className="w-full table-fixed border-collapse text-left min-w-[680px]">
+                  <colgroup>
+                    <col className="w-[13%]" />
+                    {previewDays.map(d => (
+                      <col key={d} className="w-[17.4%]" />
+                    ))}
+                  </colgroup>
+                  <thead>
+                    <tr className="border-b border-[#E4E2DA] bg-[#F7F6EF]">
+                      <th className="py-2 px-2.5 text-[11px] font-semibold text-[#77766F]">
+                        Time Slot
+                      </th>
+                      {previewDays.map(day => (
+                        <th
+                          key={day}
+                          className="py-2 px-2.5 text-xs font-serif-editorial text-[#171717] border-l border-[#E4E2DA] text-center"
+                        >
+                          {day === 'Fri' ? 'Fri (PM 2:30)' : day}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#E4E2DA]">
+                    {UNIVERSITY_SLOTS.map(slotMeta => {
+                      const time = slotMeta.period;
+                      const isFirstAfternoon = slotMeta.slotNumber === 5;
+
+                      return (
+                        <React.Fragment key={slotMeta.slotNumber}>
+                          {isFirstAfternoon && (
+                            <tr className="bg-[#F7F6EF] border-y border-[#E4E2DA]">
+                              <td className="py-1.5 px-2.5 border-r border-[#E4E2DA] bg-[#E8D36B]/40 text-center">
+                                <div className="text-[10.5px] font-mono-tabular font-bold text-[#171717]">
+                                  1:00 – 2:00 PM
+                                </div>
+                              </td>
+                              <td
+                                colSpan={previewDays.length}
+                                className="py-1.5 px-3 text-center text-[11px] font-medium text-[#171717]"
+                              >
+                                <span className="inline-flex items-center gap-1.5">
+                                  <Coffee className="w-3.5 h-3.5 text-[#171717]" />
+                                  <span>
+                                    Fixed University Lunch & Prayer Break (1:00 PM – 2:00 PM)
+                                  </span>
+                                </span>
+                              </td>
+                            </tr>
+                          )}
+
+                          <tr>
+                            <td className="py-1.5 px-2.5 text-[10.5px] font-mono-tabular bg-[#F7F6EF]/50 text-center align-middle">
+                              <div className="font-semibold text-[#171717] leading-tight">
+                                {slotMeta.period.replace(' AM', '').replace(' PM', '')}
+                              </div>
+                              <div className="text-[9.5px] text-[#77766F]">
+                                Slot {slotMeta.slotNumber}
+                              </div>
+                            </td>
+
+                            {previewDays.map(day => {
+                              const cellKey = `${day}__${slotMeta.slotNumber}`;
+                              if (skippedCells.has(cellKey)) return null;
+
+                              const labSpanInfo = labSpanByCell.get(cellKey);
+                              if (labSpanInfo) {
+                                const { labItem, continuousWindow } = labSpanInfo;
+                                const pastel = getCoursePastel(labItem.code);
+                                return (
+                                  <td
+                                    key={day}
+                                    rowSpan={3}
+                                    className="p-1 border-l border-[#E4E2DA] align-stretch bg-white"
+                                  >
+                                    <div
+                                      onClick={() => setSelectedClass(labItem)}
+                                      style={{
+                                        backgroundColor: pastel.bg,
+                                        borderColor: pastel.border
+                                      }}
+                                      className="h-full p-2 rounded-xl border text-[#171717] flex flex-col items-center justify-center text-center gap-1 cursor-pointer hover:-translate-y-0.5 transition-transform"
+                                    >
+                                      <div className="text-[9.5px] font-mono-tabular font-bold px-1.5 py-0.5 rounded bg-white/80">
+                                        {labItem.code} · LAB 3H
+                                      </div>
+                                      <div className="font-serif-editorial text-xs font-semibold leading-snug line-clamp-2">
+                                        {labItem.title}
+                                      </div>
+                                      <div className="text-[10px] text-[#171717]/80 pt-1 border-t border-black/10 w-full">
+                                        <div className="truncate">{labItem.prof}</div>
+                                        <div className="font-mono-tabular font-semibold truncate">
+                                          {labItem.room} · {continuousWindow}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </td>
+                                );
+                              }
+
+                              const cellClasses = (scheduleData[time]?.[day] || []).filter(
+                                c => c.studentGroupId === activeDemoGroup?.id
+                              );
+                              const cls = cellClasses[0];
+
+                              return (
+                                <td
+                                  key={day}
+                                  className="p-1 border-l border-[#E4E2DA] align-middle"
+                                >
+                                  {cls ? (
+                                    <div
+                                      onClick={() => setSelectedClass(cls)}
+                                      style={{
+                                        backgroundColor: getCoursePastel(cls.code).bg,
+                                        borderColor: getCoursePastel(cls.code).border
+                                      }}
+                                      className="px-2 py-1.5 rounded-xl border text-[#171717] flex flex-col items-center justify-center text-center gap-0.5 cursor-pointer hover:-translate-y-0.5 transition-transform"
+                                    >
+                                      <div className="font-semibold text-[11px] leading-tight truncate w-full">
+                                        {cls.title}
+                                      </div>
+                                      <div className="text-[9.5px] font-mono-tabular font-bold text-[#171717]/75">
+                                        {cls.code}
+                                      </div>
+                                      <div className="text-[9.5px] text-[#171717]/80 pt-0.5 border-t border-black/10 w-full truncate">
+                                        {cls.prof} · <span className="font-mono-tabular font-semibold">{cls.room}</span>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <div className="h-11" />
+                                  )}
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        </React.Fragment>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
-              <span className="text-[14px] text-brand font-medium mt-4">View matrix →</span>
-            </div>
+
+              {/* Subtle Footer Caption inside Preview */}
+              <div className="px-4 sm:px-6 py-3 bg-[#F7F6EF] border-t border-[#E4E2DA] flex flex-wrap items-center justify-between gap-2 text-xs text-[#77766F]">
+                <span>
+                  Live preview of <strong className="text-[#171717]">{activeDemoGroup?.code}</strong> ({activeDemoDept?.name || 'Engineering & Computing'}) · Click any course block to inspect details
+                </span>
+                <span className="font-mono-tabular text-[#171717] font-medium">
+                  0 Clashes · 50m Lectures · 3h Continuous Labs
+                </span>
+              </div>
+            </motion.div>
           </div>
         </section>
 
-        {/* ================= SECTION: OPTIMIZATION (ADAPTIVE ENGINE) ================= */}
-        <section id="adaptive-engine" className="scroll-mt-16 space-y-6">
-          <div className="pb-4 border-b border-border">
-            <h2 className="text-2xl font-semibold text-primary">Optimization architecture</h2>
-            <p className="text-[15px] text-secondary mt-1">
-              High-order polynomial constraint satisfaction engine and genetic algorithm
-            </p>
-          </div>
-
-          {/* 4-Stage Pipeline in a Single Bordered Box */}
-          <div className="bg-surface border border-border rounded-lg grid grid-cols-1 md:grid-cols-4 divide-y md:divide-y-0 md:divide-x divide-border">
-            <div className="p-5 sm:p-6 space-y-1.5">
-              <div className="text-[14px] font-mono font-medium text-brand">01</div>
-              <h3 className="text-[15px] font-semibold text-primary">Hard SAT boundaries</h3>
-              <p className="text-[14px] text-secondary leading-relaxed">
-                Zero-tolerance bounding: instructor non-overlap and room capacity caps.
-              </p>
-            </div>
-
-            <div className="p-5 sm:p-6 space-y-1.5">
-              <div className="text-[14px] font-mono font-medium text-brand">02</div>
-              <h3 className="text-[15px] font-semibold text-primary">Circadian chrono-map</h3>
-              <p className="text-[14px] text-secondary leading-relaxed">
-                Weights high-cognition courses against student alertness curves.
-              </p>
-            </div>
-
-            <div className="p-5 sm:p-6 space-y-1.5">
-              <div className="text-[14px] font-mono font-medium text-brand">03</div>
-              <h3 className="text-[15px] font-semibold text-primary">Genetic permutations</h3>
-              <p className="text-[14px] text-secondary leading-relaxed">
-                Multi-threaded chromosome crossover evaluated at 1.24 ms per epoch.
-              </p>
-            </div>
-
-            <div className="p-5 sm:p-6 space-y-1.5">
-              <div className="text-[14px] font-mono font-medium text-brand">04</div>
-              <h3 className="text-[15px] font-semibold text-primary">Equilibrium matrix</h3>
-              <p className="text-[14px] text-secondary leading-relaxed">
-                Zero hard conflicts locked with instant LMS calendar synchronization.
-              </p>
-            </div>
-          </div>
-
-          {/* Simulator & Conflict Arbitration */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-            {/* Genetic Convergence Simulator */}
-            <div className="lg:col-span-7 bg-surface border border-border rounded-lg p-6 space-y-5">
-              <div className="flex items-center justify-between border-b border-border pb-4">
-                <h3 className="text-base font-semibold text-primary">Convergence simulator</h3>
-                <button 
-                  onClick={() => setIsRunningSim(!isRunningSim)}
-                  className={`h-[38px] px-3.5 rounded-md text-[14px] font-medium transition-colors shadow-xs flex items-center gap-2 cursor-pointer ${
-                    isRunningSim ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : 'bg-brand hover:bg-brand-hover text-white'
-                  }`}
-                >
-                  {isRunningSim ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4 fill-white" />}
-                  <span>{isRunningSim ? 'Simulating' : 'Start simulation'}</span>
-                </button>
-              </div>
-
-              <div className="grid grid-cols-3 divide-x divide-border border border-border rounded-lg bg-surface text-center">
-                <div className="p-4">
-                  <div className="text-[32px] font-semibold font-mono text-primary tabular-nums">{generation}</div>
-                  <div className="text-[13px] text-secondary mt-0.5">Generation epoch</div>
+        {/* ===================================================================
+            SECTION 2 — THE PROBLEM (WHY MANUAL SCHEDULING BREAKS)
+           =================================================================== */}
+        <section id="problem" className="py-24 sm:py-32 px-4 sm:px-8 border-t border-[#E4E2DA]">
+          <div className="max-w-[1200px] mx-auto">
+            <RevealSection className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-16 items-center">
+              {/* Left Column: Focused Narrative */}
+              <div className="lg:col-span-5 space-y-6">
+                <div className="text-xs font-mono-tabular text-[#77766F]">
+                  01 · The Scheduling Bottleneck
                 </div>
-                <div className="p-4">
-                  <div className="text-[32px] font-semibold font-mono text-success tabular-nums">{fitnessScore}%</div>
-                  <div className="text-[13px] text-secondary mt-0.5">Pareto fitness</div>
-                </div>
-                <div className="p-4">
-                  <div className="text-[32px] font-semibold font-mono text-primary tabular-nums">{activeChromosomes}</div>
-                  <div className="text-[13px] text-secondary mt-0.5">Parallel nodes</div>
-                </div>
-              </div>
 
-              <div className="space-y-2 pt-1">
-                <div className="flex justify-between text-[14px]">
-                  <span className="text-primary font-medium">Mutation probability:</span>
-                  <span className="font-mono text-primary font-medium">{(mutationRate * 100).toFixed(1)}%</span>
-                </div>
-                <input 
-                  type="range" min="1" max="15" value={mutationRate * 100} 
-                  onChange={e => setMutationRate(Number(e.target.value) / 100)}
-                  className="w-full h-2 cursor-pointer"
-                />
-              </div>
-            </div>
+                <h2 className="font-serif-editorial text-3xl sm:text-4xl lg:text-[42px] text-[#171717] leading-[1.12] tracking-tight text-balance">
+                  Forty-five class sections. Shared labs. Zero room for error.
+                </h2>
 
-            {/* Conflict Arbitration Bench */}
-            <div className="lg:col-span-5 bg-surface border border-border rounded-lg p-6 space-y-5">
-              <div className="border-b border-border pb-4">
-                <h3 className="text-base font-semibold text-primary">Stress test bench</h3>
-                <p className="text-[13px] text-secondary mt-0.5">Inject live faults to observe automatic arbitration</p>
-              </div>
+                <p className="text-base text-[#77766F] leading-relaxed">
+                  Building a university timetable by hand in spreadsheets means juggling hundreds of interdependent constraints. Moving a single three-hour laboratory session triggers a chain reaction of instructor double-bookings, split lunch hours, and overcrowded lecture halls.
+                </p>
 
-              <div className="space-y-2.5">
-                <button
-                  onClick={() => handleResolveConflict('prof_overlap')}
-                  disabled={resolvingConflict}
-                  className="w-full text-left p-3.5 rounded-md border border-border hover:bg-subtle transition-colors text-[14px] cursor-pointer flex items-center justify-between"
-                >
-                  <div>
-                    <div className="font-medium text-primary">Fault 01: Faculty double-book</div>
-                    <div className="text-[13px] text-secondary mt-0.5">Instructor assigned to two rooms at once</div>
+                <div className="pt-2 space-y-3 border-t border-[#E4E2DA] text-sm text-[#171717]">
+                  <div className="flex items-baseline justify-between py-1">
+                    <span className="text-[#77766F]">Active degree cohorts scheduled simultaneously</span>
+                    <span className="font-mono-tabular font-semibold">{store.studentGroups.length} Sections</span>
                   </div>
-                  <span className="text-[13px] text-brand font-medium">Inject</span>
-                </button>
-
-                <button
-                  onClick={() => handleResolveConflict('room_surge')}
-                  disabled={resolvingConflict}
-                  className="w-full text-left p-3.5 rounded-md border border-border hover:bg-subtle transition-colors text-[14px] cursor-pointer flex items-center justify-between"
-                >
-                  <div>
-                    <div className="font-medium text-primary">Fault 02: Sudden capacity surge</div>
-                    <div className="text-[13px] text-secondary mt-0.5">Enrollment exceeds physical room seats</div>
+                  <div className="flex items-baseline justify-between py-1 border-t border-[#E4E2DA]/70">
+                    <span className="text-[#77766F]">Continuous laboratory duration required</span>
+                    <span className="font-mono-tabular font-semibold">180 Mins (3 Slots)</span>
                   </div>
-                  <span className="text-[13px] text-brand font-medium">Inject</span>
-                </button>
+                  <div className="flex items-baseline justify-between py-1 border-t border-[#E4E2DA]/70">
+                    <span className="text-[#77766F]">Permitted faculty or room collisions</span>
+                    <span className="font-mono-tabular font-semibold">0 Overlaps</span>
+                  </div>
+                </div>
               </div>
 
-              {/* Console Log */}
-              <div className="bg-subtle text-primary rounded-md p-3.5 font-mono text-[13px] space-y-1.5 h-36 overflow-y-auto border border-border leading-relaxed">
-                {resolutionLog.length === 0 ? (
-                  <div className="text-secondary">Ready. Select a simulated fault above to trigger solver.</div>
-                ) : (
-                  resolutionLog.map((log, i) => (
-                    <div key={i} className={log.includes('restored') ? 'text-success font-medium' : 'text-primary'}>
-                      {log}
+              {/* Right Column: Single Visual Focal Comparison */}
+              <div className="lg:col-span-7">
+                <div className="bg-white border border-[#E4E2DA] rounded-2xl p-6 sm:p-8 space-y-6">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-5 border-b border-[#E4E2DA]">
+                    <div>
+                      <h3 className="font-serif-editorial text-xl text-[#171717]">
+                        {problemView === 'conflict'
+                          ? 'Manual Spreadsheet Failure Modes'
+                          : 'SmartGrid Automated Resolution'}
+                      </h3>
+                      <p className="text-xs text-[#77766F] mt-0.5">
+                        Compare typical manual scheduling collisions with constraint-verified output
+                      </p>
                     </div>
-                  ))
-                )}
+
+                    <div className="inline-flex p-1 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] self-start">
+                      <button
+                        type="button"
+                        onClick={() => setProblemView('conflict')}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
+                          problemView === 'conflict'
+                            ? 'bg-[#171717] text-white'
+                            : 'text-[#77766F] hover:text-[#171717]'
+                        }`}
+                      >
+                        Manual Conflicts
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setProblemView('resolved')}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
+                          problemView === 'resolved'
+                            ? 'bg-[#171717] text-white'
+                            : 'text-[#77766F] hover:text-[#171717]'
+                        }`}
+                      >
+                        SmartGrid Solved
+                      </button>
+                    </div>
+                  </div>
+
+                  <AnimatePresence mode="wait">
+                    {problemView === 'conflict' ? (
+                      <motion.div
+                        key="conflict"
+                        initial={{ opacity: 0, y: 8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -8 }}
+                        transition={{ duration: 0.2 }}
+                        className="space-y-3.5"
+                      >
+                        <div className="p-4 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] flex items-start justify-between gap-4">
+                          <div className="space-y-1">
+                            <div className="text-xs font-mono-tabular font-semibold text-[#171717] flex items-center gap-2">
+                              <AlertTriangle className="w-4 h-4 text-[#171717]" />
+                              <span>Collision 01 · Instructor Double-Booked (Tue 10:00 AM)</span>
+                            </div>
+                            <p className="text-xs text-[#77766F]">
+                              Dr. Kamran Munir assigned simultaneously to <strong className="text-[#171717]">2K24-BEE-A (LH-101)</strong> and <strong className="text-[#171717]">2K24-BEE-B (LH-102)</strong> during Slot 2.
+                            </p>
+                          </div>
+                          <span className="text-xs font-mono-tabular font-semibold text-[#171717] shrink-0">
+                            Clash
+                          </span>
+                        </div>
+
+                        <div className="p-4 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] flex items-start justify-between gap-4">
+                          <div className="space-y-1">
+                            <div className="text-xs font-mono-tabular font-semibold text-[#171717] flex items-center gap-2">
+                              <AlertTriangle className="w-4 h-4 text-[#171717]" />
+                              <span>Collision 02 · 3-Hour Lab Broken Across Lunch (Wed 12:00 PM)</span>
+                            </div>
+                            <p className="text-xs text-[#77766F]">
+                              Digital Logic Design Lab started at Slot 4 (12:00 PM), colliding directly with the fixed <strong className="text-[#171717]">1:00 – 2:00 PM University Lunch Break</strong>.
+                            </p>
+                          </div>
+                          <span className="text-xs font-mono-tabular font-semibold text-[#171717] shrink-0">
+                            Invalid Window
+                          </span>
+                        </div>
+
+                        <div className="p-4 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] flex items-start justify-between gap-4">
+                          <div className="space-y-1">
+                            <div className="text-xs font-mono-tabular font-semibold text-[#171717] flex items-center gap-2">
+                              <AlertTriangle className="w-4 h-4 text-[#171717]" />
+                              <span>Collision 03 · Shared Laboratory Overwrite (Thu 2:00 PM)</span>
+                            </div>
+                            <p className="text-xs text-[#77766F]">
+                              Two sections (<strong className="text-[#171717]">2K25-BSCS-A</strong> and <strong className="text-[#171717]">2K25-BSCS-B</strong>) scheduled into Programming Lab 1 at the same time.
+                            </p>
+                          </div>
+                          <span className="text-xs font-mono-tabular font-semibold text-[#171717] shrink-0">
+                            Room Overlap
+                          </span>
+                        </div>
+                      </motion.div>
+                    ) : (
+                      <motion.div
+                        key="resolved"
+                        initial={{ opacity: 0, y: 8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -8 }}
+                        transition={{ duration: 0.2 }}
+                        className="space-y-3.5"
+                      >
+                        <div className="p-4 rounded-xl bg-[#B8F2E6]/55 border border-[#93DEC9] flex items-start justify-between gap-4">
+                          <div className="space-y-1">
+                            <div className="text-xs font-mono-tabular font-semibold text-[#171717] flex items-center gap-2">
+                              <CheckCircle2 className="w-4 h-4 text-[#171717]" />
+                              <span>Verified · Faculty Assignments Staggered Across Slots 1–4</span>
+                            </div>
+                            <p className="text-xs text-[#171717]/80">
+                              Dr. Kamran Munir teaches <strong>2K24-BEE-A</strong> at 9:00 AM and <strong>2K24-BEE-B</strong> at 10:00 AM with a 10-minute transition buffer.
+                            </p>
+                          </div>
+                          <span className="text-xs font-mono-tabular font-semibold text-[#171717] shrink-0">
+                            0 Clashes
+                          </span>
+                        </div>
+
+                        <div className="p-4 rounded-xl bg-[#B8EEEE]/60 border border-[#95DFDF] flex items-start justify-between gap-4">
+                          <div className="space-y-1">
+                            <div className="text-xs font-mono-tabular font-semibold text-[#171717] flex items-center gap-2">
+                              <CheckCircle2 className="w-4 h-4 text-[#171717]" />
+                              <span>Verified · Continuous 3-Hour Lab Blocks Locked</span>
+                            </div>
+                            <p className="text-xs text-[#171717]/80">
+                              All 180-minute labs are placed strictly in valid continuous windows (<strong>9:00–11:50 AM</strong>, <strong>10:00–12:50 PM</strong>, or <strong>2:00–4:50 PM</strong>), never crossing 1:00 PM lunch.
+                            </p>
+                          </div>
+                          <span className="text-xs font-mono-tabular font-semibold text-[#171717] shrink-0">
+                            3h Continuous
+                          </span>
+                        </div>
+
+                        <div className="p-4 rounded-xl bg-[#B7F77C]/55 border border-[#98DF58] flex items-start justify-between gap-4">
+                          <div className="space-y-1">
+                            <div className="text-xs font-mono-tabular font-semibold text-[#171717] flex items-center gap-2">
+                              <CheckCircle2 className="w-4 h-4 text-[#171717]" />
+                              <span>Verified · Dedicated Room & Lab Isolation</span>
+                            </div>
+                            <p className="text-xs text-[#171717]/80">
+                              Every lecture hall and specialized engineering lab is uniquely locked per time slot across all {store.studentGroups.length} university sections.
+                            </p>
+                          </div>
+                          <span className="text-xs font-mono-tabular font-semibold text-[#171717] shrink-0">
+                            100% Isolated
+                          </span>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
               </div>
+            </RevealSection>
+          </div>
+        </section>
+
+        {/* ===================================================================
+            SECTION 3 — THE SOLUTION (INTERACTIVE PRODUCT DEMONSTRATION)
+           =================================================================== */}
+        <section id="solution" className="py-24 sm:py-32 px-4 sm:px-8 bg-white border-t border-[#E4E2DA]">
+          <div className="max-w-[1200px] mx-auto space-y-12">
+            <RevealSection className="max-w-3xl mx-auto text-center space-y-4">
+              <div className="text-xs font-mono-tabular text-[#77766F]">
+                02 · The SmartGrid AI Solution
+              </div>
+
+              <h2 className="font-serif-editorial text-3xl sm:text-4xl lg:text-[44px] text-[#171717] leading-[1.1] tracking-tight text-balance">
+                One intelligent solver for the entire university—and a dedicated timetable for every class.
+              </h2>
+
+              <p className="text-base text-[#77766F] leading-relaxed">
+                Explore how SmartGrid AI organizes courses, instructors, rooms, and continuous 3-hour labs for individual sections across Electrical, Computer, Software Engineering, and Computer Science.
+              </p>
+            </RevealSection>
+
+            {/* Interactive Demonstration Container */}
+            <RevealSection
+              delay={0.08}
+              className="rounded-2xl border border-[#E4E2DA] bg-[#F7F6EF] p-5 sm:p-8 space-y-6"
+            >
+              {/* Top Controls Bar */}
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-5 border-b border-[#E4E2DA]">
+                <div className="space-y-1">
+                  <div className="text-xs text-[#77766F] font-medium">
+                    Select a University Class / Section to Inspect:
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 pt-1">
+                    {store.departments.map(dept => {
+                      const deptGroups = store.studentGroups.filter(g => {
+                        const p = store.programs.find(pr => pr.id === g.programId);
+                        return p?.departmentId === dept.id;
+                      });
+                      const sampleGrp = deptGroups[0];
+                      if (!sampleGrp) return null;
+                      const isSelected = activeDemoDept?.id === dept.id;
+                      return (
+                        <button
+                          key={dept.id}
+                          type="button"
+                          onClick={() => setActiveDemoGroupId(sampleGrp.id)}
+                          className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                            isSelected
+                              ? 'bg-[#171717] text-white'
+                              : 'bg-white text-[#171717] border border-[#E4E2DA] hover:border-[#171717]'
+                          }`}
+                        >
+                          {dept.code} · {sampleGrp.code}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={handleRunDemoOptimization}
+                    disabled={isOptimizingDemo}
+                    className="btn-secondary bg-white h-10 px-4 text-xs"
+                  >
+                    <Sparkles className={`w-3.5 h-3.5 ${isOptimizingDemo ? 'animate-spin' : ''}`} />
+                    <span>
+                      {isOptimizingDemo
+                        ? 'Verifying Constraints...'
+                        : demoOptimized
+                        ? 'Verified: 0 Clashes ✓'
+                        : 'Verify Section Constraints'}
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleDownloadSampleSheets}
+                    disabled={isExportingSample}
+                    className="h-10 px-4 rounded-xl bg-[#B7F77C] hover:bg-[#a6ec68] border border-[#98DF58] text-[#171717] text-xs font-semibold inline-flex items-center gap-2 transition-colors cursor-pointer"
+                  >
+                    <FileSpreadsheet className="w-4 h-4" />
+                    <span>
+                      {isExportingSample
+                        ? 'Preparing .xlsx...'
+                        : `Download ${activeDemoGroup?.code} Google Sheet (.xlsx)`}
+                    </span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Section Summary & Assigned Courses Showcase */}
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+                <div className="lg:col-span-4 bg-white border border-[#E4E2DA] rounded-2xl p-5 space-y-4">
+                  <div>
+                    <div className="text-xs font-mono-tabular text-[#77766F]">
+                      Active Cohort Profile
+                    </div>
+                    <h3 className="font-serif-editorial text-2xl text-[#171717] mt-0.5">
+                      {activeDemoGroup?.code}
+                    </h3>
+                    <p className="text-xs text-[#77766F] mt-0.5">
+                      {activeDemoGroup?.name}
+                    </p>
+                  </div>
+
+                  <div className="space-y-2.5 pt-3 border-t border-[#E4E2DA] text-xs">
+                    <div className="flex justify-between">
+                      <span className="text-[#77766F]">Department</span>
+                      <span className="font-semibold text-[#171717]">
+                        {activeDemoDept?.name || 'Engineering'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-[#77766F]">Designated Home Room</span>
+                      <span className="font-mono-tabular font-semibold text-[#171717]">
+                        {activeDemoGroup?.homeRoom || 'LH-101'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-[#77766F]">Operating Window</span>
+                      <span className="font-mono-tabular text-[#171717]">09:00 AM – 05:00 PM</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-[#77766F]">Fixed Lunch Break</span>
+                      <span className="font-mono-tabular text-[#171717]">01:00 PM – 02:00 PM</span>
+                    </div>
+                  </div>
+
+                  <div className="pt-2">
+                    <button
+                      type="button"
+                      onClick={() => onOpenAuth('signup')}
+                      className="btn-primary w-full h-10 text-xs"
+                    >
+                      <span>Open Full Interactive Timetable</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Assigned Courses & Continuous Labs for this Section */}
+                <div className="lg:col-span-8 bg-white border border-[#E4E2DA] rounded-2xl p-5 space-y-4">
+                  <div className="flex items-center justify-between border-b border-[#E4E2DA] pb-3">
+                    <div>
+                      <h4 className="font-serif-editorial text-lg text-[#171717]">
+                        Scheduled Lectures & 3-Hour Laboratories for {activeDemoGroup?.code}
+                      </h4>
+                      <p className="text-xs text-[#77766F]">
+                        Every session below is isolated from other cohorts and matched to instructor and room capacity
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {previewDays
+                      .flatMap(day =>
+                        UNIVERSITY_SLOTS.flatMap(slotMeta =>
+                          (scheduleData[slotMeta.period]?.[day] || [])
+                            .filter(c => c.studentGroupId === activeDemoGroup?.id)
+                            .map(cls => ({ cls, day, slotMeta }))
+                        )
+                      )
+                      .slice(0, 6)
+                      .map(({ cls, day, slotMeta }) => {
+                        const isLab = cls.sessionType === 'Lab' || cls.spanSlots === 3;
+                        const pastel = getCoursePastel(cls.code);
+                        const timeLabel = isLab
+                          ? cls.continuousTimeLabel ||
+                            getLabBlockByStartPeriod(slotMeta.period)?.continuousLabel ||
+                            slotMeta.period
+                          : slotMeta.period;
+                        return (
+                          <div
+                            key={`${day}-${slotMeta.slotNumber}-${cls.id}`}
+                            onClick={() => setSelectedClass(cls)}
+                            style={{ backgroundColor: pastel.bg, borderColor: pastel.border }}
+                            className="p-3.5 rounded-xl border text-[#171717] cursor-pointer hover:-translate-y-0.5 transition-transform space-y-1.5"
+                          >
+                            <div className="flex items-center justify-between text-[11px] font-mono-tabular">
+                              <span className="font-bold">
+                                {cls.code} · {isLab ? 'LAB (3H)' : 'LECTURE (50M)'}
+                              </span>
+                              <span>
+                                {day} · {timeLabel}
+                              </span>
+                            </div>
+                            <div className="font-serif-editorial text-sm font-semibold leading-snug truncate">
+                              {cls.title}
+                            </div>
+                            <div className="text-[11px] text-[#171717]/80 flex items-center justify-between pt-1 border-t border-black/10">
+                              <span className="truncate">{cls.prof}</span>
+                              <span className="font-mono-tabular font-semibold">{cls.room}</span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                  </div>
+                </div>
+              </div>
+            </RevealSection>
+          </div>
+        </section>
+
+        {/* ===================================================================
+            SECTION 4 — KEY CAPABILITIES (ASYMMETRIC EDITORIAL BENTO)
+           =================================================================== */}
+        <section id="capabilities" className="py-24 sm:py-32 px-4 sm:px-8 border-t border-[#E4E2DA]">
+          <div className="max-w-[1200px] mx-auto space-y-14">
+            <RevealSection className="max-w-2xl space-y-4">
+              <div className="text-xs font-mono-tabular text-[#77766F]">
+                03 · Core Capabilities
+              </div>
+
+              <h2 className="font-serif-editorial text-3xl sm:text-4xl lg:text-[42px] text-[#171717] leading-[1.1] tracking-tight text-balance">
+                Purpose-built around the real structure of university academics.
+              </h2>
+            </RevealSection>
+
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+              {/* Capability 1: Span 7 */}
+              <RevealSection className="lg:col-span-7 bg-white border border-[#E4E2DA] rounded-2xl p-7 sm:p-9 flex flex-col justify-between space-y-6">
+                <div className="space-y-3">
+                  <div className="text-xs font-mono-tabular text-[#77766F]">
+                    01 · Combinatorial Constraint Engine
+                  </div>
+                  <h3 className="font-serif-editorial text-2xl sm:text-3xl text-[#171717]">
+                    Conflict-free room, faculty, and section allocation
+                  </h3>
+                  <p className="text-sm sm:text-base text-[#77766F] leading-relaxed">
+                    SmartGrid AI evaluates room seating capacities, specialized laboratory requirements, instructor teaching windows, and cohort schedules simultaneously—preventing double-bookings before they happen.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-3 gap-3 pt-4 border-t border-[#E4E2DA] text-left">
+                  <div>
+                    <div className="font-mono-tabular text-xl sm:text-2xl font-semibold text-[#171717]">
+                      {store.studentGroups.length}
+                    </div>
+                    <div className="text-xs text-[#77766F] mt-0.5">Class Sections</div>
+                  </div>
+                  <div>
+                    <div className="font-mono-tabular text-xl sm:text-2xl font-semibold text-[#171717]">
+                      {store.rooms.length}
+                    </div>
+                    <div className="text-xs text-[#77766F] mt-0.5">Halls & Labs</div>
+                  </div>
+                  <div>
+                    <div className="font-mono-tabular text-xl sm:text-2xl font-semibold text-[#171717]">
+                      0
+                    </div>
+                    <div className="text-xs text-[#77766F] mt-0.5">Hard Overlaps</div>
+                  </div>
+                </div>
+              </RevealSection>
+
+              {/* Capability 2: Span 5 */}
+              <RevealSection
+                delay={0.08}
+                className="lg:col-span-5 sf-pastel-cyan p-7 sm:p-9 flex flex-col justify-between space-y-6"
+              >
+                <div className="space-y-3">
+                  <div className="text-xs font-mono-tabular text-[#171717]/75">
+                    02 · Laboratory Continuity
+                  </div>
+                  <h3 className="font-serif-editorial text-2xl sm:text-3xl text-[#171717]">
+                    Uninterrupted three-hour laboratory blocks
+                  </h3>
+                  <p className="text-sm sm:text-base text-[#171717]/80 leading-relaxed">
+                    Engineering and computing labs require three consecutive hours. SmartGrid schedules 180-minute lab blocks across three contiguous slots without internal breaks and never splits a lab across the 1:00–2:00 PM lunch hour.
+                  </p>
+                </div>
+
+                <div className="p-3.5 rounded-xl bg-white/80 border border-black/10 text-xs font-mono-tabular text-[#171717] flex items-center justify-between">
+                  <span>Valid Lab Windows:</span>
+                  <span className="font-bold">09:00–11:50 · 10:00–12:50 · 14:00–16:50</span>
+                </div>
+              </RevealSection>
+
+              {/* Capability 3: Span 5 */}
+              <RevealSection
+                delay={0.05}
+                className="lg:col-span-5 sf-pastel-lime p-7 sm:p-9 flex flex-col justify-between space-y-6"
+              >
+                <div className="space-y-3">
+                  <div className="text-xs font-mono-tabular text-[#171717]/75">
+                    03 · Print-Ready Spreadsheets
+                  </div>
+                  <h3 className="font-serif-editorial text-2xl sm:text-3xl text-[#171717]">
+                    Compact landscape Google Sheets export
+                  </h3>
+                  <p className="text-sm sm:text-base text-[#171717]/80 leading-relaxed">
+                    Export a multi-tab `.xlsx` workbook containing a Master Weekly Overview plus a dedicated worksheet for every class section—formatted in landscape orientation to fit on a single laptop screen and printed page.
+                  </p>
+                </div>
+
+                <div className="p-3.5 rounded-xl bg-white/80 border border-black/10 text-xs font-mono-tabular text-[#171717] flex items-center justify-between">
+                  <span>Workbook Structure:</span>
+                  <span className="font-bold">1 Overview + {store.studentGroups.length} Class Tabs</span>
+                </div>
+              </RevealSection>
+
+              {/* Capability 4: Span 7 */}
+              <RevealSection
+                delay={0.12}
+                className="lg:col-span-7 bg-white border border-[#E4E2DA] rounded-2xl p-7 sm:p-9 flex flex-col justify-between space-y-6"
+              >
+                <div className="space-y-3">
+                  <div className="text-xs font-mono-tabular text-[#77766F]">
+                    04 · Institutional Rhythm & Student Wellbeing
+                  </div>
+                  <h3 className="font-serif-editorial text-2xl sm:text-3xl text-[#171717]">
+                    50-minute lectures, 10-minute transitions, and protected lunch breaks
+                  </h3>
+                  <p className="text-sm sm:text-base text-[#77766F] leading-relaxed">
+                    Respects human cognitive limits and campus transit times with four morning slots (9:00 AM – 1:00 PM), a universal 1:00 PM – 2:00 PM lunch and prayer break, and three afternoon slots with automatic Friday afternoon timing adjustments.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-3 gap-3 pt-4 border-t border-[#E4E2DA] text-left">
+                  <div>
+                    <div className="font-mono-tabular text-xl sm:text-2xl font-semibold text-[#171717]">
+                      50m + 10m
+                    </div>
+                    <div className="text-xs text-[#77766F] mt-0.5">Lecture + Short Break</div>
+                  </div>
+                  <div>
+                    <div className="font-mono-tabular text-xl sm:text-2xl font-semibold text-[#171717]">
+                      1:00 – 2:00
+                    </div>
+                    <div className="text-xs text-[#77766F] mt-0.5">Fixed Campus Lunch</div>
+                  </div>
+                  <div>
+                    <div className="font-mono-tabular text-xl sm:text-2xl font-semibold text-[#171717]">
+                      7 Columns
+                    </div>
+                    <div className="text-xs text-[#77766F] mt-0.5">Zero-Scroll Weekly Fit</div>
+                  </div>
+                </div>
+              </RevealSection>
             </div>
           </div>
         </section>
 
-        {/* ================= SECTION: STUDENT FEEDBACK ================= */}
-        <section id="student-voice" className="scroll-mt-16 space-y-6">
-          <div className="pb-4 border-b border-border">
-            <h2 className="text-2xl font-semibold text-primary">Student feedback & chronotypes</h2>
-            <p className="text-[15px] text-secondary mt-1">
-              Ingesting student transit realities, sleep curves, and verified senate referendums
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-            {/* Chronotypes Card */}
-            <div className="lg:col-span-6 bg-surface border border-border rounded-lg p-6 space-y-5">
-              <div className="border-b border-border pb-4">
-                <h3 className="text-base font-semibold text-primary">Chronotype energy optimization</h3>
-                <p className="text-[13px] text-secondary mt-0.5">Align quantitative coursework with peak alertness</p>
+        {/* ===================================================================
+            SECTION 5 — HOW IT WORKS (CONNECTED 3-STEP SEQUENCE)
+           =================================================================== */}
+        <section id="how-it-works" className="py-24 sm:py-32 px-4 sm:px-8 bg-white border-t border-[#E4E2DA]">
+          <div className="max-w-[1200px] mx-auto space-y-14">
+            <RevealSection className="max-w-2xl space-y-4">
+              <div className="text-xs font-mono-tabular text-[#77766F]">
+                04 · How It Works
               </div>
 
-              <div className="grid grid-cols-3 gap-3">
-                {[
-                  { id: 'early' as const, label: 'Morning peak', time: '08:00 - 13:00', icon: Sun },
-                  { id: 'balanced' as const, label: 'Balanced', time: '10:00 - 16:00', icon: Coffee },
-                  { id: 'evening' as const, label: 'Evening focus', time: '12:30 - 18:30', icon: Moon }
-                ].map(item => {
-                  const Icon = item.icon;
-                  const isSel = selectedChronotype === item.id;
+              <h2 className="font-serif-editorial text-3xl sm:text-4xl lg:text-[42px] text-[#171717] leading-[1.1] tracking-tight text-balance">
+                From academic catalog to published class schedules in three steps.
+              </h2>
+            </RevealSection>
+
+            <RevealSection className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch">
+              {/* Left: 3 Connected Steps */}
+              <div className="lg:col-span-6 space-y-4">
+                {howItWorksSteps.map((step, idx) => {
+                  const isActive = activeStepIndex === idx;
                   return (
                     <button
-                      key={item.id}
-                      onClick={() => setSelectedChronotype(item.id)}
-                      className={`p-3 rounded-md border text-center transition-colors cursor-pointer text-[14px] ${
-                        isSel 
-                          ? 'border-brand bg-brand/5 text-primary' 
-                          : 'border-border bg-surface hover:bg-subtle text-secondary'
+                      key={step.number}
+                      type="button"
+                      onClick={() => setActiveStepIndex(idx)}
+                      className={`w-full text-left p-6 rounded-2xl border transition-all cursor-pointer ${
+                        isActive
+                          ? 'bg-[#F7F6EF] border-[#171717]'
+                          : 'bg-white border-[#E4E2DA] hover:border-[#77766F]'
                       }`}
                     >
-                      <Icon className={`w-5 h-5 mx-auto mb-1.5 ${isSel ? 'text-brand' : 'text-secondary'}`} />
-                      <div className="font-medium text-primary">{item.label}</div>
-                      <div className="text-[13px] font-mono text-secondary mt-1">{item.time}</div>
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="space-y-2">
+                          <div className="text-xs font-mono-tabular font-bold text-[#77766F]">
+                            Step {step.number}
+                          </div>
+                          <h3 className="font-serif-editorial text-xl sm:text-2xl text-[#171717]">
+                            {step.title}
+                          </h3>
+                          <p className="text-sm text-[#77766F] leading-relaxed">
+                            {step.summary}
+                          </p>
+                        </div>
+                        <ChevronRight
+                          className={`w-5 h-5 shrink-0 mt-1 transition-transform ${
+                            isActive ? 'text-[#171717] translate-x-0.5' : 'text-[#77766F]'
+                          }`}
+                        />
+                      </div>
                     </button>
                   );
                 })}
               </div>
 
-              {/* Lunch Buffer Toggle */}
-              <div className="p-4 bg-surface rounded-md border border-border flex items-center justify-between">
-                <div>
-                  <div className="text-[14px] font-medium text-primary">Daily noon recharge lock</div>
-                  <div className="text-[13px] text-secondary mt-0.5">Universal 12:00 - 13:00 break protected</div>
-                </div>
-                <button
-                  onClick={() => setLunchBufferLocked(!lunchBufferLocked)}
-                  className={`w-11 h-6 rounded-full transition-colors relative cursor-pointer ${
-                    lunchBufferLocked ? 'bg-brand' : 'bg-slate-300 dark:bg-slate-700'
-                  }`}
-                  aria-label="Toggle lunch buffer"
+              {/* Right: Active Step Visual Detail Card */}
+              <div className="lg:col-span-6 flex">
+                <div
+                  style={{ backgroundColor: howItWorksSteps[activeStepIndex].accentBg }}
+                  className="w-full rounded-2xl border border-black/10 p-8 sm:p-10 flex flex-col justify-between space-y-8"
                 >
-                  <div className={`w-5 h-5 rounded-full bg-white absolute top-0.5 transition-transform ${
-                    lunchBufferLocked ? 'left-5.5' : 'left-0.5'
-                  }`} />
-                </button>
-              </div>
-            </div>
-
-            {/* Commuter Transit Buffer */}
-            <div className="lg:col-span-6 bg-surface border border-border rounded-lg p-6 space-y-5">
-              <div className="border-b border-border pb-4">
-                <h3 className="text-base font-semibold text-primary">Commuter buffer & walking steps</h3>
-                <p className="text-[13px] text-secondary mt-0.5">Calculates transit windows between campus quads and transit hubs</p>
-              </div>
-
-              <div className="space-y-2">
-                <div className="flex justify-between text-[14px]">
-                  <span className="text-primary font-medium">Door-to-campus transit duration:</span>
-                  <span className="font-mono text-primary font-medium">{commuteDuration} mins</span>
-                </div>
-                <input
-                  type="range" min="10" max="90" step="5" value={commuteDuration}
-                  onChange={e => setCommuteDuration(Number(e.target.value))}
-                  className="w-full h-2 cursor-pointer"
-                />
-              </div>
-
-              <div className="divide-y divide-border border border-border rounded-md text-[14px] overflow-hidden">
-                <div className="p-3 px-3.5 flex items-center justify-between">
-                  <span className="text-primary">Science Quad B ↔ South Engineering</span>
-                  <span className="font-mono text-secondary text-[13px]">12 mins (Buffer: 20m)</span>
-                </div>
-                <div className="p-3 px-3.5 flex items-center justify-between">
-                  <span className="text-primary">Architecture Atrium ↔ Chemistry Lab</span>
-                  <span className="font-mono text-secondary text-[13px]">8 mins (Buffer: 15m)</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Student Polls */}
-          <div className="bg-surface border border-border rounded-lg p-6 space-y-5">
-            <div className="flex items-center justify-between border-b border-border pb-4">
-              <div>
-                <h3 className="text-base font-semibold text-primary">Student polls & referendums</h3>
-                <p className="text-[13px] text-secondary mt-0.5">Verified student senate voting results pass directly into solver penalties</p>
-              </div>
-              <span className="text-[13px] font-mono text-secondary">10,353 verified votes</span>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-              {polls.map(poll => {
-                const total = poll.votesYes + poll.votesNo;
-                const pctYes = Math.round((poll.votesYes / total) * 100);
-                return (
-                  <div key={poll.id} className="p-5 rounded-lg border border-border bg-surface space-y-3.5 flex flex-col justify-between">
-                    <div>
-                      <span className="text-[13px] text-brand font-medium">
-                        {poll.category}
-                      </span>
-                      <div className="text-[15px] font-semibold text-primary mt-1 leading-snug">
-                        {poll.question}
-                      </div>
+                  <div className="space-y-4">
+                    <div className="text-xs font-mono-tabular font-bold text-[#171717]/75">
+                      Step {howItWorksSteps[activeStepIndex].number} Breakdown
                     </div>
-
-                    <div className="space-y-2.5 pt-1">
-                      <div className="flex justify-between text-[13px] font-mono">
-                        <span className="text-success font-medium">{pctYes}% Yes</span>
-                        <span className="text-secondary">{total.toLocaleString()} votes</span>
-                      </div>
-                      <div className="w-full bg-subtle rounded-full h-2 overflow-hidden flex">
-                        <div className="bg-success h-full transition-all duration-300" style={{ width: `${pctYes}%` }} />
-                      </div>
-                      <div className="grid grid-cols-2 gap-2.5 pt-1">
-                        <button
-                          onClick={() => handleVote(poll.id, 'yes')}
-                          className={`h-9 px-3 rounded-md text-[14px] font-medium border transition-colors cursor-pointer ${
-                            poll.userVoted === 'yes' 
-                              ? 'bg-brand text-white border-brand' 
-                              : 'bg-surface border-border text-primary hover:bg-subtle'
-                          }`}
+                    <h3 className="font-serif-editorial text-2xl sm:text-3xl text-[#171717]">
+                      {howItWorksSteps[activeStepIndex].detailTitle}
+                    </h3>
+                    <div className="space-y-3 pt-2">
+                      {howItWorksSteps[activeStepIndex].detailItems.map((item, i) => (
+                        <div
+                          key={i}
+                          className="p-4 rounded-xl bg-white/85 border border-black/8 flex items-start gap-3 text-sm text-[#171717]"
                         >
-                          Vote yes
-                        </button>
-                        <button
-                          onClick={() => handleVote(poll.id, 'no')}
-                          className={`h-9 px-3 rounded-md text-[14px] font-medium border transition-colors cursor-pointer ${
-                            poll.userVoted === 'no' 
-                              ? 'bg-primary text-surface border-primary' 
-                              : 'bg-surface border-border text-secondary hover:text-primary hover:bg-subtle'
-                          }`}
-                        >
-                          Vote no
-                        </button>
-                      </div>
+                          <Check className="w-4 h-4 text-[#171717] shrink-0 mt-0.5" />
+                          <span>{item}</span>
+                        </div>
+                      ))}
                     </div>
                   </div>
-                );
-              })}
-            </div>
-          </div>
-        </section>
 
-        {/* ================= SECTION: CAMPUSES & ACCREDITATION ================= */}
-        <section id="case-studies" className="scroll-mt-16 space-y-6">
-          <div className="pb-4 border-b border-border">
-            <h2 className="text-2xl font-semibold text-primary">Campuses & accreditation</h2>
-            <p className="text-[15px] text-secondary mt-1">
-              Peer-reviewed deployments and operational benchmarks
-            </p>
-          </div>
-
-          <div className="bg-surface border border-border rounded-lg p-6 sm:p-7 space-y-6">
-            <div className="flex items-center gap-2 overflow-x-auto pb-1 border-b border-border">
-              {[
-                { id: 'wpi' as const, label: 'Western Poly (34k students)' },
-                { id: 'oxford' as const, label: 'Oxford Union Sciences' },
-                { id: 'sutd' as const, label: 'Singapore Tech (SUTD)' },
-                { id: 'tudelft' as const, label: 'TU Delft (Thermal compaction)' }
-              ].map(item => (
-                <button
-                  key={item.id}
-                  onClick={() => setSelectedStudy(item.id)}
-                  className={`h-[38px] px-3.5 rounded-md text-[14px] font-medium whitespace-nowrap transition-colors cursor-pointer ${
-                    selectedStudy === item.id
-                      ? 'bg-subtle text-brand border border-border font-medium'
-                      : 'text-secondary hover:text-primary hover:bg-subtle border border-transparent'
-                  }`}
-                >
-                  {item.label}
-                </button>
-              ))}
-            </div>
-
-            <div className="space-y-5">
-              <div>
-                <div className="text-[13px] text-secondary">
-                  {currentStudy.location} • {currentStudy.term}
-                </div>
-                <h3 className="text-xl font-semibold text-primary mt-1">{currentStudy.name}</h3>
-                <p className="text-[14px] text-secondary mt-0.5">{currentStudy.tagline}</p>
-              </div>
-
-              {/* Stat Strip */}
-              <div className="bg-surface border border-border rounded-lg grid grid-cols-2 md:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x divide-border">
-                {currentStudy.heroStats.map((stat, i) => (
-                  <div key={i} className="p-4 sm:p-5 space-y-1">
-                    <div className="text-[14px] text-secondary">{stat.label}</div>
-                    <div className="flex items-baseline justify-between pt-1">
-                      <div className="text-[32px] font-semibold text-primary font-mono tabular-nums tracking-tight">{stat.after}</div>
-                      <span className="px-2 py-0.5 rounded text-[13px] font-mono font-medium bg-emerald-50 dark:bg-emerald-950/40 text-success border border-emerald-200 dark:border-emerald-800">
-                        {stat.delta}
-                      </span>
-                    </div>
-                    <div className="text-[13px] text-tertiary">
-                      Prior: <span className="line-through">{stat.before}</span>
-                    </div>
+                  <div className="pt-4 border-t border-black/10 flex items-center justify-between">
+                    <span className="text-xs font-mono-tabular text-[#171717]/80">
+                      Ready to try Step {howItWorksSteps[activeStepIndex].number} in the workspace?
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => onOpenAuth('signup')}
+                      className="btn-primary h-10 px-5 text-xs"
+                    >
+                      <span>Open Workspace</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </button>
                   </div>
-                ))}
+                </div>
               </div>
-
-              <div className="p-4 sm:p-5 rounded-md border-l-2 border-brand bg-subtle text-[15px] text-secondary italic space-y-1.5">
-                <p>"{currentStudy.quote}"</p>
-                <div className="text-[14px] font-medium not-italic text-primary pt-0.5">— {currentStudy.author}</div>
-              </div>
-
-              <p className="text-[15px] text-secondary leading-relaxed">
-                {currentStudy.description}
-              </p>
-            </div>
+            </RevealSection>
           </div>
         </section>
 
-        {/* ================= SECTION: TIMETABLE PREVIEW ================= */}
-        <section id="matrix-preview" className="scroll-mt-16 space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-border">
-            <div>
-              <h2 className="text-2xl font-semibold text-primary">Sample timetable matrix</h2>
-              <p className="text-[15px] text-secondary mt-1">Click any section to inspect details</p>
-            </div>
-            <button
-              onClick={() => onOpenAuth('signin')}
-              className="h-[38px] px-4 rounded-md bg-brand hover:bg-brand-hover text-white text-[14px] font-medium flex items-center gap-2 transition-colors shadow-xs cursor-pointer"
-            >
-              <Lock className="w-4 h-4" />
-              <span>Sign in to unlock full workspace</span>
-            </button>
-          </div>
+        {/* ===================================================================
+            SECTION 6 — FINAL CALL TO ACTION
+           =================================================================== */}
+        <section className="py-24 sm:py-32 px-4 sm:px-8 border-t border-[#E4E2DA]">
+          <div className="max-w-[1120px] mx-auto">
+            <RevealSection className="rounded-3xl bg-[#171717] text-white px-6 py-16 sm:px-14 sm:py-20 text-center space-y-8">
+              <div className="max-w-2xl mx-auto space-y-4">
+                <h2
+                  className="font-serif-editorial text-white tracking-tight leading-[1.08] text-balance"
+                  style={{ fontSize: 'clamp(2rem, 4vw, 3.5rem)' }}
+                >
+                  Ready to generate your university’s conflict-free timetable?
+                </h2>
+                <p className="text-sm sm:text-base text-white/75 leading-relaxed">
+                  Launch the SmartGrid AI workspace to inspect all {store.studentGroups.length} pre-configured class sections, run the constraint solver, or export print-ready Google Sheets schedules.
+                </p>
+              </div>
 
-          {/* Department Filter */}
-          <div className="flex items-center gap-1.5 overflow-x-auto py-0.5">
-            {['All Departments', 'Computer Science', 'Bioengineering', 'Architecture'].map(dept => (
-              <button
-                key={dept}
-                onClick={() => setPreviewDept(dept)}
-                className={`h-[38px] px-3.5 rounded-md text-[14px] font-medium whitespace-nowrap transition-colors cursor-pointer ${
-                  previewDept === dept
-                    ? 'bg-subtle text-brand border border-border font-medium'
-                    : 'text-secondary hover:text-primary hover:bg-subtle border border-transparent'
-                }`}
-              >
-                {dept}
-              </button>
-            ))}
-          </div>
+              <div className="flex flex-wrap items-center justify-center gap-4 pt-2">
+                <button
+                  type="button"
+                  onClick={() => onOpenAuth('signup')}
+                  className="h-12 px-7 rounded-xl bg-[#B7F77C] hover:bg-[#a6ec68] text-[#171717] text-sm font-semibold inline-flex items-center gap-2.5 transition-colors cursor-pointer"
+                >
+                  <span>Get Started Now</span>
+                  <ArrowRight className="w-4 h-4" />
+                </button>
 
-          {/* Preview Grid */}
-          <div className="bg-surface border border-border rounded-lg shadow-xs overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[900px] border-collapse text-left">
-                <thead>
-                  <tr className="border-b border-border bg-subtle h-11">
-                    <th className="py-2.5 px-4 w-36 text-[14px] font-medium text-secondary">Time</th>
-                    {['Mon', 'Tue', 'Wed', 'Thu', 'Fri'].map(day => (
-                      <th key={day} className="py-2.5 px-3.5 min-w-[160px] text-[14px] font-medium text-primary border-l border-border">
-                        {day}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  <tr className="hover:bg-subtle/40 transition-colors">
-                    <td className="py-3.5 px-4 text-[14px] font-mono text-secondary align-top">09:00 - 10:30</td>
-                    <td className="py-2.5 px-2.5 min-w-[160px] border-l border-border align-top">
-                      <div 
-                        onClick={() => setSelectedClass(sampleClasses['CS-301'])}
-                        className={`p-2.5 rounded-md transition-colors cursor-pointer text-[14px] space-y-1 ${getDeptClassStyle('CS-301')}`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="font-mono font-medium text-[14px]">CS-301</span>
-                          <span className="text-[13px] text-secondary">Lecture</span>
-                        </div>
-                        <div className="font-medium truncate text-[14px]">Data Structures</div>
-                        <div className="text-[13px] text-secondary flex justify-between pt-0.5">
-                          <span className="font-mono">Hall B3</span>
-                          <span>Dr. Evans</span>
-                        </div>
-                      </div>
-                    </td>
-
-                    <td className="py-2.5 px-2.5 min-w-[160px] border-l border-border align-top">
-                      <div 
-                        onClick={() => setSelectedClass(sampleClasses['BIO-210'])}
-                        className={`p-2.5 rounded-md transition-colors cursor-pointer text-[14px] space-y-1 ${getDeptClassStyle('BIO-210')}`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="font-mono font-medium text-[14px]">BIO-210</span>
-                          <span className="text-[13px] text-secondary">Lab</span>
-                        </div>
-                        <div className="font-medium truncate text-[14px]">Cell Genomics</div>
-                        <div className="text-[13px] text-secondary flex justify-between pt-0.5">
-                          <span className="font-mono">Lab 4</span>
-                          <span>Dr. Zhao</span>
-                        </div>
-                      </div>
-                    </td>
-
-                    <td className="py-2.5 px-2.5 min-w-[160px] border-l border-border align-top">
-                      <div 
-                        onClick={() => setSelectedClass(sampleClasses['CS-301'])}
-                        className={`p-2.5 rounded-md transition-colors cursor-pointer text-[14px] space-y-1 ${getDeptClassStyle('CS-301')}`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="font-mono font-medium text-[14px]">CS-301</span>
-                          <span className="text-[13px] text-secondary">Lecture</span>
-                        </div>
-                        <div className="font-medium truncate text-[14px]">Data Structures</div>
-                        <div className="text-[13px] text-secondary flex justify-between pt-0.5">
-                          <span className="font-mono">Hall B3</span>
-                          <span>Dr. Evans</span>
-                        </div>
-                      </div>
-                    </td>
-
-                    <td className="py-2.5 px-2.5 min-w-[160px] border-l border-border align-top">
-                      <div 
-                        onClick={() => setSelectedClass(sampleClasses['ENG-102'])}
-                        className={`p-2.5 rounded-md transition-colors cursor-pointer text-[14px] space-y-1 ${getDeptClassStyle('ENG-102')}`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="font-mono font-medium text-[14px]">ENG-102</span>
-                          <span className="text-[13px] text-secondary">Lecture</span>
-                        </div>
-                        <div className="font-medium truncate text-[14px]">Applied Statics</div>
-                        <div className="text-[13px] text-secondary flex justify-between pt-0.5">
-                          <span className="font-mono">Quad A</span>
-                          <span>Prof. Miller</span>
-                        </div>
-                      </div>
-                    </td>
-
-                    <td className="py-2.5 px-2.5 min-w-[160px] border-l border-border align-top">
-                      <div 
-                        onClick={() => setSelectedClass(sampleClasses['MATH-204'])}
-                        className={`p-2.5 rounded-md transition-colors cursor-pointer text-[14px] space-y-1 ${getDeptClassStyle('MATH-204')}`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="font-mono font-medium text-[14px]">MATH-204</span>
-                          <span className="text-[13px] text-secondary">Lecture</span>
-                        </div>
-                        <div className="font-medium truncate text-[14px]">Linear Algebra</div>
-                        <div className="text-[13px] text-secondary flex justify-between pt-0.5">
-                          <span className="font-mono">Hall A1</span>
-                          <span>Dr. Raman</span>
-                        </div>
-                      </div>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </section>
-
-        {/* Final CTA Box */}
-        <section className="bg-surface border border-border rounded-lg p-8 sm:p-12 text-center space-y-5">
-          <div className="max-w-xl mx-auto space-y-2">
-            <h2 className="text-2xl font-semibold text-primary">Ready to optimize your academic schedule?</h2>
-            <p className="text-[15px] text-secondary leading-relaxed">
-              Join university registrars using SmartGrid to eliminate timetable collisions and streamline campus operations.
-            </p>
-          </div>
-          <div className="flex items-center justify-center gap-3 pt-2">
-            <button
-              onClick={() => onOpenAuth('signup')}
-              className="h-[38px] px-4 rounded-md bg-brand hover:bg-brand-hover text-white text-[14px] font-medium transition-colors shadow-xs cursor-pointer"
-            >
-              Launch workspace
-            </button>
-            <button
-              onClick={() => onOpenAuth('signin')}
-              className="h-[38px] px-4 rounded-md bg-surface border border-border hover:bg-subtle text-primary text-[14px] font-medium transition-colors cursor-pointer"
-            >
-              Sign in with SSO
-            </button>
+                <button
+                  type="button"
+                  onClick={() => onOpenAuth('signin')}
+                  className="h-12 px-6 rounded-xl bg-[#292929] hover:bg-[#383838] text-white text-sm font-medium inline-flex items-center gap-2 transition-colors cursor-pointer"
+                >
+                  <span>Sign In to Workspace</span>
+                </button>
+              </div>
+            </RevealSection>
           </div>
         </section>
       </main>
 
-      {/* Minimal Footer */}
-      <footer className="border-t border-border bg-surface py-6 px-4 sm:px-6 lg:px-8 text-[13px] text-secondary">
-        <div className="max-w-[1360px] mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
+      {/* =====================================================================
+          QUIET FOOTER
+         ===================================================================== */}
+      <footer className="border-t border-[#E4E2DA] bg-[#F7F6EF] px-4 sm:px-8 py-12">
+        <div className="max-w-[1200px] mx-auto flex flex-col sm:flex-row items-center justify-between gap-6 text-xs text-[#77766F]">
           <div className="flex items-center gap-2.5">
-            <div className="w-6 h-6 rounded-md bg-brand flex items-center justify-center text-white shrink-0">
-              <Compass className="w-3.5 h-3.5" />
-            </div>
-            <span className="font-semibold text-[14px] text-primary">SmartGrid</span>
-            <span className="text-[13px] text-tertiary ml-2">University timetable scheduling platform</span>
+            <span className="w-6 h-6 rounded-md bg-[#171717] text-white font-serif-editorial text-sm flex items-center justify-center">
+              S
+            </span>
+            <span className="font-serif-editorial text-base text-[#171717]">SmartGrid AI</span>
+            <span>·</span>
+            <span>University Timetable Scheduling & Optimization</span>
           </div>
 
-          <div className="flex items-center gap-5 text-[13px]">
-            <button onClick={() => scrollTo('solutions')} className="hover:text-primary cursor-pointer">Overview</button>
-            <button onClick={() => scrollTo('adaptive-engine')} className="hover:text-primary cursor-pointer">Optimization</button>
-            <button onClick={() => scrollTo('student-voice')} className="hover:text-primary cursor-pointer">Student feedback</button>
-            <button onClick={() => scrollTo('case-studies')} className="hover:text-primary cursor-pointer">Campuses</button>
-            <button onClick={() => onOpenAuth('signin')} className="hover:text-primary cursor-pointer">Sign in</button>
-          </div>
-
-          <div className="text-[13px] text-tertiary font-mono">
-            © {new Date().getFullYear()} SmartGrid Systems
+          <div className="flex flex-wrap items-center gap-6">
+            <button
+              type="button"
+              onClick={() => scrollToSection('problem')}
+              className="hover:text-[#171717] transition-colors cursor-pointer"
+            >
+              The Problem
+            </button>
+            <button
+              type="button"
+              onClick={() => scrollToSection('solution')}
+              className="hover:text-[#171717] transition-colors cursor-pointer"
+            >
+              Product Demo
+            </button>
+            <button
+              type="button"
+              onClick={() => scrollToSection('capabilities')}
+              className="hover:text-[#171717] transition-colors cursor-pointer"
+            >
+              Capabilities
+            </button>
+            <button
+              type="button"
+              onClick={() => scrollToSection('how-it-works')}
+              className="hover:text-[#171717] transition-colors cursor-pointer"
+            >
+              How It Works
+            </button>
+            <button
+              type="button"
+              onClick={() => onOpenAuth('signin')}
+              className="text-[#171717] font-semibold hover:underline cursor-pointer"
+            >
+              Log in
+            </button>
           </div>
         </div>
       </footer>

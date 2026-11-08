@@ -240,7 +240,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
     return 'All_Classes_University';
   };
 
-  // Multi-Worksheet Google Sheets (.xlsx) Export — Weekly Overview + 1 Tab per Class/Section
+  // Multi-Worksheet Google Sheets (.xlsx) Export — Compact Landscape Weekly Overview + 1 Tab per Class/Section
   const handleExportGoogleSheets = async (scope: 'filtered' | 'all') => {
     try {
       setIsExportingSheets(true);
@@ -254,7 +254,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
         studentOrUserName: currentUser?.name || 'Academic Schedule'
       });
       setExportNotice(
-        `Exported Google Sheets workbook "${result.fileName}" containing 1 Weekly Overview + ${result.classSheetCount} Class/Section worksheets (with vertically merged 3-hour labs & 1:00–2:00 PM lunch break).`
+        `Exported compact landscape Google Sheets workbook "${result.fileName}" (1 Weekly Overview + ${result.classSheetCount} Class/Section tabs, configured to fit on 1 laptop screen and 1 landscape printed page).`
       );
       setTimeout(() => setExportNotice(null), 7000);
     } catch (err) {
@@ -1186,47 +1186,34 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
                                       borderColor: pastel.border
                                     }}
                                     className={`h-full ${
-                                      isCompactCol ? 'p-1.5' : 'p-2'
-                                    } rounded-xl border text-[#171717] flex flex-col justify-between transition-transform hover:-translate-y-0.5 cursor-pointer min-w-0 overflow-hidden`}
+                                      isCompactCol ? 'p-1.5' : 'p-2.5'
+                                    } rounded-xl border text-[#171717] flex flex-col items-center justify-center text-center gap-1.5 transition-transform hover:-translate-y-0.5 cursor-pointer min-w-0 overflow-hidden`}
                                   >
-                                    <div className="space-y-1 min-w-0">
-                                      <div className="flex items-center justify-between gap-1 min-w-0">
-                                        <span className="font-mono-tabular text-[10px] font-bold text-[#171717]/85 flex items-center gap-0.5 truncate">
-                                          {labItem.code}
-                                          {labItem.isLocked && <Lock className="w-2.5 h-2.5 shrink-0" />}
-                                        </span>
-                                        <span className="text-[9.5px] font-semibold px-1 py-0.5 rounded bg-white/85 text-[#171717] shrink-0">
-                                          Lab 3h
-                                        </span>
-                                      </div>
-
-                                      <div className="font-serif-editorial text-[11.5px] sm:text-xs font-semibold leading-snug text-[#171717] line-clamp-2 break-words">
-                                        {labItem.title}
-                                      </div>
-
-                                      <div className="text-[10px] text-[#171717]/85 truncate">
-                                        {labItem.prof}
-                                      </div>
+                                    <div className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-white/80 text-[9.5px] font-mono-tabular font-bold text-[#171717] max-w-full truncate">
+                                      <span className="truncate">{labItem.code}</span>
+                                      <span>·</span>
+                                      <span className="shrink-0">LAB 3H</span>
+                                      {labItem.isLocked && <Lock className="w-2.5 h-2.5 shrink-0" />}
                                     </div>
 
-                                    <div className="space-y-0.5 pt-1.5 border-t border-black/10 text-[9.5px] min-w-0">
+                                    <div className="font-serif-editorial text-[11.5px] sm:text-xs font-semibold leading-snug text-[#171717] line-clamp-2 break-words w-full">
+                                      {labItem.title}
+                                    </div>
+
+                                    <div className="w-full pt-1 border-t border-black/10 space-y-0.5 text-[9.5px] text-[#171717]/80 min-w-0">
+                                      <div className="font-medium truncate">{labItem.prof}</div>
                                       <div className="font-mono-tabular font-semibold text-[#171717] truncate">
+                                        {labItem.room}
+                                        {perspective === 'master' ? ` · ${labItem.cohort}` : ''}
+                                      </div>
+                                      <div className="font-mono-tabular text-[9px] text-[#171717]/75 truncate">
                                         {continuousWindow}
                                       </div>
-                                      <div className="text-[#171717]/85 flex items-center justify-between gap-1 min-w-0">
-                                        <span className="font-mono-tabular font-medium truncate">
-                                          {labItem.room}
-                                        </span>
-                                        {perspective === 'master' && concurrentItems.length > 0 ? (
-                                          <span className="text-[9px] px-1 rounded bg-white/70 shrink-0">
-                                            +{concurrentItems.length}
-                                          </span>
-                                        ) : (
-                                          <span className="text-[9px] text-[#171717]/70 truncate">
-                                            {labItem.cohort}
-                                          </span>
-                                        )}
-                                      </div>
+                                      {perspective === 'master' && concurrentItems.length > 0 && (
+                                        <div className="text-[9px] px-1 rounded bg-white/70 inline-block">
+                                          +{concurrentItems.length} more
+                                        </div>
+                                      )}
                                     </div>
                                   </div>
                                 </td>
@@ -1247,7 +1234,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
                             return (
                               <td
                                 key={day}
-                                className={`p-1 border-l border-[#E4E2DA] align-top overflow-hidden ${
+                                className={`p-1 border-l border-[#E4E2DA] align-middle overflow-hidden ${
                                   isWeekend && visibleItems.length === 0 ? 'bg-[#F7F6EF]/25' : ''
                                 }`}
                               >
@@ -1269,32 +1256,27 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
                                         borderColor: pastel.border
                                       }}
                                       className={`${
-                                        isCompactCol ? 'p-1.5' : 'p-2'
-                                      } rounded-xl border text-[#171717] space-y-0.5 transition-transform hover:-translate-y-0.5 cursor-pointer min-w-0 overflow-hidden`}
+                                        isCompactCol ? 'px-1.5 py-1.5' : 'px-2 py-1.5'
+                                      } rounded-xl border text-[#171717] flex flex-col items-center justify-center text-center gap-0.5 transition-transform hover:-translate-y-0.5 cursor-pointer min-w-0 overflow-hidden`}
                                     >
-                                      <div className="flex items-center justify-between gap-1 text-[9.5px] text-[#171717]/80 font-mono-tabular min-w-0">
-                                        <span className="font-bold flex items-center gap-0.5 truncate">
-                                          {cls.code}
-                                          {cls.isLocked && <Lock className="w-2.5 h-2.5 shrink-0" />}
-                                        </span>
-                                        <span className="px-1 rounded bg-white/65 text-[#171717] font-medium shrink-0">
-                                          {isLab ? 'Lab' : 'Lec'}
-                                        </span>
-                                      </div>
-
-                                      <div className="font-semibold text-[11px] leading-tight text-[#171717] truncate">
+                                      <div className="font-semibold text-[11px] leading-tight text-[#171717] w-full truncate">
                                         {cls.title}
                                       </div>
 
-                                      <div className="text-[9.5px] text-[#171717]/80 flex items-center justify-between gap-1 pt-0.5 border-t border-black/10 min-w-0">
-                                        <span className="truncate">{cls.prof}</span>
-                                        <span className="font-mono-tabular font-semibold truncate max-w-[52%]">
+                                      <div className="text-[9.5px] font-mono-tabular font-bold text-[#171717]/80 w-full truncate">
+                                        {cls.code} {isLab ? '· Lab' : ''}
+                                      </div>
+
+                                      <div className="w-full pt-0.5 border-t border-black/10 text-[9.5px] text-[#171717]/80 leading-tight min-w-0">
+                                        <div className="truncate">{cls.prof}</div>
+                                        <div className="font-mono-tabular font-semibold text-[#171717] truncate">
                                           {cls.room}
-                                        </span>
+                                          {perspective === 'master' ? ` · ${cls.cohort}` : ''}
+                                        </div>
                                       </div>
 
                                       {perspective === 'master' && extraCount > 0 && (
-                                        <div className="text-[9px] font-mono-tabular font-semibold text-[#171717]/75 bg-white/60 rounded px-1 py-0.5 text-center truncate">
+                                        <div className="text-[8.5px] font-mono-tabular font-semibold text-[#171717]/75 bg-white/65 rounded px-1 text-center truncate">
                                           +{extraCount} more
                                         </div>
                                       )}

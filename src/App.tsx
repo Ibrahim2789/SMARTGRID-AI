@@ -19,19 +19,9 @@ export default function App() {
   } | null>(() => {
     try {
       const saved = sessionStorage.getItem('smartgrid_user');
-      return saved ? JSON.parse(saved) : {
-        name: 'Dr. Katherine Reynolds',
-        role: 'Registrar',
-        email: 'k.reynolds@westernpoly.edu',
-        institution: 'Western Polytechnic'
-      };
+      return saved ? JSON.parse(saved) : null;
     } catch {
-      return {
-        name: 'Dr. Katherine Reynolds',
-        role: 'Registrar',
-        email: 'k.reynolds@westernpoly.edu',
-        institution: 'Western Polytechnic'
-      };
+      return null;
     }
   });
 
