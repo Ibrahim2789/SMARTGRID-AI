@@ -112,6 +112,7 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
 
   const [timingValidationErrors, setTimingValidationErrors] = useState<string[]>([]);
   const [statusNotice, setStatusNotice] = useState<string | null>(null);
+  const [showSlotTimeline, setShowSlotTimeline] = useState<boolean>(false);
 
   // Sync local state when saved timeStructure updates or resets
   useEffect(() => {
@@ -415,27 +416,20 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
       )}
 
       {/* Active Summary & Quick Academic Structure Presets Bar */}
-      <div className="sf-card-white p-5 flex flex-col xl:flex-row xl:items-center justify-between gap-4">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2">
-            <Sliders className="w-4 h-4 text-[#171717]" />
-            <h2 className="font-serif-editorial text-xl text-[#171717]">
-              Active University Timing Summary
-            </h2>
-          </div>
-          <p className="text-xs text-[#77766F]">
-            Computed Structure:{' '}
-            <strong className="text-[#171717] font-mono-tabular">{livePreview.summaryText}</strong>
-          </p>
+      <div className="sf-card-white p-4 sm:px-5 flex flex-col xl:flex-row xl:items-center justify-between gap-4">
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <Sliders className="w-4 h-4 text-[#171717]" />
+          <span className="font-semibold text-[#171717]">Active Summary:</span>
+          <strong className="text-[#171717] font-mono-tabular">{livePreview.summaryText}</strong>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-[11px] font-semibold uppercase tracking-wider text-[#77766F] mr-1">
-            Quick Templates:
+            Presets:
           </span>
           {[
             {
-              label: 'Standard (9–5 · 50m + 10m Brk · 3h Lab)',
+              label: 'Standard 9–5 (50m + 10m)',
               dayStartTime: '09:00',
               dayEndTime: '17:00',
               periodLengthMinutes: 50,
@@ -448,7 +442,7 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
               labDurationMinutes: 180
             },
             {
-              label: 'Extended (8:30–5 · 60m + 15m Brk · 45m Lunch)',
+              label: 'Extended 8:30–5 (60m)',
               dayStartTime: '08:30',
               dayEndTime: '17:00',
               periodLengthMinutes: 60,
@@ -461,7 +455,7 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
               labDurationMinutes: 135
             },
             {
-              label: 'Back-to-Back (9–5 · 60m · Breaks OFF)',
+              label: 'Back-to-Back (No Breaks)',
               dayStartTime: '09:00',
               dayEndTime: '17:00',
               periodLengthMinutes: 60,
@@ -474,7 +468,7 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
               labDurationMinutes: 180
             },
             {
-              label: 'Compact Lab (9–5 · 50m + 10m Brk · 2h Lab)',
+              label: 'Compact Lab (2h Lab)',
               dayStartTime: '09:00',
               dayEndTime: '17:00',
               periodLengthMinutes: 50,
@@ -1081,34 +1075,33 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
       </div>
 
       {/* =========================================================
-          LIVE GENERATED DAILY TIMETABLE SLOT TIMELINE & FOOTER ACTIONS
+          COLLAPSIBLE DAILY TIMETABLE SLOT TIMELINE PREVIEW
          ========================================================= */}
-      <div className="sf-card-white p-6 space-y-5">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#E4E2DA] pb-4">
+      <div className="sf-card-white p-6 space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
             <h2 className="font-serif-editorial text-xl text-[#171717]">
-              Generated Daily Timetable Slot Structure ({livePreview.slots.length} Slots)
+              Daily Timetable Slot Preview ({livePreview.slots.length} Slots)
             </h2>
             <p className="text-xs text-[#77766F]">
-              Real-time preview of how the scheduling solver partitions the university day based on the configuration above.
+              Inspect how the scheduling solver partitions the university day based on the settings above.
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5">
             <button
               type="button"
-              onClick={handleResetToDefaults}
-              className="btn-secondary text-xs h-10 px-4"
+              onClick={() => setShowSlotTimeline(prev => !prev)}
+              className="btn-secondary text-xs h-9 px-3.5"
             >
-              <RotateCcw className="w-3.5 h-3.5" />
-              <span>Reset to Defaults</span>
+              <span>{showSlotTimeline ? 'Hide Slot Breakdown' : 'Preview Daily Slots'}</span>
             </button>
 
             <button
               type="button"
               disabled={!liveValidation.valid}
               onClick={() => handleSaveConfiguration()}
-              className="btn-primary text-xs h-10 px-5 disabled:opacity-50"
+              className="btn-primary text-xs h-9 px-4 disabled:opacity-50"
             >
               <Sparkles className="w-3.5 h-3.5" />
               <span>Save Configuration</span>
@@ -1116,46 +1109,48 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-2.5">
-          {livePreview.slots.map(slot => {
-            const showLunchBefore =
-              livePreview.middayBreak.enabled &&
-              slot.slotNumber === livePreview.firstAfternoonSlotNumber;
+        {showSlotTimeline && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-2.5 pt-4 border-t border-[#E4E2DA]">
+            {livePreview.slots.map(slot => {
+              const showLunchBefore =
+                livePreview.middayBreak.enabled &&
+                slot.slotNumber === livePreview.firstAfternoonSlotNumber;
 
-            return (
-              <React.Fragment key={slot.slotNumber}>
-                {showLunchBefore && (
-                  <div className="p-3 rounded-xl bg-[#E8D36B]/45 border border-[#D4BC4C] flex flex-col justify-between">
-                    <div className="text-[10px] font-mono-tabular font-bold uppercase text-[#171717]">
-                      Midday Break
+              return (
+                <React.Fragment key={slot.slotNumber}>
+                  {showLunchBefore && (
+                    <div className="p-3 rounded-xl bg-[#E8D36B]/45 border border-[#D4BC4C] flex flex-col justify-between">
+                      <div className="text-[10px] font-mono-tabular font-bold uppercase text-[#171717]">
+                        Midday Break
+                      </div>
+                      <div className="text-xs font-mono-tabular font-bold text-[#171717] my-1">
+                        {livePreview.middayBreak.timeRangeLabel}
+                      </div>
+                      <div className="text-[10.5px] text-[#171717]/80">
+                        {livePreview.middayBreak.durationMinutes} min Protected Lunch
+                      </div>
                     </div>
-                    <div className="text-xs font-mono-tabular font-bold text-[#171717] my-1">
-                      {livePreview.middayBreak.timeRangeLabel}
-                    </div>
-                    <div className="text-[10.5px] text-[#171717]/80">
-                      {livePreview.middayBreak.durationMinutes} min Protected Lunch
-                    </div>
-                  </div>
-                )}
+                  )}
 
-                <div className="p-3 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] flex flex-col justify-between">
-                  <div className="flex items-center justify-between text-[10px] font-mono-tabular text-[#77766F]">
-                    <span className="font-bold text-[#171717]">Slot {slot.slotNumber}</span>
-                    <span>{slot.session}</span>
+                  <div className="p-3 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] flex flex-col justify-between">
+                    <div className="flex items-center justify-between text-[10px] font-mono-tabular text-[#77766F]">
+                      <span className="font-bold text-[#171717]">Slot {slot.slotNumber}</span>
+                      <span>{slot.session}</span>
+                    </div>
+                    <div className="text-xs font-mono-tabular font-semibold text-[#171717] my-1">
+                      {slot.period}
+                    </div>
+                    <div className="text-[10.5px] font-mono-tabular text-[#77766F]">
+                      {livePreview.shortBreakEnabled && livePreview.shortBreakMinutes > 0
+                        ? `Break: ${slot.shortBreak}`
+                        : 'No Break (0 min)'}
+                    </div>
                   </div>
-                  <div className="text-xs font-mono-tabular font-semibold text-[#171717] my-1">
-                    {slot.period}
-                  </div>
-                  <div className="text-[10.5px] font-mono-tabular text-[#77766F]">
-                    {livePreview.shortBreakEnabled && livePreview.shortBreakMinutes > 0
-                      ? `Break: ${slot.shortBreak}`
-                      : 'No Break (0 min)'}
-                  </div>
-                </div>
-              </React.Fragment>
-            );
-          })}
-        </div>
+                </React.Fragment>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );

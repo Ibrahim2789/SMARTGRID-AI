@@ -349,6 +349,15 @@ export const StudentDashboardPage: React.FC<StudentDashboardPageProps> = ({
 
               <button
                 type="button"
+                onClick={() => onNavigate('student-preferences')}
+                className="btn-secondary h-10 px-4 text-xs sm:text-sm"
+              >
+                <Sliders className="w-4 h-4" />
+                <span>My Preferences</span>
+              </button>
+
+              <button
+                type="button"
                 onClick={handleExportMyTimetable}
                 className="h-10 px-4 rounded-xl bg-[#B7F77C] hover:bg-[#a5eb68] border border-[#98DF58] text-[#171717] font-semibold text-xs sm:text-sm inline-flex items-center gap-2 transition-colors cursor-pointer"
               >
@@ -375,13 +384,13 @@ export const StudentDashboardPage: React.FC<StudentDashboardPageProps> = ({
             <div className="grid grid-cols-2 gap-3">
               <div className="p-3.5 rounded-xl bg-white border border-[#E4E2DA]">
                 <div className="text-[11px] text-[#77766F]">Weekly Sessions</div>
-                <div className="font-mono-tabular text-xl font-bold text-[#171717] mt-0.5">
-                  {cohortLecturesCount} Lectures · {cohortLabsCount} Labs
+                <div className="font-mono-tabular text-lg font-bold text-[#171717] mt-0.5">
+                  {cohortLecturesCount}L · {cohortLabsCount}Lab
                 </div>
               </div>
               <div className="p-3.5 rounded-xl bg-white border border-[#E4E2DA]">
                 <div className="text-[11px] text-[#77766F]">Batch Polls Voted</div>
-                <div className="font-mono-tabular text-xl font-bold text-[#171717] mt-0.5">
+                <div className="font-mono-tabular text-lg font-bold text-[#171717] mt-0.5">
                   {participatedPolls.length} / {polls.length} Polls
                 </div>
               </div>
@@ -390,7 +399,7 @@ export const StudentDashboardPage: React.FC<StudentDashboardPageProps> = ({
             {studentBatch && (
               <div className="p-3.5 rounded-xl bg-white border border-[#E4E2DA] space-y-1.5 text-xs">
                 <div className="text-[11px] font-semibold text-[#77766F]">
-                  Your Batch Representatives ({studentBatch.code})
+                  Batch Representatives ({studentBatch.code})
                 </div>
                 <div className="flex items-center justify-between text-[#171717]">
                   <span>Male BR:</span>
@@ -412,77 +421,7 @@ export const StudentDashboardPage: React.FC<StudentDashboardPageProps> = ({
         </div>
       </section>
 
-      {/* 2. Student Quick Action Cards */}
-      <section className="grid grid-cols-1 md:grid-cols-3 gap-5">
-        <div
-          onClick={() => onNavigate('timetables')}
-          className="bg-white border border-[#E4E2DA] rounded-2xl p-6 flex flex-col justify-between cursor-pointer hover:border-[#171717] transition-colors group"
-        >
-          <div className="space-y-3">
-            <div className="w-10 h-10 rounded-xl bg-[#B8EEEE] text-[#171717] flex items-center justify-center">
-              <Calendar className="w-5 h-5" />
-            </div>
-            <div>
-              <h2 className="font-serif-editorial text-2xl text-[#171717]">My Timetable</h2>
-              <p className="text-xs text-[#57564F] mt-1 leading-relaxed">
-                View your complete weekly class and laboratory schedule across {activeTiming.workingDays.join('–')} ({activeTiming.operatingHoursLabel}).
-              </p>
-            </div>
-          </div>
-          <div className="pt-4 mt-4 border-t border-[#E4E2DA] flex items-center justify-between text-xs font-semibold text-[#171717]">
-            <span>View Weekly Schedule</span>
-            <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
-          </div>
-        </div>
-
-        <div
-          onClick={() => onNavigate('student-voting')}
-          className="bg-white border border-[#E4E2DA] rounded-2xl p-6 flex flex-col justify-between cursor-pointer hover:border-[#171717] transition-colors group"
-        >
-          <div className="space-y-3">
-            <div className="w-10 h-10 rounded-xl bg-[#B7F77C] text-[#171717] flex items-center justify-center">
-              <Vote className="w-5 h-5" />
-            </div>
-            <div>
-              <h2 className="font-serif-editorial text-2xl text-[#171717]">Student Voting</h2>
-              <p className="text-xs text-[#57564F] mt-1 leading-relaxed">
-                {pendingMyVotePolls.length > 0
-                  ? `You have ${pendingMyVotePolls.length} active batch ${
-                      pendingMyVotePolls.length === 1 ? 'question' : 'questions'
-                    } awaiting your vote.`
-                  : 'Review published batch questions and inspect finalized cohort voting results.'}
-              </p>
-            </div>
-          </div>
-          <div className="pt-4 mt-4 border-t border-[#E4E2DA] flex items-center justify-between text-xs font-semibold text-[#171717]">
-            <span>Open Voting Portal</span>
-            <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
-          </div>
-        </div>
-
-        <div
-          onClick={() => onNavigate('student-preferences')}
-          className="bg-white border border-[#E4E2DA] rounded-2xl p-6 flex flex-col justify-between cursor-pointer hover:border-[#171717] transition-colors group"
-        >
-          <div className="space-y-3">
-            <div className="w-10 h-10 rounded-xl bg-[#F2D8FA] text-[#171717] flex items-center justify-center">
-              <Sliders className="w-5 h-5" />
-            </div>
-            <div>
-              <h2 className="font-serif-editorial text-2xl text-[#171717]">My Preferences</h2>
-              <p className="text-xs text-[#57564F] mt-1 leading-relaxed">
-                Configure your personal timetable display options, preferred self-study blocks, and poll reminders.
-              </p>
-            </div>
-          </div>
-          <div className="pt-4 mt-4 border-t border-[#E4E2DA] flex items-center justify-between text-xs font-semibold text-[#171717]">
-            <span>Customize Preferences</span>
-            <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
-          </div>
-        </div>
-      </section>
-
-      {/* 3. Active Batch Polls + Relevant Academic Information */}
+      {/* 2. Active Batch Polls + Concise Academic Schedule Summary */}
       <section className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Left 7 Columns: Active Batch Polls for Student */}
         <div className="lg:col-span-7 bg-white border border-[#E4E2DA] rounded-3xl p-6 space-y-4">
@@ -492,7 +431,9 @@ export const StudentDashboardPage: React.FC<StudentDashboardPageProps> = ({
                 Active Batch Questions
               </h3>
               <p className="text-xs text-[#77766F]">
-                Questions published for student voting across your university cohort
+                {pendingMyVotePolls.length > 0
+                  ? `${pendingMyVotePolls.length} active question(s) awaiting your vote`
+                  : 'Official questions published for student voting'}
               </p>
             </div>
             <button
@@ -500,7 +441,8 @@ export const StudentDashboardPage: React.FC<StudentDashboardPageProps> = ({
               onClick={() => onNavigate('student-voting')}
               className="btn-secondary text-xs py-1.5 px-3"
             >
-              View All Polls
+              <span>View All Polls</span>
+              <ArrowRight className="w-3.5 h-3.5" />
             </button>
           </div>
 
@@ -553,56 +495,62 @@ export const StudentDashboardPage: React.FC<StudentDashboardPageProps> = ({
           )}
         </div>
 
-        {/* Right 5 Columns: Relevant Academic Information */}
-        <div className="lg:col-span-5 bg-white border border-[#E4E2DA] rounded-3xl p-6 space-y-4">
-          <div className="flex items-center justify-between border-b border-[#E4E2DA] pb-3.5">
-            <div>
-              <h3 className="font-serif-editorial text-2xl text-[#171717]">
-                Academic Schedule Rules
-              </h3>
-              <p className="text-xs text-[#77766F]">
-                Official university timing structure for {activeTerm?.name || 'Fall 2026'}
-              </p>
+        {/* Right 5 Columns: Concise Academic Schedule Summary */}
+        <div className="lg:col-span-5 bg-white border border-[#E4E2DA] rounded-3xl p-6 flex flex-col justify-between space-y-4">
+          <div className="space-y-4">
+            <div className="flex items-center justify-between border-b border-[#E4E2DA] pb-3.5">
+              <div>
+                <h3 className="font-serif-editorial text-2xl text-[#171717]">
+                  University Schedule Timings
+                </h3>
+                <p className="text-xs text-[#77766F]">
+                  {activeTerm?.name || 'Fall 2026'} · {activeTiming.workingDays.join('–')}
+                </p>
+              </div>
+              <Clock className="w-4 h-4 text-[#77766F]" />
             </div>
-            <Clock className="w-4 h-4 text-[#77766F]" />
+
+            <div className="space-y-2.5 text-xs">
+              <div className="flex items-center justify-between p-3 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA]">
+                <span className="text-[#57564F]">Operating Hours</span>
+                <span className="font-mono-tabular font-bold text-[#171717]">
+                  {activeTiming.operatingHoursLabel}
+                </span>
+              </div>
+              <div className="flex items-center justify-between p-3 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA]">
+                <span className="text-[#57564F]">Lecture & Transition Break</span>
+                <span className="font-mono-tabular font-bold text-[#171717]">
+                  {activeTiming.periodLengthMinutes}m lecture
+                  {activeTiming.shortBreakEnabled && activeTiming.shortBreakMinutes > 0
+                    ? ` + ${activeTiming.shortBreakMinutes}m break`
+                    : ''}
+                </span>
+              </div>
+              <div className="flex items-center justify-between p-3 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA]">
+                <span className="text-[#57564F]">Midday Break</span>
+                <span className="font-mono-tabular font-bold text-[#171717]">
+                  {activeTiming.middayBreak.enabled
+                    ? activeTiming.middayBreak.timeRangeLabel
+                    : 'Disabled'}
+                </span>
+              </div>
+              <div className="flex items-center justify-between p-3 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA]">
+                <span className="text-[#57564F]">Laboratory Block</span>
+                <span className="font-mono-tabular font-bold text-[#171717]">
+                  {labHoursLabel} Hours ({activeTiming.labDurationMinutes}m continuous)
+                </span>
+              </div>
+            </div>
           </div>
 
-          <div className="space-y-3 text-xs">
-            <div className="p-3.5 rounded-2xl bg-[#F7F6EF] border border-[#E4E2DA] space-y-1">
-              <div className="font-bold text-[#171717]">
-                University Operating Hours ({activeTiming.operatingHoursLabel})
-              </div>
-              <p className="text-[#57564F]">
-                Classes run across {activeTiming.workingDays.join(', ')}. Each regular lecture is{' '}
-                <strong>{activeTiming.periodLengthMinutes} minutes</strong>
-                {activeTiming.shortBreakEnabled && activeTiming.shortBreakMinutes > 0
-                  ? ` followed by a ${activeTiming.shortBreakMinutes}-minute transition break.`
-                  : '.'}
-              </p>
-            </div>
-
-            <div className="p-3.5 rounded-2xl bg-[#F7F6EF] border border-[#E4E2DA] space-y-1">
-              <div className="font-bold text-[#171717]">
-                {activeTiming.middayBreak.enabled
-                  ? `Protected Midday Break (${activeTiming.middayBreak.timeRangeLabel})`
-                  : 'Continuous Schedule'}
-              </div>
-              <p className="text-[#57564F]">
-                {activeTiming.middayBreak.enabled
-                  ? `All cohorts have a protected ${activeTiming.middayBreak.durationMinutes}-minute midday break (${activeTiming.middayBreak.fullRangeLabel}) with zero scheduled lectures or labs.`
-                  : 'Classes run continuously during operating hours.'}
-              </p>
-            </div>
-
-            <div className="p-3.5 rounded-2xl bg-[#F7F6EF] border border-[#E4E2DA] space-y-1">
-              <div className="font-bold text-[#171717]">
-                Continuous {labHoursLabel}-Hour Laboratory Sessions
-              </div>
-              <p className="text-[#57564F]">
-                Practical laboratory courses run for {activeTiming.labDurationMinutes} continuous minutes ({activeTiming.labSpanSlots} consecutive slots) in specialized laboratories.
-              </p>
-            </div>
-          </div>
+          <button
+            type="button"
+            onClick={() => onNavigate('timetables')}
+            className="w-full btn-secondary text-xs py-2.5 justify-center"
+          >
+            <Calendar className="w-3.5 h-3.5" />
+            <span>Open Weekly Class Timetable</span>
+          </button>
         </div>
       </section>
     </div>

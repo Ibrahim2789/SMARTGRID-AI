@@ -169,29 +169,6 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
         </div>
       </header>
 
-      {/* Dedicated Academic Configuration Banner */}
-      <div className="sf-card-white p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-l-4 border-l-[#171717]">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2">
-            <Clock className="w-4 h-4 text-[#171717]" />
-            <h2 className="font-serif-editorial text-xl text-[#171717]">
-              University Academic Configuration
-            </h2>
-          </div>
-          <p className="text-xs text-[#77766F]">
-            Active Timing Rule: <strong className="text-[#171717] font-mono-tabular">{activeTiming.summaryText}</strong>
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={() => onNavigate('academic-config')}
-          className="btn-primary text-xs h-9 px-4 shrink-0"
-        >
-          <span>Open Academic Configuration</span>
-          <ArrowRight className="w-3.5 h-3.5" />
-        </button>
-      </div>
-
       {/* Role-Based Access Notice for Non-Admin Users */}
       {!isAdmin && (
         <div className="p-4 rounded-2xl bg-[#F2D8FA]/60 border border-[#DFB9EC] flex flex-col sm:flex-row sm:items-center justify-between gap-4">

@@ -484,41 +484,26 @@ export const AdminVotingManagementPage: React.FC<AdminVotingManagementPageProps>
           </div>
         </div>
 
-        {/* Analytics Summary Cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mt-6 pt-6 border-t border-[#E4E2DA]">
-          <div className="p-3.5 rounded-2xl bg-[#F7F6EF] border border-[#E4E2DA]">
-            <div className="text-[11px] font-medium text-[#77766F]">Total Votes Cast</div>
-            <div className="text-2xl font-bold text-[#171717] font-mono-tabular mt-0.5">
-              {totalVotesCast}
-            </div>
+        {/* Compact Inline Summary Metrics Bar */}
+        <div className="flex flex-wrap items-center justify-between gap-3 mt-5 pt-4 border-t border-[#E4E2DA] text-xs">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <span className="px-3 py-1.5 rounded-xl bg-[#FFF6D6]/70 border border-[#F0D98C] text-[#6E5100] font-semibold">
+              Pending Review: <strong className="font-mono-tabular">{pendingApprovalCount}</strong>
+            </span>
+            <span className="px-3 py-1.5 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] text-[#171717]">
+              Active Polls: <strong className="font-mono-tabular">{activeQuestionsCount}</strong> · Closed: <strong className="font-mono-tabular">{closedQuestionsCount}</strong>
+            </span>
+            <span className="px-3 py-1.5 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] text-[#171717]">
+              Total Votes Cast: <strong className="font-mono-tabular">{totalVotesCast}</strong>
+            </span>
           </div>
-
-          <div className="p-3.5 rounded-2xl bg-[#FFF6D6]/50 border border-[#F0D98C]">
-            <div className="text-[11px] font-medium text-[#6E5100]">Pending Review</div>
-            <div className="text-2xl font-bold text-[#6E5100] font-mono-tabular mt-0.5">
-              {pendingApprovalCount}
-            </div>
-          </div>
-
-          <div className="p-3.5 rounded-2xl bg-[#F7F6EF] border border-[#E4E2DA]">
-            <div className="text-[11px] font-medium text-[#77766F]">Active vs Closed Polls</div>
-            <div className="text-xl font-bold text-[#171717] font-mono-tabular mt-0.5">
-              {activeQuestionsCount} Active · {closedQuestionsCount} Closed
-            </div>
-          </div>
-
-          <div className="p-3.5 rounded-2xl bg-[#B8EEEE]/30 border border-[#8FD8D8]">
-            <div className="text-[11px] font-semibold text-[#171717]">Male BR Submissions</div>
-            <div className="text-2xl font-bold text-[#171717] font-mono-tabular mt-0.5">
-              {maleBrQuestionsCount}
-            </div>
-          </div>
-
-          <div className="p-3.5 rounded-2xl bg-[#F2D8FA]/40 border border-[#D8B4E2]">
-            <div className="text-[11px] font-semibold text-[#171717]">Female BR Submissions</div>
-            <div className="text-2xl font-bold text-[#171717] font-mono-tabular mt-0.5">
-              {femaleBrQuestionsCount}
-            </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="px-2.5 py-1 rounded-lg bg-[#B8EEEE]/40 border border-[#8FD8D8] text-[#171717] font-medium">
+              Male BR: <strong className="font-mono-tabular">{maleBrQuestionsCount}</strong>
+            </span>
+            <span className="px-2.5 py-1 rounded-lg bg-[#F2D8FA]/50 border border-[#D8B4E2] text-[#171717] font-medium">
+              Female BR: <strong className="font-mono-tabular">{femaleBrQuestionsCount}</strong>
+            </span>
           </div>
         </div>
       </div>
@@ -882,11 +867,11 @@ export const AdminVotingManagementPage: React.FC<AdminVotingManagementPageProps>
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-                  <div className="lg:col-span-7 space-y-2">
+                  <div className={`${poll.batchBreakdown.length > 0 ? 'lg:col-span-7' : 'lg:col-span-12'} space-y-2`}>
                     <div className="text-[11px] font-semibold text-[#77766F]">
                       Answer Options & Vote Distribution
                     </div>
-                    <div className="space-y-2">
+                    <div className={`grid grid-cols-1 ${poll.batchBreakdown.length === 0 ? 'sm:grid-cols-2' : ''} gap-2`}>
                       {poll.options.map(opt => {
                         const pct = opt.percentage ?? 0;
                         return (
@@ -910,15 +895,11 @@ export const AdminVotingManagementPage: React.FC<AdminVotingManagementPageProps>
                     </div>
                   </div>
 
-                  <div className="lg:col-span-5 space-y-2">
-                    <div className="text-[11px] font-semibold text-[#77766F]">
-                      Participation by Batch
-                    </div>
-                    {poll.batchBreakdown.length === 0 ? (
-                      <div className="p-4 rounded-2xl bg-[#F7F6EF] border border-[#E4E2DA] text-xs text-[#77766F]">
-                        No student votes recorded for this question yet.
+                  {poll.batchBreakdown.length > 0 && (
+                    <div className="lg:col-span-5 space-y-2">
+                      <div className="text-[11px] font-semibold text-[#77766F]">
+                        Participation by Batch
                       </div>
-                    ) : (
                       <div className="space-y-2">
                         {poll.batchBreakdown.map(b => (
                           <div
@@ -940,8 +921,8 @@ export const AdminVotingManagementPage: React.FC<AdminVotingManagementPageProps>
                           </div>
                         ))}
                       </div>
-                    )}
-                  </div>
+                    </div>
+                  )}
                 </div>
 
                 {poll.status === 'Rejected' && poll.rejectionReason && (

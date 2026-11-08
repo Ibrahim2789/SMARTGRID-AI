@@ -982,29 +982,8 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
               </div>
 
               <div className="text-[11px] text-[#77766F]">
-                Showing individual timetable for <strong className="text-[#171717]">{activeGroupObj?.code}</strong> only · Click any section pill below to switch
+                Showing schedule for <strong className="text-[#171717]">{activeGroupObj?.code}</strong>
               </div>
-            </div>
-
-            {/* Quick-Switch Class/Section Pills */}
-            <div className="flex flex-wrap items-center gap-1.5">
-              {departmentFilteredGroups.map(grp => {
-                const isSelected = grp.id === selectedCohortId;
-                return (
-                  <button
-                    key={grp.id}
-                    type="button"
-                    onClick={() => handleSelectCohort(grp.id)}
-                    className={`px-2.5 py-1 rounded-lg text-[11px] font-mono-tabular transition-colors cursor-pointer ${
-                      isSelected
-                        ? 'bg-[#171717] text-white font-bold shadow-xs'
-                        : 'bg-[#F7F6EF] hover:bg-[#EDEAE0] text-[#171717] border border-[#E4E2DA] font-medium'
-                    }`}
-                  >
-                    {grp.code}
-                  </button>
-                );
-              })}
             </div>
           </div>
         )}

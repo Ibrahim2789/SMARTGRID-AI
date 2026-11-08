@@ -104,7 +104,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
             </h1>
 
             <p className="text-[#55544E] text-sm sm:text-base max-w-2xl leading-relaxed">
-              Manage {store.departments.length} engineering & computing departments ({store.studentGroups.length} sections), enforce {activeTiming.periodLengthMinutes}-minute lectures{activeTiming.shortBreakEnabled && activeTiming.shortBreakMinutes > 0 ? ` with ${activeTiming.shortBreakMinutes}-minute breaks` : ''} and continuous {labHoursLabel}-hour labs, and export directly to Google Sheets.
+              Manage {store.departments.length} departments ({store.studentGroups.length} sections), generate conflict-free class and laboratory schedules, and export directly to Google Sheets.
             </p>
 
             <div className="flex flex-wrap items-center gap-3 pt-1">
@@ -193,16 +193,17 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
 
             <div className="pt-1 flex items-center justify-between text-[11.5px] text-[#77766F]">
               <span>
+                {activeTiming.periodLengthMinutes}m lectures · {labHoursLabel}h labs
                 {activeTiming.middayBreak.enabled
-                  ? `Midday Break: ${activeTiming.middayBreak.timeRangeLabel} (Protected)`
-                  : 'Continuous Daytime Schedule'}
+                  ? ` · ${activeTiming.middayBreak.timeRangeLabel} Break`
+                  : ''}
               </span>
               {isAdmin ? (
                 <button
                   onClick={() => onNavigate('academic-config')}
                   className="text-[#171717] font-semibold hover:underline inline-flex items-center gap-1 cursor-pointer"
                 >
-                  <span>Academic Config</span>
+                  <span>Timing Rules</span>
                   <ArrowRight className="w-3 h-3" />
                 </button>
               ) : (
@@ -246,9 +247,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                   Academic Data & Setup
                 </h3>
                 <p className="text-xs text-[#171717]/80 mt-1.5 leading-relaxed">
-                  Configure {store.departments.length} departments (BEE, BCE, BESE, BSCS),{' '}
-                  {store.rooms.length} rooms/labs, {store.courses.length} courses, and{' '}
-                  {store.studentGroups.length} student sections.
+                  Manage {store.departments.length} departments, {store.rooms.length} rooms, {store.courses.length} courses, and {store.studentGroups.length} sections.
                 </p>
               </div>
             </div>
@@ -275,7 +274,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                   Academic Configuration
                 </h3>
                 <p className="text-xs text-[#171717]/80 mt-1.5 leading-relaxed">
-                  Configure operating hours ({activeTiming.operatingHoursLabel}), {activeTiming.periodLengthMinutes}m lectures, breaks between classes, midday break, and {labHoursLabel}h lab sessions.
+                  Set operating hours ({activeTiming.operatingHoursLabel}), lecture & lab durations, and midday breaks.
                 </p>
               </div>
             </div>
@@ -302,7 +301,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                   Generate Schedule
                 </h3>
                 <p className="text-xs text-[#171717]/80 mt-1.5 leading-relaxed">
-                  Select target departments, cohorts, and optimization priorities to generate a clash-free university timetable.
+                  Choose target departments and optimization priorities to build a conflict-free schedule.
                 </p>
               </div>
             </div>
@@ -329,7 +328,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                   Timetables & Sheets
                 </h3>
                 <p className="text-xs text-[#171717]/80 mt-1.5 leading-relaxed">
-                  Inspect by Student Cohort, Course, Room, or Instructor, and export a multi-sheet Google Sheets workbook.
+                  Inspect schedules by Cohort, Course, Room, or Instructor, and export to Google Sheets.
                 </p>
               </div>
             </div>
@@ -342,157 +341,93 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
       </section>
 
       {/* =========================================================
-          3. INSTITUTIONAL INVENTORY & UNIVERSITY TIMING SUMMARY
+          3. INSTITUTIONAL DATASET INVENTORY (Clean 6-Card Grid)
          ========================================================= */}
-      <section className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Left (8 cols): Quick Inventory & Setup Shortcuts */}
-        <div className="lg:col-span-8 sf-card-white p-6 space-y-5">
-          <div className="flex items-center justify-between border-b border-[#E4E2DA] pb-4">
-            <div>
-              <h3 className="font-serif-editorial text-xl text-[#171717]">
-                University Dataset Inventory
-              </h3>
-              <p className="text-xs text-[#77766F] mt-0.5">
-                Click any category below to add, edit, or inspect records before generating a schedule.
-              </p>
-            </div>
-            <button
-              onClick={() => onNavigate('setup')}
-              className="btn-secondary text-xs py-1.5 px-3"
-            >
-              Open Full Setup
-            </button>
+      <section className="sf-card-white p-6 space-y-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#E4E2DA] pb-4">
+          <div>
+            <h3 className="font-serif-editorial text-xl text-[#171717]">
+              University Dataset Inventory
+            </h3>
+            <p className="text-xs text-[#77766F] mt-0.5">
+              Select a category to inspect or update records before generating a schedule.
+            </p>
           </div>
-
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3.5">
-            {[
-              {
-                label: 'Departments & Terms',
-                count: store.departments.length,
-                sub: activeTerm?.name || 'Fall 2026',
-                icon: Layers,
-                step: 0
-              },
-              {
-                label: 'Rooms & Laboratories',
-                count: store.rooms.length,
-                sub: `${store.rooms.filter(r => r.type === 'lab').length} Specialized Labs`,
-                icon: DoorOpen,
-                step: 1
-              },
-              {
-                label: 'Academic Courses',
-                count: store.courses.length,
-                sub: `${store.courses.filter(c => c.requiredRoomType === 'lab').length} with Lab component`,
-                icon: BookOpen,
-                step: 2
-              },
-              {
-                label: 'Faculty & Instructors',
-                count: store.instructors.length,
-                sub: 'Availability windows set',
-                icon: Users,
-                step: 3
-              },
-              {
-                label: 'Student Cohorts',
-                count: store.studentGroups.length,
-                sub: 'BEE, BCE, BESE & BSCS (2K22–2K25)',
-                icon: GraduationCap,
-                step: 4
-              },
-              {
-                label: 'Course Sections',
-                count: store.sections.length,
-                sub: `${lectureSectionsCount} Lectures · ${labSectionsCount} Labs`,
-                icon: FlaskConical,
-                step: 5
-              }
-            ].map(item => {
-              const Icon = item.icon;
-              return (
-                <button
-                  key={item.label}
-                  onClick={() => onOpenSetupStep(item.step)}
-                  className="p-4 rounded-xl border border-[#E4E2DA] bg-[#F7F6EF]/60 hover:bg-[#EDEAE0] transition-colors text-left group cursor-pointer"
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="w-8 h-8 rounded-lg bg-white border border-[#E4E2DA] flex items-center justify-center text-[#171717]">
-                      <Icon className="w-4 h-4" />
-                    </div>
-                    <span className="font-serif-editorial text-2xl text-[#171717]">
-                      {item.count}
-                    </span>
-                  </div>
-                  <div className="text-xs font-semibold text-[#171717] group-hover:underline">
-                    {item.label}
-                  </div>
-                  <div className="text-[11px] text-[#77766F] mt-0.5 truncate">{item.sub}</div>
-                </button>
-              );
-            })}
-          </div>
+          <button
+            onClick={() => onNavigate('setup')}
+            className="btn-secondary text-xs py-1.5 px-3.5 shrink-0"
+          >
+            Open Full Setup
+          </button>
         </div>
 
-        {/* Right (4 cols): University Timing Structure Summary */}
-        <div className="lg:col-span-4 sf-card-white p-6 flex flex-col justify-between space-y-5">
-          <div className="space-y-4">
-            <div className="flex items-center justify-between border-b border-[#E4E2DA] pb-4">
-              <div>
-                <h3 className="font-serif-editorial text-xl text-[#171717]">
-                  University Day Structure
-                </h3>
-                <p className="text-xs text-[#77766F] mt-0.5">
-                  Saved Academic Configuration rules
-                </p>
-              </div>
-              <Clock className="w-4 h-4 text-[#77766F]" />
-            </div>
-
-            <div className="space-y-2.5 text-xs">
-              <div className="p-3 rounded-xl bg-[#B8EEEE]/45 border border-[#A2E0E0]">
-                <div className="font-semibold text-[#171717]">
-                  Operating Window ({activeTiming.operatingHoursLabel})
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3.5">
+          {[
+            {
+              label: 'Departments',
+              count: store.departments.length,
+              sub: activeTerm?.name || 'Fall 2026',
+              icon: Layers,
+              step: 0
+            },
+            {
+              label: 'Rooms & Labs',
+              count: store.rooms.length,
+              sub: `${store.rooms.filter(r => r.type === 'lab').length} Labs`,
+              icon: DoorOpen,
+              step: 1
+            },
+            {
+              label: 'Courses',
+              count: store.courses.length,
+              sub: `${store.courses.filter(c => c.requiredRoomType === 'lab').length} with Lab`,
+              icon: BookOpen,
+              step: 2
+            },
+            {
+              label: 'Instructors',
+              count: store.instructors.length,
+              sub: 'Active faculty',
+              icon: Users,
+              step: 3
+            },
+            {
+              label: 'Cohorts',
+              count: store.studentGroups.length,
+              sub: '2K22–2K25',
+              icon: GraduationCap,
+              step: 4
+            },
+            {
+              label: 'Sections',
+              count: store.sections.length,
+              sub: `${lectureSectionsCount}L · ${labSectionsCount}Lab`,
+              icon: FlaskConical,
+              step: 5
+            }
+          ].map(item => {
+            const Icon = item.icon;
+            return (
+              <button
+                key={item.label}
+                onClick={() => onOpenSetupStep(item.step)}
+                className="p-4 rounded-xl border border-[#E4E2DA] bg-[#F7F6EF]/60 hover:bg-[#EDEAE0] transition-colors text-left group cursor-pointer"
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <div className="w-8 h-8 rounded-lg bg-white border border-[#E4E2DA] flex items-center justify-center text-[#171717]">
+                    <Icon className="w-4 h-4" />
+                  </div>
+                  <span className="font-serif-editorial text-2xl text-[#171717]">
+                    {item.count}
+                  </span>
                 </div>
-                <p className="text-[11px] text-[#171717]/80 mt-0.5">
-                  {activeTiming.slots.length} daily slots across {activeTiming.workingDays.join(', ')}. Each lecture runs {activeTiming.periodLengthMinutes} minutes
-                  {activeTiming.shortBreakEnabled && activeTiming.shortBreakMinutes > 0
-                    ? ` followed by a ${activeTiming.shortBreakMinutes}-minute break.`
-                    : ' back-to-back.'}
-                </p>
-              </div>
-
-              <div className="p-3 rounded-xl bg-[#E8D36B]/35 border border-[#D4BC4C]">
-                <div className="font-semibold text-[#171717]">
-                  {activeTiming.middayBreak.enabled
-                    ? `Midday Break (${activeTiming.middayBreak.timeRangeLabel})`
-                    : 'Midday Break Disabled'}
+                <div className="text-xs font-semibold text-[#171717] group-hover:underline">
+                  {item.label}
                 </div>
-                <p className="text-[11px] text-[#171717]/80 mt-0.5">
-                  {activeTiming.middayBreak.enabled
-                    ? `Protected ${activeTiming.middayBreak.durationMinutes}-minute midday break (${activeTiming.middayBreak.fullRangeLabel}). Zero lectures or labs overlap this period.`
-                    : 'Instructional slots run continuously without a midday break.'}
-                </p>
-              </div>
-
-              <div className="p-3 rounded-xl bg-[#F2D8FA]/60 border border-[#DFB9EC]">
-                <div className="font-semibold text-[#171717]">
-                  Continuous {labHoursLabel}-Hour Labs ({activeTiming.labDurationMinutes}m)
-                </div>
-                <p className="text-[11px] text-[#171717]/80 mt-0.5">
-                  Labs span {activeTiming.labSpanSlots} consecutive slots ({activeTiming.continuousLabBlocks.map(b => b.continuousLabel).join(' · ') || 'configured windows'}) and never split across different times of day.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <button
-            onClick={() => onNavigate('academic-config')}
-            className="w-full btn-secondary text-xs py-2.5 justify-center"
-          >
-            <Sliders className="w-3.5 h-3.5" />
-            <span>Open Academic Configuration</span>
-          </button>
+                <div className="text-[11px] text-[#77766F] mt-0.5 truncate">{item.sub}</div>
+              </button>
+            );
+          })}
         </div>
       </section>
     </div>
