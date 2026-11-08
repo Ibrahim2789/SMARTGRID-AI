@@ -26,10 +26,16 @@ import {
   Info,
   Activity,
   History,
-  RotateCcw
+  RotateCcw,
+  Vote,
+  FileText,
+  ShieldCheck,
+  Send,
+  User
 } from 'lucide-react';
 import { useInstitutionalData, institutionalStore } from '../data/store';
 import { computeAcademicScheduleConfig } from '../types/institutional';
+import { AuthenticatedVotingUser } from '../services/votingApi';
 
 interface AuthenticatedLayoutProps {
   activeRoute: RouteType;
@@ -38,8 +44,8 @@ interface AuthenticatedLayoutProps {
   onOpenSetupStep?: (stepIdx: number) => void;
   onSignOut: () => void;
   onOpenAuth?: (mode?: 'signin' | 'signup') => void;
-  currentUser: { name: string; role: string; email: string; institution?: string };
-  onSwitchUser?: (user: { name: string; role: string; email: string; institution?: string }) => void;
+  currentUser: AuthenticatedVotingUser;
+  onSwitchUser?: (user: AuthenticatedVotingUser) => void;
   children: React.ReactNode;
 }
 
@@ -53,12 +59,22 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
   onOpenSetupStep,
   onSignOut,
   currentUser,
-  onSwitchUser,
   children
 }) => {
   const storeSnapshot = useInstitutionalData();
   const activeTiming = computeAcademicScheduleConfig(storeSnapshot.timeStructure);
   const mainScrollRef = useRef<HTMLDivElement>(null);
+
+  const normalizedRole = (currentUser.systemRole || currentUser.role || '').toLowerCase();
+  const isAdminRole = normalizedRole === 'admin' || normalizedRole === 'registrar';
+  const isBrRole = normalizedRole === 'br';
+  const isStudentRole = normalizedRole === 'student';
+
+  const homeRouteForRole: RouteType = isStudentRole
+    ? 'student-dashboard'
+    : isBrRole
+    ? 'br-dashboard'
+    : 'home';
 
   const [secondaryOpen, setSecondaryOpen] = useState<boolean>(() => {
     try {
@@ -80,9 +96,7 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
       const next = !prev;
       try {
         localStorage.setItem('smartgrid_sidebar_collapsed', String(!next));
-      } catch {
-        // Ignore storage errors
-      }
+      } catch {}
       return next;
     });
   };
@@ -95,24 +109,17 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
   const [notifications, setNotifications] = useState([
     {
       id: 'n1',
-      title: 'Solver Schedule Verified',
+      title: 'Timetable Verified',
       detail: 'All lectures & continuous labs respect the configured university operating hours and breaks.',
       time: 'Just now',
       unread: true
     },
     {
       id: 'n2',
-      title: 'Google Sheets Export Ready',
-      detail: 'Landscape .xlsx export includes Weekly Overview + per-section tabs.',
+      title: 'Batch Voting Active',
+      detail: 'Published cohort referendums are open for student participation.',
       time: '12m ago',
       unread: true
-    },
-    {
-      id: 'n3',
-      title: 'Room Capacity Validated',
-      detail: 'Zero lab or lecture hall capacity overflows across active cohorts.',
-      time: '1h ago',
-      unread: false
     }
   ]);
 
@@ -131,6 +138,7 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
     storeSnapshot.institutionProfile?.name || currentUser.institution || 'Western Polytechnic';
 
   const handleSelectTerm = (termName: string) => {
+    if (!isAdminRole) return;
     if (activeTermObj) {
       institutionalStore.updateTerm(activeTermObj.id, { name: termName });
     }
@@ -141,6 +149,7 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
   const totalSections = storeSnapshot.sections.length;
 
   const openSetup = (stepIdx: number) => {
+    if (!isAdminRole) return;
     setActiveUtilityPanel(null);
     if (onOpenSetupStep) {
       onOpenSetupStep(stepIdx);
@@ -151,6 +160,7 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
   };
 
   const openInsightSection = (subView: InsightSubView, elementId: string) => {
+    if (!isAdminRole) return;
     setActiveUtilityPanel(null);
     setActiveInsightSubView(subView);
     onNavigate('feedback');
@@ -164,10 +174,10 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
   };
 
   // =========================================================
-  // RIGHT COLUMN — ALL PRIMARY APPLICATION NAVIGATION
-  // Organized into 4 logical groups, sized to fit 100vh without scrolling
+  // DYNAMIC ROLE-BASED NAVIGATION GROUPS
+  // Strictly separate menus for Students, BRs, and Admins
   // =========================================================
-  const navigationGroups: Array<{
+  type NavGroupItem = {
     id: string;
     code: string;
     heading: string;
@@ -180,7 +190,171 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
       isActive: boolean;
       onClick: () => void;
     }>;
-  }> = [
+  };
+
+  const studentNavigationGroups: NavGroupItem[] = [
+    {
+      id: 'group-student-workspace',
+      code: '01',
+      heading: 'STUDENT WORKSPACE',
+      items: [
+        {
+          id: 'nav-student-dashboard',
+          label: 'Student Dashboard',
+          icon: Home,
+          isActive: activeRoute === 'student-dashboard',
+          onClick: () => {
+            setActiveUtilityPanel(null);
+            onNavigate('student-dashboard');
+            setMobileDrawerOpen(false);
+          }
+        },
+        {
+          id: 'nav-student-timetable',
+          label: 'My Timetable',
+          icon: Calendar,
+          meta: currentUser.batchCode || 'Schedule',
+          metaAccent: true,
+          isActive: activeRoute === 'timetables',
+          onClick: () => {
+            setActiveUtilityPanel(null);
+            onNavigate('timetables');
+            setMobileDrawerOpen(false);
+          }
+        },
+        {
+          id: 'nav-student-voting',
+          label: 'Student Voting',
+          icon: Vote,
+          meta: 'Polls',
+          metaAccent: true,
+          isActive: activeRoute === 'student-voting',
+          onClick: () => {
+            setActiveUtilityPanel(null);
+            onNavigate('student-voting');
+            setMobileDrawerOpen(false);
+          }
+        },
+        {
+          id: 'nav-student-preferences',
+          label: 'My Preferences',
+          icon: Sliders,
+          isActive: activeRoute === 'student-preferences',
+          onClick: () => {
+            setActiveUtilityPanel(null);
+            onNavigate('student-preferences');
+            setMobileDrawerOpen(false);
+          }
+        }
+      ]
+    },
+    {
+      id: 'group-student-account',
+      code: '02',
+      heading: 'ACCOUNT & PROFILE',
+      items: [
+        {
+          id: 'nav-account-settings',
+          label: 'Account Profile',
+          icon: User,
+          isActive: activeRoute === 'account-settings',
+          onClick: () => {
+            setActiveUtilityPanel(null);
+            onNavigate('account-settings');
+            setMobileDrawerOpen(false);
+          }
+        }
+      ]
+    }
+  ];
+
+  const brNavigationGroups: NavGroupItem[] = [
+    {
+      id: 'group-br-workspace',
+      code: '01',
+      heading: 'REPRESENTATIVE WORKSPACE',
+      items: [
+        {
+          id: 'nav-br-dashboard',
+          label: 'BR Dashboard',
+          icon: Home,
+          meta: currentUser.batchCode || 'BR',
+          metaAccent: true,
+          isActive: activeRoute === 'br-dashboard',
+          onClick: () => {
+            setActiveUtilityPanel(null);
+            onNavigate('br-dashboard');
+            setMobileDrawerOpen(false);
+          }
+        },
+        {
+          id: 'nav-br-submit',
+          label: 'Submit a Question',
+          icon: Send,
+          isActive: activeRoute === 'br-submit',
+          onClick: () => {
+            setActiveUtilityPanel(null);
+            onNavigate('br-submit');
+            setMobileDrawerOpen(false);
+          }
+        },
+        {
+          id: 'nav-br-submissions',
+          label: 'My Submissions',
+          icon: FileText,
+          isActive: activeRoute === 'br-submissions',
+          onClick: () => {
+            setActiveUtilityPanel(null);
+            onNavigate('br-submissions');
+            setMobileDrawerOpen(false);
+          }
+        },
+        {
+          id: 'nav-br-results',
+          label: 'Voting Status & Results',
+          icon: BarChart3,
+          isActive: activeRoute === 'br-results',
+          onClick: () => {
+            setActiveUtilityPanel(null);
+            onNavigate('br-results');
+            setMobileDrawerOpen(false);
+          }
+        }
+      ]
+    },
+    {
+      id: 'group-br-schedule',
+      code: '02',
+      heading: 'BATCH & ACCOUNT',
+      items: [
+        {
+          id: 'nav-br-timetable',
+          label: 'Batch Timetable',
+          icon: Calendar,
+          meta: currentUser.batchCode || 'Grid',
+          isActive: activeRoute === 'timetables',
+          onClick: () => {
+            setActiveUtilityPanel(null);
+            onNavigate('timetables');
+            setMobileDrawerOpen(false);
+          }
+        },
+        {
+          id: 'nav-br-account',
+          label: 'Account Profile',
+          icon: User,
+          isActive: activeRoute === 'account-settings',
+          onClick: () => {
+            setActiveUtilityPanel(null);
+            onNavigate('account-settings');
+            setMobileDrawerOpen(false);
+          }
+        }
+      ]
+    }
+  ];
+
+  const adminNavigationGroups: NavGroupItem[] = [
     {
       id: 'group-workspace',
       code: '01',
@@ -194,6 +368,42 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
           onClick: () => {
             setActiveUtilityPanel(null);
             onNavigate('home');
+            setMobileDrawerOpen(false);
+          }
+        },
+        {
+          id: 'nav-admin-voting',
+          label: 'Voting Management',
+          icon: Vote,
+          meta: 'Polls',
+          metaAccent: true,
+          isActive: activeRoute === 'admin-voting',
+          onClick: () => {
+            setActiveUtilityPanel(null);
+            onNavigate('admin-voting');
+            setMobileDrawerOpen(false);
+          }
+        },
+        {
+          id: 'nav-admin-voting-analytics',
+          label: 'Voting Analytics',
+          icon: BarChart3,
+          isActive: activeRoute === 'admin-voting-analytics',
+          onClick: () => {
+            setActiveUtilityPanel(null);
+            onNavigate('admin-voting-analytics');
+            setMobileDrawerOpen(false);
+          }
+        },
+        {
+          id: 'nav-admin-br-management',
+          label: 'BR Management',
+          icon: ShieldCheck,
+          meta: '2/Batch',
+          isActive: activeRoute === 'admin-br-management',
+          onClick: () => {
+            setActiveUtilityPanel(null);
+            onNavigate('admin-br-management');
             setMobileDrawerOpen(false);
           }
         },
@@ -220,13 +430,6 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
             onNavigate('generate');
             setMobileDrawerOpen(false);
           }
-        },
-        {
-          id: 'nav-preferences',
-          label: 'My Preferences',
-          icon: Sliders,
-          isActive: activeRoute === 'setup' && setupStep === 6,
-          onClick: () => openSetup(6)
         }
       ]
     },
@@ -318,14 +521,6 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
           }
         },
         {
-          id: 'nav-departments',
-          label: 'Departments & Term',
-          icon: BookOpen,
-          meta: String(storeSnapshot.departments.length),
-          isActive: activeRoute === 'setup' && setupStep === 0,
-          onClick: () => openSetup(0)
-        },
-        {
           id: 'nav-settings',
           label: 'Workspace Settings',
           icon: Settings,
@@ -340,26 +535,11 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
     }
   ];
 
-  const presetPersonas = [
-    {
-      name: 'Dr. Katherine Reynolds',
-      role: 'Registrar',
-      email: 'k.reynolds@westernpoly.edu',
-      institution: 'Western Polytechnic'
-    },
-    {
-      name: 'Prof. Alan Turing',
-      role: 'Faculty',
-      email: 'a.turing@westernpoly.edu',
-      institution: 'Western Polytechnic'
-    },
-    {
-      name: 'Maya Lin (CS Y1)',
-      role: 'Student',
-      email: 'm.lin@westernpoly.edu',
-      institution: 'Western Polytechnic'
-    }
-  ];
+  const navigationGroups = isStudentRole
+    ? studentNavigationGroups
+    : isBrRole
+    ? brNavigationGroups
+    : adminNavigationGroups;
 
   const toggleUtilityPanel = (panel: Exclude<UtilityPanelType, null>) => {
     setActiveUtilityPanel(prev => (prev === panel ? null : panel));
@@ -368,23 +548,22 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
   return (
     <div className="h-screen w-full overflow-hidden flex bg-[#F7F6EF] text-[#171717]">
       {/* =========================================================
-          1. LEFT COLUMN (72px, Fixed 100vh):
-             Reserved EXCLUSIVELY for Personal Utilities & Account
-         ========================================================= */}
+           1. LEFT COLUMN (72px, Fixed 100vh):
+              Reserved EXCLUSIVELY for Personal Utilities & Account
+          ========================================================= */}
       <aside
         className="fixed inset-y-0 left-0 z-40 hidden md:flex flex-col items-center justify-between w-[72px] h-screen bg-[#171717] text-white py-3.5 shrink-0 select-none border-r border-[#242424]"
         aria-label="Personal utilities and account controls"
       >
-        {/* Top: SmartGrid AI Brand Icon + Sidebar Collapse/Expand Toggle */}
         <div className="flex flex-col items-center gap-3 w-full px-2">
           <button
             type="button"
             onClick={() => {
               setActiveUtilityPanel(null);
-              onNavigate('home');
+              onNavigate(homeRouteForRole);
             }}
             title={`${institutionName} · SmartGrid AI`}
-            aria-label="SmartGrid AI Dashboard"
+            aria-label="Dashboard"
             className="rounded-xl transition-transform hover:scale-105 cursor-pointer focus:outline-none"
           >
             <SmartGridLogo variant="icon" theme="dark" size="md" />
@@ -409,11 +588,10 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
 
           <div className="w-7 h-[1px] bg-[#2E2E2E]" />
 
-          {/* Global Utilities: Notifications, Help & Support, Application Info */}
           <div className="flex flex-col items-center gap-2 w-full">
             <button
               onClick={() => toggleUtilityPanel('notifications')}
-              title="Notifications & Solver Alerts"
+              title="Notifications"
               aria-label="Notifications"
               className={`relative w-10 h-10 rounded-xl flex items-center justify-center transition-colors cursor-pointer ${
                 activeUtilityPanel === 'notifications'
@@ -442,7 +620,7 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
 
             <button
               onClick={() => toggleUtilityPanel('info')}
-              title="Application Information & Solver Status"
+              title="Application Information"
               aria-label="Application information"
               className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors cursor-pointer ${
                 activeUtilityPanel === 'info'
@@ -455,19 +633,19 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
           </div>
         </div>
 
-        {/* Bottom: Account Settings, User Profile/Avatar, Sign Out */}
+        {/* Bottom: Settings, User Profile/Avatar, Sign Out */}
         <div className="flex flex-col items-center gap-2.5 w-full px-2">
           <div className="w-7 h-[1px] bg-[#2E2E2E]" />
 
           <button
             onClick={() => {
               setActiveUtilityPanel(null);
-              onNavigate('academic-config');
+              onNavigate(isAdminRole ? 'academic-config' : 'account-settings');
             }}
-            title="Academic Configuration & Timings"
-            aria-label="Academic configuration"
+            title={isAdminRole ? 'Academic Configuration' : 'Account & Profile Settings'}
+            aria-label="Settings"
             className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors cursor-pointer ${
-              activeRoute === 'academic-config'
+              activeRoute === 'academic-config' || activeRoute === 'account-settings'
                 ? 'bg-[#2E2E2E] text-white'
                 : 'text-[#9E9D96] hover:text-white hover:bg-[#242424]'
             }`}
@@ -478,7 +656,7 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
           <button
             onClick={() => toggleUtilityPanel('profile')}
             title={`Account Profile: ${currentUser.name} (${currentUser.role})`}
-            aria-label="User profile and persona switcher"
+            aria-label="User profile"
             className={`w-9 h-9 rounded-full bg-[#F2D8FA] text-[#171717] font-semibold text-xs flex items-center justify-center cursor-pointer border transition-all ${
               activeUtilityPanel === 'profile'
                 ? 'border-[#B8EEEE] ring-2 ring-[#B8EEEE]/40'
@@ -504,8 +682,8 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
       </aside>
 
       {/* =========================================================
-          UTILITY POPOVERS (Anchored to the 72px Personal Rail)
-         ========================================================= */}
+           UTILITY POPOVERS (Anchored to the 72px Personal Rail)
+          ========================================================= */}
       {activeUtilityPanel && (
         <div
           className="fixed inset-0 z-50 hidden md:block"
@@ -589,11 +767,7 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
                       {activeTiming.periodLengthMinutes}m Lectures & {activeTiming.labDurationMinutes}m Labs
                     </div>
                     <p className="text-[11px] text-[#A6A49D]">
-                      Regular lectures run {activeTiming.periodLengthMinutes} mins
-                      {activeTiming.shortBreakEnabled && activeTiming.shortBreakMinutes > 0
-                        ? ` + ${activeTiming.shortBreakMinutes}m break`
-                        : ' (no break between classes)'}
-                      . Labs span {activeTiming.labSpanSlots} continuous slots without splitting.
+                      Regular lectures run {activeTiming.periodLengthMinutes} mins. Labs span {activeTiming.labSpanSlots} continuous slots without splitting.
                     </p>
                   </div>
                 </div>
@@ -608,7 +782,7 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
                     <span className="text-xs font-semibold text-white">Application Info</span>
                   </div>
                   <span className="text-[10px] font-mono-tabular px-2 py-0.5 rounded bg-[#292929] text-[#B8EEEE]">
-                    v2.5 Institutional
+                    Institutional
                   </span>
                 </div>
                 <div className="grid grid-cols-2 gap-2 text-xs">
@@ -625,16 +799,18 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
                     </div>
                   </div>
                 </div>
-                <button
-                  onClick={() => {
-                    institutionalStore.resetToDefaults();
-                    setActiveUtilityPanel(null);
-                  }}
-                  className="w-full flex items-center justify-center gap-1.5 py-2 rounded-xl bg-[#292929] hover:bg-[#333333] text-xs font-medium text-[#EAE8E1] border border-[#383838] cursor-pointer"
-                >
-                  <RotateCcw className="w-3.5 h-3.5" />
-                  <span>Restore Default University Seed</span>
-                </button>
+                {isAdminRole && (
+                  <button
+                    onClick={() => {
+                      institutionalStore.resetToDefaults();
+                      setActiveUtilityPanel(null);
+                    }}
+                    className="w-full flex items-center justify-center gap-1.5 py-2 rounded-xl bg-[#292929] hover:bg-[#333333] text-xs font-medium text-[#EAE8E1] border border-[#383838] cursor-pointer"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>Restore Default University Seed</span>
+                  </button>
+                )}
               </div>
             )}
 
@@ -656,45 +832,35 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
                   </div>
                 </div>
 
-                {onSwitchUser && (
-                  <div className="space-y-1">
-                    <div className="px-1 text-[10px] font-semibold uppercase tracking-wider text-[#8E8C84]">
-                      Switch Active Persona
-                    </div>
-                    {presetPersonas.map(persona => (
-                      <button
-                        key={persona.email}
-                        onClick={() => {
-                          onSwitchUser(persona);
-                          setActiveUtilityPanel(null);
-                        }}
-                        className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs transition-colors cursor-pointer ${
-                          currentUser.email === persona.email
-                            ? 'bg-[#383838] text-white font-medium'
-                            : 'text-[#C2C0B8] hover:bg-[#2C2C2C]'
-                        }`}
-                      >
-                        <div className="text-left truncate">
-                          <div className="truncate">{persona.name}</div>
-                          <div className="text-[10px] text-[#8E8C84]">{persona.role}</div>
-                        </div>
-                        {currentUser.email === persona.email && (
-                          <CheckCircle2 className="w-3.5 h-3.5 text-[#B8EEEE] shrink-0" />
-                        )}
-                      </button>
-                    ))}
+                <div className="p-2.5 rounded-xl bg-[#292929] border border-[#383838] text-xs space-y-1">
+                  <div className="text-[10px] text-[#8E8C84]">Verified Backend Role</div>
+                  <div className="font-semibold text-white flex items-center gap-1.5">
+                    <ShieldCheck className="w-3.5 h-3.5 text-[#B7F77C]" />
+                    <span>
+                      {isBrRole
+                        ? `Batch Representative (${
+                            currentUser.brGenderRole === 'female' ? 'Female BR' : 'Male BR'
+                          })`
+                        : currentUser.role}
+                    </span>
                   </div>
-                )}
+                  {currentUser.batchCode && (
+                    <div className="text-[11px] text-[#B8EEEE]">
+                      Cohort: {currentUser.batchCode}
+                      {currentUser.section ? ` · ${currentUser.section}` : ''}
+                    </div>
+                  )}
+                </div>
 
                 <div className="pt-2 border-t border-[#333333] flex items-center justify-between gap-2">
                   <button
                     onClick={() => {
                       setActiveUtilityPanel(null);
-                      onNavigate('academic-config');
+                      onNavigate('account-settings');
                     }}
                     className="flex-1 py-1.5 px-2.5 rounded-lg bg-[#292929] hover:bg-[#333333] text-xs text-white cursor-pointer"
                   >
-                    Academic Config
+                    Account Settings
                   </button>
                   <button
                     onClick={onSignOut}
@@ -710,10 +876,9 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
       )}
 
       {/* =========================================================
-          2. RIGHT COLUMN (Fixed 100vh):
-             Structured 4-Group Navigation Menu (256px Expanded / 60px Collapsed Icon Rail)
-             Visible in Full on Standard Laptop Screens Without Internal Scrolling
-         ========================================================= */}
+           2. RIGHT COLUMN (Fixed 100vh):
+              Role-Specific Navigation Menu (256px Expanded / 60px Collapsed Icon Rail)
+          ========================================================= */}
       <aside
         className={`fixed inset-y-0 left-[72px] z-30 hidden md:flex flex-col h-screen bg-[#292929] text-[#EAE8E1] shrink-0 select-none border-r border-[#1F1F1F] transition-[width] duration-200 ease-in-out overflow-hidden ${
           secondaryOpen ? 'w-[256px]' : 'w-[60px]'
@@ -722,23 +887,28 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
       >
         {secondaryOpen ? (
           <div className="w-[256px] h-screen flex flex-col justify-between overflow-hidden">
-            {/* Compact Sidebar Header: Institution/Term Context Selector + Collapse Button */}
+            {/* Compact Sidebar Header */}
             <div className="px-3 py-2.5 border-b border-[#363636] relative flex items-center gap-1.5 shrink-0">
               <button
-                onClick={() => setTermDropdownOpen(prev => !prev)}
-                title={`${institutionName} · Switch Academic Term (${activeTerm})`}
+                onClick={() => {
+                  if (isAdminRole) setTermDropdownOpen(prev => !prev);
+                }}
+                title={`${institutionName} · ${activeTerm}`}
                 className="flex-1 min-w-0 flex items-center justify-between gap-1.5 px-2.5 py-1.5 rounded-lg bg-[#323232] hover:bg-[#383838] transition-colors text-left cursor-pointer"
               >
                 <div className="min-w-0">
                   <div className="text-[10px] font-medium uppercase tracking-wider text-[#9E9D96] truncate leading-tight">
-                    {institutionName}
+                    {isStudentRole
+                      ? `STUDENT · ${currentUser.batchCode || 'COHORT'}`
+                      : isBrRole
+                      ? `BR · ${currentUser.batchCode || 'COHORT'}`
+                      : institutionName}
                   </div>
                   <div className="text-[12px] font-semibold text-white flex items-center gap-1.5 leading-tight mt-0.5">
-                    <span className="w-1.5 h-1.5 rounded-full bg-[#B7F77C] shrink-0" />
                     <span className="truncate">{activeTerm}</span>
                   </div>
                 </div>
-                <ChevronDown className="w-3.5 h-3.5 text-[#9E9D96] shrink-0" />
+                {isAdminRole && <ChevronDown className="w-3.5 h-3.5 text-[#9E9D96] shrink-0" />}
               </button>
 
               <button
@@ -750,7 +920,7 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
                 <PanelLeftClose className="w-4 h-4" />
               </button>
 
-              {termDropdownOpen && (
+              {isAdminRole && termDropdownOpen && (
                 <div className="absolute left-3 right-3 top-[52px] bg-[#1F1F1F] border border-[#3E3E3E] rounded-xl p-1.5 shadow-xl z-50">
                   <div className="px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-[#8E8C84]">
                     Switch Academic Term
@@ -775,9 +945,9 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
               )}
             </div>
 
-            {/* 4 Logical Navigation Groups — Simple, Minimal Navigation List Fitting 100vh */}
+            {/* Dynamic Role Navigation Groups */}
             <nav
-              className="flex-1 flex flex-col justify-between px-2.5 py-2.5 overflow-hidden"
+              className="flex-1 flex flex-col justify-start gap-5 px-2.5 py-3 overflow-y-auto"
               aria-label="Workspace navigation hierarchy"
             >
               {navigationGroups.map(group => (
@@ -840,9 +1010,33 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
                 </div>
               ))}
             </nav>
+
+            {/* Bottom Logged-In Role Indicator & Logout */}
+            <div className="px-3 py-2.5 border-t border-[#363636] flex items-center justify-between gap-2 text-xs">
+              <div className="min-w-0">
+                <div className="font-semibold text-white truncate">{currentUser.name}</div>
+                <div className="text-[11px] text-[#9E9D96] truncate">
+                  {isBrRole
+                    ? `${currentUser.brGenderRole === 'female' ? 'Female' : 'Male'} BR · ${
+                        currentUser.batchCode || ''
+                      }`
+                    : isStudentRole
+                    ? `Student · ${currentUser.batchCode || ''}`
+                    : currentUser.role}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={onSignOut}
+                title="Sign Out"
+                className="px-2.5 py-1.5 rounded-lg bg-[#383838] hover:bg-[#444444] text-[11px] font-medium text-white shrink-0 cursor-pointer"
+              >
+                Logout
+              </button>
+            </div>
           </div>
         ) : (
-          /* COLLAPSED STATE (60px): Recognizable Icons, Active Indicator & Helpful Tooltips */
+          /* COLLAPSED STATE (60px) */
           <div className="w-[60px] h-screen flex flex-col items-center justify-between py-2.5 px-1.5 overflow-hidden">
             <div className="w-full flex flex-col items-center pb-2 border-b border-[#363636] shrink-0">
               <button
@@ -856,7 +1050,7 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
             </div>
 
             <nav
-              className="flex-1 w-full flex flex-col items-center justify-between py-2 overflow-hidden"
+              className="flex-1 w-full flex flex-col items-center justify-start gap-2 py-2 overflow-hidden"
               aria-label="Collapsed workspace navigation"
             >
               {navigationGroups.map((group, gIdx) => (
@@ -895,8 +1089,8 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
       </aside>
 
       {/* =========================================================
-          3. CENTRAL CONTENT AREA (Independent Vertical Scroll) + MOBILE DRAWER
-         ========================================================= */}
+           3. CENTRAL CONTENT AREA + MOBILE DRAWER
+          ========================================================= */}
       <div
         ref={mainScrollRef}
         className={`flex-1 min-w-0 h-screen overflow-y-auto overflow-x-hidden flex flex-col bg-[#F7F6EF] transition-[margin-left] duration-200 ease-in-out ${
@@ -914,16 +1108,22 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
               <Menu className="w-5 h-5" />
             </button>
             <SmartGridLogo variant="primary" theme="dark" size="xs" />
-            <span className="text-[11px] px-2 py-0.5 rounded bg-[#292929] text-[#B8EEEE]">
-              {activeTerm}
-            </span>
           </div>
-          <button
-            onClick={() => onNavigate('generate')}
-            className="px-3 py-1.5 rounded-lg bg-[#B8EEEE] text-[#171717] text-xs font-semibold cursor-pointer"
-          >
-            Generate
-          </button>
+          {isAdminRole ? (
+            <button
+              onClick={() => onNavigate('generate')}
+              className="px-3 py-1.5 rounded-lg bg-[#B8EEEE] text-[#171717] text-xs font-semibold cursor-pointer"
+            >
+              Generate
+            </button>
+          ) : (
+            <button
+              onClick={onSignOut}
+              className="px-3 py-1.5 rounded-lg bg-[#292929] text-white text-xs font-semibold cursor-pointer"
+            >
+              Logout
+            </button>
+          )}
         </header>
 
         {/* Mobile Slide-Over Drawer */}

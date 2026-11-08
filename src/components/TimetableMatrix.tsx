@@ -709,14 +709,16 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
             )}
           </div>
 
-          <button
-            onClick={handleRunSweep}
-            disabled={isSweeping}
-            className="btn-primary text-xs h-9 px-3.5"
-          >
-            <Sparkles className={`w-3.5 h-3.5 ${isSweeping ? 'animate-spin' : ''}`} />
-            <span>{isSweeping ? 'Optimizing...' : 'Re-Optimize'}</span>
-          </button>
+          {(currentUser?.role === 'Admin' || currentUser?.role === 'Registrar') && (
+            <button
+              onClick={handleRunSweep}
+              disabled={isSweeping}
+              className="btn-primary text-xs h-9 px-3.5"
+            >
+              <Sparkles className={`w-3.5 h-3.5 ${isSweeping ? 'animate-spin' : ''}`} />
+              <span>{isSweeping ? 'Optimizing...' : 'Re-Optimize'}</span>
+            </button>
+          )}
         </div>
       </header>
 
