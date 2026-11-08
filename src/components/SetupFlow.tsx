@@ -566,35 +566,42 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
     showToast(`Added section for ${course?.code} (${group?.code}).`);
   };
 
-  const isPreferencesView = activeStep === 6;
+  const isClassesAndSectionsGroup = activeStep === 4 || activeStep === 5 || activeStep === 0;
+  const isInstructorsGroup = activeStep === 3 || activeStep === 6;
+
+  const currentSectionTitle =
+    activeStep === 1
+      ? 'Rooms & Laboratories'
+      : activeStep === 2
+      ? 'Courses'
+      : isInstructorsGroup
+      ? 'Instructors & Availability'
+      : 'Classes & Sections';
+
+  const currentSectionSubtitle =
+    activeStep === 1
+      ? 'Manage campus lecture halls, specialized laboratories, seating capacities, and room equipment.'
+      : activeStep === 2
+      ? 'Manage the university course catalog, credit hours, weekly contact hours, and lab requirements.'
+      : isInstructorsGroup
+      ? 'Manage faculty members, weekly teaching load limits, slot availability, and scheduling constraints.'
+      : 'Manage student cohorts, class sections, and academic departments.';
 
   return (
     <div className="space-y-6">
       {/* =========================================================
-          1. EDITORIAL SERIF PAGE HEADING & MODE SWITCHER
+          1. CONTEXTUAL PAGE HEADING & INTERNAL SUB-VIEW TABS
          ========================================================= */}
-      <header className="flex flex-col lg:flex-row lg:items-end justify-between gap-4 pb-4 border-b border-[#E4E2DA]">
-        <div>
-          <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-md bg-[#B8F2E6] text-[#171717] text-xs font-semibold mb-2">
-            {isPreferencesView ? (
-              <>
-                <Sliders className="w-3.5 h-3.5" />
-                <span>Student & Institutional Preferences</span>
-              </>
-            ) : (
-              <>
-                <BookOpen className="w-3.5 h-3.5" />
-                <span>Courses & Academic Resources</span>
-              </>
-            )}
+      <header className="flex flex-col lg:flex-row lg:items-end justify-between gap-4 pb-5 border-b border-[#E4E2DA]">
+        <div className="space-y-1.5">
+          <div className="text-xs font-medium text-[#77766F]">
+            Academic Management · {activeTerm?.name || 'Fall 2026'}
           </div>
           <h1 className="font-serif-editorial text-3xl sm:text-4xl text-[#171717] tracking-tight">
-            {isPreferencesView ? 'My Preferences' : 'Courses & Academic Resources'}
+            {currentSectionTitle}
           </h1>
-          <p className="text-xs sm:text-sm text-[#77766F] mt-1 max-w-2xl">
-            {isPreferencesView
-              ? 'Customize preferred daily timings, unavailable days, break durations, consecutive-class caps, and maximum daily workload.'
-              : 'Browse and manage academic courses, sections, campus rooms, faculty availability, and student cohorts.'}
+          <p className="text-xs sm:text-sm text-[#77766F] max-w-2xl">
+            {currentSectionSubtitle}
           </p>
         </div>
 
@@ -626,6 +633,113 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
           </button>
         </div>
       </header>
+
+      {/* Internal Sub-Tabs ONLY for multi-tab sections (Classes & Sections, or Instructors) */}
+      {isClassesAndSectionsGroup && (
+        <div
+          className="inline-flex flex-wrap items-center gap-1.5 p-1.5 rounded-2xl bg-white border border-[#E4E2DA]"
+          role="tablist"
+          aria-label="Classes and sections views"
+        >
+          {[
+            {
+              stepIdx: 4,
+              label: 'Student Cohorts & Classes',
+              count: store.studentGroups.length,
+              icon: Layers
+            },
+            {
+              stepIdx: 5,
+              label: 'Course Sections',
+              count: store.sections.length,
+              icon: Calendar
+            },
+            {
+              stepIdx: 0,
+              label: 'Departments & Terms',
+              count: store.departments.length,
+              icon: Building2
+            }
+          ].map(tab => {
+            const Icon = tab.icon;
+            const active = activeStep === tab.stepIdx;
+            return (
+              <button
+                key={tab.stepIdx}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                onClick={() => selectStep(tab.stepIdx)}
+                className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                  active
+                    ? 'bg-[#171717] text-white'
+                    : 'text-[#57564F] hover:text-[#171717] hover:bg-[#F7F6EF]'
+                }`}
+              >
+                <Icon className="w-3.5 h-3.5" />
+                <span>{tab.label}</span>
+                <span
+                  className={`px-1.5 py-0.5 rounded-md text-[10px] font-mono-tabular ${
+                    active ? 'bg-white/20 text-white' : 'bg-[#EDEAE0] text-[#171717]'
+                  }`}
+                >
+                  {tab.count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {isInstructorsGroup && (
+        <div
+          className="inline-flex flex-wrap items-center gap-1.5 p-1.5 rounded-2xl bg-white border border-[#E4E2DA]"
+          role="tablist"
+          aria-label="Instructor management views"
+        >
+          {[
+            {
+              stepIdx: 3,
+              label: 'Faculty Roster & Availability',
+              count: store.instructors.length,
+              icon: Users
+            },
+            {
+              stepIdx: 6,
+              label: 'Teaching & Scheduling Rules',
+              count: store.constraints.filter(c => c.enabled).length,
+              icon: Sliders
+            }
+          ].map(tab => {
+            const Icon = tab.icon;
+            const active = activeStep === tab.stepIdx;
+            return (
+              <button
+                key={tab.stepIdx}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                onClick={() => selectStep(tab.stepIdx)}
+                className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                  active
+                    ? 'bg-[#171717] text-white'
+                    : 'text-[#57564F] hover:text-[#171717] hover:bg-[#F7F6EF]'
+                }`}
+              >
+                <Icon className="w-3.5 h-3.5" />
+                <span>{tab.label}</span>
+                <span
+                  className={`px-1.5 py-0.5 rounded-md text-[10px] font-mono-tabular ${
+                    active ? 'bg-white/20 text-white' : 'bg-[#EDEAE0] text-[#171717]'
+                  }`}
+                >
+                  {tab.count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {statusBanner && (
         <div className="p-3.5 sf-pastel-lime text-xs font-medium flex items-center gap-2">
@@ -671,54 +785,10 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
       )}
 
       {/* =========================================================
-          2. MAIN 2-COLUMN WORKSPACE (SIDEBAR TABS + CONTENT AREA)
+          2. FULL-WIDTH ACTIVE MANAGEMENT CONTENT AREA
          ========================================================= */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* Left Navigation Column */}
-        <aside className="lg:col-span-3 space-y-2">
-          <div className="sf-card-white p-3 space-y-1">
-            {steps.map((s, idx) => {
-              const Icon = s.icon;
-              const isCurrent = activeStep === idx;
-              return (
-                <button
-                  key={s.title}
-                  onClick={() => selectStep(idx)}
-                  className={`w-full text-left px-3 py-2.5 rounded-xl flex items-center justify-between transition-colors cursor-pointer ${
-                    isCurrent
-                      ? 'bg-[#171717] text-white'
-                      : 'text-[#171717] hover:bg-[#F7F6EF]'
-                  }`}
-                >
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <div
-                      className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${
-                        isCurrent
-                          ? 'bg-white/15 text-white'
-                          : 'bg-[#EDEAE0] text-[#171717]'
-                      }`}
-                    >
-                      <Icon className="w-3.5 h-3.5" />
-                    </div>
-                    <div className="min-w-0">
-                      <div className="text-xs font-semibold truncate">{s.title}</div>
-                      <div
-                        className={`text-[10.5px] truncate ${
-                          isCurrent ? 'text-[#B8EEEE]' : 'text-[#77766F]'
-                        }`}
-                      >
-                        {s.subtitle}
-                      </div>
-                    </div>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </aside>
-
-        {/* Right Active Content Area */}
-        <div className="lg:col-span-9 space-y-6">
+      <div className="space-y-6">
+        <div className="space-y-6">
           {/* STEP 0: Departments & Academic Time Grid */}
           {activeStep === 0 && (
             <div className="sf-card-white p-6 space-y-6">

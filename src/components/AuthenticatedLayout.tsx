@@ -163,6 +163,10 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
     if (!isAdminRole) return;
     setActiveUtilityPanel(null);
     setActiveInsightSubView(subView);
+    try {
+      sessionStorage.setItem('smartgrid_insight_tab', subView);
+      window.dispatchEvent(new CustomEvent('smartgrid:insight-tab', { detail: subView }));
+    } catch {}
     onNavigate('feedback');
     setMobileDrawerOpen(false);
     setTimeout(() => {
@@ -170,12 +174,13 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
       if (targetEl && mainScrollRef.current) {
         targetEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }
-    }, 80);
+    }, 60);
   };
 
   // =========================================================
   // DYNAMIC ROLE-BASED NAVIGATION GROUPS
   // Strictly separate menus for Students, BRs, and Admins
+  // One main feature = one sidebar destination (no duplicate internal tabs)
   // =========================================================
   type NavGroupItem = {
     id: string;
@@ -251,7 +256,7 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
     {
       id: 'group-student-account',
       code: '02',
-      heading: 'ACCOUNT & PROFILE',
+      heading: 'ACCOUNT',
       items: [
         {
           id: 'nav-account-settings',
@@ -276,57 +281,21 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
       items: [
         {
           id: 'nav-br-dashboard',
-          label: 'BR Dashboard',
+          label: 'BR Workspace',
           icon: Home,
           meta: currentUser.batchCode || 'BR',
           metaAccent: true,
-          isActive: activeRoute === 'br-dashboard',
+          isActive:
+            activeRoute === 'br-dashboard' ||
+            activeRoute === 'br-submit' ||
+            activeRoute === 'br-submissions' ||
+            activeRoute === 'br-results',
           onClick: () => {
             setActiveUtilityPanel(null);
             onNavigate('br-dashboard');
             setMobileDrawerOpen(false);
           }
         },
-        {
-          id: 'nav-br-submit',
-          label: 'Submit a Question',
-          icon: Send,
-          isActive: activeRoute === 'br-submit',
-          onClick: () => {
-            setActiveUtilityPanel(null);
-            onNavigate('br-submit');
-            setMobileDrawerOpen(false);
-          }
-        },
-        {
-          id: 'nav-br-submissions',
-          label: 'My Submissions',
-          icon: FileText,
-          isActive: activeRoute === 'br-submissions',
-          onClick: () => {
-            setActiveUtilityPanel(null);
-            onNavigate('br-submissions');
-            setMobileDrawerOpen(false);
-          }
-        },
-        {
-          id: 'nav-br-results',
-          label: 'Voting Status & Results',
-          icon: BarChart3,
-          isActive: activeRoute === 'br-results',
-          onClick: () => {
-            setActiveUtilityPanel(null);
-            onNavigate('br-results');
-            setMobileDrawerOpen(false);
-          }
-        }
-      ]
-    },
-    {
-      id: 'group-br-schedule',
-      code: '02',
-      heading: 'BATCH & ACCOUNT',
-      items: [
         {
           id: 'nav-br-timetable',
           label: 'Batch Timetable',
@@ -338,7 +307,14 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
             onNavigate('timetables');
             setMobileDrawerOpen(false);
           }
-        },
+        }
+      ]
+    },
+    {
+      id: 'group-br-account',
+      code: '02',
+      heading: 'ACCOUNT',
+      items: [
         {
           id: 'nav-br-account',
           label: 'Account Profile',
@@ -372,38 +348,13 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
           }
         },
         {
-          id: 'nav-admin-voting',
-          label: 'Voting Management',
-          icon: Vote,
-          meta: 'Polls',
-          metaAccent: true,
-          isActive: activeRoute === 'admin-voting',
+          id: 'nav-generate',
+          label: 'Generate Schedule',
+          icon: Sparkles,
+          isActive: activeRoute === 'generate',
           onClick: () => {
             setActiveUtilityPanel(null);
-            onNavigate('admin-voting');
-            setMobileDrawerOpen(false);
-          }
-        },
-        {
-          id: 'nav-admin-voting-analytics',
-          label: 'Voting Analytics',
-          icon: BarChart3,
-          isActive: activeRoute === 'admin-voting-analytics',
-          onClick: () => {
-            setActiveUtilityPanel(null);
-            onNavigate('admin-voting-analytics');
-            setMobileDrawerOpen(false);
-          }
-        },
-        {
-          id: 'nav-admin-br-management',
-          label: 'BR Management',
-          icon: ShieldCheck,
-          meta: '2/Batch',
-          isActive: activeRoute === 'admin-br-management',
-          onClick: () => {
-            setActiveUtilityPanel(null);
-            onNavigate('admin-br-management');
+            onNavigate('generate');
             setMobileDrawerOpen(false);
           }
         },
@@ -419,17 +370,6 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
             onNavigate('timetables');
             setMobileDrawerOpen(false);
           }
-        },
-        {
-          id: 'nav-generate',
-          label: 'Generate Schedule',
-          icon: Sparkles,
-          isActive: activeRoute === 'generate',
-          onClick: () => {
-            setActiveUtilityPanel(null);
-            onNavigate('generate');
-            setMobileDrawerOpen(false);
-          }
         }
       ]
     },
@@ -439,12 +379,31 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
       heading: 'ACADEMIC MANAGEMENT',
       items: [
         {
+          id: 'nav-rooms',
+          label: 'Rooms & Laboratories',
+          icon: DoorOpen,
+          meta: String(storeSnapshot.rooms.length),
+          isActive: activeRoute === 'setup' && setupStep === 1,
+          onClick: () => openSetup(1)
+        },
+        {
           id: 'nav-classes-sections',
           label: 'Classes & Sections',
           icon: GraduationCap,
           meta: String(storeSnapshot.studentGroups.length),
-          isActive: activeRoute === 'setup' && (setupStep === 4 || setupStep === 5),
+          isActive:
+            activeRoute === 'setup' &&
+            (setupStep === 4 || setupStep === 5 || setupStep === 0),
           onClick: () => openSetup(4)
+        },
+        {
+          id: 'nav-instructors',
+          label: 'Instructors',
+          icon: Users,
+          meta: String(storeSnapshot.instructors.length),
+          isActive:
+            activeRoute === 'setup' && (setupStep === 3 || setupStep === 6),
+          onClick: () => openSetup(3)
         },
         {
           id: 'nav-courses',
@@ -453,22 +412,6 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
           meta: String(storeSnapshot.courses.length),
           isActive: activeRoute === 'setup' && setupStep === 2,
           onClick: () => openSetup(2)
-        },
-        {
-          id: 'nav-instructors',
-          label: 'Instructors',
-          icon: Users,
-          meta: String(storeSnapshot.instructors.length),
-          isActive: activeRoute === 'setup' && setupStep === 3,
-          onClick: () => openSetup(3)
-        },
-        {
-          id: 'nav-rooms',
-          label: 'Rooms & Laboratories',
-          icon: DoorOpen,
-          meta: String(storeSnapshot.rooms.length),
-          isActive: activeRoute === 'setup' && setupStep === 1,
-          onClick: () => openSetup(1)
         }
       ]
     },
@@ -503,10 +446,37 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
       ]
     },
     {
-      id: 'group-system',
+      id: 'group-administration',
       code: '04',
-      heading: 'SYSTEM',
+      heading: 'ADMINISTRATION',
       items: [
+        {
+          id: 'nav-admin-voting',
+          label: 'Voting Management',
+          icon: Vote,
+          meta: 'Polls',
+          metaAccent: true,
+          isActive:
+            activeRoute === 'admin-voting' ||
+            activeRoute === 'admin-voting-analytics',
+          onClick: () => {
+            setActiveUtilityPanel(null);
+            onNavigate('admin-voting');
+            setMobileDrawerOpen(false);
+          }
+        },
+        {
+          id: 'nav-admin-br-management',
+          label: 'Batch Representatives',
+          icon: ShieldCheck,
+          meta: '2/Batch',
+          isActive: activeRoute === 'admin-br-management',
+          onClick: () => {
+            setActiveUtilityPanel(null);
+            onNavigate('admin-br-management');
+            setMobileDrawerOpen(false);
+          }
+        },
         {
           id: 'nav-academic-config',
           label: 'Academic Configuration',
@@ -887,14 +857,26 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
       >
         {secondaryOpen ? (
           <div className="w-[256px] h-screen flex flex-col justify-between overflow-hidden">
-            {/* Compact Sidebar Header */}
-            <div className="px-3 py-2.5 border-b border-[#363636] relative flex items-center gap-1.5 shrink-0">
+            {/* Compact Brand & Context Sidebar Header */}
+            <div className="px-3 py-2.5 border-b border-[#363636] relative flex flex-col gap-2 shrink-0">
+              <div className="flex items-center justify-between gap-2 px-0.5">
+                <SmartGridLogo variant="primary" theme="dark" size="xs" />
+                <button
+                  onClick={handleToggleSidebar}
+                  title="Collapse navigation sidebar to icon rail"
+                  aria-label="Collapse navigation sidebar"
+                  className="w-7 h-7 rounded-lg text-[#9E9D96] hover:text-white hover:bg-[#353535] flex items-center justify-center shrink-0 transition-colors cursor-pointer"
+                >
+                  <PanelLeftClose className="w-4 h-4" />
+                </button>
+              </div>
+
               <button
                 onClick={() => {
                   if (isAdminRole) setTermDropdownOpen(prev => !prev);
                 }}
                 title={`${institutionName} · ${activeTerm}`}
-                className="flex-1 min-w-0 flex items-center justify-between gap-1.5 px-2.5 py-1.5 rounded-lg bg-[#323232] hover:bg-[#383838] transition-colors text-left cursor-pointer"
+                className="w-full min-w-0 flex items-center justify-between gap-1.5 px-2.5 py-1.5 rounded-lg bg-[#323232] hover:bg-[#383838] transition-colors text-left cursor-pointer"
               >
                 <div className="min-w-0">
                   <div className="text-[10px] font-medium uppercase tracking-wider text-[#9E9D96] truncate leading-tight">
@@ -904,24 +886,15 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
                       ? `BR · ${currentUser.batchCode || 'COHORT'}`
                       : institutionName}
                   </div>
-                  <div className="text-[12px] font-semibold text-white flex items-center gap-1.5 leading-tight mt-0.5">
+                  <div className="text-[11.5px] font-semibold text-white flex items-center gap-1.5 leading-tight mt-0.5">
                     <span className="truncate">{activeTerm}</span>
                   </div>
                 </div>
                 {isAdminRole && <ChevronDown className="w-3.5 h-3.5 text-[#9E9D96] shrink-0" />}
               </button>
 
-              <button
-                onClick={handleToggleSidebar}
-                title="Collapse navigation sidebar to icon rail"
-                aria-label="Collapse navigation sidebar"
-                className="w-8 h-8 rounded-lg text-[#9E9D96] hover:text-white hover:bg-[#353535] flex items-center justify-center shrink-0 transition-colors cursor-pointer"
-              >
-                <PanelLeftClose className="w-4 h-4" />
-              </button>
-
               {isAdminRole && termDropdownOpen && (
-                <div className="absolute left-3 right-3 top-[52px] bg-[#1F1F1F] border border-[#3E3E3E] rounded-xl p-1.5 shadow-xl z-50">
+                <div className="absolute left-3 right-3 top-[86px] bg-[#1F1F1F] border border-[#3E3E3E] rounded-xl p-1.5 shadow-xl z-50">
                   <div className="px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-[#8E8C84]">
                     Switch Academic Term
                   </div>

@@ -1,26 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
-  <!-- Dark Mode Icon Container (Elevated Graphite Tile with Crisp Border for Dark Sidebars) -->
-  <rect width="64" height="64" rx="16" fill="#242424"/>
-  <rect x="1.5" y="1.5" width="61" height="61" rx="14.5" stroke="#3E3E3E" stroke-width="1.5"/>
-
-  <!-- Precision Grid Axes -->
-  <line x1="25" y1="12" x2="25" y2="52" stroke="#363636" stroke-width="1.25" stroke-linecap="round"/>
-  <line x1="39" y1="12" x2="39" y2="52" stroke="#363636" stroke-width="1.25" stroke-linecap="round"/>
-  <line x1="12" y1="25" x2="52" y2="25" stroke="#363636" stroke-width="1.25" stroke-linecap="round"/>
-  <line x1="12" y1="39" x2="52" y2="39" stroke="#363636" stroke-width="1.25" stroke-linecap="round"/>
-
-  <!-- Continuous 3-Hour Lab Block (Lavender) -->
-  <rect x="13" y="13" width="9.5" height="38" rx="4.5" fill="#F2D8FA"/>
-
-  <!-- Morning Lecture Span (Cyan) -->
-  <rect x="27" y="13" width="24" height="9.5" rx="4.5" fill="#B8EEEE"/>
-
-  <!-- Central Solver Pivot Node (Lime) -->
-  <rect x="27" y="27.25" width="9.5" height="9.5" rx="3.5" fill="#B7F77C"/>
-
-  <!-- Afternoon Multi-Slot Block (Mint) -->
-  <rect x="41.5" y="27.25" width="9.5" height="23.75" rx="4.5" fill="#B8F2E6"/>
-
-  <!-- Lower Lecture Node (Ivory) -->
-  <rect x="27" y="41.5" width="9.5" height="9.5" rx="3.5" fill="#F7F6EF"/>
+  <!-- SmartGrid AI Icon (Dark Surface Version) -->
+  <rect width="64" height="64" rx="15" fill="#202020"/>
+  <rect x="1" y="1" width="62" height="62" rx="14" stroke="#383838" stroke-width="1.25"/>
+  <rect x="27" y="13" width="24" height="10" rx="3" fill="#F7F6EF"/>
+  <rect x="13" y="13" width="10" height="24" rx="3" fill="#B8EEEE"/>
+  <rect x="27" y="27" width="10" height="10" rx="3" fill="#B7F77C"/>
+  <rect x="41" y="27" width="10" height="24" rx="3" fill="#B8EEEE"/>
+  <rect x="13" y="41" width="24" height="10" rx="3" fill="#F7F6EF"/>
 </svg>

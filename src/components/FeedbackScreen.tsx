@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { RouteType } from './SmartGridNav';
 import { useInstitutionalData, institutionalStore } from '../data/store';
 import { buildMatrixSchedule } from '../data/solverAdapter';
@@ -8,7 +8,6 @@ import {
   Check,
   Clock,
   ArrowRight,
-  BarChart3,
   ShieldCheck,
   Sparkles,
   Building2,
@@ -24,6 +23,27 @@ export const FeedbackScreen: React.FC<FeedbackScreenProps> = ({ onNavigate }) =>
   const store = useInstitutionalData();
   const { scheduleData, conflicts } = buildMatrixSchedule(store);
   const polls = store.feedbackPolls || [];
+
+  const [activeTab, setActiveTab] = useState<'analytics' | 'optimization' | 'history'>(() => {
+    try {
+      const saved = sessionStorage.getItem('smartgrid_insight_tab');
+      if (saved === 'analytics' || saved === 'optimization' || saved === 'history') {
+        return saved;
+      }
+    } catch {}
+    return 'analytics';
+  });
+
+  useEffect(() => {
+    const handleTabEvent = (e: Event) => {
+      const custom = e as CustomEvent<'analytics' | 'optimization' | 'history'>;
+      if (custom.detail) {
+        setActiveTab(custom.detail);
+      }
+    };
+    window.addEventListener('smartgrid:insight-tab', handleTabEvent);
+    return () => window.removeEventListener('smartgrid:insight-tab', handleTabEvent);
+  }, []);
 
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState('Student Wellbeing');
@@ -104,7 +124,7 @@ export const FeedbackScreen: React.FC<FeedbackScreenProps> = ({ onNavigate }) =>
   return (
     <div className="space-y-8">
       {/* =========================================================
-          1. CALM EDITORIAL PAGE HEADING
+          1. CALM EDITORIAL PAGE HEADING & INTERNAL VIEW TABS
          ========================================================= */}
       <header className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 pb-6 border-b border-[#E4E2DA]">
         <div className="space-y-2">
@@ -112,26 +132,30 @@ export const FeedbackScreen: React.FC<FeedbackScreenProps> = ({ onNavigate }) =>
             Analytics & Optimization · {scheduledSections} Active Sessions
           </div>
           <h1 className="font-serif-editorial text-3xl sm:text-4xl text-[#171717] tracking-tight">
-            Schedule Insights
+            {activeTab === 'analytics'
+              ? 'Schedule Analytics'
+              : activeTab === 'optimization'
+              ? 'Optimization Results'
+              : 'Schedule History & Proposals'}
           </h1>
           <p className="text-sm text-[#77766F] max-w-xl">
             Inspect preference satisfaction, conflict validation, daily workload balance, and saved schedule snapshots.
           </p>
         </div>
 
-        <div className="flex items-center gap-3 shrink-0">
+        <div className="flex flex-wrap items-center gap-3 shrink-0">
           <button
             type="button"
             onClick={() => onNavigate('timetables')}
             className="btn-secondary text-xs h-10 px-4"
           >
             <Calendar className="w-3.5 h-3.5" />
-            <span>Open Timetable</span>
+            <span>View Timetable Matrix</span>
           </button>
           <button
             type="button"
             onClick={() => onNavigate('generate')}
-            className="btn-primary text-xs h-10 px-5"
+            className="btn-primary text-xs h-10 px-4"
           >
             <span>Re-Optimize</span>
             <ArrowRight className="w-3.5 h-3.5" />
@@ -200,6 +224,7 @@ export const FeedbackScreen: React.FC<FeedbackScreenProps> = ({ onNavigate }) =>
       {/* =========================================================
           3. DAILY WORKLOAD & FREE-TIME DISTRIBUTION + ROOM UTILIZATION
          ========================================================= */}
+      {activeTab !== 'history' && (
       <div id="insights-optimization" className="grid grid-cols-1 lg:grid-cols-12 gap-8 scroll-mt-6">
         {/* Daily Workload & Free-Time Distribution (7 Cols) */}
         <div className="lg:col-span-7 sf-card-white p-6 space-y-5">
@@ -308,10 +333,12 @@ export const FeedbackScreen: React.FC<FeedbackScreenProps> = ({ onNavigate }) =>
           </div>
         </div>
       </div>
+      )}
 
       {/* =========================================================
           3B. SCHEDULE HISTORY & SAVED OPTIMIZATION SCENARIOS
          ========================================================= */}
+      {activeTab !== 'analytics' && (
       <section id="insights-history" className="sf-card-white p-6 space-y-4 scroll-mt-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#E4E2DA] pb-3.5">
           <div>
@@ -367,6 +394,7 @@ export const FeedbackScreen: React.FC<FeedbackScreenProps> = ({ onNavigate }) =>
           ))}
         </div>
       </section>
+      )}
 
       {/* =========================================================
           4. STAKEHOLDER FEEDBACK & SCHEDULE POLICY PROPOSALS
