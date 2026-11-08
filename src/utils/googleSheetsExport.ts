@@ -4,6 +4,8 @@ import { ClassItem } from '../components/ClassDetailsModal';
 import {
   UNIVERSITY_SLOTS,
   StudentGroup,
+  ComputedAcademicScheduleConfig,
+  computeAcademicScheduleConfig,
   getLabBlockByStartPeriod
 } from '../types/institutional';
 
@@ -73,16 +75,6 @@ const DAY_FULL_LABELS: Record<string, string> = {
   Sun: 'SUNDAY'
 };
 
-const COMPACT_SLOT_TIMES: Record<number, { timeRange: string; breakRange: string; friRange?: string }> = {
-  1: { timeRange: '09:00 – 09:50', breakRange: 'Break 09:50–10:00' },
-  2: { timeRange: '10:00 – 10:50', breakRange: 'Break 10:50–11:00' },
-  3: { timeRange: '11:00 – 11:50', breakRange: 'Break 11:50–12:00' },
-  4: { timeRange: '12:00 – 12:50', breakRange: 'Break 12:50–01:00' },
-  5: { timeRange: '02:00 – 02:50', breakRange: 'Break 02:50–03:00', friRange: 'Fri: 02:30–03:15' },
-  6: { timeRange: '03:00 – 03:50', breakRange: 'Break 03:50–04:00', friRange: 'Fri: 03:20–04:05' },
-  7: { timeRange: '04:00 – 04:50', breakRange: 'Break 04:50–05:00', friRange: 'Fri: 04:10–04:55' }
-};
-
 export interface GoogleSheetsExportResult {
   fileName: string;
   classSheetCount: number;
@@ -134,7 +126,7 @@ function configureCompactLandscapeWorksheet(
 
 /**
  * Adds a compact 2-row header block (Title + Subtitle) and 1-row Day header,
- * followed by the 7 time slots + 1 compact Lunch Break row (Total = 11 rows).
+ * followed by the dynamic time slots + compact Midday Break row.
  */
 function populateCompactLandscapeTimetable(params: {
   worksheet: ExcelJS.Worksheet;
@@ -145,6 +137,8 @@ function populateCompactLandscapeTimetable(params: {
   scheduleData: Record<string, Record<string, ClassItem[]>>;
   itemPredicate: (cls: ClassItem) => boolean;
   isSingleClassSheet: boolean;
+  computedTiming: ComputedAcademicScheduleConfig;
+  store: InstitutionalDataStore;
 }) {
   const {
     worksheet,
@@ -154,9 +148,12 @@ function populateCompactLandscapeTimetable(params: {
     days,
     scheduleData,
     itemPredicate,
-    isSingleClassSheet
+    isSingleClassSheet,
+    computedTiming,
+    store
   } = params;
 
+  const dynamicSlots = computedTiming.slots.length > 0 ? computedTiming.slots : UNIVERSITY_SLOTS;
   const totalCols = days.length + 1;
 
   // ---------------------------------------------------------------------------
@@ -217,7 +214,9 @@ function populateCompactLandscapeTimetable(params: {
     'TIME SLOT',
     ...days.map(d => {
       const label = DAY_FULL_LABELS[d] || d.toUpperCase();
-      return d === 'Fri' ? 'FRIDAY (PM 2:30)' : label;
+      return d === 'Fri' && computedTiming.fridayAfternoonShiftEnabled
+        ? `FRIDAY (PM ${computedTiming.fridayAfternoonStartTime})`
+        : label;
     })
   ];
   const headerRow = worksheet.addRow(headerValues);
@@ -252,7 +251,7 @@ function populateCompactLandscapeTimetable(params: {
     }
   });
 
-  // Track cells covered by a 3-hour Continuous Lab vertical merge
+  // Track cells covered by a Continuous Lab vertical merge
   const coveredByMerge = new Set<string>();
   const pendingLabMerges: Array<{
     startRowNumber: number;
@@ -261,15 +260,15 @@ function populateCompactLandscapeTimetable(params: {
     cls: ClassItem;
   }> = [];
 
-  // Compact row height: 42pt for individual class sheets, 45pt for master overview
-  // 7 slots * 42pt = 294pt + 59pt headers + 19pt lunch = 372pt total (~495px, fits laptop screen at 100% zoom)
   const slotRowHeight = isSingleClassSheet ? 42 : 45;
 
-  const renderSlotRow = (slotMeta: (typeof UNIVERSITY_SLOTS)[number]) => {
-    const compactTiming = COMPACT_SLOT_TIMES[slotMeta.slotNumber] || {
-      timeRange: slotMeta.period,
-      breakRange: `Break ${slotMeta.shortBreak}`
-    };
+  const renderSlotRow = (slotMeta: (typeof dynamicSlots)[number], slotIdx: number) => {
+    const breakNote =
+      computedTiming.shortBreakEnabled &&
+      computedTiming.shortBreakMinutes > 0 &&
+      slotMeta.shortBreak !== 'No Break'
+        ? `Break ${slotMeta.shortBreak.replace(' AM', '').replace(' PM', '')}`
+        : 'No Break (0m)';
 
     const row = worksheet.addRow(['']);
     const currentRowNum = row.number;
@@ -281,13 +280,11 @@ function populateCompactLandscapeTimetable(params: {
       richText: [
         {
           font: { name: 'Calibri', size: 8.5, bold: true, color: { argb: 'FF171717' } },
-          text: `${compactTiming.timeRange}\n`
+          text: `${slotMeta.period.replace(' AM', '').replace(' PM', '')}\n`
         },
         {
           font: { name: 'Calibri', size: 7.5, bold: false, color: { argb: 'FF77766F' } },
-          text: compactTiming.friRange
-            ? `Slot ${slotMeta.slotNumber} • ${compactTiming.friRange}`
-            : `Slot ${slotMeta.slotNumber} • ${compactTiming.breakRange}`
+          text: `Slot ${slotMeta.slotNumber} • ${breakNote}`
         }
       ]
     };
@@ -341,21 +338,24 @@ function populateCompactLandscapeTimetable(params: {
         return;
       }
 
-      // Check if a 3-hour continuous Lab starts in this slot (Slots 1, 2 in Morning or Slot 5 in Afternoon)
-      const labItem = cellClasses.find(c => c.sessionType === 'Lab' || c.spanSlots === 3);
-      const canMergeLab =
-        Boolean(labItem) &&
-        (slotMeta.slotNumber === 1 || slotMeta.slotNumber === 2 || slotMeta.slotNumber === 5);
+      // Check if a continuous Lab starts in this slot
+      const labItem = cellClasses.find(c => c.sessionType === 'Lab' || (c.spanSlots && c.spanSlots > 1));
+      const labBlock = labItem ? getLabBlockByStartPeriod(slotMeta.period, store.timeStructure) : undefined;
+      const desiredSpan = labItem?.spanSlots || labBlock?.spanSlots || computedTiming.labSpanSlots || 3;
+      const sameSessionSlots = dynamicSlots
+        .slice(slotIdx, slotIdx + desiredSpan)
+        .filter(s => s.session === slotMeta.session);
 
-      if (labItem && canMergeLab) {
-        coveredByMerge.add(`${slotMeta.slotNumber + 1}_${dIdx}`);
-        coveredByMerge.add(`${slotMeta.slotNumber + 2}_${dIdx}`);
+      if (labItem && sameSessionSlots.length >= 2) {
+        const coveredSubsequent = sameSessionSlots.slice(1);
+        coveredSubsequent.forEach(subSlot => {
+          coveredByMerge.add(`${subSlot.slotNumber}_${dIdx}`);
+        });
 
-        const labBlock = getLabBlockByStartPeriod(slotMeta.period);
         const continuousWindow =
-          day === 'Fri' && slotMeta.slotNumber === 5
-            ? '02:30 – 04:55 PM'
-            : labItem.continuousTimeLabel || labBlock?.continuousLabel || '3 Hours Continuous';
+          labItem.continuousTimeLabel ||
+          labBlock?.continuousLabel ||
+          `${slotMeta.startTime} – ${sameSessionSlots[sameSessionSlots.length - 1].cycleEndTime}`;
 
         const otherCount = cellClasses.length - 1;
         const cleanTitle = cleanCourseTitle(labItem.title, 28);
@@ -368,7 +368,7 @@ function populateCompactLandscapeTimetable(params: {
           },
           {
             font: { name: 'Calibri', size: 8, bold: true, color: { argb: 'FF292929' } },
-            text: `[LAB • 3H CONTINUOUS] ${continuousWindow}\n`
+            text: `[LAB • ${computedTiming.labDurationHoursLabel.toUpperCase()} CONTINUOUS] ${continuousWindow}\n`
           },
           {
             font: { name: 'Calibri', size: 8, bold: false, color: { argb: 'FF333330' } },
@@ -401,12 +401,12 @@ function populateCompactLandscapeTimetable(params: {
 
         pendingLabMerges.push({
           startRowNumber: currentRowNum,
-          endRowNumber: currentRowNum + 2,
+          endRowNumber: currentRowNum + sameSessionSlots.length - 1,
           colNumber: colNum,
           cls: labItem
         });
       } else {
-        // Regular 50-minute Lecture cell
+        // Regular Lecture cell
         const primary = cellClasses[0];
         const pastel = getCourseArgb(primary.code);
 
@@ -483,76 +483,73 @@ function populateCompactLandscapeTimetable(params: {
     });
   };
 
-  // Render Morning Session Slots 1–4 (09:00 AM – 01:00 PM)
-  UNIVERSITY_SLOTS.filter(s => s.session === 'Morning').forEach(slotMeta => {
-    renderSlotRow(slotMeta);
+  dynamicSlots.forEach((slotMeta, sIdx) => {
+    // Insert Midday Break row right before the first Afternoon slot if midday break is enabled
+    if (
+      computedTiming.middayBreak.enabled &&
+      slotMeta.slotNumber === computedTiming.firstAfternoonSlotNumber
+    ) {
+      const lunchRow = worksheet.addRow([
+        computedTiming.middayBreak.timeRangeLabel,
+        `MIDDAY / LUNCH BREAK (${computedTiming.middayBreak.fullRangeLabel})  •  Protected University Break — No Lectures or Labs Scheduled`
+      ]);
+      const lunchRowNum = lunchRow.number;
+      worksheet.mergeCells(lunchRowNum, 2, lunchRowNum, totalCols);
+      lunchRow.height = 19;
+
+      const lunchTimeCell = lunchRow.getCell(1);
+      lunchTimeCell.font = {
+        name: 'Calibri',
+        size: 8,
+        bold: true,
+        color: { argb: 'FF171717' }
+      };
+      lunchTimeCell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FFE8D36B' }
+      };
+      lunchTimeCell.alignment = {
+        vertical: 'middle',
+        horizontal: 'center'
+      };
+      lunchTimeCell.border = {
+        top: { style: 'thin', color: { argb: 'FFB59F3B' } },
+        bottom: { style: 'thin', color: { argb: 'FFB59F3B' } },
+        left: { style: 'thin', color: { argb: 'FFB59F3B' } },
+        right: { style: 'medium', color: { argb: 'FFB59F3B' } }
+      };
+
+      for (let c = 2; c <= totalCols; c++) {
+        const cell = lunchRow.getCell(c);
+        cell.font = {
+          name: 'Calibri',
+          size: 8.5,
+          bold: true,
+          color: { argb: 'FF333330' }
+        };
+        cell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FFEDEAE0' }
+        };
+        cell.alignment = {
+          vertical: 'middle',
+          horizontal: 'center'
+        };
+        cell.border = {
+          top: { style: 'thin', color: { argb: 'FFC7C3B6' } },
+          bottom: { style: 'thin', color: { argb: 'FFC7C3B6' } },
+          left: { style: 'thin', color: { argb: 'FFD6D3C9' } },
+          right: { style: 'thin', color: { argb: 'FFD6D3C9' } }
+        };
+      }
+    }
+
+    renderSlotRow(slotMeta, sIdx);
   });
 
-  // ---------------------------------------------------------------------------
-  // ROW 8: Compact Fixed University Lunch & Prayer Break (01:00 PM – 02:00 PM)
-  // ---------------------------------------------------------------------------
-  const lunchRow = worksheet.addRow([
-    '01:00 – 02:00 PM',
-    'LUNCH & PRAYER BREAK (1:00 PM – 2:00 PM)  •  Fixed University Break — No Lectures or Labs Scheduled'
-  ]);
-  const lunchRowNum = lunchRow.number;
-  worksheet.mergeCells(lunchRowNum, 2, lunchRowNum, totalCols);
-  lunchRow.height = 19;
-
-  const lunchTimeCell = lunchRow.getCell(1);
-  lunchTimeCell.font = {
-    name: 'Calibri',
-    size: 8,
-    bold: true,
-    color: { argb: 'FF171717' }
-  };
-  lunchTimeCell.fill = {
-    type: 'pattern',
-    pattern: 'solid',
-    fgColor: { argb: 'FFE8D36B' }
-  };
-  lunchTimeCell.alignment = {
-    vertical: 'middle',
-    horizontal: 'center'
-  };
-  lunchTimeCell.border = {
-    top: { style: 'thin', color: { argb: 'FFB59F3B' } },
-    bottom: { style: 'thin', color: { argb: 'FFB59F3B' } },
-    left: { style: 'thin', color: { argb: 'FFB59F3B' } },
-    right: { style: 'medium', color: { argb: 'FFB59F3B' } }
-  };
-
-  for (let c = 2; c <= totalCols; c++) {
-    const cell = lunchRow.getCell(c);
-    cell.font = {
-      name: 'Calibri',
-      size: 8.5,
-      bold: true,
-      color: { argb: 'FF333330' }
-    };
-    cell.fill = {
-      type: 'pattern',
-      pattern: 'solid',
-      fgColor: { argb: 'FFEDEAE0' }
-    };
-    cell.alignment = {
-      vertical: 'middle',
-      horizontal: 'center'
-    };
-    cell.border = {
-      top: { style: 'thin', color: { argb: 'FFC7C3B6' } },
-      bottom: { style: 'thin', color: { argb: 'FFC7C3B6' } },
-      left: { style: 'thin', color: { argb: 'FFD6D3C9' } },
-      right: { style: 'thin', color: { argb: 'FFD6D3C9' } }
-    };
-  }
-
-  // Render Afternoon Session Slots 5–7 (02:00 PM – 05:00 PM)
-  UNIVERSITY_SLOTS.filter(s => s.session === 'Afternoon').forEach(slotMeta => {
-    renderSlotRow(slotMeta);
-  });
-
-  // Execute vertical merges for 3-hour Continuous Labs
+  // Execute vertical merges for Continuous Labs
   pendingLabMerges.forEach(mergeItem => {
     worksheet.mergeCells(
       mergeItem.startRowNumber,
@@ -572,7 +569,6 @@ function populateCompactLandscapeTimetable(params: {
     }
   });
 
-  // Configure Landscape Print Setup & Column Widths for the exact timetable range (Rows 1..11)
   const lastGridRow = worksheet.rowCount;
   configureCompactLandscapeWorksheet(worksheet, days, lastGridRow);
 }
@@ -587,6 +583,9 @@ export async function exportTimetableToGoogleSheetsWorkbook(params: {
 }): Promise<GoogleSheetsExportResult> {
   const { store, scheduleData, filterClass, scope, scopeLabel } = params;
 
+  const computedTiming = computeAcademicScheduleConfig(store.timeStructure);
+  const dynamicSlots = computedTiming.slots.length > 0 ? computedTiming.slots : UNIVERSITY_SLOTS;
+
   const workbook = new ExcelJS.Workbook();
   workbook.creator = 'SmartGrid AI — University Scheduling Platform';
   workbook.created = new Date();
@@ -596,16 +595,15 @@ export async function exportTimetableToGoogleSheetsWorkbook(params: {
   const termName = activeTerm?.name || 'Fall Semester 2026';
   const institutionName = store.institutionProfile?.name || 'University of Engineering & Computing';
 
-  // Use the active working days (Mon–Fri by default, plus Sat/Sun if any classes are scheduled on weekends)
   const baseWorkingDays =
-    store.timeStructure.workingDays.length > 0
-      ? store.timeStructure.workingDays
+    computedTiming.workingDays.length > 0
+      ? computedTiming.workingDays
       : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
 
   const weekendDaysWithClasses = (['Sat', 'Sun'] as const).filter(
     d =>
       !baseWorkingDays.includes(d) &&
-      UNIVERSITY_SLOTS.some(s => (scheduleData[s.period]?.[d] || []).length > 0)
+      dynamicSlots.some(s => (scheduleData[s.period]?.[d] || []).length > 0)
   );
   const days = [...baseWorkingDays, ...weekendDaysWithClasses];
 
@@ -614,7 +612,7 @@ export async function exportTimetableToGoogleSheetsWorkbook(params: {
   // Collect all scheduled items in scope
   const allScheduledItems: ClassItem[] = [];
   days.forEach(day => {
-    UNIVERSITY_SLOTS.forEach(slotMeta => {
+    dynamicSlots.forEach(slotMeta => {
       const cellItems = (scheduleData[slotMeta.period]?.[day] || []).filter(
         cls => scope === 'all' || filterClass(cls)
       );
@@ -651,11 +649,13 @@ export async function exportTimetableToGoogleSheetsWorkbook(params: {
     worksheet: overviewSheet,
     titleLeft: `${institutionName.toUpperCase()} — WEEKLY TIMETABLE OVERVIEW`,
     titleRight: `${termName}  •  ${finalGroups.length} Class Sections`,
-    subtitleText: `Scope: ${scopeLabel.replace(/_/g, ' ')}   |   Operating Hours: 09:00 AM – 05:00 PM   |   Lectures: 50m (+10m Break)   |   Labs: 3h Continuous (Merged)   |   Fixed Lunch: 01:00 – 02:00 PM`,
+    subtitleText: `Scope: ${scopeLabel.replace(/_/g, ' ')}   |   ${computedTiming.summaryText}`,
     days,
     scheduleData,
     itemPredicate: cls => scope === 'all' || filterClass(cls),
-    isSingleClassSheet: false
+    isSingleClassSheet: false,
+    computedTiming,
+    store
   });
 
   // ============================================================================
@@ -679,11 +679,13 @@ export async function exportTimetableToGoogleSheetsWorkbook(params: {
       worksheet: classSheet,
       titleLeft: `CLASS TIMETABLE: ${group.code}`,
       titleRight: `${group.name} (${semLabel} • ${secLabel})`,
-      subtitleText: `Department: ${deptLabel}   |   Home Room: ${roomLabel}   |   Term: ${termName}   |   Lectures: 50m (+10m Break)   •   Labs: 3h Continuous   •   Lunch: 01:00 – 02:00 PM`,
+      subtitleText: `Department: ${deptLabel}   |   Home Room: ${roomLabel}   |   Term: ${termName}   |   ${computedTiming.summaryText}`,
       days,
       scheduleData,
       itemPredicate: cls => cls.studentGroupId === group.id,
-      isSingleClassSheet: true
+      isSingleClassSheet: true,
+      computedTiming,
+      store
     });
   });
 

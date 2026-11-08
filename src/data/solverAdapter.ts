@@ -2,6 +2,7 @@ import { ClassItem } from '../components/ClassDetailsModal';
 import { InstitutionalDataStore } from './store';
 import {
   UNIVERSITY_PERIODS,
+  computeAcademicScheduleConfig,
   getLabBlockByStartPeriod,
   getCoveredPeriodsForAssignment
 } from '../types/institutional';
@@ -27,9 +28,13 @@ export function buildMatrixSchedule(store: InstitutionalDataStore): {
   conflicts: Array<{ id: string; description: string; day: string; time: string }>;
 } {
   const scheduleData: Record<string, Record<string, ClassItem[]>> = {};
-  const periods = store.timeStructure.periods.length > 0
-    ? store.timeStructure.periods
-    : UNIVERSITY_PERIODS;
+  const computedTiming = computeAcademicScheduleConfig(store.timeStructure);
+  const periods =
+    computedTiming.periods.length > 0
+      ? computedTiming.periods
+      : store.timeStructure.periods.length > 0
+      ? store.timeStructure.periods
+      : UNIVERSITY_PERIODS;
   const allWeekDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
   const days = Array.from(new Set([...(store.timeStructure.workingDays || []), ...allWeekDays]));
 
@@ -42,7 +47,7 @@ export function buildMatrixSchedule(store: InstitutionalDataStore): {
 
   const conflicts: Array<{ id: string; description: string; day: string; time: string }> = [];
 
-  // Track room and instructor occupancy across all covered slots (including 3-hour continuous labs)
+  // Track room and instructor occupancy across all covered slots (including continuous labs)
   const occupiedRoomByDaySlot = new Map<string, { secId: string; code: string; roomCode: string }>();
   const occupiedProfByDaySlot = new Map<string, { secId: string; code: string; profName: string }>();
 
@@ -74,19 +79,21 @@ export function buildMatrixSchedule(store: InstitutionalDataStore): {
 
     const isLab =
       sec.sessionType === 'Lab' ||
-      sec.spanSlots === 3 ||
+      (sec.spanSlots && sec.spanSlots > 1) ||
       sec.assignedSlot.sessionType === 'Lab' ||
-      sec.assignedSlot.spanSlots === 3 ||
+      (sec.assignedSlot.spanSlots && sec.assignedSlot.spanSlots > 1) ||
       sec.sectionNumber.toLowerCase().includes('lab');
 
-    const spanSlots = isLab ? 3 : 1;
+    const labBlockMeta = isLab ? getLabBlockByStartPeriod(timeSlot, store.timeStructure) : undefined;
+    const spanSlots = isLab
+      ? (sec.assignedSlot.spanSlots || labBlockMeta?.spanSlots || computedTiming.labSpanSlots || 3)
+      : 1;
     const sessionType: 'Lecture' | 'Lab' = isLab ? 'Lab' : 'Lecture';
-    const labBlockMeta = isLab ? getLabBlockByStartPeriod(timeSlot) : undefined;
     const continuousTimeLabel = isLab
-      ? (sec.assignedSlot.continuousTimeLabel || labBlockMeta?.continuousLabel || '9:00 AM – 12:00 PM')
+      ? (sec.assignedSlot.continuousTimeLabel || labBlockMeta?.continuousLabel || computedTiming.continuousLabBlocks[0]?.continuousLabel || timeSlot)
       : undefined;
 
-    const coveredPeriods = getCoveredPeriodsForAssignment(timeSlot, spanSlots);
+    const coveredPeriods = getCoveredPeriodsForAssignment(timeSlot, spanSlots, store.timeStructure);
     let hasConflict = false;
 
     coveredPeriods.forEach(covPeriod => {
@@ -141,7 +148,9 @@ export function buildMatrixSchedule(store: InstitutionalDataStore): {
       type: isLab ? 'Lab' : 'Lecture',
       sessionType,
       spanSlots,
-      durationMinutes: isLab ? 180 : 50,
+      durationMinutes: isLab
+        ? (sec.assignedSlot.durationMinutes || computedTiming.labDurationMinutes || 180)
+        : (sec.assignedSlot.durationMinutes || computedTiming.periodLengthMinutes || 50),
       continuousTimeLabel,
       credits: course?.creditHours || 3,
       accent: getDepartmentAccent(code),
@@ -154,3 +163,4 @@ export function buildMatrixSchedule(store: InstitutionalDataStore): {
 
   return { scheduleData, conflicts };
 }
+

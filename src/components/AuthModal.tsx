@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { X, Lock, Compass, CheckCircle2, User, Mail, School, Eye, EyeOff, Zap } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { X, Lock, CheckCircle2, User, Mail, School, Eye, EyeOff } from 'lucide-react';
+import { motion } from 'motion/react';
+import { SmartGridLogo } from './SmartGridLogo';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -27,7 +28,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [fullName, setFullName] = useState('');
   const [signupEmail, setSignupEmail] = useState('');
   const [institutionName, setInstitutionName] = useState('Stanford University');
-  const [signupRole, setSignupRole] = useState('Academic Scheduling Officer');
+  const [signupRole] = useState('Academic Scheduling Officer');
 
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -116,12 +117,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         {/* Header */}
         <div className="px-6 py-5 border-b border-border flex items-center justify-between bg-surface">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-md bg-brand flex items-center justify-center text-white shrink-0">
-              <Compass className="w-4 h-4" />
-            </div>
+            <SmartGridLogo variant="icon" theme="light" size="sm" />
             <div>
               <h2 className="text-base font-semibold text-primary">
-                {mode === 'signin' ? 'Sign in to SmartGrid' : 'Create campus account'}
+                {mode === 'signin' ? 'Sign in to SmartGrid AI' : 'Create campus account'}
               </h2>
               <p className="text-[13px] text-secondary mt-0.5">
                 Institutional single sign-on & workspace access
@@ -209,15 +208,15 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   <label className="block text-[14px] font-medium text-primary mb-1.5">
                     Institutional email
                   </label>
-                  <div className="relative">
-                    <Mail className="w-4 h-4 text-secondary absolute left-3 top-2.5" />
+                  <div className="flex items-center gap-2.5 w-full h-[38px] px-3 rounded-md border border-border bg-surface focus-within:ring-2 focus-within:ring-brand focus-within:border-brand">
+                    <Mail className="w-4 h-4 text-secondary shrink-0" />
                     <input 
                       type="email" 
                       value={email}
                       onChange={e => setEmail(e.target.value)}
                       required
                       placeholder="name@university.edu"
-                      className="w-full h-[38px] pl-9 pr-3 text-[14px] rounded-md border border-border text-primary focus:outline-none focus:ring-2 focus:ring-brand focus:border-brand bg-surface"
+                      className="flex-1 min-w-0 h-full text-[14px] text-primary bg-transparent border-0 focus:outline-none"
                     />
                   </div>
                 </div>
@@ -226,21 +225,21 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   <label className="block text-[14px] font-medium text-primary mb-1.5">
                     Password
                   </label>
-                  <div className="relative">
-                    <Lock className="w-4 h-4 text-secondary absolute left-3 top-2.5" />
+                  <div className="flex items-center gap-2.5 w-full h-[38px] px-3 rounded-md border border-border bg-surface focus-within:ring-2 focus-within:ring-brand focus-within:border-brand">
+                    <Lock className="w-4 h-4 text-secondary shrink-0" />
                     <input 
                       type={showPassword ? 'text' : 'password'} 
                       value={password}
                       onChange={e => setPassword(e.target.value)}
                       required
-                      className="w-full h-[38px] pl-9 pr-9 text-[14px] rounded-md border border-border text-primary focus:outline-none focus:ring-2 focus:ring-brand focus:border-brand bg-surface font-mono"
+                      className="flex-1 min-w-0 h-full text-[14px] text-primary bg-transparent border-0 focus:outline-none font-mono"
                     />
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-2.5 text-secondary hover:text-primary cursor-pointer"
+                      className="text-secondary hover:text-primary cursor-pointer shrink-0 flex items-center justify-center p-1"
                     >
-                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      {showPassword ? <EyeOff className="w-4 h-4 shrink-0" /> : <Eye className="w-4 h-4 shrink-0" />}
                     </button>
                   </div>
                 </div>
@@ -252,15 +251,15 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 <label className="block text-[14px] font-medium text-primary mb-1.5">
                   Full name
                 </label>
-                <div className="relative">
-                  <User className="w-4 h-4 text-secondary absolute left-3 top-2.5" />
+                <div className="flex items-center gap-2.5 w-full h-[38px] px-3 rounded-md border border-border bg-surface focus-within:ring-2 focus-within:ring-brand focus-within:border-brand">
+                  <User className="w-4 h-4 text-secondary shrink-0" />
                   <input 
                     type="text" 
                     value={fullName}
                     onChange={e => setFullName(e.target.value)}
                     required
                     placeholder="e.g. Dr. Eleanor Vance"
-                    className="w-full h-[38px] pl-9 pr-3 text-[14px] rounded-md border border-border text-primary focus:outline-none focus:ring-2 focus:ring-brand focus:border-brand bg-surface"
+                    className="flex-1 min-w-0 h-full text-[14px] text-primary bg-transparent border-0 focus:outline-none"
                   />
                 </div>
               </div>
@@ -269,15 +268,15 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 <label className="block text-[14px] font-medium text-primary mb-1.5">
                   Institutional email
                 </label>
-                <div className="relative">
-                  <Mail className="w-4 h-4 text-secondary absolute left-3 top-2.5" />
+                <div className="flex items-center gap-2.5 w-full h-[38px] px-3 rounded-md border border-border bg-surface focus-within:ring-2 focus-within:ring-brand focus-within:border-brand">
+                  <Mail className="w-4 h-4 text-secondary shrink-0" />
                   <input 
                     type="email" 
                     value={signupEmail}
                     onChange={e => setSignupEmail(e.target.value)}
                     required
                     placeholder="e.g. e.vance@stanford.edu"
-                    className="w-full h-[38px] pl-9 pr-3 text-[14px] rounded-md border border-border text-primary focus:outline-none focus:ring-2 focus:ring-brand focus:border-brand bg-surface"
+                    className="flex-1 min-w-0 h-full text-[14px] text-primary bg-transparent border-0 focus:outline-none"
                   />
                 </div>
               </div>
@@ -286,14 +285,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 <label className="block text-[14px] font-medium text-primary mb-1.5">
                   Institution name
                 </label>
-                <div className="relative">
-                  <School className="w-4 h-4 text-secondary absolute left-3 top-2.5" />
+                <div className="flex items-center gap-2.5 w-full h-[38px] px-3 rounded-md border border-border bg-surface focus-within:ring-2 focus-within:ring-brand focus-within:border-brand">
+                  <School className="w-4 h-4 text-secondary shrink-0" />
                   <input 
                     type="text" 
                     value={institutionName}
                     onChange={e => setInstitutionName(e.target.value)}
                     required
-                    className="w-full h-[38px] pl-9 pr-3 text-[14px] rounded-md border border-border text-primary focus:outline-none focus:ring-2 focus:ring-brand focus:border-brand bg-surface"
+                    className="flex-1 min-w-0 h-full text-[14px] text-primary bg-transparent border-0 focus:outline-none"
                   />
                 </div>
               </div>

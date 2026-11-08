@@ -8,14 +8,15 @@ import { SetupFlow } from './components/SetupFlow';
 import { GenerateScreen } from './components/GenerateScreen';
 import { TimetableMatrix } from './components/TimetableMatrix';
 import { FeedbackScreen } from './components/FeedbackScreen';
+import { AcademicConfigurationPage } from './components/AcademicConfigurationPage';
 import { SettingsScreen } from './components/SettingsScreen';
 
 export default function App() {
-  const [currentUser, setCurrentUser] = useState<{ 
-    name: string; 
-    role: string; 
-    email: string; 
-    institution?: string 
+  const [currentUser, setCurrentUser] = useState<{
+    name: string;
+    role: string;
+    email: string;
+    institution?: string;
   } | null>(() => {
     try {
       const saved = sessionStorage.getItem('smartgrid_user');
@@ -36,7 +37,15 @@ export default function App() {
     if (r === 'generator' || r === 'adaptive-engine') return 'generate';
     if (r === 'student-voice') return 'feedback';
     if (r === 'case-studies') return 'settings';
-    const valid: RouteType[] = ['home', 'setup', 'generate', 'timetables', 'feedback', 'settings'];
+    const valid: RouteType[] = [
+      'home',
+      'setup',
+      'generate',
+      'timetables',
+      'feedback',
+      'academic-config',
+      'settings'
+    ];
     return valid.includes(r as RouteType) ? (r as RouteType) : 'home';
   };
 
@@ -60,7 +69,12 @@ export default function App() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handleLogin = (user: { name: string; role: string; email: string; institution?: string }) => {
+  const handleLogin = (user: {
+    name: string;
+    role: string;
+    email: string;
+    institution?: string;
+  }) => {
     setCurrentUser(user);
     try {
       sessionStorage.setItem('smartgrid_user', JSON.stringify(user));
@@ -104,11 +118,7 @@ export default function App() {
         />
       );
     }
-    return (
-      <PublicLandingPage 
-        onOpenAuth={handleOpenAuth}
-      />
-    );
+    return <PublicLandingPage onOpenAuth={handleOpenAuth} />;
   }
 
   // 2. Authenticated App Workspace
@@ -124,7 +134,7 @@ export default function App() {
       onSwitchUser={setCurrentUser}
     >
       {currentRoute === 'home' && (
-        <HomeScreen 
+        <HomeScreen
           onNavigate={handleNavigate}
           onOpenSetupStep={handleOpenSetupStep}
           currentUser={currentUser}
@@ -132,21 +142,20 @@ export default function App() {
       )}
 
       {currentRoute === 'setup' && (
-        <SetupFlow 
+        <SetupFlow
           initialStep={setupStep}
           onStepChange={setSetupStep}
           onNavigate={handleNavigate}
+          currentUser={currentUser}
         />
       )}
 
       {currentRoute === 'generate' && (
-        <GenerateScreen 
-          onNavigate={handleNavigate}
-        />
+        <GenerateScreen onNavigate={handleNavigate} currentUser={currentUser} />
       )}
 
       {currentRoute === 'timetables' && (
-        <TimetableMatrix 
+        <TimetableMatrix
           onNavigate={handleNavigate}
           currentUser={currentUser}
           onSignOut={handleSignOut}
@@ -154,15 +163,21 @@ export default function App() {
         />
       )}
 
-      {currentRoute === 'feedback' && (
-        <FeedbackScreen 
+      {currentRoute === 'feedback' && <FeedbackScreen onNavigate={handleNavigate} />}
+
+      {currentRoute === 'academic-config' && (
+        <AcademicConfigurationPage
           onNavigate={handleNavigate}
+          currentUser={currentUser}
+          onSwitchUser={setCurrentUser}
         />
       )}
 
       {currentRoute === 'settings' && (
-        <SettingsScreen 
+        <SettingsScreen
           onNavigate={handleNavigate}
+          currentUser={currentUser}
+          onSwitchUser={setCurrentUser}
         />
       )}
     </AuthenticatedLayout>

@@ -2,7 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { X, Clock, MapPin, User, Users, CheckCircle, Lock, Unlock, ArrowRightLeft, Check } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { institutionalStore, useInstitutionalData } from '../data/store';
-import { DayOfWeek, VALID_CONTINUOUS_LAB_BLOCKS, getLabBlockByStartPeriod } from '../types/institutional';
+import {
+  DayOfWeek,
+  VALID_CONTINUOUS_LAB_BLOCKS,
+  computeAcademicScheduleConfig,
+  getLabBlockByStartPeriod
+} from '../types/institutional';
 
 export interface ClassItem {
   id: string;
@@ -23,8 +28,8 @@ export interface ClassItem {
   day?: string;
   type?: 'Lecture' | 'Lab' | 'Laboratory' | 'Studio' | 'Recitation';
   sessionType?: 'Lecture' | 'Lab';
-  spanSlots?: number; // 1 for 50m Lecture, 3 for 3h continuous Lab
-  durationMinutes?: number; // 50 or 180
+  spanSlots?: number; // 1 for Lecture, N for continuous Lab
+  durationMinutes?: number;
   continuousTimeLabel?: string; // e.g., '9:00 AM – 12:00 PM' or '2:00 PM – 5:00 PM'
   credits?: number;
   accent: 'plum' | 'terracotta' | 'emerald';
@@ -44,6 +49,12 @@ export const ClassDetailsModal: React.FC<ClassDetailsModalProps> = ({
   onLocateInMatrix
 }) => {
   const store = useInstitutionalData();
+  const computedTiming = computeAcademicScheduleConfig(store.timeStructure);
+  const activeLabBlocks =
+    computedTiming.continuousLabBlocks.length > 0
+      ? computedTiming.continuousLabBlocks
+      : VALID_CONTINUOUS_LAB_BLOCKS;
+
   const [isReassigning, setIsReassigning] = useState(false);
   const [selectedDay, setSelectedDay] = useState<DayOfWeek>('Mon');
   const [selectedPeriod, setSelectedPeriod] = useState<string>('');
@@ -54,10 +65,10 @@ export const ClassDetailsModal: React.FC<ClassDetailsModalProps> = ({
     if (classItem) {
       setIsReassigning(false);
       setSavedNotice(null);
-      const validDays = store.timeStructure.workingDays;
+      const validDays = computedTiming.workingDays;
       const initialDay = validDays.includes(classItem.day as DayOfWeek) ? (classItem.day as DayOfWeek) : (validDays[0] || 'Mon');
       setSelectedDay(initialDay);
-      setSelectedPeriod(classItem.time || store.timeStructure.periods[0] || '9:00 – 9:50 AM');
+      setSelectedPeriod(classItem.time || computedTiming.periods[0] || '9:00 – 9:50 AM');
       const matchedRoom = store.rooms.find(r => r.id === classItem.roomId || r.code === classItem.room);
       setSelectedRoomId(matchedRoom?.id || store.rooms[0]?.id || '');
     }
@@ -68,10 +79,10 @@ export const ClassDetailsModal: React.FC<ClassDetailsModalProps> = ({
   const isStoreBacked = store.sections.some(s => s.id === classItem.id);
   const currentSec = store.sections.find(s => s.id === classItem.id);
   const isLocked = currentSec ? Boolean(currentSec.isLocked) : Boolean(classItem.isLocked);
-  const isLab = classItem.sessionType === 'Lab' || classItem.spanSlots === 3;
+  const isLab = classItem.sessionType === 'Lab' || Boolean(classItem.spanSlots && classItem.spanSlots > 1);
   const displayTimeWindow = isLab
-    ? (classItem.continuousTimeLabel || getLabBlockByStartPeriod(classItem.time || '')?.continuousLabel || classItem.time)
-    : (classItem.time || '9:00 – 9:50 AM');
+    ? (classItem.continuousTimeLabel || getLabBlockByStartPeriod(classItem.time || '', store.timeStructure)?.continuousLabel || classItem.time)
+    : (classItem.time || computedTiming.periods[0] || '9:00 – 9:50 AM');
 
   const handleSaveSlotChange = () => {
     if (!isStoreBacked) return;
@@ -81,7 +92,9 @@ export const ClassDetailsModal: React.FC<ClassDetailsModalProps> = ({
       roomId: selectedRoomId
     });
     const newRoom = store.rooms.find(r => r.id === selectedRoomId);
-    const labWindow = isLab ? (getLabBlockByStartPeriod(selectedPeriod)?.continuousLabel || selectedPeriod) : selectedPeriod;
+    const labWindow = isLab
+      ? (getLabBlockByStartPeriod(selectedPeriod, store.timeStructure)?.continuousLabel || selectedPeriod)
+      : selectedPeriod;
     setSavedNotice(`Rescheduled to ${selectedDay} · ${labWindow} in ${newRoom?.code || 'selected room'}`);
     setIsReassigning(false);
     setTimeout(() => {
@@ -94,6 +107,11 @@ export const ClassDetailsModal: React.FC<ClassDetailsModalProps> = ({
     institutionalStore.toggleSectionLock(classItem.id);
     setSavedNotice(isLocked ? 'Section unlocked for future solver runs.' : 'Section locked to current room and slot.');
   };
+
+  const shortBreakSummary =
+    computedTiming.shortBreakEnabled && computedTiming.shortBreakMinutes > 0
+      ? `+ ${computedTiming.shortBreakMinutes}-min short break`
+      : 'Back-to-back (no short break)';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -127,7 +145,9 @@ export const ClassDetailsModal: React.FC<ClassDetailsModalProps> = ({
                     : 'bg-white border-[#E4E2DA] text-[#171717]'
                 }`}
               >
-                {isLab ? 'Lab (3 Hours Continuous)' : 'Lecture (50 Mins)'}
+                {isLab
+                  ? `Lab (${computedTiming.labDurationHoursLabel} Continuous / ${computedTiming.labDurationMinutes}m)`
+                  : `Lecture (${computedTiming.periodLengthMinutes} Mins)`}
               </span>
               <span className="font-mono-tabular">{classItem.credits || 4} credits</span>
               {isLocked && (
@@ -167,15 +187,15 @@ export const ClassDetailsModal: React.FC<ClassDetailsModalProps> = ({
             <div className="p-3.5 bg-[#F7F6EF] rounded-xl border border-[#E4E2DA] space-y-1">
               <div className="text-xs text-[#77766F] flex items-center gap-1.5">
                 <Clock className="w-3.5 h-3.5 text-[#171717]" />
-                <span>{isLab ? 'Continuous 3h Lab Window' : 'Assigned Lecture Slot'}</span>
+                <span>{isLab ? `Continuous ${computedTiming.labDurationHoursLabel} Lab Window` : 'Assigned Lecture Slot'}</span>
               </div>
               <div className="text-xs font-mono-tabular font-semibold text-[#171717]">
                 {classItem.day ? `${classItem.day} · ` : ''}{displayTimeWindow}
               </div>
               <div className="text-[10.5px] text-[#77766F]">
                 {isLab
-                  ? '3 consecutive hourly cycles · No internal breaks'
-                  : '50-min lecture + 10-min short break'}
+                  ? `${computedTiming.labSpanSlots} consecutive slots · No internal breaks`
+                  : `${computedTiming.periodLengthMinutes}-min lecture (${shortBreakSummary})`}
               </div>
             </div>
 
@@ -241,7 +261,7 @@ export const ClassDetailsModal: React.FC<ClassDetailsModalProps> = ({
                       onChange={e => setSelectedDay(e.target.value as DayOfWeek)}
                       className="input-field h-9 text-xs"
                     >
-                      {store.timeStructure.workingDays.map(d => (
+                      {computedTiming.workingDays.map(d => (
                         <option key={d} value={d}>{d}</option>
                       ))}
                     </select>
@@ -249,7 +269,9 @@ export const ClassDetailsModal: React.FC<ClassDetailsModalProps> = ({
 
                   <div>
                     <label className="block text-[11px] font-medium text-[#77766F] mb-1">
-                      {isLab ? '3-Hour Lab Window' : 'Lecture Slot (50m)'}
+                      {isLab
+                        ? `${computedTiming.labDurationHoursLabel} Continuous Lab Window`
+                        : `Lecture Slot (${computedTiming.periodLengthMinutes}m)`}
                     </label>
                     <select
                       value={selectedPeriod}
@@ -257,12 +279,12 @@ export const ClassDetailsModal: React.FC<ClassDetailsModalProps> = ({
                       className="input-field h-9 text-xs font-mono-tabular"
                     >
                       {isLab
-                        ? VALID_CONTINUOUS_LAB_BLOCKS.map(b => (
+                        ? activeLabBlocks.map(b => (
                             <option key={b.startPeriod} value={b.startPeriod}>
                               {b.continuousLabel} ({b.session})
                             </option>
                           ))
-                        : store.timeStructure.periods.map(p => (
+                        : computedTiming.periods.map(p => (
                             <option key={p} value={p}>{p}</option>
                           ))}
                     </select>

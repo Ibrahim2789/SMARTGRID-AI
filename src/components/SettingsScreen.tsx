@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { RouteType } from './SmartGridNav';
 import { useInstitutionalData, institutionalStore } from '../data/store';
+import { computeAcademicScheduleConfig, isUserAdminRole } from '../types/institutional';
 import {
   RotateCcw,
   Check,
@@ -11,27 +12,49 @@ import {
   Search,
   ArrowRight,
   X,
-  Settings as SettingsIcon
+  Clock,
+  Calendar,
+  Lock
 } from 'lucide-react';
 
 interface SettingsScreenProps {
   onNavigate: (route: RouteType) => void;
+  currentUser?: {
+    name: string;
+    role: string;
+    email: string;
+    institution?: string;
+  } | null;
+  onSwitchUser?: (user: {
+    name: string;
+    role: string;
+    email: string;
+    institution?: string;
+  }) => void;
 }
 
-export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onNavigate }) => {
+export const SettingsScreen: React.FC<SettingsScreenProps> = ({
+  onNavigate,
+  currentUser,
+  onSwitchUser
+}) => {
   const store = useInstitutionalData();
   const profile = store.institutionProfile;
+  const activeTiming = computeAcademicScheduleConfig(store.timeStructure);
 
-  const [name, setName] = useState(profile?.name || 'Western Polytechnic Institute');
-  const [campusCode, setCampusCode] = useState(profile?.campusCode || 'WPI-MAIN-01');
+  const isAdmin = isUserAdminRole(currentUser?.role || 'Registrar');
+
+  // --- Institution Profile State ---
+  const [name, setName] = useState(profile?.name || 'University of Engineering & Computing');
+  const [campusCode, setCampusCode] = useState(profile?.campusCode || 'UEC-MAIN-01');
   const [accreditation, setAccreditation] = useState(
-    profile?.accreditation || 'Higher Learning Commission (HLC) & ABET'
+    profile?.accreditation || 'PEC & NCEAC Accredited Programs (BEE, BCE, BESE, BSCS)'
   );
   const [registrarName, setRegistrarName] = useState(
     profile?.registrarName || 'Dr. Katherine Reynolds'
   );
   const [registrarEmail, setRegistrarEmail] = useState(
-    profile?.registrarEmail || 'k.reynolds@westernpoly.edu'
+    profile?.registrarEmail || 'registrar@university.edu'
   );
   const [autoConflictSweep, setAutoConflictSweep] = useState(profile?.autoConflictSweep ?? true);
 
@@ -44,11 +67,12 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onNavigate }) =>
 
   const showToast = (msg: string) => {
     setStatusNotice(msg);
-    setTimeout(() => setStatusNotice(null), 4000);
+    setTimeout(() => setStatusNotice(null), 5000);
   };
 
   const handleSaveProfile = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isAdmin) return;
     institutionalStore.updateInstitutionProfile({
       name: name.trim(),
       campusCode: campusCode.trim(),
@@ -75,6 +99,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onNavigate }) =>
   };
 
   const handleConfirmReset = () => {
+    if (!isAdmin) return;
     institutionalStore.resetToDefaults();
     setShowResetConfirm(false);
     showToast('All institutional master records restored to factory baseline.');
@@ -98,45 +123,116 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onNavigate }) =>
   return (
     <div className="space-y-8">
       {/* =========================================================
-          1. CALM EDITORIAL PAGE HEADING
+          1. PAGE HEADING
          ========================================================= */}
       <header className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 pb-6 border-b border-[#E4E2DA]">
         <div className="space-y-2">
-          <div className="text-xs font-medium text-[#77766F]">
-            Workspace Administration · {name}
+          <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-[#77766F]">
+            <span>Workspace Administration</span>
+            <span>·</span>
+            <span>{name}</span>
+            <span>·</span>
+            <span
+              className={`px-2 py-0.5 rounded font-semibold ${
+                isAdmin ? 'bg-[#B7F77C] text-[#171717]' : 'bg-[#EDEAE0] text-[#77766F]'
+              }`}
+            >
+              {isAdmin ? `Admin Access (${currentUser?.role || 'Registrar'})` : `Read-Only (${currentUser?.role})`}
+            </span>
           </div>
           <h1 className="font-serif-editorial text-3xl sm:text-4xl text-[#171717] tracking-tight">
-            Workspace Settings
+            Workspace Settings & Audit Log
           </h1>
-          <p className="text-sm text-[#77766F] max-w-xl">
-            Manage institutional profile metadata, export workspace backups, or inspect the system audit trail.
+          <p className="text-sm text-[#77766F] max-w-2xl">
+            Manage institutional profile metadata, dataset snapshots, JSON backups, and chronological system audit trails.
           </p>
         </div>
 
-        <div className="flex items-center gap-3 shrink-0">
+        <div className="flex flex-wrap items-center gap-2.5 shrink-0">
           <button
             type="button"
-            onClick={handleExportJSON}
+            onClick={() => onNavigate('academic-config')}
             className="btn-secondary text-xs h-10 px-4"
           >
-            <Download className="w-3.5 h-3.5" />
-            <span>Export JSON Backup</span>
+            <Clock className="w-3.5 h-3.5" />
+            <span>Academic Configuration</span>
           </button>
+
           <button
             type="button"
-            onClick={() => onNavigate('home')}
-            className="btn-primary text-xs h-10 px-5"
+            onClick={() => onNavigate('timetables')}
+            className="btn-primary text-xs h-10 px-4"
           >
-            <span>Return to Dashboard</span>
-            <ArrowRight className="w-3.5 h-3.5" />
+            <Calendar className="w-3.5 h-3.5" />
+            <span>View Timetables</span>
           </button>
         </div>
       </header>
 
+      {/* Dedicated Academic Configuration Banner */}
+      <div className="sf-card-white p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-l-4 border-l-[#171717]">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <Clock className="w-4 h-4 text-[#171717]" />
+            <h2 className="font-serif-editorial text-xl text-[#171717]">
+              University Academic Configuration
+            </h2>
+          </div>
+          <p className="text-xs text-[#77766F]">
+            Active Timing Rule: <strong className="text-[#171717] font-mono-tabular">{activeTiming.summaryText}</strong>
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => onNavigate('academic-config')}
+          className="btn-primary text-xs h-9 px-4 shrink-0"
+        >
+          <span>Open Academic Configuration</span>
+          <ArrowRight className="w-3.5 h-3.5" />
+        </button>
+      </div>
+
+      {/* Role-Based Access Notice for Non-Admin Users */}
+      {!isAdmin && (
+        <div className="p-4 rounded-2xl bg-[#F2D8FA]/60 border border-[#DFB9EC] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <Lock className="w-4 h-4 text-[#171717] shrink-0 mt-0.5" />
+            <div className="space-y-0.5">
+              <div className="text-xs font-semibold text-[#171717]">
+                Read-Only Workspace Settings ({currentUser?.role})
+              </div>
+              <p className="text-xs text-[#77766F]">
+                Only authorized administrators (Registrar / Admin) can modify institutional settings.
+              </p>
+            </div>
+          </div>
+          {onSwitchUser && (
+            <button
+              type="button"
+              onClick={() =>
+                onSwitchUser({
+                  name: 'Dr. Katherine Reynolds',
+                  role: 'Registrar',
+                  email: 'k.reynolds@westernpoly.edu',
+                  institution: name
+                })
+              }
+              className="btn-primary text-xs h-9 px-3.5 shrink-0"
+            >
+              <ShieldCheck className="w-3.5 h-3.5" />
+              <span>Switch to Registrar (Admin)</span>
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Toast Notification Banner */}
       {statusNotice && (
-        <div className="p-3.5 sf-pastel-lime text-xs font-medium flex items-center gap-2">
-          <Check className="w-4 h-4 text-[#171717]" />
-          <span>{statusNotice}</span>
+        <div className="p-4 sf-pastel-lime rounded-2xl text-xs font-medium flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <Check className="w-4 h-4 text-[#171717] shrink-0" />
+            <span className="text-[#171717] font-semibold">{statusNotice}</span>
+          </div>
         </div>
       )}
 
@@ -156,7 +252,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onNavigate }) =>
               </button>
             </div>
             <p className="text-xs text-[#77766F] leading-relaxed">
-              This will restore all rooms, courses, faculty, cohorts, and timetable builds back to the clean factory seed baseline.
+              This will restore all rooms, courses, faculty, cohorts, academic timings, and timetable builds back to the clean factory seed baseline.
             </p>
             <div className="flex justify-end gap-2.5 pt-3 border-t border-[#E4E2DA]">
               <button
@@ -202,9 +298,10 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onNavigate }) =>
                 <input
                   type="text"
                   required
+                  disabled={!isAdmin}
                   value={name}
                   onChange={e => setName(e.target.value)}
-                  className="input-field text-xs"
+                  className="input-field text-xs disabled:opacity-60"
                 />
               </div>
 
@@ -215,9 +312,10 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onNavigate }) =>
                 <input
                   type="text"
                   required
+                  disabled={!isAdmin}
                   value={campusCode}
                   onChange={e => setCampusCode(e.target.value)}
-                  className="input-field text-xs font-mono-tabular"
+                  className="input-field text-xs font-mono-tabular disabled:opacity-60"
                 />
               </div>
             </div>
@@ -229,9 +327,10 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onNavigate }) =>
               <input
                 type="text"
                 required
+                disabled={!isAdmin}
                 value={accreditation}
                 onChange={e => setAccreditation(e.target.value)}
-                className="input-field text-xs"
+                className="input-field text-xs disabled:opacity-60"
               />
             </div>
 
@@ -243,9 +342,10 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onNavigate }) =>
                 <input
                   type="text"
                   required
+                  disabled={!isAdmin}
                   value={registrarName}
                   onChange={e => setRegistrarName(e.target.value)}
-                  className="input-field text-xs"
+                  className="input-field text-xs disabled:opacity-60"
                 />
               </div>
 
@@ -256,9 +356,10 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onNavigate }) =>
                 <input
                   type="email"
                   required
+                  disabled={!isAdmin}
                   value={registrarEmail}
                   onChange={e => setRegistrarEmail(e.target.value)}
-                  className="input-field text-xs font-mono-tabular"
+                  className="input-field text-xs font-mono-tabular disabled:opacity-60"
                 />
               </div>
             </div>
@@ -274,8 +375,9 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onNavigate }) =>
               </div>
               <button
                 type="button"
+                disabled={!isAdmin}
                 onClick={() => setAutoConflictSweep(!autoConflictSweep)}
-                className={`w-10 h-6 flex items-center rounded-full p-1 transition-colors cursor-pointer shrink-0 ${
+                className={`w-10 h-6 flex items-center rounded-full p-1 transition-colors cursor-pointer shrink-0 disabled:opacity-60 ${
                   autoConflictSweep ? 'bg-[#171717]' : 'bg-[#D6D3C9]'
                 }`}
               >
@@ -287,8 +389,21 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onNavigate }) =>
               </button>
             </div>
 
-            <div className="flex justify-end pt-2 border-t border-[#E4E2DA]">
-              <button type="submit" className="btn-primary text-xs">
+            <div className="flex justify-between items-center pt-2 border-t border-[#E4E2DA]">
+              <button
+                type="button"
+                onClick={handleExportJSON}
+                className="btn-secondary text-xs h-9 px-3.5"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Export JSON Backup</span>
+              </button>
+
+              <button
+                type="submit"
+                disabled={!isAdmin}
+                className="btn-primary text-xs disabled:opacity-50"
+              >
                 <ShieldCheck className="w-4 h-4" />
                 <span>Save Profile</span>
               </button>
@@ -314,6 +429,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onNavigate }) =>
               </div>
               <button
                 type="button"
+                disabled={!isAdmin}
                 onClick={() => {
                   if (isSampleLoaded) {
                     institutionalStore.removeSampleData();
@@ -323,7 +439,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onNavigate }) =>
                     showToast('Loaded multi-department university sample dataset.');
                   }
                 }}
-                className="btn-secondary text-xs h-9 shrink-0"
+                className="btn-secondary text-xs h-9 shrink-0 disabled:opacity-50"
               >
                 <Database className="w-3.5 h-3.5" />
                 <span>{isSampleLoaded ? 'Remove Sample Data' : 'Load Sample Data'}</span>
@@ -339,8 +455,9 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onNavigate }) =>
               </div>
               <button
                 type="button"
+                disabled={!isAdmin}
                 onClick={() => setShowResetConfirm(true)}
-                className="btn-secondary text-xs h-9 shrink-0"
+                className="btn-secondary text-xs h-9 shrink-0 disabled:opacity-50"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
                 <span>Reset to Defaults</span>
@@ -359,7 +476,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onNavigate }) =>
                     System Audit Trail
                   </h2>
                   <p className="text-xs text-[#77766F]">
-                    Chronological log of all data changes, solver runs, and slot edits
+                    Chronological log of all data changes, timing updates, solver runs, and slot edits
                   </p>
                 </div>
                 <span className="text-xs font-mono-tabular font-semibold px-2.5 py-1 rounded bg-white border border-[#E4E2DA]">
@@ -368,20 +485,20 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onNavigate }) =>
               </div>
 
               <div className="flex flex-col sm:flex-row gap-2.5">
-                <div className="relative flex-1">
-                  <Search className="w-3.5 h-3.5 text-[#77766F] absolute left-3 top-2.5" />
+                <div className="input-group-field h-9 px-3 gap-2.5 flex-1">
+                  <Search className="w-3.5 h-3.5 text-[#77766F] shrink-0" />
                   <input
                     type="text"
                     placeholder="Filter logs by user, entity, or summary..."
                     value={logSearch}
                     onChange={e => setLogSearch(e.target.value)}
-                    className="input-field h-9 pl-8 pr-3 text-xs"
+                    className="text-xs"
                   />
                 </div>
                 <select
                   value={logActionFilter}
                   onChange={e => setLogActionFilter(e.target.value)}
-                  className="input-field h-9 w-auto text-xs font-medium"
+                  className="input-field h-9 sm:w-auto text-xs font-medium shrink-0"
                 >
                   <option value="all">All Actions</option>
                   <option value="generate">Solver Runs</option>

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { RouteType } from './SmartGridNav';
+import { SmartGridLogo } from './SmartGridLogo';
 import {
   Home,
   Calendar,
@@ -25,10 +26,10 @@ import {
   Info,
   Activity,
   History,
-  ShieldCheck,
   RotateCcw
 } from 'lucide-react';
 import { useInstitutionalData, institutionalStore } from '../data/store';
+import { computeAcademicScheduleConfig } from '../types/institutional';
 
 interface AuthenticatedLayoutProps {
   activeRoute: RouteType;
@@ -56,6 +57,7 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
   children
 }) => {
   const storeSnapshot = useInstitutionalData();
+  const activeTiming = computeAcademicScheduleConfig(storeSnapshot.timeStructure);
   const mainScrollRef = useRef<HTMLDivElement>(null);
 
   const [secondaryOpen, setSecondaryOpen] = useState<boolean>(() => {
@@ -64,7 +66,6 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
       if (saved !== null) {
         return saved !== 'true';
       }
-      // Collapse secondary sidebar by default on narrower tablet viewports (< 1024px)
       if (typeof window !== 'undefined' && window.innerWidth >= 768 && window.innerWidth < 1024) {
         return false;
       }
@@ -95,14 +96,14 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
     {
       id: 'n1',
       title: 'Solver Schedule Verified',
-      detail: 'All 50m lectures & 3h continuous labs respect the 1:00–2:00 PM lunch break.',
+      detail: 'All lectures & continuous labs respect the configured university operating hours and breaks.',
       time: 'Just now',
       unread: true
     },
     {
       id: 'n2',
       title: 'Google Sheets Export Ready',
-      detail: 'Multi-worksheet .xlsx export includes Weekly Overview + per-course tabs.',
+      detail: 'Landscape .xlsx export includes Weekly Overview + per-section tabs.',
       time: '12m ago',
       unread: true
     },
@@ -117,7 +118,6 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
 
   const unreadCount = notifications.filter(n => n.unread).length;
 
-  // Scroll the independent main workspace container to top when route changes
   useEffect(() => {
     if (mainScrollRef.current) {
       mainScrollRef.current.scrollTo({ top: 0, behavior: 'smooth' });
@@ -164,22 +164,26 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
   };
 
   // =========================================================
-  // RIGHT COLUMN (256px) — ALL PRIMARY APPLICATION NAVIGATION
-  // Organized into 4 sections, sized to fit 100vh without scrolling
+  // RIGHT COLUMN — ALL PRIMARY APPLICATION NAVIGATION
+  // Organized into 4 logical groups, sized to fit 100vh without scrolling
   // =========================================================
   const navigationGroups: Array<{
+    id: string;
+    code: string;
     heading: string;
     items: Array<{
       id: string;
       label: string;
       icon: React.ComponentType<{ className?: string }>;
-      badge?: string;
-      badgeHighlight?: boolean;
+      meta?: string;
+      metaAccent?: boolean;
       isActive: boolean;
       onClick: () => void;
     }>;
   }> = [
     {
+      id: 'group-workspace',
+      code: '01',
       heading: 'WORKSPACE',
       items: [
         {
@@ -197,8 +201,8 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
           id: 'nav-timetable',
           label: 'My Timetable',
           icon: Calendar,
-          badge: `${scheduledCount}/${totalSections}`,
-          badgeHighlight: true,
+          meta: `${scheduledCount}/${totalSections}`,
+          metaAccent: true,
           isActive: activeRoute === 'timetables',
           onClick: () => {
             setActiveUtilityPanel(null);
@@ -227,13 +231,23 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
       ]
     },
     {
+      id: 'group-academic',
+      code: '02',
       heading: 'ACADEMIC MANAGEMENT',
       items: [
+        {
+          id: 'nav-classes-sections',
+          label: 'Classes & Sections',
+          icon: GraduationCap,
+          meta: String(storeSnapshot.studentGroups.length),
+          isActive: activeRoute === 'setup' && (setupStep === 4 || setupStep === 5),
+          onClick: () => openSetup(4)
+        },
         {
           id: 'nav-courses',
           label: 'Courses',
           icon: BookOpen,
-          badge: String(storeSnapshot.courses.length),
+          meta: String(storeSnapshot.courses.length),
           isActive: activeRoute === 'setup' && setupStep === 2,
           onClick: () => openSetup(2)
         },
@@ -241,30 +255,24 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
           id: 'nav-instructors',
           label: 'Instructors',
           icon: Users,
-          badge: String(storeSnapshot.instructors.length),
+          meta: String(storeSnapshot.instructors.length),
           isActive: activeRoute === 'setup' && setupStep === 3,
           onClick: () => openSetup(3)
         },
         {
           id: 'nav-rooms',
-          label: 'Rooms and Laboratories',
+          label: 'Rooms & Laboratories',
           icon: DoorOpen,
-          badge: String(storeSnapshot.rooms.length),
+          meta: String(storeSnapshot.rooms.length),
           isActive: activeRoute === 'setup' && setupStep === 1,
           onClick: () => openSetup(1)
-        },
-        {
-          id: 'nav-sections',
-          label: 'Class Sections & Labs',
-          icon: Clock,
-          badge: String(storeSnapshot.sections.length),
-          isActive: activeRoute === 'setup' && setupStep === 5,
-          onClick: () => openSetup(5)
         }
       ]
     },
     {
-      heading: 'INSIGHTS',
+      id: 'group-analytics',
+      code: '03',
+      heading: 'ANALYTICS & OPTIMIZATION',
       items: [
         {
           id: 'nav-analytics',
@@ -277,7 +285,7 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
           id: 'nav-optimization',
           label: 'Optimization Results',
           icon: Activity,
-          badge: '96.4%',
+          meta: '96.4%',
           isActive: activeRoute === 'feedback' && activeInsightSubView === 'optimization',
           onClick: () => openInsightSection('optimization', 'insights-optimization')
         },
@@ -285,22 +293,37 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
           id: 'nav-history',
           label: 'Schedule History',
           icon: History,
-          badge: String(storeSnapshot.scenarios.length),
+          meta: String(storeSnapshot.scenarios.length),
           isActive: activeRoute === 'feedback' && activeInsightSubView === 'history',
           onClick: () => openInsightSection('history', 'insights-history')
         }
       ]
     },
     {
-      heading: 'ADDITIONAL',
+      id: 'group-system',
+      code: '04',
+      heading: 'SYSTEM',
       items: [
         {
-          id: 'nav-cohorts',
-          label: 'Cohorts & Departments',
-          icon: GraduationCap,
-          badge: String(storeSnapshot.studentGroups.length),
-          isActive: activeRoute === 'setup' && (setupStep === 4 || setupStep === 0),
-          onClick: () => openSetup(4)
+          id: 'nav-academic-config',
+          label: 'Academic Configuration',
+          icon: Clock,
+          meta: `${activeTiming.periodLengthMinutes}m`,
+          metaAccent: true,
+          isActive: activeRoute === 'academic-config',
+          onClick: () => {
+            setActiveUtilityPanel(null);
+            onNavigate('academic-config');
+            setMobileDrawerOpen(false);
+          }
+        },
+        {
+          id: 'nav-departments',
+          label: 'Departments & Term',
+          icon: BookOpen,
+          meta: String(storeSnapshot.departments.length),
+          isActive: activeRoute === 'setup' && setupStep === 0,
+          onClick: () => openSetup(0)
         },
         {
           id: 'nav-settings',
@@ -345,21 +368,27 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
   return (
     <div className="h-screen w-full overflow-hidden flex bg-[#F7F6EF] text-[#171717]">
       {/* =========================================================
-          1. LEFT COLUMN (~72px, Fixed 100vh):
+          1. LEFT COLUMN (72px, Fixed 100vh):
              Reserved EXCLUSIVELY for Personal Utilities & Account
          ========================================================= */}
       <aside
         className="fixed inset-y-0 left-0 z-40 hidden md:flex flex-col items-center justify-between w-[72px] h-screen bg-[#171717] text-white py-3.5 shrink-0 select-none border-r border-[#242424]"
         aria-label="Personal utilities and account controls"
       >
-        {/* Top: Brand Monogram + Sidebar Collapse/Expand Toggle */}
+        {/* Top: SmartGrid AI Brand Icon + Sidebar Collapse/Expand Toggle */}
         <div className="flex flex-col items-center gap-3 w-full px-2">
-          <div
+          <button
+            type="button"
+            onClick={() => {
+              setActiveUtilityPanel(null);
+              onNavigate('home');
+            }}
             title={`${institutionName} · SmartGrid AI`}
-            className="w-10 h-10 rounded-xl bg-[#FFFFFF] text-[#171717] flex items-center justify-center font-serif-editorial text-xl tracking-tight select-none"
+            aria-label="SmartGrid AI Dashboard"
+            className="rounded-xl transition-transform hover:scale-105 cursor-pointer focus:outline-none"
           >
-            S
-          </div>
+            <SmartGridLogo variant="icon" theme="dark" size="md" />
+          </button>
 
           <button
             onClick={handleToggleSidebar}
@@ -433,12 +462,12 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
           <button
             onClick={() => {
               setActiveUtilityPanel(null);
-              onNavigate('settings');
+              onNavigate('academic-config');
             }}
-            title="Account & Workspace Settings"
-            aria-label="Account settings"
+            title="Academic Configuration & Timings"
+            aria-label="Academic configuration"
             className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors cursor-pointer ${
-              activeRoute === 'settings'
+              activeRoute === 'academic-config'
                 ? 'bg-[#2E2E2E] text-white'
                 : 'text-[#9E9D96] hover:text-white hover:bg-[#242424]'
             }`}
@@ -546,20 +575,25 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
                 <div className="space-y-2 text-[11.5px] text-[#C2C0B8]">
                   <div className="p-2.5 rounded-xl bg-[#292929] border border-[#383838]">
                     <div className="font-semibold text-white mb-0.5">
-                      Operating Hours (9:00 AM – 5:00 PM)
+                      Operating Hours ({activeTiming.operatingHoursLabel})
                     </div>
                     <p className="text-[11px] text-[#A6A49D]">
-                      Morning Session runs 9:00 AM – 1:00 PM (Slots 1–4). Afternoon Session runs
-                      2:00 PM – 5:00 PM (Slots 5–7).
+                      {activeTiming.slots.length} daily slots across {activeTiming.workingDays.join('–')}.
+                      {activeTiming.middayBreak.enabled
+                        ? ` Protected Midday Break: ${activeTiming.middayBreak.fullRangeLabel}.`
+                        : ' Continuous daytime scheduling.'}
                     </p>
                   </div>
                   <div className="p-2.5 rounded-xl bg-[#292929] border border-[#383838]">
                     <div className="font-semibold text-white mb-0.5">
-                      50m Lectures & 3h Continuous Labs
+                      {activeTiming.periodLengthMinutes}m Lectures & {activeTiming.labDurationMinutes}m Labs
                     </div>
                     <p className="text-[11px] text-[#A6A49D]">
-                      Regular lectures run 50 mins + 10m break. Labs span 3 continuous hours
-                      (9–12, 10–1, or 2–5) without crossing the 1:00–2:00 PM Lunch Break.
+                      Regular lectures run {activeTiming.periodLengthMinutes} mins
+                      {activeTiming.shortBreakEnabled && activeTiming.shortBreakMinutes > 0
+                        ? ` + ${activeTiming.shortBreakMinutes}m break`
+                        : ' (no break between classes)'}
+                      . Labs span {activeTiming.labSpanSlots} continuous slots without splitting.
                     </p>
                   </div>
                 </div>
@@ -574,7 +608,7 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
                     <span className="text-xs font-semibold text-white">Application Info</span>
                   </div>
                   <span className="text-[10px] font-mono-tabular px-2 py-0.5 rounded bg-[#292929] text-[#B8EEEE]">
-                    v2.4 Institutional
+                    v2.5 Institutional
                   </span>
                 </div>
                 <div className="grid grid-cols-2 gap-2 text-xs">
@@ -656,11 +690,11 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
                   <button
                     onClick={() => {
                       setActiveUtilityPanel(null);
-                      onNavigate('settings');
+                      onNavigate('academic-config');
                     }}
                     className="flex-1 py-1.5 px-2.5 rounded-lg bg-[#292929] hover:bg-[#333333] text-xs text-white cursor-pointer"
                   >
-                    Account Settings
+                    Academic Config
                   </button>
                   <button
                     onClick={onSignOut}
@@ -676,113 +710,188 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
       )}
 
       {/* =========================================================
-          2. RIGHT COLUMN (~256px, Fixed 100vh):
-             ALL Primary Application Navigation — Visible Without Scrolling
+          2. RIGHT COLUMN (Fixed 100vh):
+             Structured 4-Group Navigation Menu (256px Expanded / 60px Collapsed Icon Rail)
+             Visible in Full on Standard Laptop Screens Without Internal Scrolling
          ========================================================= */}
       <aside
-        className={`fixed inset-y-0 left-[72px] z-30 hidden md:flex flex-col h-screen bg-[#292929] text-[#EAE8E1] shrink-0 select-none transition-all duration-200 ease-in-out overflow-hidden ${
-          secondaryOpen
-            ? 'w-[256px] opacity-100 border-r border-[#1F1F1F]'
-            : 'w-0 opacity-0 border-r-0 pointer-events-none'
+        className={`fixed inset-y-0 left-[72px] z-30 hidden md:flex flex-col h-screen bg-[#292929] text-[#EAE8E1] shrink-0 select-none border-r border-[#1F1F1F] transition-[width] duration-200 ease-in-out overflow-hidden ${
+          secondaryOpen ? 'w-[256px]' : 'w-[60px]'
         }`}
         aria-label="Main application navigation"
-        aria-hidden={!secondaryOpen}
       >
-        <div className="w-[256px] h-screen flex flex-col justify-between overflow-hidden">
-          {/* Compact Sidebar Header: Context Selector + Collapse Button */}
-          <div className="px-3 py-2.5 border-b border-[#363636] relative flex items-center gap-1.5 shrink-0">
-            <button
-              onClick={() => setTermDropdownOpen(prev => !prev)}
-              className="flex-1 min-w-0 flex items-center justify-between gap-1.5 px-2.5 py-1.5 rounded-xl bg-[#333333] hover:bg-[#3A3A3A] transition-colors text-left cursor-pointer"
-            >
-              <div className="min-w-0">
-                <div className="text-[10px] font-medium uppercase tracking-wider text-[#A6A49D] truncate leading-tight">
-                  {institutionName}
+        {secondaryOpen ? (
+          <div className="w-[256px] h-screen flex flex-col justify-between overflow-hidden">
+            {/* Compact Sidebar Header: Institution/Term Context Selector + Collapse Button */}
+            <div className="px-3 py-2.5 border-b border-[#363636] relative flex items-center gap-1.5 shrink-0">
+              <button
+                onClick={() => setTermDropdownOpen(prev => !prev)}
+                title={`${institutionName} · Switch Academic Term (${activeTerm})`}
+                className="flex-1 min-w-0 flex items-center justify-between gap-1.5 px-2.5 py-1.5 rounded-lg bg-[#323232] hover:bg-[#383838] transition-colors text-left cursor-pointer"
+              >
+                <div className="min-w-0">
+                  <div className="text-[10px] font-medium uppercase tracking-wider text-[#9E9D96] truncate leading-tight">
+                    {institutionName}
+                  </div>
+                  <div className="text-[12px] font-semibold text-white flex items-center gap-1.5 leading-tight mt-0.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#B7F77C] shrink-0" />
+                    <span className="truncate">{activeTerm}</span>
+                  </div>
                 </div>
-                <div className="text-[12.5px] font-semibold text-white flex items-center gap-1.5 leading-tight mt-0.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#B7F77C] shrink-0" />
-                  <span className="truncate">{activeTerm}</span>
-                </div>
-              </div>
-              <ChevronDown className="w-3.5 h-3.5 text-[#A6A49D] shrink-0" />
-            </button>
+                <ChevronDown className="w-3.5 h-3.5 text-[#9E9D96] shrink-0" />
+              </button>
 
-            <button
-              onClick={handleToggleSidebar}
-              title="Collapse sidebar"
-              aria-label="Collapse sidebar"
-              className="w-8 h-8 rounded-xl bg-[#333333] hover:bg-[#3E3E3E] text-[#C2C0B8] hover:text-white flex items-center justify-center shrink-0 transition-colors cursor-pointer"
-            >
-              <PanelLeftClose className="w-4 h-4" />
-            </button>
+              <button
+                onClick={handleToggleSidebar}
+                title="Collapse navigation sidebar to icon rail"
+                aria-label="Collapse navigation sidebar"
+                className="w-8 h-8 rounded-lg text-[#9E9D96] hover:text-white hover:bg-[#353535] flex items-center justify-center shrink-0 transition-colors cursor-pointer"
+              >
+                <PanelLeftClose className="w-4 h-4" />
+              </button>
 
-            {termDropdownOpen && (
-              <div className="absolute left-3 right-3 top-[54px] bg-[#1F1F1F] border border-[#3E3E3E] rounded-xl p-1.5 shadow-xl z-50">
-                <div className="px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-[#8E8C84]">
-                  Switch Academic Term
+              {termDropdownOpen && (
+                <div className="absolute left-3 right-3 top-[52px] bg-[#1F1F1F] border border-[#3E3E3E] rounded-xl p-1.5 shadow-xl z-50">
+                  <div className="px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-[#8E8C84]">
+                    Switch Academic Term
+                  </div>
+                  {['Fall 2026', 'Spring 2027', 'Summer Intensive 2027'].map(term => (
+                    <button
+                      key={term}
+                      onClick={() => handleSelectTerm(term)}
+                      className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-colors ${
+                        activeTerm === term
+                          ? 'bg-[#383838] text-white'
+                          : 'text-[#C2C0B8] hover:bg-[#2C2C2C] hover:text-white'
+                      }`}
+                    >
+                      <span>{term}</span>
+                      {activeTerm === term && (
+                        <CheckCircle2 className="w-3.5 h-3.5 text-[#B7F77C]" />
+                      )}
+                    </button>
+                  ))}
                 </div>
-                {['Fall 2026', 'Spring 2027', 'Summer Intensive 2027'].map(term => (
-                  <button
-                    key={term}
-                    onClick={() => handleSelectTerm(term)}
-                    className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-colors ${
-                      activeTerm === term
-                        ? 'bg-[#383838] text-white'
-                        : 'text-[#C2C0B8] hover:bg-[#2C2C2C] hover:text-white'
-                    }`}
-                  >
-                    <span>{term}</span>
-                    {activeTerm === term && <CheckCircle2 className="w-3.5 h-3.5 text-[#B7F77C]" />}
-                  </button>
-                ))}
-              </div>
-            )}
+              )}
+            </div>
+
+            {/* 4 Logical Navigation Groups — Simple, Minimal Navigation List Fitting 100vh */}
+            <nav
+              className="flex-1 flex flex-col justify-between px-2.5 py-2.5 overflow-hidden"
+              aria-label="Workspace navigation hierarchy"
+            >
+              {navigationGroups.map(group => (
+                <div key={group.id} className="space-y-1">
+                  <div className="px-2.5 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-[#8A8880] select-none">
+                    <span className="font-mono-tabular text-[#6E6C65]">{group.code}.</span>
+                    <span>{group.heading}</span>
+                  </div>
+
+                  <div className="space-y-0.5">
+                    {group.items.map(item => {
+                      const Icon = item.icon;
+                      return (
+                        <button
+                          key={item.id}
+                          onClick={item.onClick}
+                          title={`${item.label}${item.meta ? ` (${item.meta})` : ''} · ${group.heading}`}
+                          aria-current={item.isActive ? 'page' : undefined}
+                          className={`group relative w-full h-[29px] flex items-center justify-between gap-2 px-2.5 rounded-md text-[12.5px] leading-none transition-colors cursor-pointer ${
+                            item.isActive
+                              ? 'bg-[#383838] text-white font-medium'
+                              : 'text-[#C2C0B8] hover:bg-white/[0.05] hover:text-white font-normal'
+                          }`}
+                        >
+                          {item.isActive && (
+                            <span
+                              className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-r-full bg-[#B8EEEE]"
+                              aria-hidden="true"
+                            />
+                          )}
+
+                          <span className="flex items-center gap-2.5 min-w-0">
+                            <Icon
+                              className={`w-[15px] h-[15px] shrink-0 transition-colors ${
+                                item.isActive
+                                  ? 'text-[#B8EEEE]'
+                                  : 'text-[#96948C] group-hover:text-[#D6D4CE]'
+                              }`}
+                            />
+                            <span className="truncate">{item.label}</span>
+                          </span>
+
+                          {item.meta && (
+                            <span
+                              className={`text-[11px] font-mono-tabular shrink-0 ${
+                                item.isActive
+                                  ? 'text-[#B8EEEE] font-medium'
+                                  : item.metaAccent
+                                  ? 'text-[#A6A49D]'
+                                  : 'text-[#7E7C74] group-hover:text-[#A6A49D]'
+                              }`}
+                            >
+                              {item.meta}
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </nav>
           </div>
+        ) : (
+          /* COLLAPSED STATE (60px): Recognizable Icons, Active Indicator & Helpful Tooltips */
+          <div className="w-[60px] h-screen flex flex-col items-center justify-between py-2.5 px-1.5 overflow-hidden">
+            <div className="w-full flex flex-col items-center pb-2 border-b border-[#363636] shrink-0">
+              <button
+                onClick={handleToggleSidebar}
+                title={`Expand navigation sidebar (${institutionName} · ${activeTerm})`}
+                aria-label="Expand navigation sidebar"
+                className="w-9 h-8 rounded-lg bg-[#333333] hover:bg-[#3E3E3E] text-[#B8EEEE] flex items-center justify-center transition-colors cursor-pointer"
+              >
+                <PanelLeftOpen className="w-4 h-4" />
+              </button>
+            </div>
 
-          {/* All Primary Navigation Sections — Clean, Spacious & Visible Without Scrolling */}
-          <nav
-            className="flex-1 flex flex-col justify-between px-3 py-4 overflow-hidden"
-            aria-label="Workspace sections"
-          >
-            {navigationGroups.map(group => (
-              <div key={group.heading} className="space-y-1">
-                <div className="px-2.5 pb-1 text-[10px] font-semibold uppercase tracking-widest text-[#8E8C84] select-none">
-                  {group.heading}
-                </div>
-                <div className="space-y-0.5">
+            <nav
+              className="flex-1 w-full flex flex-col items-center justify-between py-2 overflow-hidden"
+              aria-label="Collapsed workspace navigation"
+            >
+              {navigationGroups.map((group, gIdx) => (
+                <div key={group.id} className="w-full flex flex-col items-center gap-0.5">
+                  {gIdx > 0 && <div className="w-6 h-[1px] bg-[#363636] mb-1" />}
                   {group.items.map(item => {
                     const Icon = item.icon;
                     return (
                       <button
                         key={item.id}
                         onClick={item.onClick}
-                        className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-[13px] leading-snug transition-colors cursor-pointer ${
+                        title={`${item.label}${item.meta ? ` (${item.meta})` : ''} — ${group.code}. ${group.heading}`}
+                        aria-label={item.label}
+                        aria-current={item.isActive ? 'page' : undefined}
+                        className={`relative w-9 h-[27px] rounded-md flex items-center justify-center transition-colors cursor-pointer ${
                           item.isActive
-                            ? 'bg-[#3A3A3A] text-white font-medium'
-                            : 'text-[#C2C0B8] hover:bg-[#323232] hover:text-white'
+                            ? 'bg-[#383838] text-[#B8EEEE]'
+                            : 'text-[#9E9D96] hover:bg-white/[0.06] hover:text-white'
                         }`}
                       >
-                        <span className="flex items-center gap-2.5 min-w-0">
-                          <Icon
-                            className={`w-4 h-4 shrink-0 ${
-                              item.isActive ? 'text-[#B8EEEE]' : 'text-[#9E9D96]'
-                            }`}
+                        {item.isActive && (
+                          <span
+                            className="absolute left-0 top-1.5 bottom-1.5 w-[2.5px] rounded-r-full bg-[#B8EEEE]"
+                            aria-hidden="true"
                           />
-                          <span className="truncate">{item.label}</span>
-                        </span>
-                        {item.badgeHighlight && item.badge && (
-                          <span className="text-[10.5px] font-mono-tabular px-1.5 py-0.5 rounded bg-[#1F1F1F] text-[#B8EEEE] shrink-0">
-                            {item.badge}
-                          </span>
                         )}
+                        <Icon className="w-[15px] h-[15px] shrink-0" />
                       </button>
                     );
                   })}
                 </div>
-              </div>
-            ))}
-          </nav>
-        </div>
+              ))}
+            </nav>
+          </div>
+        )}
       </aside>
 
       {/* =========================================================
@@ -791,7 +900,7 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
       <div
         ref={mainScrollRef}
         className={`flex-1 min-w-0 h-screen overflow-y-auto overflow-x-hidden flex flex-col bg-[#F7F6EF] transition-[margin-left] duration-200 ease-in-out ${
-          secondaryOpen ? 'md:ml-[328px]' : 'md:ml-[72px]'
+          secondaryOpen ? 'md:ml-[328px]' : 'md:ml-[132px]'
         }`}
       >
         {/* Mobile Sticky Header */}
@@ -804,7 +913,7 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
             >
               <Menu className="w-5 h-5" />
             </button>
-            <span className="font-serif-editorial text-lg text-white">SmartGrid</span>
+            <SmartGridLogo variant="primary" theme="dark" size="xs" />
             <span className="text-[11px] px-2 py-0.5 rounded bg-[#292929] text-[#B8EEEE]">
               {activeTerm}
             </span>
@@ -827,15 +936,12 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
             <div className="relative w-72 max-w-[85vw] bg-[#292929] text-white h-full flex flex-col justify-between p-4 z-10 overflow-y-auto">
               <div className="space-y-4">
                 <div className="flex items-center justify-between pb-3 border-b border-[#383838]">
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-lg bg-white text-[#171717] flex items-center justify-center font-serif-editorial text-base">
-                      S
-                    </div>
-                    <div>
-                      <div className="font-semibold text-sm">SmartGrid Workspace</div>
-                      <div className="text-[11px] text-[#A6A49D]">{activeTerm}</div>
-                    </div>
-                  </div>
+                  <SmartGridLogo
+                    variant="primary"
+                    theme="dark"
+                    size="xs"
+                    subtitle={`${institutionName} · ${activeTerm}`}
+                  />
                   <button
                     onClick={() => setMobileDrawerOpen(false)}
                     className="p-1 text-[#A6A49D] hover:text-white cursor-pointer"
@@ -845,34 +951,51 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
                 </div>
 
                 {navigationGroups.map(group => (
-                  <div key={group.heading} className="space-y-1">
-                    <div className="px-2 text-[10px] font-semibold uppercase tracking-wider text-[#8E8C84]">
-                      {group.heading}
+                  <div key={group.id} className="space-y-1">
+                    <div className="px-2.5 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-[#8E8C84]">
+                      <span className="font-mono-tabular text-[#6E6C65]">{group.code}.</span>
+                      <span>{group.heading}</span>
                     </div>
-                    {group.items.map(item => {
-                      const Icon = item.icon;
-                      return (
-                        <button
-                          key={item.id}
-                          onClick={item.onClick}
-                          className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs cursor-pointer ${
-                            item.isActive
-                              ? 'bg-[#383838] text-white font-medium'
-                              : 'text-[#C2C0B8] hover:bg-[#323232]'
-                          }`}
-                        >
-                          <span className="flex items-center gap-2.5">
-                            <Icon className="w-4 h-4 text-[#A6A49D]" />
-                            <span>{item.label}</span>
-                          </span>
-                          {item.badge && (
-                            <span className="text-[10px] font-mono-tabular text-[#B8EEEE]">
-                              {item.badge}
+                    <div className="space-y-0.5">
+                      {group.items.map(item => {
+                        const Icon = item.icon;
+                        return (
+                          <button
+                            key={item.id}
+                            onClick={item.onClick}
+                            className={`relative w-full flex items-center justify-between px-3 py-2 rounded-md text-xs cursor-pointer ${
+                              item.isActive
+                                ? 'bg-[#383838] text-white font-medium'
+                                : 'text-[#C2C0B8] hover:bg-white/[0.05] hover:text-white'
+                            }`}
+                          >
+                            {item.isActive && (
+                              <span
+                                className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-r-full bg-[#B8EEEE]"
+                                aria-hidden="true"
+                              />
+                            )}
+                            <span className="flex items-center gap-2.5">
+                              <Icon
+                                className={`w-4 h-4 ${
+                                  item.isActive ? 'text-[#B8EEEE]' : 'text-[#A6A49D]'
+                                }`}
+                              />
+                              <span>{item.label}</span>
                             </span>
-                          )}
-                        </button>
-                      );
-                    })}
+                            {item.meta && (
+                              <span
+                                className={`text-[10.5px] font-mono-tabular ${
+                                  item.isActive ? 'text-[#B8EEEE]' : 'text-[#8E8C84]'
+                                }`}
+                              >
+                                {item.meta}
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
                 ))}
               </div>

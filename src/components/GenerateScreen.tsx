@@ -1,778 +1,757 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { RouteType } from './SmartGridNav';
 import { useInstitutionalData, institutionalStore } from '../data/store';
 import {
-  Play,
-  ArrowRight,
+  TimetableScenario,
+  computeAcademicScheduleConfig,
+  isUserAdminRole
+} from '../types/institutional';
+import {
+  Sparkles,
   CheckCircle2,
-  Check,
-  Cpu,
+  AlertTriangle,
+  ArrowRight,
   Sliders,
-  RotateCcw,
   Calendar,
   BookOpen,
-  ShieldCheck,
-  Sparkles,
-  Clock
+  Clock,
+  RefreshCw,
+  CheckSquare,
+  Square,
+  GraduationCap,
+  Layers,
+  FlaskConical,
+  Coffee
 } from 'lucide-react';
+
+type OptimizationFocusId = 'balanced' | 'student_friendly' | 'faculty_compact' | 'room_efficiency';
 
 interface GenerateScreenProps {
   onNavigate: (route: RouteType) => void;
+  currentUser?: {
+    name: string;
+    role: string;
+    email?: string;
+    institution?: string;
+  } | null;
 }
 
-export const GenerateScreen: React.FC<GenerateScreenProps> = ({ onNavigate }) => {
+export const GenerateScreen: React.FC<GenerateScreenProps> = ({ onNavigate, currentUser }) => {
   const store = useInstitutionalData();
-  const [selectedTermId, setSelectedTermId] = useState<string>(
-    store.terms.find(t => t.status === 'active')?.id || store.terms[0]?.id || ''
-  );
-  const [selectedDeptId, setSelectedDeptId] = useState<string>('all');
-  const [selectedGroupIds, setSelectedGroupIds] = useState<Set<string>>(
-    new Set(store.studentGroups.map(g => g.id))
-  );
-  const [selectedCourseIds, setSelectedCourseIds] = useState<Set<string>>(
-    new Set(store.courses.map(c => c.id))
+  const activeTiming = computeAcademicScheduleConfig(store.timeStructure);
+  const isAdmin = isUserAdminRole(currentUser?.role || 'Registrar');
+
+  const [scope, setScope] = useState<string>('all');
+  const [optimizationFocus, setOptimizationFocus] = useState<OptimizationFocusId>('balanced');
+  const [respectStudentPrefs, setRespectStudentPrefs] = useState(true);
+  const [balanceRoomUsage, setBalanceRoomUsage] = useState(true);
+  const [scenarioName, setScenarioName] = useState(
+    `University Build — ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
   );
 
-  const [strategyPreset, setStrategyPreset] = useState<'balanced' | 'circadian' | 'compaction' | 'faculty'>('balanced');
-  const [scenarioName, setScenarioName] = useState<string>(
-    `Fall 2026 Optimized Build #${store.scenarios.length + 1}`
+  // Scoped Course & Cohort Selection
+  const [selectedCourseIds, setSelectedCourseIds] = useState<string[]>(() =>
+    store.courses.map(c => c.id)
+  );
+  const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>(() =>
+    store.studentGroups.map(g => g.id)
   );
 
-  // Personal Preferences & Solver Weights
-  const [preferredWindow, setPreferredWindow] = useState<'morning' | 'balanced' | 'afternoon'>('balanced');
-  const [maxDailyWorkload, setMaxDailyWorkload] = useState<number>(6);
-  const [transitBufferWeight, setTransitBufferWeight] = useState(85);
-  const [circadianWeight, setCircadianWeight] = useState(90);
-  const [roomCompactionWeight, setRoomCompactionWeight] = useState(75);
-  const [facultyLoadWeight, setFacultyLoadWeight] = useState(80);
+  // Sync when department scope changes
+  useEffect(() => {
+    if (scope === 'all') {
+      setSelectedCourseIds(store.courses.map(c => c.id));
+      setSelectedGroupIds(store.studentGroups.map(g => g.id));
+    } else {
+      const deptCourses = store.courses.filter(c => c.departmentId === scope);
+      const deptCourseIds = deptCourses.map(c => c.id);
+      setSelectedCourseIds(deptCourseIds);
 
-  // Solver execution state
-  const [isSolving, setIsSolving] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [solveStageText, setSolveStageText] = useState('');
-  const [lastResult, setLastResult] = useState<{
+      const deptGroupIds = new Set<string>();
+      store.sections.forEach(s => {
+        if (deptCourseIds.includes(s.courseId)) {
+          deptGroupIds.add(s.studentGroupId);
+        }
+      });
+      setSelectedGroupIds(Array.from(deptGroupIds));
+    }
+  }, [scope, store.courses, store.studentGroups, store.sections]);
+
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [stepIndex, setStepIndex] = useState(0);
+  const [result, setResult] = useState<{
     placedCount: number;
     unplacedCount: number;
     conflictCount: number;
     roomUtilization: number;
-    scenarioName: string;
+    scenario: TimetableScenario;
   } | null>(null);
 
-  const visibleGroups = store.studentGroups.filter(g => {
-    if (selectedDeptId === 'all') return true;
-    const prog = store.programs.find(p => p.id === g.programId);
-    return prog?.departmentId === selectedDeptId;
-  });
+  const toggleCourse = (courseId: string) => {
+    setSelectedCourseIds(prev =>
+      prev.includes(courseId) ? prev.filter(id => id !== courseId) : [...prev, courseId]
+    );
+  };
 
-  const visibleCourses = store.courses.filter(c => {
-    if (selectedDeptId === 'all') return true;
-    return c.departmentId === selectedDeptId;
-  });
+  const toggleGroup = (groupId: string) => {
+    setSelectedGroupIds(prev =>
+      prev.includes(groupId) ? prev.filter(id => id !== groupId) : [...prev, groupId]
+    );
+  };
 
-  const handlePresetSelect = (preset: 'balanced' | 'circadian' | 'compaction' | 'faculty') => {
-    setStrategyPreset(preset);
-    if (preset === 'balanced') {
-      setTransitBufferWeight(85);
-      setCircadianWeight(90);
-      setRoomCompactionWeight(75);
-      setFacultyLoadWeight(80);
-    } else if (preset === 'circadian') {
-      setTransitBufferWeight(95);
-      setCircadianWeight(98);
-      setRoomCompactionWeight(60);
-      setFacultyLoadWeight(75);
-    } else if (preset === 'compaction') {
-      setTransitBufferWeight(75);
-      setCircadianWeight(70);
-      setRoomCompactionWeight(98);
-      setFacultyLoadWeight(70);
-    } else if (preset === 'faculty') {
-      setTransitBufferWeight(70);
-      setCircadianWeight(80);
-      setRoomCompactionWeight(65);
-      setFacultyLoadWeight(98);
+  const visibleCourses =
+    scope === 'all' ? store.courses : store.courses.filter(c => c.departmentId === scope);
+
+  const matchingSections = store.sections.filter(
+    s => selectedCourseIds.includes(s.courseId) && selectedGroupIds.includes(s.studentGroupId)
+  );
+
+  const labHoursLabel = (activeTiming.labDurationMinutes / 60).toFixed(
+    activeTiming.labDurationMinutes % 60 === 0 ? 0 : 1
+  );
+
+  const readinessItems = [
+    {
+      label: 'Rooms & Laboratories',
+      count: store.rooms.length,
+      ready: store.rooms.length > 0,
+      detail: `${store.rooms.filter(r => r.type === 'lab').length} Labs, ${
+        store.rooms.filter(r => r.type !== 'lab').length
+      } Lecture/Seminar`
+    },
+    {
+      label: 'Selected Courses',
+      count: selectedCourseIds.length,
+      ready: selectedCourseIds.length > 0,
+      detail: `${matchingSections.length} sections queued (${
+        matchingSections.filter(s => s.sessionType === 'Lab').length
+      } ${labHoursLabel}h labs)`
+    },
+    {
+      label: 'Instructors & Faculty',
+      count: store.instructors.length,
+      ready: store.instructors.length > 0,
+      detail: 'Availability windows verified'
+    },
+    {
+      label: 'Saved Academic Configuration',
+      count: activeTiming.slots.length,
+      ready: activeTiming.slots.length > 0,
+      detail: `${activeTiming.operatingHoursLabel} · ${activeTiming.periodLengthMinutes}m lectures`
     }
-  };
+  ];
 
-  const handleDeptChange = (deptId: string) => {
-    setSelectedDeptId(deptId);
-    if (deptId === 'all') {
-      setSelectedGroupIds(new Set(store.studentGroups.map(g => g.id)));
-      setSelectedCourseIds(new Set(store.courses.map(c => c.id)));
-    } else {
-      const deptGroupIds = store.studentGroups
-        .filter(g => {
-          const prog = store.programs.find(p => p.id === g.programId);
-          return prog?.departmentId === deptId;
-        })
-        .map(g => g.id);
-      setSelectedGroupIds(new Set(deptGroupIds.length > 0 ? deptGroupIds : store.studentGroups.map(g => g.id)));
-      const deptCourses = store.courses.filter(c => c.departmentId === deptId).map(c => c.id);
-      setSelectedCourseIds(new Set(deptCourses.length > 0 ? deptCourses : store.courses.map(c => c.id)));
-    }
-  };
+  const allReady = readinessItems.every(i => i.ready) && matchingSections.length > 0;
 
-  const toggleGroupSelection = (groupId: string) => {
-    const updated = new Set(selectedGroupIds);
-    if (updated.has(groupId)) updated.delete(groupId);
-    else updated.add(groupId);
-    setSelectedGroupIds(updated);
-  };
+  const generationSteps = [
+    `Loading saved Academic Configuration (${activeTiming.operatingHoursLabel}, ${activeTiming.slots.length} daily slots)...`,
+    `Locking ${activeTiming.continuousLabBlocks.length} continuous ${labHoursLabel}-hour laboratory windows...`,
+    `Assigning ${activeTiming.periodLengthMinutes}-minute lectures${
+      activeTiming.shortBreakEnabled && activeTiming.shortBreakMinutes > 0
+        ? ` with ${activeTiming.shortBreakMinutes}-minute breaks`
+        : ''
+    }...`,
+    activeTiming.middayBreak.enabled
+      ? `Protecting university midday break (${activeTiming.middayBreak.fullRangeLabel}) & verifying zero overlaps...`
+      : 'Verifying zero room, instructor, and student section overlaps...'
+  ];
 
-  const toggleCourseSelection = (courseId: string) => {
-    const updated = new Set(selectedCourseIds);
-    if (updated.has(courseId)) updated.delete(courseId);
-    else updated.add(courseId);
-    setSelectedCourseIds(updated);
-  };
+  const handleRunGenerator = () => {
+    if (!allReady) return;
+    setIsGenerating(true);
+    setResult(null);
+    setStepIndex(0);
 
-  const handleToggleConstraint = (constraintId: string, currentEnabled: boolean) => {
-    institutionalStore.toggleConstraint(constraintId, !currentEnabled);
-  };
-
-  // Real Solver Execution
-  const handleRunSolver = () => {
-    setIsSolving(true);
-    setProgress(20);
-    setSolveStageText('Validating hard constraints, room capacities, and faculty availability windows...');
-    setLastResult(null);
+    const interval = setInterval(() => {
+      setStepIndex(prev => (prev < generationSteps.length - 1 ? prev + 1 : prev));
+    }, 320);
 
     setTimeout(() => {
-      setProgress(55);
-      setSolveStageText('Allocating specialized laboratories and matching course sections...');
-    }, 250);
-
-    setTimeout(() => {
-      setProgress(85);
-      setSolveStageText('Applying personal timing preferences and midday break buffers...');
-    }, 500);
-
-    setTimeout(() => {
-      setProgress(100);
-      setSolveStageText('Finalizing conflict-free timetable...');
-      const res = institutionalStore.runTimetableSolver({
-        termId: selectedTermId,
-        departmentId: selectedDeptId,
-        selectedGroupIds: Array.from(selectedGroupIds),
-        strategyName: scenarioName.trim() || `Optimized Schedule #${store.scenarios.length + 1}`
+      clearInterval(interval);
+      const solverRes = institutionalStore.runTimetableSolver({
+        departmentId: scope === 'all' ? 'all' : scope,
+        selectedGroupIds,
+        strategyName: scenarioName,
+        forceRescheduleAll: true
       });
-      setIsSolving(false);
-      setLastResult({
-        placedCount: res.placedCount,
-        unplacedCount: res.unplacedCount,
-        conflictCount: res.conflictCount,
-        roomUtilization: res.roomUtilization,
-        scenarioName: res.scenario.name
-      });
-      setScenarioName(`Fall 2026 Optimized Build #${institutionalStore.get().scenarios.length + 1}`);
-    }, 800);
+      setResult(solverRes);
+      setIsGenerating(false);
+    }, 1350);
   };
-
-  const scopedSections = store.sections.filter(s => selectedGroupIds.has(s.studentGroupId));
-  const hardConstraints = store.constraints.filter(c => c.kind === 'hard');
-  const softConstraints = store.constraints.filter(c => c.kind === 'soft');
 
   return (
     <div className="space-y-8">
       {/* =========================================================
-          1. CALM EDITORIAL PAGE HEADER
+          1. PAGE HEADING
          ========================================================= */}
-      <header className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 pb-6 border-b border-[#E4E2DA]">
+      <header className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 pb-6 border-b border-[#E4E2DA]">
         <div className="space-y-2">
           <div className="text-xs font-medium text-[#77766F]">
-            Schedule Configuration · {scopedSections.length} Sections Queued
+            Constraint-Based University Timetable Engine
           </div>
           <h1 className="font-serif-editorial text-3xl sm:text-4xl text-[#171717] tracking-tight">
-            Generate Schedule
+            Generate University Timetable
           </h1>
-          <p className="text-sm text-[#77766F] max-w-xl">
-            Select your academic scope, courses, timing preferences, and hard constraints before generating a conflict-free timetable.
+          <p className="text-sm text-[#77766F] max-w-2xl">
+            Select target departments, cohorts, and optimization priorities to generate a conflict-free timetable using the university’s saved Academic Configuration.
           </p>
         </div>
 
-        <div className="flex items-center gap-3 shrink-0">
-          <button
-            type="button"
-            onClick={() => onNavigate('setup')}
-            className="btn-secondary text-xs h-10 px-4"
-          >
-            <Sliders className="w-3.5 h-3.5" />
-            <span>Edit Catalog & Rooms</span>
-          </button>
-          <button
-            type="button"
-            onClick={handleRunSolver}
-            disabled={isSolving}
-            className="btn-primary text-xs h-10 px-5"
-          >
-            <Play className="w-3.5 h-3.5" />
-            <span>{isSolving ? 'Generating...' : 'Generate Schedule'}</span>
-          </button>
-        </div>
+        <button
+          onClick={() => onNavigate('timetables')}
+          className="btn-secondary text-xs h-10 px-4 shrink-0"
+        >
+          <Calendar className="w-4 h-4" />
+          <span>Open Timetable Grid</span>
+        </button>
       </header>
 
-      {/* Solver Progress Banner */}
-      {isSolving && (
-        <div className="p-6 rounded-2xl border border-[#E4E2DA] bg-[#F2D8FA]/45 space-y-3">
-          <div className="flex items-center justify-between text-xs">
-            <span className="font-semibold text-[#171717] flex items-center gap-2">
-              <Cpu className="w-4 h-4 animate-spin" />
-              <span>{solveStageText}</span>
-            </span>
-            <span className="font-mono-tabular font-bold text-[#171717]">{progress}%</span>
-          </div>
-          <div className="w-full bg-white h-2.5 rounded-full overflow-hidden border border-[#E4E2DA]">
-            <div
-              className="bg-[#171717] h-full transition-all duration-200 rounded-full"
-              style={{ width: `${progress}%` }}
-            />
-          </div>
-        </div>
-      )}
-
-      {/* Generated Results & Optimization Information Banner */}
-      {lastResult && (
-        <div className="p-6 rounded-2xl border border-[#E4E2DA] bg-[#B7F77C]/45 space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="flex items-center gap-3.5">
-              <div className="w-11 h-11 rounded-xl bg-[#171717] text-white flex items-center justify-center shrink-0">
-                <CheckCircle2 className="w-5 h-5" />
-              </div>
-              <div>
-                <h2 className="font-serif-editorial text-2xl text-[#171717]">
-                  Schedule Generated — "{lastResult.scenarioName}"
-                </h2>
-                <p className="text-xs text-[#171717]/80">
-                  Individual weekly timetables generated for {store.studentGroups.length} classes/sections · Zero instructor, room, or section double-bookings.
-                </p>
-              </div>
+      {/* =========================================================
+          2. READ-ONLY ACTIVE ACADEMIC CONFIGURATION SUMMARY BANNER
+             (Configured once in the dedicated Academic Configuration page)
+         ========================================================= */}
+      <section className="sf-card-white p-5 space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#E4E2DA] pb-3.5">
+          <div className="space-y-0.5">
+            <div className="flex items-center gap-2">
+              <Clock className="w-4 h-4 text-[#171717]" />
+              <h2 className="font-serif-editorial text-lg text-[#171717]">
+                Active University Academic Configuration
+              </h2>
+              <span className="text-[10.5px] font-mono-tabular font-semibold px-2 py-0.5 rounded bg-[#B8EEEE] text-[#171717]">
+                Applied Automatically
+              </span>
             </div>
+            <p className="text-xs text-[#77766F]">
+              The scheduling engine automatically enforces the timing rules configured by the administrator in Academic Configuration.
+            </p>
+          </div>
 
+          {isAdmin && (
             <button
               type="button"
-              onClick={() => onNavigate('timetables')}
-              className="btn-primary text-xs shrink-0"
+              onClick={() => onNavigate('academic-config')}
+              className="btn-secondary text-xs h-9 px-3.5 shrink-0"
             >
-              <span>Open Class Timetables</span>
-              <ArrowRight className="w-4 h-4" />
+              <Sliders className="w-3.5 h-3.5" />
+              <span>Edit in Academic Configuration</span>
             </button>
-          </div>
+          )}
+        </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
-            <div className="p-3.5 rounded-xl bg-white border border-[#E4E2DA]">
-              <div className="text-xs text-[#77766F]">Sessions Scheduled</div>
-              <div className="font-serif-editorial text-2xl text-[#171717] mt-0.5">
-                {lastResult.placedCount}
-              </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 text-xs">
+          <div className="p-3 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] space-y-1">
+            <div className="text-[10.5px] font-medium text-[#77766F] flex items-center gap-1.5">
+              <Clock className="w-3.5 h-3.5 text-[#171717]" />
+              <span>Operating Hours</span>
             </div>
-            <div className="p-3.5 rounded-xl bg-white border border-[#E4E2DA]">
-              <div className="text-xs text-[#77766F]">Classes / Sections</div>
-              <div className="font-serif-editorial text-2xl text-[#171717] mt-0.5">
-                {store.studentGroups.length}
-              </div>
+            <div className="font-mono-tabular font-semibold text-[#171717]">
+              {activeTiming.operatingHoursLabel}
             </div>
-            <div className="p-3.5 rounded-xl bg-white border border-[#E4E2DA]">
-              <div className="text-xs text-[#77766F]">Hard Clashes</div>
-              <div className="font-serif-editorial text-2xl text-[#171717] mt-0.5">
-                {lastResult.conflictCount}
-              </div>
-            </div>
-            <div className="p-3.5 rounded-xl bg-white border border-[#E4E2DA]">
-              <div className="text-xs text-[#77766F]">Room Utilization</div>
-              <div className="font-serif-editorial text-2xl text-[#171717] mt-0.5">
-                {lastResult.roomUtilization}%
-              </div>
+            <div className="text-[11px] text-[#77766F]">
+              {activeTiming.workingDays.join(', ')} ({activeTiming.slots.length} slots/day)
             </div>
           </div>
 
-          {/* Direct Class / Section Timetable Quick-Switchers */}
-          <div className="pt-3 border-t border-black/10 space-y-2">
-            <div className="text-xs font-semibold text-[#171717]">
-              Inspect Individual Class / Section Timetable:
+          <div className="p-3 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] space-y-1">
+            <div className="text-[10.5px] font-medium text-[#77766F] flex items-center gap-1.5">
+              <BookOpen className="w-3.5 h-3.5 text-[#171717]" />
+              <span>Regular Class Duration</span>
             </div>
-            <div className="flex flex-wrap items-center gap-1.5">
-              {visibleGroups.map(grp => (
-                <button
-                  key={grp.id}
-                  type="button"
-                  onClick={() => {
-                    institutionalStore.setSelectedClassGroupId(grp.id);
-                    onNavigate('timetables');
-                  }}
-                  className="px-2.5 py-1 rounded-lg bg-white hover:bg-[#171717] hover:text-white border border-[#E4E2DA] text-xs font-mono-tabular font-semibold text-[#171717] transition-colors cursor-pointer"
-                >
-                  {grp.code}
-                </button>
-              ))}
+            <div className="font-mono-tabular font-semibold text-[#171717]">
+              {activeTiming.periodLengthMinutes} minutes
+            </div>
+            <div className="text-[11px] text-[#77766F]">Standard theory lecture</div>
+          </div>
+
+          <div className="p-3 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] space-y-1">
+            <div className="text-[10.5px] font-medium text-[#77766F] flex items-center gap-1.5">
+              <Sliders className="w-3.5 h-3.5 text-[#171717]" />
+              <span>Break Between Classes</span>
+            </div>
+            <div className="font-mono-tabular font-semibold text-[#171717]">
+              {activeTiming.shortBreakEnabled && activeTiming.shortBreakMinutes > 0
+                ? `${activeTiming.shortBreakMinutes} minutes (Enabled)`
+                : 'Disabled (0 min)'}
+            </div>
+            <div className="text-[11px] text-[#77766F]">
+              {activeTiming.shortBreakEnabled && activeTiming.shortBreakMinutes > 0
+                ? 'Automatic transition gap'
+                : 'Back-to-back lectures'}
+            </div>
+          </div>
+
+          <div className="p-3 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] space-y-1">
+            <div className="text-[10.5px] font-medium text-[#77766F] flex items-center gap-1.5">
+              <Coffee className="w-3.5 h-3.5 text-[#171717]" />
+              <span>Midday / Lunch Break</span>
+            </div>
+            <div className="font-mono-tabular font-semibold text-[#171717]">
+              {activeTiming.middayBreak.enabled
+                ? activeTiming.middayBreak.timeRangeLabel
+                : 'Disabled'}
+            </div>
+            <div className="text-[11px] text-[#77766F]">
+              {activeTiming.middayBreak.enabled
+                ? `${activeTiming.middayBreak.durationMinutes} min protected window`
+                : 'Continuous day schedule'}
+            </div>
+          </div>
+
+          <div className="p-3 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] space-y-1">
+            <div className="text-[10.5px] font-medium text-[#77766F] flex items-center gap-1.5">
+              <FlaskConical className="w-3.5 h-3.5 text-[#171717]" />
+              <span>Laboratory Duration</span>
+            </div>
+            <div className="font-mono-tabular font-semibold text-[#171717]">
+              {activeTiming.labDurationMinutes} min ({labHoursLabel} hours)
+            </div>
+            <div className="text-[11px] text-[#77766F]">
+              Spans {activeTiming.labSpanSlots} continuous slots
             </div>
           </div>
         </div>
-      )}
+      </section>
 
-      {/* =========================================================
-          MAIN 2-COLUMN GUIDED CONFIGURATION WORKFLOW
-         ========================================================= */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* LEFT COLUMN (7 Cols): Step 1 (Academic Info) + Step 2 (Course & Cohort Selection) */}
+        {/* =========================================================
+            LEFT COLUMN (7 cols): SCOPE, COHORTS, COURSES & STRATEGY
+           ========================================================= */}
         <div className="lg:col-span-7 space-y-6">
-          {/* STEP 1: Academic Information */}
+          {/* Card 1: Scope & Scenario Name */}
           <div className="sf-card-white p-6 space-y-5">
             <div className="flex items-center justify-between border-b border-[#E4E2DA] pb-3.5">
-              <div className="flex items-center gap-3">
-                <span className="w-7 h-7 rounded-lg bg-[#B8EEEE] text-[#171717] font-mono-tabular font-bold text-xs flex items-center justify-center">
-                  01
-                </span>
-                <div>
-                  <h2 className="font-serif-editorial text-xl text-[#171717]">
-                    Academic Information
-                  </h2>
-                  <p className="text-xs text-[#77766F]">
-                    Select target term, department scope, and schedule build identifier
-                  </p>
-                </div>
+              <div className="flex items-center gap-2">
+                <Layers className="w-4 h-4 text-[#171717]" />
+                <h2 className="font-serif-editorial text-xl text-[#171717]">
+                  1. Schedule Scope & Scenario Name
+                </h2>
               </div>
+              <span className="text-xs font-mono-tabular text-[#77766F]">
+                {matchingSections.length} sections queued
+              </span>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-semibold text-[#171717] mb-1.5">
-                  Academic Term
+                  Academic Department Scope
                 </label>
                 <select
-                  value={selectedTermId}
-                  onChange={e => setSelectedTermId(e.target.value)}
-                  disabled={isSolving}
+                  value={scope}
+                  onChange={e => setScope(e.target.value)}
                   className="input-field text-xs"
                 >
-                  {store.terms.map(term => (
-                    <option key={term.id} value={term.id}>
-                      {term.name} ({term.code})
-                    </option>
-                  ))}
+                  <option value="all">
+                    Whole University ({store.courses.length} Courses · {store.sections.length} Sections)
+                  </option>
+                  {store.departments.map(dept => {
+                    const cCount = store.courses.filter(c => c.departmentId === dept.id).length;
+                    return (
+                      <option key={dept.id} value={dept.id}>
+                        {dept.name} ({dept.code} — {cCount} Courses)
+                      </option>
+                    );
+                  })}
                 </select>
               </div>
 
               <div>
                 <label className="block text-xs font-semibold text-[#171717] mb-1.5">
-                  Schedule Build Label
+                  Scenario Build Label
                 </label>
                 <input
                   type="text"
                   value={scenarioName}
                   onChange={e => setScenarioName(e.target.value)}
-                  disabled={isSolving}
                   className="input-field text-xs"
+                  placeholder="e.g. Fall 2026 Master Build"
                 />
               </div>
             </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-[#171717] mb-1.5">
-                Department Scope
-              </label>
-              <select
-                value={selectedDeptId}
-                onChange={e => handleDeptChange(e.target.value)}
-                disabled={isSolving}
-                className="input-field text-xs"
-              >
-                <option value="all">
-                  All Academic Departments ({store.departments.length} Faculties)
-                </option>
-                {store.departments.map(d => (
-                  <option key={d.id} value={d.id}>
-                    {d.name} ({d.code})
-                  </option>
-                ))}
-              </select>
-            </div>
           </div>
 
-          {/* STEP 2: Course & Cohort Selection */}
+          {/* Card 2: Student Groups & Course Selection */}
           <div className="sf-card-white p-6 space-y-5">
-            <div className="flex items-center justify-between border-b border-[#E4E2DA] pb-3.5">
-              <div className="flex items-center gap-3">
-                <span className="w-7 h-7 rounded-lg bg-[#F2D8FA] text-[#171717] font-mono-tabular font-bold text-xs flex items-center justify-center">
-                  02
-                </span>
-                <div>
-                  <h2 className="font-serif-editorial text-xl text-[#171717]">
-                    Course & Cohort Selection
-                  </h2>
-                  <p className="text-xs text-[#77766F]">
-                    Choose which courses and student cohorts to include in this generation pass
-                  </p>
-                </div>
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#E4E2DA] pb-3.5">
+              <div className="flex items-center gap-2">
+                <BookOpen className="w-4 h-4 text-[#171717]" />
+                <h2 className="font-serif-editorial text-xl text-[#171717]">
+                  2. Select Student Cohorts & Courses
+                </h2>
               </div>
-              <span className="text-xs font-mono-tabular px-2.5 py-1 rounded-md bg-[#F7F6EF] border border-[#E4E2DA]">
-                {scopedSections.length} sections queued
-              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSelectedCourseIds(visibleCourses.map(c => c.id))}
+                  className="text-xs font-semibold text-[#171717] hover:underline cursor-pointer"
+                >
+                  Select All
+                </button>
+                <span className="text-[#E4E2DA]">|</span>
+                <button
+                  type="button"
+                  onClick={() => setSelectedCourseIds([])}
+                  className="text-xs font-medium text-[#77766F] hover:text-[#171717] cursor-pointer"
+                >
+                  Clear
+                </button>
+              </div>
             </div>
 
-            {/* Courses Selection Grid */}
-            <div>
-              <div className="flex items-center justify-between mb-2">
+            {/* Cohort Chips */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
                 <span className="text-xs font-semibold text-[#171717] flex items-center gap-1.5">
-                  <BookOpen className="w-3.5 h-3.5" />
-                  <span>Courses ({selectedCourseIds.size} of {visibleCourses.length} active)</span>
+                  <GraduationCap className="w-3.5 h-3.5 text-[#77766F]" />
+                  <span>Target Student Cohorts ({selectedGroupIds.length} active)</span>
                 </span>
                 <button
                   type="button"
-                  onClick={() => {
-                    if (visibleCourses.every(c => selectedCourseIds.has(c.id))) {
-                      setSelectedCourseIds(new Set());
-                    } else {
-                      setSelectedCourseIds(new Set(visibleCourses.map(c => c.id)));
-                    }
-                  }}
-                  className="text-xs font-semibold text-[#171717] underline cursor-pointer"
+                  onClick={() => setSelectedGroupIds(store.studentGroups.map(g => g.id))}
+                  className="text-[11px] text-[#77766F] hover:text-[#171717] underline cursor-pointer"
                 >
-                  {visibleCourses.every(c => selectedCourseIds.has(c.id)) ? 'Clear all' : 'Select all'}
+                  All Cohorts
                 </button>
               </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-52 overflow-y-auto p-2 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA]">
-                {visibleCourses.map(course => {
-                  const checked = selectedCourseIds.has(course.id);
+              <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto p-1">
+                {store.studentGroups.map(group => {
+                  const active = selectedGroupIds.includes(group.id);
                   return (
-                    <label
-                      key={course.id}
-                      className={`flex items-center justify-between p-2.5 rounded-lg border text-xs cursor-pointer transition-colors ${
-                        checked
-                          ? 'bg-white border-[#171717] text-[#171717]'
-                          : 'bg-white/60 border-[#E4E2DA] text-[#77766F]'
+                    <button
+                      key={group.id}
+                      type="button"
+                      onClick={() => toggleGroup(group.id)}
+                      className={`px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors flex items-center gap-1.5 cursor-pointer ${
+                        active
+                          ? 'bg-[#171717] text-white border-[#171717]'
+                          : 'bg-[#F7F6EF] text-[#77766F] border-[#E4E2DA] hover:text-[#171717]'
                       }`}
                     >
-                      <div className="flex items-center gap-2 min-w-0">
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={() => toggleCourseSelection(course.id)}
-                          className="accent-[#171717]"
-                        />
-                        <span className="font-mono-tabular font-bold shrink-0">{course.code}</span>
-                        <span className="truncate">{course.title}</span>
-                      </div>
-                      <span className="text-[10.5px] font-mono-tabular px-1.5 py-0.5 rounded bg-[#EDEAE0] text-[#171717] shrink-0 ml-1">
-                        {course.creditHours}cr
-                      </span>
-                    </label>
+                      <span>{group.name}</span>
+                      <span className="text-[10px] opacity-75">({group.size})</span>
+                    </button>
                   );
                 })}
               </div>
             </div>
 
-            {/* Student Cohorts Checklist */}
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-semibold text-[#171717]">
-                  Student Cohorts ({selectedGroupIds.size} of {visibleGroups.length} selected)
-                </span>
+            {/* Course Checklist */}
+            <div className="space-y-2">
+              <div className="text-xs font-semibold text-[#171717]">
+                Courses Included ({selectedCourseIds.length} of {visibleCourses.length})
               </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-44 overflow-y-auto p-2 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA]">
-                {visibleGroups.map(grp => {
-                  const secCount = store.sections.filter(s => s.studentGroupId === grp.id).length;
-                  const checked = selectedGroupIds.has(grp.id);
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-56 overflow-y-auto pr-1">
+                {visibleCourses.map(course => {
+                  const isChecked = selectedCourseIds.includes(course.id);
+                  const courseSections = store.sections.filter(s => s.courseId === course.id);
+                  const hasLab = courseSections.some(s => s.sessionType === 'Lab');
                   return (
-                    <label
-                      key={grp.id}
-                      className={`flex items-center justify-between p-2.5 rounded-lg border text-xs cursor-pointer transition-colors ${
-                        checked
-                          ? 'bg-white border-[#171717] text-[#171717]'
-                          : 'bg-white/60 border-[#E4E2DA] text-[#77766F]'
+                    <button
+                      key={course.id}
+                      type="button"
+                      onClick={() => toggleCourse(course.id)}
+                      className={`p-2.5 rounded-xl border text-left flex items-start gap-2.5 transition-colors cursor-pointer ${
+                        isChecked
+                          ? 'bg-[#F7F6EF] border-[#171717]'
+                          : 'bg-white border-[#E4E2DA] opacity-65 hover:opacity-100'
                       }`}
                     >
-                      <div className="flex items-center gap-2 truncate">
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={() => toggleGroupSelection(grp.id)}
-                          className="accent-[#171717]"
-                        />
-                        <span className="font-mono-tabular font-bold">{grp.code}</span>
-                        <span className="truncate text-[#77766F]">{grp.name}</span>
+                      {isChecked ? (
+                        <CheckSquare className="w-4 h-4 text-[#171717] shrink-0 mt-0.5" />
+                      ) : (
+                        <Square className="w-4 h-4 text-[#77766F] shrink-0 mt-0.5" />
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-1">
+                          <span className="font-mono-tabular text-xs font-bold text-[#171717]">
+                            {course.code}
+                          </span>
+                          <div className="flex items-center gap-1">
+                            {hasLab && (
+                              <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-[#F2D8FA] text-[#171717]">
+                                {labHoursLabel}h Lab
+                              </span>
+                            )}
+                            <span className="text-[10px] font-mono-tabular px-1.5 py-0.5 rounded bg-white border border-[#E4E2DA] text-[#77766F]">
+                              {courseSections.length} sec
+                            </span>
+                          </div>
+                        </div>
+                        <div className="text-xs text-[#77766F] truncate mt-0.5">{course.title}</div>
                       </div>
-                      <span className="text-[10.5px] font-mono-tabular text-[#77766F] shrink-0">
-                        {secCount} secs
-                      </span>
-                    </label>
+                    </button>
                   );
                 })}
               </div>
             </div>
           </div>
-        </div>
 
-        {/* RIGHT COLUMN (5 Cols): Step 3 (Personal Preferences) + Step 4 (Hard Constraints) + Step 5 (Execute) */}
-        <div className="lg:col-span-5 space-y-6">
-          {/* STEP 3: Personal Preferences */}
+          {/* Card 3: Optimization Strategy */}
           <div className="sf-card-white p-6 space-y-5">
             <div className="flex items-center justify-between border-b border-[#E4E2DA] pb-3.5">
-              <div className="flex items-center gap-3">
-                <span className="w-7 h-7 rounded-lg bg-[#B8F2E6] text-[#171717] font-mono-tabular font-bold text-xs flex items-center justify-center">
-                  03
-                </span>
-                <div>
-                  <h2 className="font-serif-editorial text-xl text-[#171717]">
-                    Personal Preferences
-                  </h2>
-                  <p className="text-xs text-[#77766F]">
-                    Preferred timings, breaks, and daily workload balance
-                  </p>
-                </div>
+              <div className="flex items-center gap-2">
+                <Sliders className="w-4 h-4 text-[#171717]" />
+                <h2 className="font-serif-editorial text-xl text-[#171717]">
+                  3. Optimization Strategy
+                </h2>
               </div>
-              <button
-                type="button"
-                onClick={() => handlePresetSelect('balanced')}
-                className="text-xs text-[#77766F] hover:text-[#171717] inline-flex items-center gap-1 cursor-pointer"
-              >
-                <RotateCcw className="w-3.5 h-3.5" />
-                <span>Reset</span>
-              </button>
+              <span className="text-xs font-medium text-[#77766F]">Soft Constraint Weights</span>
             </div>
 
-            {/* Preferred Time of Day */}
             <div>
-              <label className="block text-xs font-semibold text-[#171717] mb-1.5">
-                Preferred Daily Timing Window
+              <label className="block text-xs font-semibold text-[#171717] mb-2">
+                Primary Optimization Goal
               </label>
-              <div className="grid grid-cols-3 gap-2">
-                {[
-                  { id: 'morning' as const, label: 'Morning Session', sub: '9:00 AM – 1:00 PM' },
-                  { id: 'balanced' as const, label: 'Full University Day', sub: '9:00 AM – 5:00 PM' },
-                  { id: 'afternoon' as const, label: 'Afternoon Session', sub: '2:00 PM – 5:00 PM' }
-                ].map(opt => (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                {(
+                  [
+                    {
+                      id: 'balanced',
+                      title: 'Balanced University Schedule',
+                      desc: `Distributes ${activeTiming.periodLengthMinutes}m lectures & ${labHoursLabel}h labs evenly across active working days`
+                    },
+                    {
+                      id: 'student_friendly',
+                      title: 'Student-Friendly Compactness',
+                      desc: 'Minimizes long idle gaps and honors student cohort preferences'
+                    },
+                    {
+                      id: 'faculty_compact',
+                      title: 'Instructor Teaching Blocks',
+                      desc: 'Clusters faculty teaching hours on fewer days'
+                    },
+                    {
+                      id: 'room_efficiency',
+                      title: 'Room & Lab Utilization',
+                      desc: 'Matches section sizes tightly to lecture hall & lab capacities'
+                    }
+                  ] as const
+                ).map(opt => (
                   <button
                     key={opt.id}
                     type="button"
-                    onClick={() => setPreferredWindow(opt.id)}
-                    className={`p-2.5 rounded-xl border text-left transition-colors cursor-pointer ${
-                      preferredWindow === opt.id
-                        ? 'bg-[#171717] text-white border-[#171717]'
-                        : 'bg-[#F7F6EF] text-[#171717] border-[#E4E2DA] hover:border-[#171717]'
+                    onClick={() => setOptimizationFocus(opt.id)}
+                    className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer ${
+                      optimizationFocus === opt.id
+                        ? 'border-[#171717] bg-[#B8EEEE]/40 shadow-xs'
+                        : 'border-[#E4E2DA] bg-[#F7F6EF]/60 hover:bg-[#F7F6EF]'
                     }`}
                   >
-                    <div className="text-xs font-semibold">{opt.label}</div>
-                    <div className={`text-[10.5px] font-mono-tabular mt-0.5 ${preferredWindow === opt.id ? 'text-[#B8EEEE]' : 'text-[#77766F]'}`}>
-                      {opt.sub}
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs font-semibold text-[#171717]">{opt.title}</span>
+                      <span
+                        className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center ${
+                          optimizationFocus === opt.id
+                            ? 'border-[#171717] bg-[#171717]'
+                            : 'border-[#77766F]'
+                        }`}
+                      >
+                        {optimizationFocus === opt.id && (
+                          <span className="w-1.5 h-1.5 rounded-full bg-white" />
+                        )}
+                      </span>
                     </div>
+                    <p className="text-[11px] text-[#77766F] leading-relaxed">{opt.desc}</p>
                   </button>
                 ))}
               </div>
             </div>
 
-            {/* Max Daily Workload */}
-            <div className="space-y-1.5">
-              <div className="flex justify-between text-xs">
-                <span className="font-semibold text-[#171717] flex items-center gap-1.5">
-                  <Clock className="w-3.5 h-3.5" />
-                  <span>Maximum Daily Workload Cap</span>
-                </span>
-                <span className="font-mono-tabular font-bold px-2 py-0.5 rounded bg-[#B8F2E6] text-[#171717]">
-                  {maxDailyWorkload} hrs / day
-                </span>
-              </div>
-              <input
-                type="range"
-                min="3"
-                max="8"
-                value={maxDailyWorkload}
-                onChange={e => setMaxDailyWorkload(Number(e.target.value))}
-                className="w-full accent-[#171717]"
-              />
-            </div>
-
-            {/* Optimization Sliders */}
-            <div className="space-y-3.5 pt-2 border-t border-[#E4E2DA]">
-              <div className="space-y-1">
-                <div className="flex justify-between text-xs">
-                  <span className="font-medium text-[#171717]">Midday Break & Transit Buffer</span>
-                  <span className="font-mono-tabular font-semibold">{transitBufferWeight}%</span>
-                </div>
-                <input
-                  type="range"
-                  min="0"
-                  max="100"
-                  value={transitBufferWeight}
-                  onChange={e => setTransitBufferWeight(Number(e.target.value))}
-                  className="w-full accent-[#171717]"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <div className="flex justify-between text-xs">
-                  <span className="font-medium text-[#171717]">Consecutive-Class Cap Protection</span>
-                  <span className="font-mono-tabular font-semibold">{facultyLoadWeight}%</span>
-                </div>
-                <input
-                  type="range"
-                  min="0"
-                  max="100"
-                  value={facultyLoadWeight}
-                  onChange={e => setFacultyLoadWeight(Number(e.target.value))}
-                  className="w-full accent-[#171717]"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <div className="flex justify-between text-xs">
-                  <span className="font-medium text-[#171717]">Room Compaction & Proximity</span>
-                  <span className="font-mono-tabular font-semibold">{roomCompactionWeight}%</span>
-                </div>
-                <input
-                  type="range"
-                  min="0"
-                  max="100"
-                  value={roomCompactionWeight}
-                  onChange={e => setRoomCompactionWeight(Number(e.target.value))}
-                  className="w-full accent-[#171717]"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* STEP 4: Hard Constraints & Step 5: Execute */}
-          <div className="sf-card-white p-6 space-y-5">
-            <div className="flex items-center justify-between border-b border-[#E4E2DA] pb-3.5">
-              <div className="flex items-center gap-3">
-                <span className="w-7 h-7 rounded-lg bg-[#E8D36B] text-[#171717] font-mono-tabular font-bold text-xs flex items-center justify-center">
-                  04
-                </span>
+            <div className="space-y-2.5 pt-2 border-t border-[#E4E2DA]">
+              <label className="flex items-center justify-between p-3 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] cursor-pointer">
                 <div>
-                  <h2 className="font-serif-editorial text-xl text-[#171717]">
-                    Hard Constraints
-                  </h2>
-                  <p className="text-xs text-[#77766F]">
-                    Strict conflict rules enforced during schedule generation
-                  </p>
+                  <div className="text-xs font-semibold text-[#171717]">
+                    Honor Student Cohort Time Preferences
+                  </div>
+                  <div className="text-[11px] text-[#77766F]">
+                    Applies preferred morning/afternoon slots and day-off requests where feasible
+                  </div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={respectStudentPrefs}
+                  onChange={e => setRespectStudentPrefs(e.target.checked)}
+                  className="w-4 h-4 accent-[#171717] rounded cursor-pointer"
+                />
+              </label>
+
+              <label className="flex items-center justify-between p-3 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] cursor-pointer">
+                <div>
+                  <div className="text-xs font-semibold text-[#171717]">
+                    Strict Lab Room & Capacity Matching
+                  </div>
+                  <div className="text-[11px] text-[#77766F]">
+                    Assigns {labHoursLabel}-hour lab sessions exclusively to Laboratory rooms and lectures to Lecture/Seminar halls
+                  </div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={balanceRoomUsage}
+                  onChange={e => setBalanceRoomUsage(e.target.checked)}
+                  className="w-4 h-4 accent-[#171717] rounded cursor-pointer"
+                />
+              </label>
+            </div>
+          </div>
+        </div>
+
+        {/* =========================================================
+            RIGHT COLUMN (5 cols): READINESS CHECK & EXECUTION
+           ========================================================= */}
+        <div className="lg:col-span-5 space-y-6">
+          <div className="sf-card-white bg-white border border-[#E4E2DA] rounded-2xl p-6 space-y-6">
+            <div className="flex items-center justify-between border-b border-[#E4E2DA] pb-4">
+              <div>
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-[#77766F]">
+                  Pre-Flight Verification
+                </div>
+                <h2 className="font-serif-editorial text-2xl text-[#171717] mt-0.5">
+                  Dataset Readiness
+                </h2>
+              </div>
+              <span
+                className={`px-2.5 py-1 rounded-lg text-xs font-semibold ${
+                  allReady
+                    ? 'bg-[#B7F77C] border border-[#98DF58] text-[#171717]'
+                    : 'bg-[#F2D8FA] border border-[#DFB9EC] text-[#171717]'
+                }`}
+              >
+                {allReady ? 'Ready to Solve' : 'Select Courses'}
+              </span>
+            </div>
+
+            <div className="space-y-2.5">
+              {readinessItems.map(item => (
+                <div
+                  key={item.label}
+                  className="flex items-center justify-between p-3 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA]"
+                >
+                  <div className="flex items-center gap-2.5">
+                    {item.ready ? (
+                      <CheckCircle2 className="w-4 h-4 text-[#171717] shrink-0" />
+                    ) : (
+                      <AlertTriangle className="w-4 h-4 text-[#8A1C1C] shrink-0" />
+                    )}
+                    <div>
+                      <div className="text-xs font-semibold text-[#171717]">{item.label}</div>
+                      <div className="text-[11px] text-[#77766F]">{item.detail}</div>
+                    </div>
+                  </div>
+                  <span className="font-mono-tabular text-xs font-bold px-2 py-0.5 rounded bg-[#B8EEEE] text-[#171717]">
+                    {item.count}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            {/* Active Hard Constraints Summary */}
+            <div className="p-3.5 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] space-y-1.5 text-[11.5px] text-[#55544E]">
+              <div className="text-xs font-semibold text-[#171717]">
+                Enforced University Scheduling Rules:
+              </div>
+              <div>
+                • Operating Window: <strong className="text-[#171717]">{activeTiming.operatingHoursLabel}</strong> ({activeTiming.workingDays.join('–')})
+              </div>
+              <div>
+                • Lectures: <strong className="text-[#171717]">{activeTiming.periodLengthMinutes} minutes</strong>
+                {activeTiming.shortBreakEnabled && activeTiming.shortBreakMinutes > 0
+                  ? ` + ${activeTiming.shortBreakMinutes}m break`
+                  : ' (no break between classes)'}
+              </div>
+              <div>
+                • Midday Break:{' '}
+                <strong className="text-[#171717]">
+                  {activeTiming.middayBreak.enabled
+                    ? `${activeTiming.middayBreak.fullRangeLabel} (Protected)`
+                    : 'Disabled'}
+                </strong>
+              </div>
+              <div>
+                • Labs: <strong className="text-[#171717]">{activeTiming.labDurationMinutes}m ({labHoursLabel}h)</strong> continuous blocks ({activeTiming.labSpanSlots} slots)
+              </div>
+            </div>
+
+            {/* Generate Trigger */}
+            <button
+              onClick={handleRunGenerator}
+              disabled={!allReady || isGenerating}
+              className="w-full py-3.5 px-5 rounded-xl bg-[#171717] hover:bg-[#2E2E2E] disabled:opacity-50 text-white font-semibold text-sm flex items-center justify-center gap-2 transition-colors cursor-pointer"
+            >
+              {isGenerating ? (
+                <>
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  <span>Running Constraint Solver...</span>
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-4 h-4 text-[#B8EEEE]" />
+                  <span>Generate Conflict-Free Schedule ({matchingSections.length} Sections)</span>
+                </>
+              )}
+            </button>
+
+            {isGenerating && (
+              <div className="p-4 rounded-xl bg-[#B8EEEE]/45 border border-[#95DFDF] space-y-1.5">
+                <div className="text-xs font-mono-tabular font-bold text-[#171717]">
+                  Step {stepIndex + 1} of {generationSteps.length}
+                </div>
+                <div className="text-xs text-[#171717] font-medium">{generationSteps[stepIndex]}</div>
+              </div>
+            )}
+          </div>
+
+          {/* Generation Result Summary Card */}
+          {result && (
+            <div className="sf-card-white p-6 space-y-5 border-2 border-[#171717]">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md bg-[#B7F77C] text-[#171717] text-xs font-semibold mb-2">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>Schedule Generated</span>
+                  </span>
+                  <h3 className="font-serif-editorial text-2xl text-[#171717]">
+                    {result.placedCount} of {result.placedCount + result.unplacedCount} Sections Scheduled
+                  </h3>
+                </div>
+                <div className="text-right">
+                  <div className="text-[11px] text-[#77766F]">Room Utilization</div>
+                  <div className="font-serif-editorial text-2xl text-[#171717]">
+                    {result.roomUtilization}%
+                  </div>
                 </div>
               </div>
-              <ShieldCheck className="w-4 h-4 text-[#171717]" />
-            </div>
 
-            <div className="space-y-2">
-              {hardConstraints.concat(softConstraints.slice(0, 2)).map(rule => (
-                <div
-                  key={rule.id}
-                  onClick={() => handleToggleConstraint(rule.id, rule.enabled)}
-                  className="p-3 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] flex items-center justify-between gap-3 cursor-pointer hover:border-[#171717] transition-colors"
-                >
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-semibold text-[#171717] truncate">
-                        {rule.name}
-                      </span>
-                      <span
-                        className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${
-                          rule.kind === 'hard'
-                            ? 'bg-[#E8D36B] text-[#171717]'
-                            : 'bg-[#B8EEEE] text-[#171717]'
-                        }`}
-                      >
-                        {rule.kind.toUpperCase()}
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-[#77766F] truncate mt-0.5">
-                      {rule.description}
-                    </p>
-                  </div>
-                  <div
-                    className={`w-5 h-5 rounded-md flex items-center justify-center shrink-0 ${
-                      rule.enabled
-                        ? 'bg-[#171717] text-white'
-                        : 'bg-white border border-[#E4E2DA]'
-                    }`}
-                  >
-                    {rule.enabled && <Check className="w-3.5 h-3.5" />}
-                  </div>
+              {result.conflictCount === 0 ? (
+                <div className="p-3.5 rounded-xl sf-pastel-mint text-xs font-medium text-[#171717] flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 shrink-0" />
+                  <span>
+                    Zero room, instructor, or student cohort conflicts detected. All {labHoursLabel}-hour labs and {activeTiming.periodLengthMinutes}-minute lectures fit cleanly within {activeTiming.operatingHoursLabel}.
+                  </span>
                 </div>
-              ))}
+              ) : (
+                <div className="p-3.5 rounded-xl bg-[#F2D8FA]/50 border border-[#DFB9EC] text-xs text-[#171717]">
+                  {result.unplacedCount} section(s) could not be placed due to room or cohort capacity constraints.
+                </div>
+              )}
+
+              <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-[#E4E2DA]">
+                <button
+                  onClick={() => onNavigate('feedback')}
+                  className="btn-secondary text-xs h-9"
+                >
+                  <span>View Analytics</span>
+                </button>
+                <button
+                  onClick={() => onNavigate('timetables')}
+                  className="btn-primary text-xs h-9"
+                >
+                  <span>Open Generated Timetable</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
             </div>
-
-            <div className="pt-2">
-              <button
-                type="button"
-                onClick={handleRunSolver}
-                disabled={isSolving}
-                className="w-full btn-primary h-11 text-sm"
-              >
-                <Play className="w-4 h-4" />
-                <span>
-                  {isSolving
-                    ? 'Generating Conflict-Free Schedule...'
-                    : `Generate Schedule (${scopedSections.length} Sections)`}
-                </span>
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* =========================================================
-          6. GENERATED RESULTS & SCENARIO HISTORY TABLE
-         ========================================================= */}
-      <div className="sf-card-white overflow-hidden">
-        <div className="px-6 py-4 border-b border-[#E4E2DA] bg-[#F7F6EF] flex items-center justify-between">
-          <div>
-            <h2 className="font-serif-editorial text-xl text-[#171717]">
-              Generated Schedule Versions
-            </h2>
-            <p className="text-xs text-[#77766F]">
-              Every solver run is versioned and ready for inspection or export in My Timetable.
-            </p>
-          </div>
-          <span className="text-xs font-mono-tabular font-semibold px-2.5 py-1 rounded bg-white border border-[#E4E2DA]">
-            {store.scenarios.length} builds
-          </span>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead className="bg-white text-[#77766F] border-b border-[#E4E2DA]">
-              <tr>
-                <th className="py-3 px-4 font-semibold">Version</th>
-                <th className="py-3 px-4 font-semibold">Schedule Name</th>
-                <th className="py-3 px-4 font-semibold">Generated By</th>
-                <th className="py-3 px-4 font-semibold font-mono-tabular">Hard Clashes</th>
-                <th className="py-3 px-4 font-semibold font-mono-tabular">Room Util</th>
-                <th className="py-3 px-4 font-semibold font-mono-tabular">Preference Score</th>
-                <th className="py-3 px-4 font-semibold text-right">Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[#E4E2DA]">
-              {store.scenarios.map(scen => (
-                <tr key={scen.id} className="hover:bg-[#F7F6EF]/60">
-                  <td className="py-3 px-4 font-mono-tabular font-semibold text-[#171717]">
-                    {scen.version}
-                  </td>
-                  <td className="py-3 px-4 font-semibold text-[#171717]">{scen.name}</td>
-                  <td className="py-3 px-4 text-[#77766F]">{scen.author}</td>
-                  <td className="py-3 px-4">
-                    <span className="px-2 py-0.5 rounded bg-[#B7F77C] text-[#171717] font-mono-tabular font-semibold">
-                      {scen.metrics.clashCount} clashes
-                    </span>
-                  </td>
-                  <td className="py-3 px-4 font-mono-tabular text-[#171717]">
-                    {scen.metrics.roomUtilizationPercent}%
-                  </td>
-                  <td className="py-3 px-4 font-mono-tabular font-semibold text-[#171717]">
-                    {scen.metrics.satisfactionScore}%
-                  </td>
-                  <td className="py-3 px-4 text-right">
-                    <button
-                      type="button"
-                      onClick={() => onNavigate('timetables')}
-                      className="btn-secondary h-8 text-xs"
-                    >
-                      <Calendar className="w-3.5 h-3.5" />
-                      <span>Open Timetable</span>
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          )}
         </div>
       </div>
     </div>

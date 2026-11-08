@@ -18,6 +18,9 @@ import {
   SectionSlotAssignment,
   UNIVERSITY_PERIODS,
   VALID_CONTINUOUS_LAB_BLOCKS,
+  DEFAULT_ACADEMIC_TIMING_CONFIG,
+  computeAcademicScheduleConfig,
+  validateAcademicTimingConfig,
   getLabBlockByStartPeriod,
   getCoveredPeriodsForAssignment
 } from '../types/institutional';
@@ -433,14 +436,150 @@ export const institutionalStore = {
     notifyListeners();
   },
 
-  // 1. Time Structure & Term
+  // 1. Time Structure & Term (Admin-Controlled Academic Timing & Break Configuration)
   updateTimeStructure(updated: Partial<TimeStructure>) {
+    const merged: TimeStructure = {
+      ...currentStore.timeStructure,
+      ...updated
+    };
+    const computed = computeAcademicScheduleConfig(merged);
+    const updatedPeriods = updated.periods || computed.periods;
+    const updatedBreaks = updated.breaks || [
+      ...(computed.middayBreak.enabled
+        ? [
+            {
+              id: 'brk-lunch',
+              name: 'University Midday / Lunch Break',
+              startTime: computed.middayBreak.startTime24,
+              endTime: computed.middayBreak.endTime24,
+              days: computed.workingDays
+            }
+          ]
+        : [])
+    ];
+
     currentStore = {
       ...currentStore,
-      timeStructure: { ...currentStore.timeStructure, ...updated }
+      timeStructure: {
+        ...merged,
+        periods: updatedPeriods,
+        breaks: updatedBreaks
+      }
     };
-    this.addAuditLog('update', 'time', currentStore.timeStructure.id, 'Updated timetable grid time structure.');
+    this.addAuditLog('update', 'time', currentStore.timeStructure.id, `Updated academic timing configuration (${computed.summaryText}).`);
     notifyListeners();
+  },
+
+  saveAcademicTimingConfig(newConfig: Partial<TimeStructure>): {
+    success: boolean;
+    errors: string[];
+    placedCount?: number;
+    summaryText?: string;
+  } {
+    const candidateConfig: Partial<TimeStructure> = {
+      ...currentStore.timeStructure,
+      ...newConfig
+    };
+
+    const validation = validateAcademicTimingConfig(candidateConfig);
+    if (!validation.valid) {
+      return {
+        success: false,
+        errors: validation.errors
+      };
+    }
+
+    const computed = computeAcademicScheduleConfig(candidateConfig);
+    const updatedBreaks = [
+      ...(computed.middayBreak.enabled
+        ? [
+            {
+              id: 'brk-lunch',
+              name: 'University Midday / Lunch Break',
+              startTime: computed.middayBreak.startTime24,
+              endTime: computed.middayBreak.endTime24,
+              days: computed.workingDays
+            }
+          ]
+        : [])
+    ];
+
+    currentStore = {
+      ...currentStore,
+      timeStructure: {
+        ...currentStore.timeStructure,
+        ...newConfig,
+        workingDays: computed.workingDays,
+        dayStartTime: computed.dayStartTime,
+        dayEndTime: computed.dayEndTime,
+        periodLengthMinutes: computed.periodLengthMinutes,
+        shortBreakEnabled: computed.shortBreakEnabled,
+        shortBreakMinutes: computed.shortBreakMinutes,
+        includeBreakAfterLastSlot: computed.includeBreakAfterLastSlot,
+        middayBreakEnabled: computed.middayBreak.enabled,
+        middayBreakMode: computed.middayBreak.mode,
+        middayBreakStartTime: computed.middayBreak.startTime24,
+        middayBreakDurationMinutes: computed.middayBreak.durationMinutes,
+        labDurationMinutes: computed.labDurationMinutes,
+        fridayAfternoonShiftEnabled: computed.fridayAfternoonShiftEnabled,
+        fridayAfternoonStartTime: computed.fridayAfternoonStartTime,
+        periods: computed.periods,
+        breaks: updatedBreaks
+      }
+    };
+
+    const solverResult = this.runTimetableSolver({
+      forceRescheduleAll: true,
+      strategyName: `Timing Update (${computed.periodLengthMinutes}m Class / ${computed.labDurationHoursLabel} Lab)`
+    });
+
+    this.addAuditLog(
+      'update',
+      'time',
+      currentStore.timeStructure.id,
+      `Saved academic timing configuration: ${computed.summaryText}. Re-synchronized ${solverResult.placedCount} sessions.`
+    );
+    notifyListeners();
+
+    return {
+      success: true,
+      errors: [],
+      placedCount: solverResult.placedCount,
+      summaryText: computed.summaryText
+    };
+  },
+
+  resetAcademicTimingConfig(): {
+    placedCount: number;
+    summaryText: string;
+  } {
+    const computed = computeAcademicScheduleConfig(DEFAULT_ACADEMIC_TIMING_CONFIG);
+    currentStore = {
+      ...currentStore,
+      timeStructure: {
+        ...seedTimeStructure,
+        ...DEFAULT_ACADEMIC_TIMING_CONFIG,
+        periods: computed.periods
+      }
+    };
+
+    const solverResult = this.runTimetableSolver({
+      forceRescheduleAll: true,
+      strategyName: 'Default University Timings Restored'
+    });
+
+    this.addAuditLog(
+      'restore',
+      'time',
+      currentStore.timeStructure.id,
+      `Reset academic timing & break configuration to default baseline (${computed.summaryText}).`
+    );
+    notifyListeners();
+
+    return {
+      placedCount: solverResult.placedCount,
+      summaryText: computed.summaryText
+    };
   },
 
   updateTerm(id: string, updated: Partial<AcademicTerm>) {
@@ -710,12 +849,13 @@ export const institutionalStore = {
     return createdCount;
   },
 
-  // 8. Real Combinatorial Solver Engine (University 9 AM - 5 PM Grid + 3h Continuous Labs)
+  // 8. Real Combinatorial Solver Engine (Dynamic Admin-Configured Timings, Breaks & Continuous Labs)
   runTimetableSolver(options?: {
     termId?: string;
     departmentId?: string;
     selectedGroupIds?: string[];
     strategyName?: string;
+    forceRescheduleAll?: boolean;
   }): {
     placedCount: number;
     unplacedCount: number;
@@ -725,13 +865,22 @@ export const institutionalStore = {
   } {
     this.autoGenerateMissingSections();
 
-    const days = currentStore.timeStructure.workingDays.length > 0
-      ? currentStore.timeStructure.workingDays
+    const computedTiming = computeAcademicScheduleConfig(currentStore.timeStructure);
+    const days = computedTiming.workingDays.length > 0
+      ? computedTiming.workingDays
       : (['Mon', 'Tue', 'Wed', 'Thu', 'Fri'] as DayOfWeek[]);
-    const periods = currentStore.timeStructure.periods.length > 0
-      ? currentStore.timeStructure.periods
+    const periods = computedTiming.periods.length > 0
+      ? computedTiming.periods
       : UNIVERSITY_PERIODS;
+    const activeLabBlocks = computedTiming.continuousLabBlocks.length > 0
+      ? computedTiming.continuousLabBlocks
+      : VALID_CONTINUOUS_LAB_BLOCKS;
+    const labSpanSlots = computedTiming.labSpanSlots || 3;
+    const labDurationMinutes = computedTiming.labDurationMinutes || 180;
+    const lectureDurationMinutes = computedTiming.periodLengthMinutes || 50;
 
+    const validPeriodsSet = new Set(periods);
+    const validDaysSet = new Set(days);
     const groupFilter = options?.selectedGroupIds ? new Set(options.selectedGroupIds) : null;
 
     const sectionsToSolve: Section[] = [];
@@ -739,7 +888,14 @@ export const institutionalStore = {
 
     currentStore.sections.forEach(sec => {
       const inScope = !groupFilter || groupFilter.has(sec.studentGroupId);
-      if (sec.isLocked && sec.assignedSlot) {
+      const hasValidExistingSlot =
+        Boolean(sec.assignedSlot) &&
+        validDaysSet.has(sec.assignedSlot!.day) &&
+        validPeriodsSet.has(sec.assignedSlot!.timeSlot);
+
+      if (options?.forceRescheduleAll || !hasValidExistingSlot) {
+        sectionsToSolve.push(sec);
+      } else if (sec.isLocked && sec.assignedSlot) {
         fixedSections.push(sec);
       } else if (inScope) {
         sectionsToSolve.push(sec);
@@ -751,14 +907,14 @@ export const institutionalStore = {
     });
 
     const isSectionLab = (sec: Section): boolean => {
-      if (sec.sessionType === 'Lab' || sec.spanSlots === 3) return true;
-      if (sec.assignedSlot?.sessionType === 'Lab' || sec.assignedSlot?.spanSlots === 3) return true;
+      if (sec.sessionType === 'Lab' || (sec.spanSlots && sec.spanSlots > 1)) return true;
+      if (sec.assignedSlot?.sessionType === 'Lab' || (sec.assignedSlot?.spanSlots && sec.assignedSlot.spanSlots > 1)) return true;
       if (sec.sectionNumber.toLowerCase().includes('lab')) return true;
       return false;
     };
 
     // Sort sections by constraint tightness:
-    // 1. 3-Hour Continuous Labs first (since they require 3 consecutive free cycles)
+    // 1. Continuous Labs first (since they require multiple consecutive free cycles)
     // 2. Larger enrollment first
     sectionsToSolve.sort((a, b) => {
       const labA = isSectionLab(a) ? 1 : 0;
@@ -767,7 +923,7 @@ export const institutionalStore = {
       return (b.expectedEnrollment || 30) - (a.expectedEnrollment || 30);
     });
 
-    // Track occupancy maps across individual hourly cycles: key = `${day}__${period}`
+    // Track occupancy maps across individual scheduling slots: key = `${day}__${period}`
     const usedRooms = new Map<string, Set<string>>();
     const usedInstructors = new Map<string, Set<string>>();
     const usedGroups = new Map<string, Set<string>>();
@@ -786,13 +942,13 @@ export const institutionalStore = {
     };
 
     const markCoveredSlots = (day: DayOfWeek, startPeriod: string, spanSlots: number, roomId: string, instId: string, groupId: string) => {
-      const covered = getCoveredPeriodsForAssignment(startPeriod, spanSlots);
+      const covered = getCoveredPeriodsForAssignment(startPeriod, spanSlots, currentStore.timeStructure);
       covered.forEach(p => markSingleSlot(day, p, roomId, instId, groupId));
     };
 
     fixedSections.forEach(sec => {
       if (sec.assignedSlot) {
-        const span = sec.assignedSlot.spanSlots || sec.spanSlots || (isSectionLab(sec) ? 3 : 1);
+        const span = sec.assignedSlot.spanSlots || sec.spanSlots || (isSectionLab(sec) ? labSpanSlots : 1);
         markCoveredSlots(
           sec.assignedSlot.day,
           sec.assignedSlot.timeSlot,
@@ -835,10 +991,10 @@ export const institutionalStore = {
       let assigned: SectionSlotAssignment | undefined = undefined;
 
       if (isLab) {
-        // 3-Hour Continuous Lab: must occupy one of VALID_CONTINUOUS_LAB_BLOCKS (3 consecutive slots, never crossing 1-2 PM lunch)
+        // Continuous Lab: must occupy one of activeLabBlocks (never crossing the midday break or closing time)
         const labCandidates: Array<{ day: DayOfWeek; blockIdx: number; score: number }> = [];
         days.forEach((day, dIdx) => {
-          VALID_CONTINUOUS_LAB_BLOCKS.forEach((block, bIdx) => {
+          activeLabBlocks.forEach((block, bIdx) => {
             let score = 100;
             const currentLoadOnDay = groupDailyLoad.get(`${sec.studentGroupId}__${day}`) || 0;
             score -= currentLoadOnDay * 20;
@@ -849,8 +1005,9 @@ export const institutionalStore = {
         labCandidates.sort((a, b) => b.score - a.score);
 
         for (const cand of labCandidates) {
-          const block = VALID_CONTINUOUS_LAB_BLOCKS[cand.blockIdx];
+          const block = activeLabBlocks[cand.blockIdx];
           const covered = block.coveredPeriods;
+          const blockSpan = block.spanSlots || covered.length || labSpanSlots;
 
           const isBlackedOut = instructor?.unavailableSlots.some(
             u => u.day === cand.day && covered.includes(u.timeSlot)
@@ -872,21 +1029,22 @@ export const institutionalStore = {
               day: cand.day,
               timeSlot: block.startPeriod,
               roomId: freeRoom.id,
-              durationMinutes: 180,
+              durationMinutes: labDurationMinutes,
               sessionType: 'Lab',
-              spanSlots: 3,
+              spanSlots: blockSpan,
               continuousTimeLabel: block.continuousLabel
             };
-            markCoveredSlots(cand.day, block.startPeriod, 3, freeRoom.id, sec.instructorId, sec.studentGroupId);
+            markCoveredSlots(cand.day, block.startPeriod, blockSpan, freeRoom.id, sec.instructorId, sec.studentGroupId);
             break;
           }
         }
 
-        // Fallback for 3-hour lab if cohort schedule is very dense
+        // Fallback for continuous lab if cohort schedule is very dense
         if (!assigned && sortedRooms.length > 0) {
           for (const cand of labCandidates) {
-            const block = VALID_CONTINUOUS_LAB_BLOCKS[cand.blockIdx];
+            const block = activeLabBlocks[cand.blockIdx];
             const covered = block.coveredPeriods;
+            const blockSpan = block.spanSlots || covered.length || labSpanSlots;
             const freeRoom = sortedRooms.find(r =>
               covered.every(p => !usedRooms.get(`${cand.day}__${p}`)?.has(r.id))
             );
@@ -896,18 +1054,18 @@ export const institutionalStore = {
                 day: cand.day,
                 timeSlot: block.startPeriod,
                 roomId: freeRoom.id,
-                durationMinutes: 180,
+                durationMinutes: labDurationMinutes,
                 sessionType: 'Lab',
-                spanSlots: 3,
+                spanSlots: blockSpan,
                 continuousTimeLabel: block.continuousLabel
               };
-              markCoveredSlots(cand.day, block.startPeriod, 3, freeRoom.id, sec.instructorId, sec.studentGroupId);
+              markCoveredSlots(cand.day, block.startPeriod, blockSpan, freeRoom.id, sec.instructorId, sec.studentGroupId);
               break;
             }
           }
         }
       } else {
-        // Regular 50-minute Lecture: occupies 1 hourly scheduling cycle
+        // Regular Lecture: occupies 1 configured class slot
         const slotCandidates: Array<{ day: DayOfWeek; period: string; score: number }> = [];
         days.forEach((day, dIdx) => {
           periods.forEach((period, pIdx) => {
@@ -939,7 +1097,7 @@ export const institutionalStore = {
               day: slot.day,
               timeSlot: slot.period,
               roomId: freeRoom.id,
-              durationMinutes: 50,
+              durationMinutes: lectureDurationMinutes,
               sessionType: 'Lecture',
               spanSlots: 1
             };
@@ -957,7 +1115,7 @@ export const institutionalStore = {
                 day: slot.day,
                 timeSlot: slot.period,
                 roomId: freeRoom.id,
-                durationMinutes: 50,
+                durationMinutes: lectureDurationMinutes,
                 sessionType: 'Lecture',
                 spanSlots: 1
               };
@@ -1073,26 +1231,38 @@ export const institutionalStore = {
 
   // 10. Section assignments (Moving/editing blocks in Timetable)
   updateSectionSlot(sectionId: string, slot?: { day: DayOfWeek; timeSlot: string; roomId: string }) {
+    const computedTiming = computeAcademicScheduleConfig(currentStore.timeStructure);
+    const activeLabBlocks = computedTiming.continuousLabBlocks.length > 0
+      ? computedTiming.continuousLabBlocks
+      : VALID_CONTINUOUS_LAB_BLOCKS;
+
     currentStore = {
       ...currentStore,
       sections: currentStore.sections.map(s => {
         if (s.id !== sectionId) return s;
         if (!slot) return { ...s, assignedSlot: undefined };
 
-        const isLab = s.sessionType === 'Lab' || s.spanSlots === 3 || s.assignedSlot?.sessionType === 'Lab' || s.assignedSlot?.spanSlots === 3;
+        const isLab =
+          s.sessionType === 'Lab' ||
+          (s.spanSlots && s.spanSlots > 1) ||
+          s.assignedSlot?.sessionType === 'Lab' ||
+          (s.assignedSlot?.spanSlots && s.assignedSlot.spanSlots > 1);
         if (isLab) {
-          const matchedLabBlock = getLabBlockByStartPeriod(slot.timeSlot) || VALID_CONTINUOUS_LAB_BLOCKS[0];
+          const matchedLabBlock =
+            getLabBlockByStartPeriod(slot.timeSlot, currentStore.timeStructure) ||
+            activeLabBlocks[0];
+          const labSpan = matchedLabBlock.spanSlots || computedTiming.labSpanSlots || 3;
           return {
             ...s,
             sessionType: 'Lab',
-            spanSlots: 3,
+            spanSlots: labSpan,
             assignedSlot: {
               day: slot.day,
               timeSlot: matchedLabBlock.startPeriod,
               roomId: slot.roomId,
-              durationMinutes: 180,
+              durationMinutes: computedTiming.labDurationMinutes || 180,
               sessionType: 'Lab',
-              spanSlots: 3,
+              spanSlots: labSpan,
               continuousTimeLabel: matchedLabBlock.continuousLabel
             }
           };
@@ -1106,7 +1276,7 @@ export const institutionalStore = {
             day: slot.day,
             timeSlot: slot.timeSlot,
             roomId: slot.roomId,
-            durationMinutes: 50,
+            durationMinutes: computedTiming.periodLengthMinutes || 50,
             sessionType: 'Lecture',
             spanSlots: 1
           }

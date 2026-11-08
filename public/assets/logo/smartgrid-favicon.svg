@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <!-- Rounded Charcoal Architectural Tile -->
+  <rect width="64" height="64" rx="16" fill="#171717"/>
+  <rect x="1.5" y="1.5" width="61" height="61" rx="14.5" stroke="#2E2E2E" stroke-width="1.5"/>
+
+  <!-- Subtle Precision Timetable Matrix Lines -->
+  <line x1="25" y1="12" x2="25" y2="52" stroke="#2D2D2D" stroke-width="1.25" stroke-linecap="round"/>
+  <line x1="39" y1="12" x2="39" y2="52" stroke="#2D2D2D" stroke-width="1.25" stroke-linecap="round"/>
+  <line x1="12" y1="25" x2="52" y2="25" stroke="#2D2D2D" stroke-width="1.25" stroke-linecap="round"/>
+  <line x1="12" y1="39" x2="52" y2="39" stroke="#2D2D2D" stroke-width="1.25" stroke-linecap="round"/>
+
+  <!-- Left Continuous 3-Slot Lab Column Block (Lavender) -->
+  <rect x="13" y="13" width="9.5" height="38" rx="4.5" fill="#F2D8FA"/>
+
+  <!-- Top Morning Lecture Span Block (Soft Cyan) -->
+  <rect x="27" y="13" width="24" height="9.5" rx="4.5" fill="#B8EEEE"/>
+
+  <!-- Midday Optimization Node & Active Slot (Lime & Mint) -->
+  <rect x="27" y="27.25" width="9.5" height="9.5" rx="3.5" fill="#B7F77C"/>
+  <rect x="41.5" y="27.25" width="9.5" height="23.75" rx="4.5" fill="#B8F2E6"/>
+
+  <!-- Afternoon Anchor Block (Warm Ivory) -->
+  <rect x="27" y="41.5" width="9.5" height="9.5" rx="3.5" fill="#F7F6EF"/>
+
+  <!-- Intelligent Solver Connection Path -->
+  <path d="M17.75 17.75H31.75L31.75 32L46.25 32V46.25" stroke="#171717" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" opacity="0.35"/>
+</svg>

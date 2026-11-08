@@ -8,7 +8,8 @@ import {
   StudentGroup,
   Department,
   DayOfWeek,
-  RoomType
+  RoomType,
+  computeAcademicScheduleConfig
 } from '../types/institutional';
 import {
   Check,
@@ -34,6 +35,7 @@ interface SetupFlowProps {
   initialStep?: number;
   onStepChange?: (stepIdx: number) => void;
   onNavigate: (route: RouteType) => void;
+  currentUser?: { name: string; role: string; email: string; institution?: string } | null;
 }
 
 const PASTEL_ACCENTS = ['#B8EEEE', '#F2D8FA', '#B8F2E6', '#B7F77C', '#E8D36B'];
@@ -44,6 +46,7 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
   onNavigate
 }) => {
   const store = useInstitutionalData();
+  const computedTiming = computeAcademicScheduleConfig(store.timeStructure);
   const [activeStep, setActiveStep] = useState(initialStep);
 
   useEffect(() => {
@@ -780,64 +783,41 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
                 })}
               </div>
 
-              {/* Standard Periods */}
+              {/* Standard Periods & Link to Admin Academic Timings & Breaks */}
               <div className="pt-4 border-t border-[#E4E2DA] space-y-3">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div>
                     <h3 className="font-serif-editorial text-lg text-[#171717]">
-                      Instructional Time Slots ({store.timeStructure.periods.length})
+                      Active Academic Timings & Breaks ({computedTiming.slots.length} Daily Slots)
                     </h3>
                     <p className="text-xs text-[#77766F]">
-                      Each slot is {store.timeStructure.periodLengthMinutes} minutes across {store.timeStructure.workingDays.join(', ')}
+                      {computedTiming.summaryText} · Working Days: {computedTiming.workingDays.join(', ')}
                     </p>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="text"
-                      placeholder="e.g. 16:00 - 17:30"
-                      value={newPeriodInput}
-                      onChange={e => setNewPeriodInput(e.target.value)}
-                      className="input-field h-9 w-44 text-xs font-mono-tabular"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (!newPeriodInput.trim()) return;
-                        if (!store.timeStructure.periods.includes(newPeriodInput.trim())) {
-                          institutionalStore.updateTimeStructure({
-                            periods: [...store.timeStructure.periods, newPeriodInput.trim()]
-                          });
-                          setNewPeriodInput('');
-                          showToast(`Added time slot ${newPeriodInput.trim()}.`);
-                        }
-                      }}
-                      className="btn-secondary h-9 text-xs"
-                    >
-                      + Add Slot
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => onNavigate('settings')}
+                    className="btn-secondary h-9 text-xs shrink-0"
+                  >
+                    <Clock className="w-3.5 h-3.5" />
+                    <span>Configure Academic Timings & Breaks</span>
+                  </button>
                 </div>
 
                 <div className="flex flex-wrap gap-2">
-                  {store.timeStructure.periods.map((period, i) => (
+                  {computedTiming.slots.map(slot => (
                     <div
-                      key={period}
+                      key={slot.slotNumber}
                       className="px-3 py-2 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] flex items-center gap-2 text-xs font-mono-tabular"
                     >
-                      <span className="font-semibold text-[#171717]">{period}</span>
-                      {store.timeStructure.periods.length > 1 && (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            institutionalStore.updateTimeStructure({
-                              periods: store.timeStructure.periods.filter((_, idx) => idx !== i)
-                            })
-                          }
-                          className="text-[#77766F] hover:text-[#171717] cursor-pointer"
-                        >
-                          <X className="w-3.5 h-3.5" />
-                        </button>
-                      )}
+                      <span className="font-semibold text-[#171717]">
+                        Slot {slot.slotNumber}: {slot.period}
+                      </span>
+                      <span className="text-[11px] text-[#77766F]">
+                        ({computedTiming.shortBreakEnabled && computedTiming.shortBreakMinutes > 0
+                          ? `Brk ${slot.shortBreak}`
+                          : 'No Break'})
+                      </span>
                     </div>
                   ))}
                 </div>
@@ -1133,22 +1113,40 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
             </div>
           )}
 
-          {/* STEP 4: Student Cohorts */}
+          {/* STEP 4: Classes & Student Cohorts */}
           {activeStep === 4 && (
             <div className="sf-card-white p-6 space-y-6">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#E4E2DA] pb-4">
                 <div>
                   <h2 className="font-serif-editorial text-2xl text-[#171717]">
-                    Student Cohorts & Degree Tracks
+                    Classes & Student Cohorts
                   </h2>
                   <p className="text-xs text-[#77766F]">
-                    Student groups that share core curriculum blocks and must never have overlapping required classes.
+                    Student class sections that share core curriculum blocks and must never have overlapping required classes.
                   </p>
                 </div>
-                <button onClick={() => handleOpenAddGroup()} className="btn-primary text-xs h-9">
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>Add Student Cohort</span>
-                </button>
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="inline-flex p-1 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] text-xs">
+                    <button
+                      type="button"
+                      onClick={() => selectStep(4)}
+                      className="px-3 py-1 rounded-lg bg-[#171717] text-white font-semibold cursor-pointer"
+                    >
+                      Classes ({store.studentGroups.length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => selectStep(5)}
+                      className="px-3 py-1 rounded-lg text-[#77766F] hover:text-[#171717] font-medium cursor-pointer"
+                    >
+                      Course Sections ({store.sections.length})
+                    </button>
+                  </div>
+                  <button onClick={() => handleOpenAddGroup()} className="btn-primary text-xs h-9">
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Add Class Cohort</span>
+                  </button>
+                </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
@@ -1233,21 +1231,39 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
                     Link courses, faculty instructors, and student cohorts into schedulable sections.
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const added = institutionalStore.autoGenerateMissingSections();
-                    showToast(
-                      added > 0
-                        ? `Auto-generated ${added} curriculum sections.`
-                        : 'All catalog courses already have active sections.'
-                    );
-                  }}
-                  className="btn-secondary text-xs h-9"
-                >
-                  <Layers className="w-3.5 h-3.5" />
-                  <span>Auto-Map Missing Sections</span>
-                </button>
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="inline-flex p-1 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] text-xs">
+                    <button
+                      type="button"
+                      onClick={() => selectStep(4)}
+                      className="px-3 py-1 rounded-lg text-[#77766F] hover:text-[#171717] font-medium cursor-pointer"
+                    >
+                      Classes ({store.studentGroups.length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => selectStep(5)}
+                      className="px-3 py-1 rounded-lg bg-[#171717] text-white font-semibold cursor-pointer"
+                    >
+                      Course Sections ({store.sections.length})
+                    </button>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const added = institutionalStore.autoGenerateMissingSections();
+                      showToast(
+                        added > 0
+                          ? `Auto-generated ${added} curriculum sections.`
+                          : 'All catalog courses already have active sections.'
+                      );
+                    }}
+                    className="btn-secondary text-xs h-9"
+                  >
+                    <Layers className="w-3.5 h-3.5" />
+                    <span>Auto-Map Missing Sections</span>
+                  </button>
+                </div>
               </div>
 
               {/* Quick Section Creator */}

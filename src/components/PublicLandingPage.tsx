@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   ArrowRight,
   Check,
@@ -8,6 +8,7 @@ import {
   X,
   Sparkles,
   ChevronRight,
+  ChevronDown,
   AlertTriangle,
   CheckCircle2
 } from 'lucide-react';
@@ -17,10 +18,13 @@ import { buildMatrixSchedule } from '../data/solverAdapter';
 import { UNIVERSITY_SLOTS, getLabBlockByStartPeriod } from '../types/institutional';
 import { ClassDetailsModal, ClassItem } from './ClassDetailsModal';
 import { exportTimetableToGoogleSheetsWorkbook } from '../utils/googleSheetsExport';
+import { SmartGridLogo } from './SmartGridLogo';
 
 interface PublicLandingPageProps {
   onOpenAuth: (mode?: 'signin' | 'signup') => void;
 }
+
+type LandingSectionId = 'top' | 'problem' | 'solution' | 'capabilities' | 'how-it-works';
 
 const PASTEL_PALETTE = [
   { bg: '#B8EEEE', border: '#95DFDF' },
@@ -71,6 +75,14 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({ onOpenAuth
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [selectedClass, setSelectedClass] = useState<ClassItem | null>(null);
 
+  // Interactive Navbar State: Scroll-Spy, Scroll Progress, and Hover/Click Popovers
+  const [activeNavSection, setActiveNavSection] = useState<LandingSectionId>('top');
+  const [hoveredNavMenu, setHoveredNavMenu] = useState<LandingSectionId | null>(null);
+  const [isScrolled, setIsScrolled] = useState(false);
+  const [scrollProgress, setScrollProgress] = useState(0);
+  const [highlightedCapability, setHighlightedCapability] = useState<number | null>(null);
+  const navCloseTimeoutRef = useRef<number | null>(null);
+
   // Featured class sections for the interactive product demonstration
   const featuredSections = [
     store.studentGroups.find(g => g.code === '2K24-BEE-A'),
@@ -102,12 +114,69 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({ onOpenAuth
   const activeDemoProg = store.programs.find(p => p.id === activeDemoGroup?.programId);
   const activeDemoDept = store.departments.find(d => d.id === activeDemoProg?.departmentId);
 
-  const scrollToSection = (id: string) => {
+  useEffect(() => {
+    const handleScroll = () => {
+      const scrollY = window.scrollY;
+      setIsScrolled(scrollY > 16);
+
+      const docHeight = document.documentElement.scrollHeight - window.innerHeight;
+      if (docHeight > 0) {
+        setScrollProgress(Math.min(100, Math.max(0, (scrollY / docHeight) * 100)));
+      }
+
+      const sectionOrder: LandingSectionId[] = [
+        'how-it-works',
+        'capabilities',
+        'solution',
+        'problem',
+        'top'
+      ];
+      for (const secId of sectionOrder) {
+        const el = document.getElementById(secId);
+        if (el) {
+          const rect = el.getBoundingClientRect();
+          if (rect.top <= 160) {
+            setActiveNavSection(secId);
+            break;
+          }
+        }
+      }
+    };
+
+    handleScroll();
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  const openNavPopover = (id: LandingSectionId) => {
+    if (navCloseTimeoutRef.current) {
+      window.clearTimeout(navCloseTimeoutRef.current);
+      navCloseTimeoutRef.current = null;
+    }
+    setHoveredNavMenu(id);
+  };
+
+  const closeNavPopoverWithDelay = () => {
+    if (navCloseTimeoutRef.current) {
+      window.clearTimeout(navCloseTimeoutRef.current);
+    }
+    navCloseTimeoutRef.current = window.setTimeout(() => {
+      setHoveredNavMenu(null);
+    }, 140);
+  };
+
+  const scrollToSection = (id: LandingSectionId) => {
+    setActiveNavSection(id);
+    setHoveredNavMenu(null);
+    setMobileMenuOpen(false);
+    if (id === 'top') {
+      window.scrollTo({ top: 0, behavior: shouldReduceMotion ? 'auto' : 'smooth' });
+      return;
+    }
     const el = document.getElementById(id);
     if (el) {
-      el.scrollIntoView({ behavior: shouldReduceMotion ? 'auto' : 'smooth' });
+      el.scrollIntoView({ behavior: shouldReduceMotion ? 'auto' : 'smooth', block: 'start' });
     }
-    setMobileMenuOpen(false);
   };
 
   const handleRunDemoOptimization = () => {
@@ -234,63 +303,82 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({ onOpenAuth
       />
 
       {/* =====================================================================
-          STICKY NAVIGATION HEADER
+          INTERACTIVE STICKY NAVIGATION HEADER
          ===================================================================== */}
-      <header className="sticky top-0 z-50 h-16 bg-[#F7F6EF]/92 backdrop-blur-md border-b border-[#E4E2DA] px-4 sm:px-8">
-        <div className="max-w-[1280px] mx-auto h-full flex items-center justify-between gap-8">
+      <header
+        onMouseLeave={closeNavPopoverWithDelay}
+        className={`sticky top-0 z-50 h-16 px-4 sm:px-8 transition-all duration-200 border-b ${
+          isScrolled
+            ? 'bg-white/95 backdrop-blur-md border-[#E4E2DA] shadow-xs'
+            : 'bg-[#F7F6EF]/92 backdrop-blur-md border-[#E4E2DA]'
+        }`}
+      >
+        <div className="max-w-[1280px] mx-auto h-full flex items-center justify-between gap-6">
           {/* Zone 1: Brand Wordmark */}
-          <a
-            href="#top"
-            onClick={e => {
-              e.preventDefault();
-              window.scrollTo({ top: 0, behavior: shouldReduceMotion ? 'auto' : 'smooth' });
-            }}
-            className="flex items-center gap-2.5 text-[#171717] whitespace-nowrap shrink-0"
+          <button
+            type="button"
+            onClick={() => scrollToSection('top')}
+            className="flex items-center gap-2.5 text-[#171717] whitespace-nowrap shrink-0 cursor-pointer group"
           >
-            <span className="w-8 h-8 rounded-lg bg-[#171717] text-white font-serif-editorial text-lg flex items-center justify-center">
-              S
-            </span>
-            <span className="font-serif-editorial text-xl tracking-tight">SmartGrid AI</span>
-          </a>
+            <SmartGridLogo variant="primary" theme="light" size="sm" />
+          </button>
 
-          {/* Zone 2: Concise Single-Line Navigation Links */}
-          <nav className="hidden md:flex items-center gap-8 text-sm font-medium text-[#77766F]">
-            <button
-              type="button"
-              onClick={() => scrollToSection('problem')}
-              className="hover:text-[#171717] transition-colors whitespace-nowrap shrink-0 cursor-pointer"
-            >
-              The Problem
-            </button>
-            <button
-              type="button"
-              onClick={() => scrollToSection('solution')}
-              className="hover:text-[#171717] transition-colors whitespace-nowrap shrink-0 cursor-pointer"
-            >
-              Product Demo
-            </button>
-            <button
-              type="button"
-              onClick={() => scrollToSection('capabilities')}
-              className="hover:text-[#171717] transition-colors whitespace-nowrap shrink-0 cursor-pointer"
-            >
-              Capabilities
-            </button>
-            <button
-              type="button"
-              onClick={() => scrollToSection('how-it-works')}
-              className="hover:text-[#171717] transition-colors whitespace-nowrap shrink-0 cursor-pointer"
-            >
-              How It Works
-            </button>
+          {/* Zone 2: Interactive Navigation Bar with Active Pill & Hover Popovers */}
+          <nav
+            aria-label="Primary Navigation"
+            className="hidden md:flex items-center gap-1 p-1 rounded-xl bg-[#EDEAE0]/75 border border-[#E4E2DA]"
+          >
+            {(
+              [
+                { id: 'problem' as const, label: 'The Problem' },
+                { id: 'solution' as const, label: 'Product Demo' },
+                { id: 'capabilities' as const, label: 'Capabilities' },
+                { id: 'how-it-works' as const, label: 'How It Works' }
+              ] as const
+            ).map(item => {
+              const isActive = activeNavSection === item.id;
+              const isMenuOpen = hoveredNavMenu === item.id;
+              return (
+                <div
+                  key={item.id}
+                  className="relative"
+                  onMouseEnter={() => openNavPopover(item.id)}
+                >
+                  <button
+                    type="button"
+                    onClick={() => scrollToSection(item.id)}
+                    aria-expanded={isMenuOpen}
+                    className={`relative px-3.5 py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer inline-flex items-center gap-1.5 ${
+                      isActive
+                        ? 'text-white font-semibold'
+                        : 'text-[#171717]/80 hover:text-[#171717]'
+                    }`}
+                  >
+                    {isActive && (
+                      <motion.span
+                        layoutId="public-navbar-active"
+                        transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+                        className="absolute inset-0 rounded-lg bg-[#171717]"
+                      />
+                    )}
+                    <span className="relative z-10">{item.label}</span>
+                    <ChevronDown
+                      className={`relative z-10 w-3.5 h-3.5 transition-transform duration-150 ${
+                        isMenuOpen ? 'rotate-180' : ''
+                      } ${isActive ? 'text-white/80' : 'text-[#77766F]'}`}
+                    />
+                  </button>
+                </div>
+              );
+            })}
           </nav>
 
-          {/* Zone 3: Auth Actions */}
-          <div className="hidden md:flex items-center gap-3 shrink-0">
+          {/* Zone 3: Interactive Auth & Quick Launch Actions */}
+          <div className="hidden md:flex items-center gap-2.5 shrink-0">
             <button
               type="button"
               onClick={() => onOpenAuth('signin')}
-              className="px-3.5 py-2 text-sm font-medium text-[#171717] hover:text-[#77766F] transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+              className="px-3.5 h-10 rounded-xl text-sm font-medium text-[#171717] hover:bg-[#EDEAE0] transition-colors whitespace-nowrap shrink-0 cursor-pointer"
             >
               Log in
             </button>
@@ -315,6 +403,266 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({ onOpenAuth
           </button>
         </div>
 
+        {/* Scroll Reading Progress Bar */}
+        <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-transparent overflow-hidden pointer-events-none">
+          <div
+            className="h-full bg-[#171717] transition-all duration-150"
+            style={{ width: `${scrollProgress}%`, opacity: scrollProgress > 1 ? 1 : 0 }}
+          />
+        </div>
+
+        {/* Interactive Desktop Dropdown Popover Panel */}
+        <AnimatePresence>
+          {hoveredNavMenu && (
+            <motion.div
+              initial={{ opacity: 0, y: -6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -6 }}
+              transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
+              onMouseEnter={() => openNavPopover(hoveredNavMenu)}
+              onMouseLeave={closeNavPopoverWithDelay}
+              className="hidden md:block absolute top-16 left-0 right-0 z-50 pointer-events-none"
+            >
+              <div className="max-w-[780px] mx-auto px-4 pt-2 pointer-events-auto">
+                <div className="bg-white border border-[#E4E2DA] rounded-2xl shadow-xl p-5">
+                  {hoveredNavMenu === 'problem' && (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between border-b border-[#E4E2DA] pb-2.5">
+                        <div>
+                          <div className="text-xs font-mono-tabular text-[#77766F]">
+                            01 · The Scheduling Bottleneck
+                          </div>
+                          <div className="font-serif-editorial text-lg text-[#171717]">
+                            Compare Manual Spreadsheet Clashes vs. SmartGrid Resolution
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => scrollToSection('problem')}
+                          className="text-xs font-semibold text-[#171717] hover:underline cursor-pointer inline-flex items-center gap-1"
+                        >
+                          <span>Go to section</span>
+                          <ArrowRight className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setProblemView('conflict');
+                            scrollToSection('problem');
+                          }}
+                          className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer ${
+                            problemView === 'conflict'
+                              ? 'bg-[#F7F6EF] border-[#171717]'
+                              : 'bg-white border-[#E4E2DA] hover:border-[#171717]'
+                          }`}
+                        >
+                          <div className="text-xs font-semibold text-[#171717] flex items-center justify-between gap-2">
+                            <span>Inspect Manual Conflicts</span>
+                            <AlertTriangle className="w-3.5 h-3.5 text-[#171717] shrink-0" />
+                          </div>
+                          <p className="text-[11px] text-[#77766F] mt-1">
+                            See instructor double-bookings, labs split across 1:00 PM lunch, and room overwrites.
+                          </p>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setProblemView('resolved');
+                            scrollToSection('problem');
+                          }}
+                          className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer ${
+                            problemView === 'resolved'
+                              ? 'bg-[#B8F2E6]/60 border-[#171717]'
+                              : 'bg-white border-[#E4E2DA] hover:border-[#171717]'
+                          }`}
+                        >
+                          <div className="text-xs font-semibold text-[#171717] flex items-center justify-between gap-2">
+                            <span>Inspect SmartGrid Solved State</span>
+                            <CheckCircle2 className="w-3.5 h-3.5 text-[#171717] shrink-0" />
+                          </div>
+                          <p className="text-[11px] text-[#77766F] mt-1">
+                            See staggered faculty slots, continuous 3-hour labs, and 100% isolated rooms.
+                          </p>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {hoveredNavMenu === 'solution' && (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between border-b border-[#E4E2DA] pb-2.5">
+                        <div>
+                          <div className="text-xs font-mono-tabular text-[#77766F]">
+                            02 · Interactive Class Timetable Demo
+                          </div>
+                          <div className="font-serif-editorial text-lg text-[#171717]">
+                            Jump directly to a University Class Section Timetable
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={handleDownloadSampleSheets}
+                          className="px-3 py-1.5 rounded-lg bg-[#B7F77C] hover:bg-[#a6ec68] text-[#171717] text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <FileSpreadsheet className="w-3.5 h-3.5" />
+                          <span>Download {activeDemoGroup?.code} (.xlsx)</span>
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-4 gap-2.5">
+                        {fallbackGroups.map(grp => {
+                          const isSelected = grp.id === activeDemoGroup?.id;
+                          return (
+                            <button
+                              key={grp.id}
+                              type="button"
+                              onClick={() => {
+                                setActiveDemoGroupId(grp.id);
+                                scrollToSection('solution');
+                              }}
+                              className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                                isSelected
+                                  ? 'bg-[#171717] text-white border-[#171717]'
+                                  : 'bg-[#F7F6EF] text-[#171717] border-[#E4E2DA] hover:border-[#171717]'
+                              }`}
+                            >
+                              <div className="font-mono-tabular text-xs font-bold">{grp.code}</div>
+                              <div
+                                className={`text-[11px] truncate mt-0.5 ${
+                                  isSelected ? 'text-white/75' : 'text-[#77766F]'
+                                }`}
+                              >
+                                {grp.name}
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {hoveredNavMenu === 'capabilities' && (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between border-b border-[#E4E2DA] pb-2.5">
+                        <div>
+                          <div className="text-xs font-mono-tabular text-[#77766F]">
+                            03 · Key Capabilities
+                          </div>
+                          <div className="font-serif-editorial text-lg text-[#171717]">
+                            Explore University Scheduling & Export Features
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => scrollToSection('capabilities')}
+                          className="text-xs font-semibold text-[#171717] hover:underline cursor-pointer inline-flex items-center gap-1"
+                        >
+                          <span>View all capabilities</span>
+                          <ArrowRight className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2.5">
+                        {[
+                          {
+                            idx: 0,
+                            title: '01 · Combinatorial Constraint Engine',
+                            desc: `${store.studentGroups.length} sections & ${store.rooms.length} rooms with 0 clashes`,
+                            bg: '#FFFFFF'
+                          },
+                          {
+                            idx: 1,
+                            title: '02 · 3-Hour Continuous Laboratories',
+                            desc: 'Uninterrupted 180m lab blocks respecting 1:00 PM lunch',
+                            bg: '#B8EEEE'
+                          },
+                          {
+                            idx: 2,
+                            title: '03 · Landscape Google Sheets Export',
+                            desc: `1 Overview + ${store.studentGroups.length} single-page class tabs`,
+                            bg: '#B7F77C'
+                          },
+                          {
+                            idx: 3,
+                            title: '04 · 50m Lectures & Protected Breaks',
+                            desc: 'Morning & afternoon sessions with Friday shift adaptation',
+                            bg: '#F2D8FA'
+                          }
+                        ].map(cap => (
+                          <button
+                            key={cap.idx}
+                            type="button"
+                            onClick={() => {
+                              setHighlightedCapability(cap.idx);
+                              scrollToSection('capabilities');
+                              window.setTimeout(() => setHighlightedCapability(null), 2600);
+                            }}
+                            style={{ backgroundColor: cap.bg }}
+                            className="p-3 rounded-xl border border-[#E4E2DA] hover:border-[#171717] text-left transition-all cursor-pointer"
+                          >
+                            <div className="text-xs font-semibold text-[#171717]">{cap.title}</div>
+                            <div className="text-[11px] text-[#171717]/75 mt-0.5">{cap.desc}</div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {hoveredNavMenu === 'how-it-works' && (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between border-b border-[#E4E2DA] pb-2.5">
+                        <div>
+                          <div className="text-xs font-mono-tabular text-[#77766F]">
+                            04 · Three-Step Workflow
+                          </div>
+                          <div className="font-serif-editorial text-lg text-[#171717]">
+                            Select a Workflow Step to Inspect
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => scrollToSection('how-it-works')}
+                          className="text-xs font-semibold text-[#171717] hover:underline cursor-pointer inline-flex items-center gap-1"
+                        >
+                          <span>Go to workflow</span>
+                          <ArrowRight className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-3 gap-2.5">
+                        {howItWorksSteps.map((step, idx) => {
+                          const isSel = activeStepIndex === idx;
+                          return (
+                            <button
+                              key={step.number}
+                              type="button"
+                              onClick={() => {
+                                setActiveStepIndex(idx);
+                                scrollToSection('how-it-works');
+                              }}
+                              className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                                isSel
+                                  ? 'bg-[#171717] text-white border-[#171717]'
+                                  : 'bg-[#F7F6EF] text-[#171717] border-[#E4E2DA] hover:border-[#171717]'
+                              }`}
+                            >
+                              <div className="text-[11px] font-mono-tabular font-bold">
+                                Step {step.number}
+                              </div>
+                              <div className="text-xs font-semibold mt-0.5 line-clamp-1">
+                                {step.title}
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {/* Mobile Navigation Drawer */}
         <AnimatePresence>
           {mobileMenuOpen && (
@@ -323,38 +671,58 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({ onOpenAuth
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -8 }}
               transition={{ duration: 0.18 }}
-              className="md:hidden absolute top-16 left-0 right-0 bg-white border-b border-[#E4E2DA] px-6 py-5 space-y-3 shadow-lg"
+              className="md:hidden absolute top-16 left-0 right-0 bg-white border-b border-[#E4E2DA] px-6 py-5 space-y-4 shadow-lg"
             >
-              <div className="flex flex-col space-y-2 text-sm font-medium text-[#171717]">
-                <button
-                  type="button"
-                  onClick={() => scrollToSection('problem')}
-                  className="text-left py-2 hover:text-[#77766F]"
-                >
-                  The Problem
-                </button>
-                <button
-                  type="button"
-                  onClick={() => scrollToSection('solution')}
-                  className="text-left py-2 hover:text-[#77766F]"
-                >
-                  Product Demo
-                </button>
-                <button
-                  type="button"
-                  onClick={() => scrollToSection('capabilities')}
-                  className="text-left py-2 hover:text-[#77766F]"
-                >
-                  Capabilities
-                </button>
-                <button
-                  type="button"
-                  onClick={() => scrollToSection('how-it-works')}
-                  className="text-left py-2 hover:text-[#77766F]"
-                >
-                  How It Works
-                </button>
+              <div className="flex flex-col space-y-1.5 text-sm font-medium text-[#171717]">
+                {(
+                  [
+                    { id: 'problem' as const, label: '01 · The Problem' },
+                    { id: 'solution' as const, label: '02 · Product Demo' },
+                    { id: 'capabilities' as const, label: '03 · Capabilities' },
+                    { id: 'how-it-works' as const, label: '04 · How It Works' }
+                  ] as const
+                ).map(item => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => scrollToSection(item.id)}
+                    className={`text-left px-3 py-2.5 rounded-xl flex items-center justify-between transition-colors cursor-pointer ${
+                      activeNavSection === item.id
+                        ? 'bg-[#171717] text-white font-semibold'
+                        : 'hover:bg-[#F7F6EF] text-[#171717]'
+                    }`}
+                  >
+                    <span>{item.label}</span>
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                ))}
               </div>
+
+              <div className="pt-3 border-t border-[#E4E2DA] space-y-2">
+                <div className="text-[11px] font-mono-tabular text-[#77766F]">
+                  Quick Switch Demo Section:
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {fallbackGroups.map(grp => (
+                    <button
+                      key={grp.id}
+                      type="button"
+                      onClick={() => {
+                        setActiveDemoGroupId(grp.id);
+                        scrollToSection('solution');
+                      }}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-mono-tabular cursor-pointer ${
+                        grp.id === activeDemoGroup?.id
+                          ? 'bg-[#171717] text-white font-bold'
+                          : 'bg-[#F7F6EF] text-[#171717] border border-[#E4E2DA]'
+                      }`}
+                    >
+                      {grp.code}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               <div className="pt-3 border-t border-[#E4E2DA] flex flex-col gap-2.5">
                 <button
                   type="button"
@@ -636,7 +1004,7 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({ onOpenAuth
         {/* ===================================================================
             SECTION 2 — THE PROBLEM (WHY MANUAL SCHEDULING BREAKS)
            =================================================================== */}
-        <section id="problem" className="py-24 sm:py-32 px-4 sm:px-8 border-t border-[#E4E2DA]">
+        <section id="problem" className="scroll-mt-16 py-24 sm:py-32 px-4 sm:px-8 border-t border-[#E4E2DA]">
           <div className="max-w-[1200px] mx-auto">
             <RevealSection className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-16 items-center">
               {/* Left Column: Focused Narrative */}
@@ -721,12 +1089,12 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({ onOpenAuth
                         className="space-y-3.5"
                       >
                         <div className="p-4 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] flex items-start justify-between gap-4">
-                          <div className="space-y-1">
-                            <div className="text-xs font-mono-tabular font-semibold text-[#171717] flex items-center gap-2">
-                              <AlertTriangle className="w-4 h-4 text-[#171717]" />
-                              <span>Collision 01 · Instructor Double-Booked (Tue 10:00 AM)</span>
+                          <div className="space-y-1.5 min-w-0">
+                            <div className="text-xs font-mono-tabular font-semibold text-[#171717] flex items-start sm:items-center gap-2.5">
+                              <AlertTriangle className="w-4 h-4 text-[#171717] shrink-0 mt-0.5 sm:mt-0" />
+                              <span className="min-w-0 leading-snug">Collision 01 · Instructor Double-Booked (Tue 10:00 AM)</span>
                             </div>
-                            <p className="text-xs text-[#77766F]">
+                            <p className="text-xs text-[#77766F] pl-6 sm:pl-6 leading-relaxed">
                               Dr. Kamran Munir assigned simultaneously to <strong className="text-[#171717]">2K24-BEE-A (LH-101)</strong> and <strong className="text-[#171717]">2K24-BEE-B (LH-102)</strong> during Slot 2.
                             </p>
                           </div>
@@ -736,12 +1104,12 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({ onOpenAuth
                         </div>
 
                         <div className="p-4 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] flex items-start justify-between gap-4">
-                          <div className="space-y-1">
-                            <div className="text-xs font-mono-tabular font-semibold text-[#171717] flex items-center gap-2">
-                              <AlertTriangle className="w-4 h-4 text-[#171717]" />
-                              <span>Collision 02 · 3-Hour Lab Broken Across Lunch (Wed 12:00 PM)</span>
+                          <div className="space-y-1.5 min-w-0">
+                            <div className="text-xs font-mono-tabular font-semibold text-[#171717] flex items-start sm:items-center gap-2.5">
+                              <AlertTriangle className="w-4 h-4 text-[#171717] shrink-0 mt-0.5 sm:mt-0" />
+                              <span className="min-w-0 leading-snug">Collision 02 · 3-Hour Lab Broken Across Lunch (Wed 12:00 PM)</span>
                             </div>
-                            <p className="text-xs text-[#77766F]">
+                            <p className="text-xs text-[#77766F] pl-6 sm:pl-6 leading-relaxed">
                               Digital Logic Design Lab started at Slot 4 (12:00 PM), colliding directly with the fixed <strong className="text-[#171717]">1:00 – 2:00 PM University Lunch Break</strong>.
                             </p>
                           </div>
@@ -751,12 +1119,12 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({ onOpenAuth
                         </div>
 
                         <div className="p-4 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] flex items-start justify-between gap-4">
-                          <div className="space-y-1">
-                            <div className="text-xs font-mono-tabular font-semibold text-[#171717] flex items-center gap-2">
-                              <AlertTriangle className="w-4 h-4 text-[#171717]" />
-                              <span>Collision 03 · Shared Laboratory Overwrite (Thu 2:00 PM)</span>
+                          <div className="space-y-1.5 min-w-0">
+                            <div className="text-xs font-mono-tabular font-semibold text-[#171717] flex items-start sm:items-center gap-2.5">
+                              <AlertTriangle className="w-4 h-4 text-[#171717] shrink-0 mt-0.5 sm:mt-0" />
+                              <span className="min-w-0 leading-snug">Collision 03 · Shared Laboratory Overwrite (Thu 2:00 PM)</span>
                             </div>
-                            <p className="text-xs text-[#77766F]">
+                            <p className="text-xs text-[#77766F] pl-6 sm:pl-6 leading-relaxed">
                               Two sections (<strong className="text-[#171717]">2K25-BSCS-A</strong> and <strong className="text-[#171717]">2K25-BSCS-B</strong>) scheduled into Programming Lab 1 at the same time.
                             </p>
                           </div>
@@ -775,12 +1143,12 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({ onOpenAuth
                         className="space-y-3.5"
                       >
                         <div className="p-4 rounded-xl bg-[#B8F2E6]/55 border border-[#93DEC9] flex items-start justify-between gap-4">
-                          <div className="space-y-1">
-                            <div className="text-xs font-mono-tabular font-semibold text-[#171717] flex items-center gap-2">
-                              <CheckCircle2 className="w-4 h-4 text-[#171717]" />
-                              <span>Verified · Faculty Assignments Staggered Across Slots 1–4</span>
+                          <div className="space-y-1.5 min-w-0">
+                            <div className="text-xs font-mono-tabular font-semibold text-[#171717] flex items-start sm:items-center gap-2.5">
+                              <CheckCircle2 className="w-4 h-4 text-[#171717] shrink-0 mt-0.5 sm:mt-0" />
+                              <span className="min-w-0 leading-snug">Verified · Faculty Assignments Staggered Across Slots 1–4</span>
                             </div>
-                            <p className="text-xs text-[#171717]/80">
+                            <p className="text-xs text-[#171717]/80 pl-6 sm:pl-6 leading-relaxed">
                               Dr. Kamran Munir teaches <strong>2K24-BEE-A</strong> at 9:00 AM and <strong>2K24-BEE-B</strong> at 10:00 AM with a 10-minute transition buffer.
                             </p>
                           </div>
@@ -790,12 +1158,12 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({ onOpenAuth
                         </div>
 
                         <div className="p-4 rounded-xl bg-[#B8EEEE]/60 border border-[#95DFDF] flex items-start justify-between gap-4">
-                          <div className="space-y-1">
-                            <div className="text-xs font-mono-tabular font-semibold text-[#171717] flex items-center gap-2">
-                              <CheckCircle2 className="w-4 h-4 text-[#171717]" />
-                              <span>Verified · Continuous 3-Hour Lab Blocks Locked</span>
+                          <div className="space-y-1.5 min-w-0">
+                            <div className="text-xs font-mono-tabular font-semibold text-[#171717] flex items-start sm:items-center gap-2.5">
+                              <CheckCircle2 className="w-4 h-4 text-[#171717] shrink-0 mt-0.5 sm:mt-0" />
+                              <span className="min-w-0 leading-snug">Verified · Continuous 3-Hour Lab Blocks Locked</span>
                             </div>
-                            <p className="text-xs text-[#171717]/80">
+                            <p className="text-xs text-[#171717]/80 pl-6 sm:pl-6 leading-relaxed">
                               All 180-minute labs are placed strictly in valid continuous windows (<strong>9:00–11:50 AM</strong>, <strong>10:00–12:50 PM</strong>, or <strong>2:00–4:50 PM</strong>), never crossing 1:00 PM lunch.
                             </p>
                           </div>
@@ -805,12 +1173,12 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({ onOpenAuth
                         </div>
 
                         <div className="p-4 rounded-xl bg-[#B7F77C]/55 border border-[#98DF58] flex items-start justify-between gap-4">
-                          <div className="space-y-1">
-                            <div className="text-xs font-mono-tabular font-semibold text-[#171717] flex items-center gap-2">
-                              <CheckCircle2 className="w-4 h-4 text-[#171717]" />
-                              <span>Verified · Dedicated Room & Lab Isolation</span>
+                          <div className="space-y-1.5 min-w-0">
+                            <div className="text-xs font-mono-tabular font-semibold text-[#171717] flex items-start sm:items-center gap-2.5">
+                              <CheckCircle2 className="w-4 h-4 text-[#171717] shrink-0 mt-0.5 sm:mt-0" />
+                              <span className="min-w-0 leading-snug">Verified · Dedicated Room & Lab Isolation</span>
                             </div>
-                            <p className="text-xs text-[#171717]/80">
+                            <p className="text-xs text-[#171717]/80 pl-6 sm:pl-6 leading-relaxed">
                               Every lecture hall and specialized engineering lab is uniquely locked per time slot across all {store.studentGroups.length} university sections.
                             </p>
                           </div>
@@ -830,7 +1198,7 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({ onOpenAuth
         {/* ===================================================================
             SECTION 3 — THE SOLUTION (INTERACTIVE PRODUCT DEMONSTRATION)
            =================================================================== */}
-        <section id="solution" className="py-24 sm:py-32 px-4 sm:px-8 bg-white border-t border-[#E4E2DA]">
+        <section id="solution" className="scroll-mt-16 py-24 sm:py-32 px-4 sm:px-8 bg-white border-t border-[#E4E2DA]">
           <div className="max-w-[1200px] mx-auto space-y-12">
             <RevealSection className="max-w-3xl mx-auto text-center space-y-4">
               <div className="text-xs font-mono-tabular text-[#77766F]">
@@ -1031,138 +1399,176 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({ onOpenAuth
         </section>
 
         {/* ===================================================================
-            SECTION 4 — KEY CAPABILITIES (ASYMMETRIC EDITORIAL BENTO)
+            SECTION 4 — KEY CAPABILITIES (SPACIOUS EDITORIAL HIERARCHY)
            =================================================================== */}
-        <section id="capabilities" className="py-24 sm:py-32 px-4 sm:px-8 border-t border-[#E4E2DA]">
-          <div className="max-w-[1200px] mx-auto space-y-14">
-            <RevealSection className="max-w-2xl space-y-4">
-              <div className="text-xs font-mono-tabular text-[#77766F]">
+        <section
+          id="capabilities"
+          className="scroll-mt-16 py-28 sm:py-36 lg:py-40 px-4 sm:px-8 border-t border-[#E4E2DA]"
+        >
+          <div className="max-w-[1140px] mx-auto space-y-16 sm:space-y-20">
+            {/* Section Header with Supporting Description */}
+            <RevealSection className="max-w-3xl space-y-5">
+              <div className="text-xs font-mono-tabular text-[#77766F] tracking-wide">
                 03 · Core Capabilities
               </div>
 
-              <h2 className="font-serif-editorial text-3xl sm:text-4xl lg:text-[42px] text-[#171717] leading-[1.1] tracking-tight text-balance">
+              <h2 className="font-serif-editorial text-3xl sm:text-4xl lg:text-[44px] text-[#171717] leading-[1.1] tracking-tight text-balance">
                 Purpose-built around the real structure of university academics.
               </h2>
+
+              <p className="text-base sm:text-lg text-[#77766F] leading-relaxed max-w-2xl">
+                Every scheduling requirement—from 50-minute lectures and uninterrupted three-hour laboratories to protected campus lunch windows—is built directly into the optimization engine.
+              </p>
             </RevealSection>
 
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-              {/* Capability 1: Span 7 */}
-              <RevealSection className="lg:col-span-7 bg-white border border-[#E4E2DA] rounded-2xl p-7 sm:p-9 flex flex-col justify-between space-y-6">
-                <div className="space-y-3">
+            {/* Primary Featured Capability (01) — Spacious Focal Anchor */}
+            <RevealSection
+              className={`rounded-3xl bg-white border p-8 sm:p-12 lg:p-14 transition-all ${
+                highlightedCapability === 0
+                  ? 'border-[#171717] ring-2 ring-[#171717]'
+                  : 'border-[#E4E2DA]'
+              }`}
+            >
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-14 items-center">
+                <div className="lg:col-span-7 space-y-5">
                   <div className="text-xs font-mono-tabular text-[#77766F]">
                     01 · Combinatorial Constraint Engine
                   </div>
-                  <h3 className="font-serif-editorial text-2xl sm:text-3xl text-[#171717]">
+
+                  <h3 className="font-serif-editorial text-2xl sm:text-3xl lg:text-[34px] text-[#171717] leading-[1.15]">
                     Conflict-free room, faculty, and section allocation
                   </h3>
-                  <p className="text-sm sm:text-base text-[#77766F] leading-relaxed">
+
+                  <p className="text-base text-[#77766F] leading-relaxed max-w-xl">
                     SmartGrid AI evaluates room seating capacities, specialized laboratory requirements, instructor teaching windows, and cohort schedules simultaneously—preventing double-bookings before they happen.
                   </p>
                 </div>
 
-                <div className="grid grid-cols-3 gap-3 pt-4 border-t border-[#E4E2DA] text-left">
-                  <div>
-                    <div className="font-mono-tabular text-xl sm:text-2xl font-semibold text-[#171717]">
+                <div className="lg:col-span-5 lg:pl-12 lg:border-l border-[#E4E2DA] grid grid-cols-3 lg:grid-cols-1 gap-6">
+                  <div className="space-y-1">
+                    <div className="font-mono-tabular text-2xl sm:text-3xl font-semibold text-[#171717]">
                       {store.studentGroups.length}
                     </div>
-                    <div className="text-xs text-[#77766F] mt-0.5">Class Sections</div>
+                    <div className="text-xs sm:text-sm text-[#77766F]">
+                      Class Sections Scheduled Concurrently
+                    </div>
                   </div>
-                  <div>
-                    <div className="font-mono-tabular text-xl sm:text-2xl font-semibold text-[#171717]">
+
+                  <div className="space-y-1 lg:pt-5 lg:border-t border-[#E4E2DA]/80">
+                    <div className="font-mono-tabular text-2xl sm:text-3xl font-semibold text-[#171717]">
                       {store.rooms.length}
                     </div>
-                    <div className="text-xs text-[#77766F] mt-0.5">Halls & Labs</div>
+                    <div className="text-xs sm:text-sm text-[#77766F]">
+                      Lecture Halls & Specialized Laboratories
+                    </div>
                   </div>
-                  <div>
-                    <div className="font-mono-tabular text-xl sm:text-2xl font-semibold text-[#171717]">
+
+                  <div className="space-y-1 lg:pt-5 lg:border-t border-[#E4E2DA]/80">
+                    <div className="font-mono-tabular text-2xl sm:text-3xl font-semibold text-[#171717]">
                       0
                     </div>
-                    <div className="text-xs text-[#77766F] mt-0.5">Hard Overlaps</div>
+                    <div className="text-xs sm:text-sm text-[#77766F]">
+                      Permitted Hard Overlaps Across Campus
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </RevealSection>
+
+            {/* Supporting Capabilities (02, 03, 04) — Clean One-Per-Row Editorial List */}
+            <div className="divide-y divide-[#E4E2DA] border-t border-b border-[#E4E2DA]">
+              {/* Capability 02 */}
+              <RevealSection
+                delay={0.04}
+                className={`py-10 sm:py-12 transition-all ${
+                  highlightedCapability === 1 ? 'bg-white px-6 rounded-2xl ring-2 ring-[#171717]' : ''
+                }`}
+              >
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-12 items-baseline">
+                  <div className="lg:col-span-4 space-y-2">
+                    <div className="text-xs font-mono-tabular text-[#77766F]">
+                      02 · Laboratory Continuity
+                    </div>
+                    <h3 className="font-serif-editorial text-2xl text-[#171717] leading-snug">
+                      Uninterrupted three-hour laboratory blocks
+                    </h3>
+                  </div>
+
+                  <div className="lg:col-span-5">
+                    <p className="text-base text-[#77766F] leading-relaxed">
+                      Engineering and computing labs require three consecutive hours. SmartGrid schedules 180-minute lab blocks across three contiguous slots without internal breaks and never splits a lab across the 1:00–2:00 PM lunch hour.
+                    </p>
+                  </div>
+
+                  <div className="lg:col-span-3 lg:text-right space-y-1">
+                    <div className="text-xs text-[#77766F]">Valid Lab Windows</div>
+                    <div className="font-mono-tabular text-xs sm:text-sm font-semibold text-[#171717]">
+                      09:00–11:50 · 10:00–12:50 · 14:00–16:50
+                    </div>
                   </div>
                 </div>
               </RevealSection>
 
-              {/* Capability 2: Span 5 */}
+              {/* Capability 03 */}
               <RevealSection
                 delay={0.08}
-                className="lg:col-span-5 sf-pastel-cyan p-7 sm:p-9 flex flex-col justify-between space-y-6"
+                className={`py-10 sm:py-12 transition-all ${
+                  highlightedCapability === 2 ? 'bg-white px-6 rounded-2xl ring-2 ring-[#171717]' : ''
+                }`}
               >
-                <div className="space-y-3">
-                  <div className="text-xs font-mono-tabular text-[#171717]/75">
-                    02 · Laboratory Continuity
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-12 items-baseline">
+                  <div className="lg:col-span-4 space-y-2">
+                    <div className="text-xs font-mono-tabular text-[#77766F]">
+                      03 · Print-Ready Spreadsheets
+                    </div>
+                    <h3 className="font-serif-editorial text-2xl text-[#171717] leading-snug">
+                      Compact landscape Google Sheets export
+                    </h3>
                   </div>
-                  <h3 className="font-serif-editorial text-2xl sm:text-3xl text-[#171717]">
-                    Uninterrupted three-hour laboratory blocks
-                  </h3>
-                  <p className="text-sm sm:text-base text-[#171717]/80 leading-relaxed">
-                    Engineering and computing labs require three consecutive hours. SmartGrid schedules 180-minute lab blocks across three contiguous slots without internal breaks and never splits a lab across the 1:00–2:00 PM lunch hour.
-                  </p>
-                </div>
 
-                <div className="p-3.5 rounded-xl bg-white/80 border border-black/10 text-xs font-mono-tabular text-[#171717] flex items-center justify-between">
-                  <span>Valid Lab Windows:</span>
-                  <span className="font-bold">09:00–11:50 · 10:00–12:50 · 14:00–16:50</span>
+                  <div className="lg:col-span-5">
+                    <p className="text-base text-[#77766F] leading-relaxed">
+                      Export a multi-tab <span className="font-mono-tabular text-sm text-[#171717]">.xlsx</span> workbook containing a Master Weekly Overview plus a dedicated worksheet for every class section—formatted in landscape orientation to fit on a single laptop screen and printed page.
+                    </p>
+                  </div>
+
+                  <div className="lg:col-span-3 lg:text-right space-y-1">
+                    <div className="text-xs text-[#77766F]">Workbook Structure</div>
+                    <div className="font-mono-tabular text-xs sm:text-sm font-semibold text-[#171717]">
+                      1 Overview + {store.studentGroups.length} Class Tabs
+                    </div>
+                  </div>
                 </div>
               </RevealSection>
 
-              {/* Capability 3: Span 5 */}
-              <RevealSection
-                delay={0.05}
-                className="lg:col-span-5 sf-pastel-lime p-7 sm:p-9 flex flex-col justify-between space-y-6"
-              >
-                <div className="space-y-3">
-                  <div className="text-xs font-mono-tabular text-[#171717]/75">
-                    03 · Print-Ready Spreadsheets
-                  </div>
-                  <h3 className="font-serif-editorial text-2xl sm:text-3xl text-[#171717]">
-                    Compact landscape Google Sheets export
-                  </h3>
-                  <p className="text-sm sm:text-base text-[#171717]/80 leading-relaxed">
-                    Export a multi-tab `.xlsx` workbook containing a Master Weekly Overview plus a dedicated worksheet for every class section—formatted in landscape orientation to fit on a single laptop screen and printed page.
-                  </p>
-                </div>
-
-                <div className="p-3.5 rounded-xl bg-white/80 border border-black/10 text-xs font-mono-tabular text-[#171717] flex items-center justify-between">
-                  <span>Workbook Structure:</span>
-                  <span className="font-bold">1 Overview + {store.studentGroups.length} Class Tabs</span>
-                </div>
-              </RevealSection>
-
-              {/* Capability 4: Span 7 */}
+              {/* Capability 04 */}
               <RevealSection
                 delay={0.12}
-                className="lg:col-span-7 bg-white border border-[#E4E2DA] rounded-2xl p-7 sm:p-9 flex flex-col justify-between space-y-6"
+                className={`py-10 sm:py-12 transition-all ${
+                  highlightedCapability === 3 ? 'bg-white px-6 rounded-2xl ring-2 ring-[#171717]' : ''
+                }`}
               >
-                <div className="space-y-3">
-                  <div className="text-xs font-mono-tabular text-[#77766F]">
-                    04 · Institutional Rhythm & Student Wellbeing
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-12 items-baseline">
+                  <div className="lg:col-span-4 space-y-2">
+                    <div className="text-xs font-mono-tabular text-[#77766F]">
+                      04 · Institutional Rhythm & Student Wellbeing
+                    </div>
+                    <h3 className="font-serif-editorial text-2xl text-[#171717] leading-snug">
+                      50-minute lectures, 10-minute transitions, and protected lunch breaks
+                    </h3>
                   </div>
-                  <h3 className="font-serif-editorial text-2xl sm:text-3xl text-[#171717]">
-                    50-minute lectures, 10-minute transitions, and protected lunch breaks
-                  </h3>
-                  <p className="text-sm sm:text-base text-[#77766F] leading-relaxed">
-                    Respects human cognitive limits and campus transit times with four morning slots (9:00 AM – 1:00 PM), a universal 1:00 PM – 2:00 PM lunch and prayer break, and three afternoon slots with automatic Friday afternoon timing adjustments.
-                  </p>
-                </div>
 
-                <div className="grid grid-cols-3 gap-3 pt-4 border-t border-[#E4E2DA] text-left">
-                  <div>
-                    <div className="font-mono-tabular text-xl sm:text-2xl font-semibold text-[#171717]">
-                      50m + 10m
-                    </div>
-                    <div className="text-xs text-[#77766F] mt-0.5">Lecture + Short Break</div>
+                  <div className="lg:col-span-5">
+                    <p className="text-base text-[#77766F] leading-relaxed">
+                      Respects human cognitive limits and campus transit times with four morning slots (9:00 AM – 1:00 PM), a universal 1:00 PM – 2:00 PM lunch and prayer break, and three afternoon slots with automatic Friday afternoon timing adjustments.
+                    </p>
                   </div>
-                  <div>
-                    <div className="font-mono-tabular text-xl sm:text-2xl font-semibold text-[#171717]">
-                      1:00 – 2:00
+
+                  <div className="lg:col-span-3 lg:text-right space-y-1">
+                    <div className="text-xs text-[#77766F]">Daily Structure</div>
+                    <div className="font-mono-tabular text-xs sm:text-sm font-semibold text-[#171717]">
+                      50m + 10m · 1:00–2:00 Lunch · 7 Columns
                     </div>
-                    <div className="text-xs text-[#77766F] mt-0.5">Fixed Campus Lunch</div>
-                  </div>
-                  <div>
-                    <div className="font-mono-tabular text-xl sm:text-2xl font-semibold text-[#171717]">
-                      7 Columns
-                    </div>
-                    <div className="text-xs text-[#77766F] mt-0.5">Zero-Scroll Weekly Fit</div>
                   </div>
                 </div>
               </RevealSection>
@@ -1171,23 +1577,31 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({ onOpenAuth
         </section>
 
         {/* ===================================================================
-            SECTION 5 — HOW IT WORKS (CONNECTED 3-STEP SEQUENCE)
+            SECTION 5 — HOW IT WORKS (CLEAN SEQUENTIAL THREE-STEP PROCESS)
            =================================================================== */}
-        <section id="how-it-works" className="py-24 sm:py-32 px-4 sm:px-8 bg-white border-t border-[#E4E2DA]">
-          <div className="max-w-[1200px] mx-auto space-y-14">
-            <RevealSection className="max-w-2xl space-y-4">
-              <div className="text-xs font-mono-tabular text-[#77766F]">
+        <section
+          id="how-it-works"
+          className="scroll-mt-16 py-28 sm:py-36 lg:py-40 px-4 sm:px-8 bg-white border-t border-[#E4E2DA]"
+        >
+          <div className="max-w-[1140px] mx-auto space-y-16 sm:space-y-20">
+            {/* Section Header */}
+            <RevealSection className="max-w-3xl space-y-5">
+              <div className="text-xs font-mono-tabular text-[#77766F] tracking-wide">
                 04 · How It Works
               </div>
 
-              <h2 className="font-serif-editorial text-3xl sm:text-4xl lg:text-[42px] text-[#171717] leading-[1.1] tracking-tight text-balance">
+              <h2 className="font-serif-editorial text-3xl sm:text-4xl lg:text-[44px] text-[#171717] leading-[1.1] tracking-tight text-balance">
                 From academic catalog to published class schedules in three steps.
               </h2>
+
+              <p className="text-base sm:text-lg text-[#77766F] leading-relaxed max-w-2xl">
+                A clear, sequential workflow that takes your institution from raw department catalogs to conflict-free weekly timetables for every cohort.
+              </p>
             </RevealSection>
 
-            <RevealSection className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch">
-              {/* Left: 3 Connected Steps */}
-              <div className="lg:col-span-6 space-y-4">
+            {/* Sequential 3-Step Horizontal Timeline */}
+            <RevealSection className="space-y-12 sm:space-y-16">
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-10 lg:gap-12">
                 {howItWorksSteps.map((step, idx) => {
                   const isActive = activeStepIndex === idx;
                   return (
@@ -1195,76 +1609,92 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({ onOpenAuth
                       key={step.number}
                       type="button"
                       onClick={() => setActiveStepIndex(idx)}
-                      className={`w-full text-left p-6 rounded-2xl border transition-all cursor-pointer ${
+                      className={`group text-left pt-7 border-t-2 transition-colors cursor-pointer flex flex-col justify-between space-y-5 ${
                         isActive
-                          ? 'bg-[#F7F6EF] border-[#171717]'
-                          : 'bg-white border-[#E4E2DA] hover:border-[#77766F]'
+                          ? 'border-[#171717]'
+                          : 'border-[#E4E2DA] hover:border-[#77766F]'
                       }`}
                     >
-                      <div className="flex items-start justify-between gap-4">
-                        <div className="space-y-2">
-                          <div className="text-xs font-mono-tabular font-bold text-[#77766F]">
-                            Step {step.number}
-                          </div>
-                          <h3 className="font-serif-editorial text-xl sm:text-2xl text-[#171717]">
-                            {step.title}
-                          </h3>
-                          <p className="text-sm text-[#77766F] leading-relaxed">
-                            {step.summary}
-                          </p>
+                      <div className="space-y-4">
+                        <div className="flex items-center justify-between">
+                          <span
+                            className={`inline-flex items-center justify-center w-9 h-9 rounded-full text-xs font-mono-tabular font-bold transition-colors ${
+                              isActive
+                                ? 'bg-[#171717] text-white'
+                                : 'bg-[#F7F6EF] text-[#77766F] group-hover:text-[#171717]'
+                            }`}
+                          >
+                            {step.number}
+                          </span>
+
+                          <span
+                            className={`text-xs font-mono-tabular transition-colors ${
+                              isActive ? 'text-[#171717] font-semibold' : 'text-[#77766F]'
+                            }`}
+                          >
+                            {isActive ? 'Active Step' : `Select Step ${step.number}`}
+                          </span>
                         </div>
-                        <ChevronRight
-                          className={`w-5 h-5 shrink-0 mt-1 transition-transform ${
-                            isActive ? 'text-[#171717] translate-x-0.5' : 'text-[#77766F]'
-                          }`}
-                        />
+
+                        <h3 className="font-serif-editorial text-2xl text-[#171717] leading-snug">
+                          {step.title}
+                        </h3>
+
+                        <p className="text-sm sm:text-base text-[#77766F] leading-relaxed">
+                          {step.summary}
+                        </p>
                       </div>
                     </button>
                   );
                 })}
               </div>
 
-              {/* Right: Active Step Visual Detail Card */}
-              <div className="lg:col-span-6 flex">
-                <div
-                  style={{ backgroundColor: howItWorksSteps[activeStepIndex].accentBg }}
-                  className="w-full rounded-2xl border border-black/10 p-8 sm:p-10 flex flex-col justify-between space-y-8"
+              {/* Active Step Detail Strip — Spacious & Uncluttered */}
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={howItWorksSteps[activeStepIndex].number}
+                  initial={shouldReduceMotion ? false : { opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={shouldReduceMotion ? undefined : { opacity: 0, y: -10 }}
+                  transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+                  className="rounded-3xl bg-[#F7F6EF] border border-[#E4E2DA] p-8 sm:p-12"
                 >
-                  <div className="space-y-4">
-                    <div className="text-xs font-mono-tabular font-bold text-[#171717]/75">
-                      Step {howItWorksSteps[activeStepIndex].number} Breakdown
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
+                    <div className="lg:col-span-5 space-y-3">
+                      <div className="text-xs font-mono-tabular text-[#77766F]">
+                        Step {howItWorksSteps[activeStepIndex].number} Breakdown
+                      </div>
+                      <h4 className="font-serif-editorial text-2xl sm:text-3xl text-[#171717] leading-snug">
+                        {howItWorksSteps[activeStepIndex].detailTitle}
+                      </h4>
+                      <div className="pt-3">
+                        <button
+                          type="button"
+                          onClick={() => onOpenAuth('signup')}
+                          className="btn-primary h-11 px-6 text-xs sm:text-sm"
+                        >
+                          <span>Open Workspace</span>
+                          <ArrowRight className="w-4 h-4" />
+                        </button>
+                      </div>
                     </div>
-                    <h3 className="font-serif-editorial text-2xl sm:text-3xl text-[#171717]">
-                      {howItWorksSteps[activeStepIndex].detailTitle}
-                    </h3>
-                    <div className="space-y-3 pt-2">
+
+                    <div className="lg:col-span-7 lg:pl-10 lg:border-l border-[#E4E2DA] space-y-4">
                       {howItWorksSteps[activeStepIndex].detailItems.map((item, i) => (
                         <div
                           key={i}
-                          className="p-4 rounded-xl bg-white/85 border border-black/8 flex items-start gap-3 text-sm text-[#171717]"
+                          className="flex items-start gap-3.5 text-sm sm:text-base text-[#171717] leading-relaxed"
                         >
-                          <Check className="w-4 h-4 text-[#171717] shrink-0 mt-0.5" />
+                          <span className="w-5 h-5 rounded-full bg-white border border-[#E4E2DA] flex items-center justify-center shrink-0 mt-0.5">
+                            <Check className="w-3 h-3 text-[#171717]" />
+                          </span>
                           <span>{item}</span>
                         </div>
                       ))}
                     </div>
                   </div>
-
-                  <div className="pt-4 border-t border-black/10 flex items-center justify-between">
-                    <span className="text-xs font-mono-tabular text-[#171717]/80">
-                      Ready to try Step {howItWorksSteps[activeStepIndex].number} in the workspace?
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => onOpenAuth('signup')}
-                      className="btn-primary h-10 px-5 text-xs"
-                    >
-                      <span>Open Workspace</span>
-                      <ArrowRight className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </div>
-              </div>
+                </motion.div>
+              </AnimatePresence>
             </RevealSection>
           </div>
         </section>
@@ -1316,10 +1746,7 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({ onOpenAuth
       <footer className="border-t border-[#E4E2DA] bg-[#F7F6EF] px-4 sm:px-8 py-12">
         <div className="max-w-[1200px] mx-auto flex flex-col sm:flex-row items-center justify-between gap-6 text-xs text-[#77766F]">
           <div className="flex items-center gap-2.5">
-            <span className="w-6 h-6 rounded-md bg-[#171717] text-white font-serif-editorial text-sm flex items-center justify-center">
-              S
-            </span>
-            <span className="font-serif-editorial text-base text-[#171717]">SmartGrid AI</span>
+            <SmartGridLogo variant="primary" theme="light" size="xs" />
             <span>·</span>
             <span>University Timetable Scheduling & Optimization</span>
           </div>

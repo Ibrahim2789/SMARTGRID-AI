@@ -4,6 +4,7 @@ import { useInstitutionalData, institutionalStore } from '../data/store';
 import { buildMatrixSchedule } from '../data/solverAdapter';
 import {
   UNIVERSITY_SLOTS,
+  computeAcademicScheduleConfig,
   getLabBlockByStartPeriod
 } from '../types/institutional';
 import { exportTimetableToGoogleSheetsWorkbook } from '../utils/googleSheetsExport';
@@ -161,15 +162,16 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
     handleSelectCohort(departmentFilteredGroups[nextIdx].id);
   };
 
+  const computedTiming = computeAcademicScheduleConfig(store.timeStructure);
+  const dynamicSlots = computedTiming.slots.length > 0 ? computedTiming.slots : UNIVERSITY_SLOTS;
+
   const FULL_SEVEN_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
   const FIVE_WORKING_DAYS =
-    store.timeStructure.workingDays.length > 0
-      ? store.timeStructure.workingDays
+    computedTiming.workingDays.length > 0
+      ? computedTiming.workingDays
       : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
   const days = weekColumnSpan === 7 ? FULL_SEVEN_DAYS : FIVE_WORKING_DAYS;
-  const timeSlots = store.timeStructure.periods.length > 0
-    ? store.timeStructure.periods
-    : UNIVERSITY_SLOTS.map(s => s.period);
+  const timeSlots = dynamicSlots.map(s => s.period);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -187,7 +189,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
       const res = institutionalStore.runTimetableSolver();
       setIsSweeping(false);
       setSweepNotice(
-        `${res.placedCount} sessions (50m lectures & 3h continuous labs) synchronized across 9:00 AM – 5:00 PM with 0 hard overlaps.`
+        `${res.placedCount} sessions (${computedTiming.periodLengthMinutes}m lectures & ${computedTiming.labDurationHoursLabel} continuous labs) synchronized across ${computedTiming.operatingHoursLabel} with 0 hard overlaps.`
       );
       setTimeout(() => setSweepNotice(null), 5000);
     }, 450);
@@ -286,13 +288,19 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
         const classes = scheduleData[time]?.[day] || [];
         classes.forEach(cls => {
           if (scope === 'all' || filterClass(cls)) {
-            const isLab = cls.sessionType === 'Lab' || cls.spanSlots === 3;
-            const labMeta = isLab ? getLabBlockByStartPeriod(time) : undefined;
+            const isLab = cls.sessionType === 'Lab' || (cls.spanSlots && cls.spanSlots > 1);
+            const labMeta = isLab ? getLabBlockByStartPeriod(time, store.timeStructure) : undefined;
+            const breakDesc =
+              computedTiming.shortBreakEnabled && computedTiming.shortBreakMinutes > 0
+                ? `(+ ${computedTiming.shortBreakMinutes}m Short Break)`
+                : '(Back-to-Back, No Break)';
             records.push({
               day,
               timeSlot: isLab ? (cls.continuousTimeLabel || labMeta?.continuousLabel || time) : time,
-              sessionType: isLab ? 'Lab (3 Hours Continuous)' : 'Lecture',
-              duration: isLab ? '180 mins (3 hrs continuous)' : '50 mins (+ 10m Short Break)',
+              sessionType: isLab ? `Lab (${computedTiming.labDurationHoursLabel} Continuous)` : 'Lecture',
+              duration: isLab
+                ? `${computedTiming.labDurationMinutes} mins (${computedTiming.labDurationHoursLabel} continuous)`
+                : `${computedTiming.periodLengthMinutes} mins ${breakDesc}`,
               code: cls.code,
               title: cls.title,
               credits: cls.credits || 3,
@@ -364,14 +372,18 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(13);
     doc.setTextColor(23, 23, 23);
-    doc.text(`${(store.institutionProfile?.name || 'SMARTGRID AI').toUpperCase()} — UNIVERSITY TIMETABLE (9:00 AM – 5:00 PM)`, margin, 18);
+    doc.text(
+      `${(store.institutionProfile?.name || 'SMARTGRID AI').toUpperCase()} — UNIVERSITY TIMETABLE (${computedTiming.operatingHoursLabel})`,
+      margin,
+      18
+    );
 
     const activeTerm = store.terms.find(t => t.status === 'active') || store.terms[0];
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8);
     doc.setTextColor(119, 118, 111);
     doc.text(
-      `${(activeTerm?.name || 'FALL 2026').toUpperCase()}   •   50-MIN LECTURES + 10-MIN SHORT BREAKS   •   3-HOUR CONTINUOUS LABS   •   FIXED LUNCH (1:00 – 2:00 PM)`,
+      `${(activeTerm?.name || 'FALL 2026').toUpperCase()}   •   ${computedTiming.summaryText.toUpperCase()}`,
       margin,
       23
     );
@@ -385,7 +397,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
     const numDays = Math.min(days.length, 5);
     const dayColWidth = (pageWidth - margin * 2 - colTimeWidth) / numDays;
     const headerHeight = 7;
-    const slotRowHeight = 19;
+    const slotRowHeight = Math.max(13, Math.min(19, Math.floor(140 / Math.max(1, dynamicSlots.length))));
     const lunchRowHeight = 9;
 
     doc.setFillColor(237, 234, 224);
@@ -410,23 +422,23 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
 
     let currentY = tableStartY + headerHeight;
 
-    UNIVERSITY_SLOTS.forEach(slotMeta => {
-      if (slotMeta.slotNumber === 5) {
+    dynamicSlots.forEach(slotMeta => {
+      if (computedTiming.middayBreak.enabled && slotMeta.slotNumber === computedTiming.firstAfternoonSlotNumber) {
         doc.setFillColor(232, 211, 107);
         doc.setDrawColor(228, 226, 218);
         doc.rect(margin, currentY, colTimeWidth, lunchRowHeight, 'FD');
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(7);
         doc.setTextColor(23, 23, 23);
-        doc.text('1:00 – 2:00 PM', margin + 2.5, currentY + 4);
-        doc.text('LUNCH BREAK', margin + 2.5, currentY + 7.2);
+        doc.text(computedTiming.middayBreak.timeRangeLabel, margin + 2.5, currentY + 4);
+        doc.text('MIDDAY BREAK', margin + 2.5, currentY + 7.2);
 
         doc.setFillColor(237, 234, 224);
         doc.rect(margin + colTimeWidth, currentY, pageWidth - margin * 2 - colTimeWidth, lunchRowHeight, 'FD');
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(7.5);
         doc.text(
-          'FIXED UNIVERSITY LUNCH & PRAYER BREAK (1:00 PM – 2:00 PM) — NO LECTURES OR LABS SCHEDULED',
+          `UNIVERSITY MIDDAY / LUNCH BREAK (${computedTiming.middayBreak.fullRangeLabel}) — NO LECTURES OR LABS SCHEDULED`,
           margin + colTimeWidth + 8,
           currentY + 5.8
         );
@@ -457,7 +469,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
 
         const cls = classes[0];
         if (cls) {
-          const isLab = cls.sessionType === 'Lab' || cls.spanSlots === 3;
+          const isLab = cls.sessionType === 'Lab' || (cls.spanSlots && cls.spanSlots > 1);
           doc.setFillColor(isLab ? 242 : 184, isLab ? 216 : 238, isLab ? 250 : 238);
           doc.roundedRect(x + 1.2, currentY + 1.2, dayColWidth - 2.4, slotRowHeight - 2.4, 1.2, 1.2, 'FD');
 
@@ -465,7 +477,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
           doc.setFontSize(6.5);
           doc.setTextColor(23, 23, 23);
           doc.text(
-            `${cls.code} [${isLab ? 'LAB 3H' : 'LEC 50M'}]`,
+            `${cls.code} [${isLab ? `LAB ${computedTiming.labDurationHoursLabel.toUpperCase()}` : `LEC ${computedTiming.periodLengthMinutes}M`}]`,
             x + 2.5,
             currentY + 5.5
           );
@@ -503,11 +515,11 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
     return true;
   });
   const activeLabCount = activeFilteredSections.filter(
-    s => s.sessionType === 'Lab' || s.spanSlots === 3 || s.assignedSlot?.sessionType === 'Lab'
+    s => s.sessionType === 'Lab' || (s.spanSlots && s.spanSlots > 1) || s.assignedSlot?.sessionType === 'Lab'
   ).length;
   const activeLectureCount = activeFilteredSections.length - activeLabCount;
 
-  // Precompute 3-hour Continuous Lab vertical spans (`rowSpan={3}`) per visible day
+  // Precompute Continuous Lab vertical spans (`rowSpan={spanCount}`) per visible day
   // Map key: `${day}__${slotNumber}`
   const skippedCells = new Set<string>();
   const labSpanByCell = new Map<
@@ -516,44 +528,49 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
       labItem: ClassItem;
       concurrentItems: ClassItem[];
       continuousWindow: string;
+      rowSpanCount: number;
     }
   >();
 
   visibleDays.forEach(day => {
-    UNIVERSITY_SLOTS.forEach((slotMeta, sIdx) => {
+    dynamicSlots.forEach((slotMeta, sIdx) => {
       const cellKey = `${day}__${slotMeta.slotNumber}`;
       if (skippedCells.has(cellKey)) return;
 
       const classesAtStart = (scheduleData[slotMeta.period]?.[day] || []).filter(filterClass);
-      const labItem = classesAtStart.find(c => c.sessionType === 'Lab' || c.spanSlots === 3);
+      const labItem = classesAtStart.find(c => c.sessionType === 'Lab' || (c.spanSlots && c.spanSlots > 1));
 
-      // Valid 3-hour lab starts in Morning (Slot 1 or 2) or Afternoon (Slot 5) without crossing lunch (between 4 and 5)
-      const canSpanThreeRows =
-        Boolean(labItem) &&
-        ((slotMeta.slotNumber >= 1 && slotMeta.slotNumber <= 2) || slotMeta.slotNumber === 5) &&
-        sIdx + 2 < UNIVERSITY_SLOTS.length;
+      if (!labItem) return;
 
-      if (labItem && canSpanThreeRows) {
-        const slot2Meta = UNIVERSITY_SLOTS[sIdx + 1];
-        const slot3Meta = UNIVERSITY_SLOTS[sIdx + 2];
+      const labBlock = getLabBlockByStartPeriod(slotMeta.period, store.timeStructure);
+      const desiredSpan = labItem.spanSlots || labBlock?.spanSlots || computedTiming.labSpanSlots || 3;
 
-        skippedCells.add(`${day}__${slot2Meta.slotNumber}`);
-        skippedCells.add(`${day}__${slot3Meta.slotNumber}`);
+      // Collect consecutive slots in the same session (Morning or Afternoon) so a lab never crosses the midday break
+      const sameSessionSlots = dynamicSlots
+        .slice(sIdx, sIdx + desiredSpan)
+        .filter(s => s.session === slotMeta.session);
+
+      if (sameSessionSlots.length >= 2) {
+        const coveredSubsequent = sameSessionSlots.slice(1);
+        coveredSubsequent.forEach(subSlot => {
+          skippedCells.add(`${day}__${subSlot.slotNumber}`);
+        });
 
         const otherInSlot1 = classesAtStart.filter(c => c.id !== labItem.id);
-        const otherInSlot2 = (scheduleData[slot2Meta.period]?.[day] || []).filter(filterClass);
-        const otherInSlot3 = (scheduleData[slot3Meta.period]?.[day] || []).filter(filterClass);
+        const otherInSubsequent = coveredSubsequent.flatMap(subSlot =>
+          (scheduleData[subSlot.period]?.[day] || []).filter(filterClass)
+        );
 
-        const labBlock = getLabBlockByStartPeriod(slotMeta.period);
         const continuousWindow =
           labItem.continuousTimeLabel ||
           labBlock?.continuousLabel ||
-          (day === 'Fri' && slotMeta.slotNumber === 5 ? '2:30 PM – 4:55 PM' : '9:00 AM – 11:50 AM');
+          `${slotMeta.startTime} – ${sameSessionSlots[sameSessionSlots.length - 1].cycleEndTime}`;
 
         labSpanByCell.set(cellKey, {
           labItem,
-          concurrentItems: [...otherInSlot1, ...otherInSlot2, ...otherInSlot3],
-          continuousWindow
+          concurrentItems: [...otherInSlot1, ...otherInSubsequent],
+          continuousWindow,
+          rowSpanCount: sameSessionSlots.length
         });
       }
     });
@@ -579,9 +596,11 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
           <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-[#77766F]">
             <span>{activeTerm?.name || 'Fall Semester 2026'}</span>
             <span>·</span>
-            <span>{store.studentGroups.length} Class Sections</span>
+            <span>{computedTiming.operatingHoursLabel}</span>
             <span>·</span>
-            <span>{activeLectureCount} Lectures & {activeLabCount} Continuous 3h Labs</span>
+            <span>
+              {activeLectureCount} Lectures ({computedTiming.periodLengthMinutes}m) & {activeLabCount} Continuous Labs ({computedTiming.labDurationHoursLabel})
+            </span>
             <span>·</span>
             <span className="text-[#171717] font-semibold">
               {conflicts.length === 0 ? '0 Clashes' : `${conflicts.length} Clashes`}
@@ -893,14 +912,14 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
               </div>
             )}
 
-            <div className="relative min-w-[185px]">
-              <Search className="w-3.5 h-3.5 text-[#77766F] absolute left-2.5 top-2" />
+            <div className="input-group-field h-8 px-2.5 gap-2 w-auto min-w-[205px]">
+              <Search className="w-3.5 h-3.5 text-[#77766F] shrink-0" />
               <input
                 type="text"
                 placeholder="Filter course, prof, room..."
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
-                className="input-field h-8 pl-8 pr-2.5 text-xs"
+                className="text-xs"
               />
             </div>
           </div>
@@ -954,7 +973,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
                       </span>
                     )}
                     <span className="font-mono-tabular text-[11px]">
-                      {activeLectureCount} Lectures + {activeLabCount} Labs (3h)
+                      {activeLectureCount} Lectures ({computedTiming.periodLengthMinutes}m) + {activeLabCount} Labs ({computedTiming.labDurationHoursLabel})
                     </span>
                   </div>
                 )}
@@ -1004,14 +1023,14 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
             {days.flatMap(day =>
-              UNIVERSITY_SLOTS.flatMap(slotMeta =>
+              dynamicSlots.flatMap(slotMeta =>
                 (scheduleData[slotMeta.period]?.[day] || [])
                   .filter(filterClass)
                   .map(cls => {
                     const pastel = getCoursePastel(cls.code);
-                    const isLab = cls.sessionType === 'Lab' || cls.spanSlots === 3;
+                    const isLab = cls.sessionType === 'Lab' || (cls.spanSlots && cls.spanSlots > 1);
                     const timeWindow = isLab
-                      ? (cls.continuousTimeLabel || getLabBlockByStartPeriod(slotMeta.period)?.continuousLabel || slotMeta.period)
+                      ? (cls.continuousTimeLabel || getLabBlockByStartPeriod(slotMeta.period, store.timeStructure)?.continuousLabel || slotMeta.period)
                       : slotMeta.period;
                     return (
                       <div
@@ -1022,7 +1041,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
                       >
                         <div className="flex items-center justify-between text-xs">
                           <span className="font-mono-tabular font-semibold text-[#171717]/80">
-                            {cls.code} · {isLab ? 'Lab (3h)' : 'Lecture'}
+                            {cls.code} · {isLab ? `Lab (${computedTiming.labDurationHoursLabel})` : `Lecture (${computedTiming.periodLengthMinutes}m)`}
                           </span>
                           <span className="font-mono-tabular font-medium">
                             {day} · {timeWindow}
@@ -1093,9 +1112,9 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
                         >
                           <div className="flex items-center justify-between gap-1 min-w-0">
                             <span className="truncate">{day}</span>
-                            {day === 'Fri' && (
+                            {day === 'Fri' && computedTiming.fridayAfternoonShiftEnabled && (
                               <span className="text-[9.5px] font-sans font-mono-tabular font-normal text-[#77766F] truncate">
-                                14:30 PM
+                                {computedTiming.fridayAfternoonStartTime} PM
                               </span>
                             )}
                             {isWeekend && (
@@ -1110,21 +1129,23 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#E4E2DA]">
-                  {UNIVERSITY_SLOTS.map(slotMeta => {
+                  {dynamicSlots.map(slotMeta => {
                     const time = slotMeta.period;
-                    const isFirstAfternoon = slotMeta.slotNumber === 5;
+                    const isFirstAfternoon =
+                      computedTiming.middayBreak.enabled &&
+                      slotMeta.slotNumber === computedTiming.firstAfternoonSlotNumber;
 
                     return (
                       <React.Fragment key={slotMeta.slotNumber}>
-                        {/* Fixed University Lunch & Prayer Break Row (1:00 PM – 2:00 PM) */}
+                        {/* Admin-Configured Midday / Lunch Break Row */}
                         {isFirstAfternoon && (
                           <tr className="bg-[#F7F6EF] border-y border-[#E4E2DA]">
                             <td className="py-1.5 px-2 border-r border-[#E4E2DA] align-middle bg-[#E8D36B]/35 overflow-hidden">
                               <div className="text-[10.5px] font-mono-tabular font-bold text-[#171717] truncate">
-                                1:00 – 2:00 PM
+                                {computedTiming.middayBreak.timeRangeLabel}
                               </div>
                               <div className="text-[9.5px] text-[#77766F] truncate">
-                                Lunch & Prayer
+                                Lunch ({computedTiming.middayBreak.durationMinutes}m)
                               </div>
                             </td>
                             <td
@@ -1134,17 +1155,17 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
                               <div className="inline-flex items-center gap-2 text-[11px] font-medium text-[#77766F]">
                                 <Coffee className="w-3.5 h-3.5 text-[#171717] shrink-0" />
                                 <span className="text-[#171717] font-semibold">
-                                  University Lunch & Prayer Break (1:00 PM – 2:00 PM)
+                                  University Midday / Lunch Break ({computedTiming.middayBreak.fullRangeLabel})
                                 </span>
                                 <span className="hidden md:inline">
-                                  · Fixed university-wide break (no lectures or labs scheduled)
+                                  · Protected break window (no lectures or labs scheduled)
                                 </span>
                               </div>
                             </td>
                           </tr>
                         )}
 
-                        {/* Regular Hourly Slot Row — Dynamically sized to fit all 7 columns & 9 AM–5 PM slots */}
+                        {/* Regular Class Slot Row — Dynamically sized to fit all columns & configured slots */}
                         <tr>
                           {/* Left Column: Lecture Time + Short Break */}
                           <td className="py-1.5 px-2 text-[10.5px] font-mono-tabular text-[#171717] align-top bg-[#F7F6EF]/40 overflow-hidden">
@@ -1152,7 +1173,11 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
                               {slotMeta.period.replace(' AM', '').replace(' PM', '')}
                             </div>
                             <div className="text-[9.5px] text-[#77766F] mt-0.5 leading-tight truncate">
-                              Brk {slotMeta.shortBreak.replace(' AM', '').replace(' PM', '')}
+                              {computedTiming.shortBreakEnabled &&
+                              computedTiming.shortBreakMinutes > 0 &&
+                              slotMeta.shortBreak !== 'No Break'
+                                ? `Brk ${slotMeta.shortBreak.replace(' AM', '').replace(' PM', '')}`
+                                : 'No Short Break'}
                             </div>
                           </td>
 
@@ -1161,22 +1186,22 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
                             const cellKey = `${day}__${slotMeta.slotNumber}`;
                             const isWeekend = day === 'Sat' || day === 'Sun';
 
-                            // Skip cell if covered by a 3-hour continuous Lab above
+                            // Skip cell if covered by a continuous Lab above
                             if (skippedCells.has(cellKey)) {
                               return null;
                             }
 
                             const labSpanInfo = labSpanByCell.get(cellKey);
 
-                            // Render a 3-Hour Continuous Lab cell (`rowSpan={3}`)
+                            // Render a Continuous Lab cell (`rowSpan={rowSpanCount}`)
                             if (labSpanInfo) {
-                              const { labItem, concurrentItems, continuousWindow } = labSpanInfo;
+                              const { labItem, concurrentItems, continuousWindow, rowSpanCount } = labSpanInfo;
                               const pastel = getCoursePastel(labItem.code);
 
                               return (
                                 <td
                                   key={day}
-                                  rowSpan={3}
+                                  rowSpan={rowSpanCount}
                                   className="p-1 border-l border-[#E4E2DA] align-stretch bg-white overflow-hidden"
                                 >
                                   <div
@@ -1192,7 +1217,9 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
                                     <div className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-white/80 text-[9.5px] font-mono-tabular font-bold text-[#171717] max-w-full truncate">
                                       <span className="truncate">{labItem.code}</span>
                                       <span>·</span>
-                                      <span className="shrink-0">LAB 3H</span>
+                                      <span className="shrink-0">
+                                        LAB {computedTiming.labDurationHoursLabel.toUpperCase()}
+                                      </span>
                                       {labItem.isLocked && <Lock className="w-2.5 h-2.5 shrink-0" />}
                                     </div>
 
@@ -1220,7 +1247,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
                               );
                             }
 
-                            // Standard 1-Slot (50-Minute Lecture) Cell
+                            // Standard 1-Slot Lecture Cell
                             const classes = (scheduleData[time]?.[day] || []).filter(filterClass);
                             const isInstructorBlackedOut =
                               perspective === 'instructor' &&
@@ -1246,7 +1273,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
 
                                 {visibleItems.map(cls => {
                                   const pastel = getCoursePastel(cls.code);
-                                  const isLab = cls.sessionType === 'Lab' || cls.spanSlots === 3;
+                                  const isLab = cls.sessionType === 'Lab' || (cls.spanSlots && cls.spanSlots > 1);
                                   return (
                                     <div
                                       key={cls.id}
@@ -1264,7 +1291,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
                                       </div>
 
                                       <div className="text-[9.5px] font-mono-tabular font-bold text-[#171717]/80 w-full truncate">
-                                        {cls.code} {isLab ? '· Lab' : ''}
+                                        {cls.code} {isLab ? `· Lab (${computedTiming.labDurationHoursLabel})` : ''}
                                       </div>
 
                                       <div className="w-full pt-0.5 border-t border-black/10 text-[9.5px] text-[#171717]/80 leading-tight min-w-0">

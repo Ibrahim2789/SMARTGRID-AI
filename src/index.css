@@ -1,5 +1,16 @@
 @import "tailwindcss";
 
+@theme {
+  --color-brand: #171717;
+  --color-brand-hover: #2E2E2E;
+  --color-surface: #FFFFFF;
+  --color-subtle: #F7F6EF;
+  --color-primary: #171717;
+  --color-secondary: #77766F;
+  --color-tertiary: #9E9D96;
+  --color-border: #E4E2DA;
+}
+
 :root {
   /* StudyFetch Visual Identity Tokens */
   --app-background: #F7F6EF;
@@ -41,157 +52,206 @@
     font-family: var(--font-serif);
     font-weight: 400;
     letter-spacing: -0.015em;
-    color: var(--text-primary);
+  }
+
+  /* Prevent icons from shrinking, stretching, or collapsing inside flex/grid layouts */
+  svg {
+    flex-shrink: 0;
   }
 }
 
-.font-serif-editorial {
-  font-family: var(--font-serif);
-}
+@layer components {
+  .font-serif-editorial {
+    font-family: var(--font-serif);
+  }
 
-.font-mono-tabular {
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
-}
+  .font-mono-tabular {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
 
-/* Minimal Black & White Controls */
-.btn-primary {
-  background-color: #171717;
-  color: #FFFFFF;
-  font-weight: 600;
-  font-size: 13px;
-  height: 38px;
-  padding: 0 16px;
-  border-radius: 10px;
-  border: 1px solid #171717;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  transition: background-color 150ms ease, transform 120ms ease;
-  cursor: pointer;
-}
+  /* Minimal Black & White Controls */
+  .btn-primary {
+    background-color: #171717;
+    color: #FFFFFF;
+    font-weight: 600;
+    font-size: 13px;
+    height: 38px;
+    padding: 0 16px;
+    border-radius: 10px;
+    border: 1px solid #171717;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    line-height: 1.2;
+    transition: background-color 150ms ease, transform 120ms ease;
+    cursor: pointer;
+  }
 
-.btn-primary:hover:not(:disabled) {
-  background-color: #2E2E2E;
-}
+  .btn-primary:hover:not(:disabled) {
+    background-color: #2E2E2E;
+  }
 
-.btn-primary:active:not(:disabled) {
-  transform: translateY(1px);
-}
+  .btn-primary:active:not(:disabled) {
+    transform: translateY(1px);
+  }
 
-.btn-primary:disabled {
-  background-color: #EDEAE0;
-  border-color: #E4E2DA;
-  color: #77766F;
-  cursor: not-allowed;
-}
+  .btn-primary:disabled {
+    background-color: #EDEAE0;
+    border-color: #E4E2DA;
+    color: #77766F;
+    cursor: not-allowed;
+  }
 
-.btn-secondary {
-  background-color: #FFFFFF;
-  color: #171717;
-  font-weight: 600;
-  font-size: 13px;
-  height: 38px;
-  padding: 0 14px;
-  border-radius: 10px;
-  border: 1px solid #E4E2DA;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  transition: background-color 150ms ease, border-color 150ms ease;
-  cursor: pointer;
-}
+  .btn-secondary {
+    background-color: #FFFFFF;
+    color: #171717;
+    font-weight: 600;
+    font-size: 13px;
+    height: 38px;
+    padding: 0 14px;
+    border-radius: 10px;
+    border: 1px solid #E4E2DA;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    line-height: 1.2;
+    transition: background-color 150ms ease, border-color 150ms ease;
+    cursor: pointer;
+  }
 
-.btn-secondary:hover:not(:disabled) {
-  background-color: #F7F6EF;
-  border-color: #171717;
-}
+  .btn-secondary:hover:not(:disabled) {
+    background-color: #F7F6EF;
+    border-color: #171717;
+  }
 
-.btn-secondary:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
+  .btn-secondary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
 
-/* Reusable StudyFetch Card Variants */
-.sf-card-white {
-  background-color: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  transition: border-color 150ms ease, transform 150ms ease;
-}
+  /* Reusable StudyFetch Card Variants */
+  .sf-card-white {
+    background-color: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    transition: border-color 150ms ease, transform 150ms ease;
+  }
 
-.sf-card-white:hover {
-  border-color: #CFCBC0;
-}
+  .sf-card-white:hover {
+    border-color: #CFCBC0;
+  }
 
-.sf-card-muted {
-  background-color: var(--surface-muted);
-  border: 1px solid var(--border);
-  border-radius: 14px;
-}
+  .sf-card-charcoal {
+    background-color: #171717;
+    color: #FFFFFF;
+    border: 1px solid #292929;
+    border-radius: 16px;
+  }
 
-.sf-card-stat {
-  background-color: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 16px;
-}
+  .sf-card-muted {
+    background-color: var(--surface-muted);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+  }
 
-/* Pastel Feature Card Variants */
-.sf-pastel-cyan {
-  background-color: var(--accent-cyan);
-  color: #171717;
-  border: 1px solid rgba(23, 23, 23, 0.08);
-  border-radius: 14px;
-}
+  .sf-card-stat {
+    background-color: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+  }
 
-.sf-pastel-lavender {
-  background-color: var(--accent-lavender);
-  color: #171717;
-  border: 1px solid rgba(23, 23, 23, 0.08);
-  border-radius: 14px;
-}
+  /* Pastel Feature Card Variants */
+  .sf-pastel-cyan {
+    background-color: var(--accent-cyan);
+    color: #171717;
+    border: 1px solid rgba(23, 23, 23, 0.08);
+    border-radius: 14px;
+  }
 
-.sf-pastel-mint {
-  background-color: var(--accent-mint);
-  color: #171717;
-  border: 1px solid rgba(23, 23, 23, 0.08);
-  border-radius: 14px;
-}
+  .sf-pastel-lavender {
+    background-color: var(--accent-lavender);
+    color: #171717;
+    border: 1px solid rgba(23, 23, 23, 0.08);
+    border-radius: 14px;
+  }
 
-.sf-pastel-lime {
-  background-color: var(--accent-lime);
-  color: #171717;
-  border: 1px solid rgba(23, 23, 23, 0.08);
-  border-radius: 14px;
-}
+  .sf-pastel-mint {
+    background-color: var(--accent-mint);
+    color: #171717;
+    border: 1px solid rgba(23, 23, 23, 0.08);
+    border-radius: 14px;
+  }
 
-.sf-pastel-mustard {
-  background-color: var(--accent-mustard);
-  color: #171717;
-  border: 1px solid rgba(23, 23, 23, 0.08);
-  border-radius: 14px;
-}
+  .sf-pastel-lime {
+    background-color: var(--accent-lime);
+    color: #171717;
+    border: 1px solid rgba(23, 23, 23, 0.08);
+    border-radius: 14px;
+  }
 
-/* Input Controls */
-.input-field {
-  height: 38px;
-  padding: 8px 12px;
-  background-color: #FFFFFF;
-  border: 1px solid #E4E2DA;
-  border-radius: 10px;
-  font-size: 13px;
-  color: #171717;
-  width: 100%;
-  transition: border-color 150ms ease, box-shadow 150ms ease;
-}
+  .sf-pastel-mustard {
+    background-color: var(--accent-mustard);
+    color: #171717;
+    border: 1px solid rgba(23, 23, 23, 0.08);
+    border-radius: 14px;
+  }
 
-.input-field:focus {
-  outline: none;
-  border-color: #171717;
-  box-shadow: 0 0 0 2px rgba(23, 23, 23, 0.08);
+  /* Input Controls */
+  .input-field {
+    height: 38px;
+    padding: 8px 12px;
+    background-color: #FFFFFF;
+    border: 1px solid #E4E2DA;
+    border-radius: 10px;
+    font-size: 13px;
+    color: #171717;
+    width: 100%;
+    transition: border-color 150ms ease, box-shadow 150ms ease;
+  }
+
+  .input-field:focus {
+    outline: none;
+    border-color: #171717;
+    box-shadow: 0 0 0 2px rgba(23, 23, 23, 0.08);
+  }
+
+  /* Dedicated Flex Container for Inputs with Icons (prevents icon/text overlap) */
+  .input-group-field {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    height: 38px;
+    padding: 0 12px;
+    background-color: #FFFFFF;
+    border: 1px solid #E4E2DA;
+    border-radius: 10px;
+    width: 100%;
+    transition: border-color 150ms ease, box-shadow 150ms ease;
+  }
+
+  .input-group-field:focus-within {
+    border-color: #171717;
+    box-shadow: 0 0 0 2px rgba(23, 23, 23, 0.08);
+  }
+
+  .input-group-field input {
+    flex: 1 1 0%;
+    min-width: 0;
+    height: 100%;
+    background: transparent;
+    border: 0;
+    padding: 0;
+    font-size: 13px;
+    color: #171717;
+  }
+
+  .input-group-field input:focus {
+    outline: none;
+  }
 }
 
 /* Subtle custom scrollbars */
