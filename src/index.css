@@ -269,3 +269,16 @@
 ::-webkit-scrollbar-thumb:hover {
   background: #77766F;
 }
+
+@keyframes floatSubtle {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-4px);
+  }
+}
+
+.animate-float-subtle {
+  animation: floatSubtle 4s ease-in-out infinite;
+}

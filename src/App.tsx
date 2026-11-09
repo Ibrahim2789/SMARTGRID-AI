@@ -14,7 +14,9 @@ import { StudentVotingPage } from './components/StudentVotingPage';
 import { StudentDashboardPage } from './components/StudentDashboardPage';
 import { BrDashboardPage } from './components/BrDashboardPage';
 import { AdminVotingManagementPage } from './components/AdminVotingManagementPage';
+import { FacultyDashboardPage } from './components/FacultyDashboardPage';
 import { AccountProfilePage } from './components/AccountProfilePage';
+import { UniversityOnboardingModal } from './components/UniversityOnboardingModal';
 import {
   AuthenticatedVotingUser,
   verifyBackendSession,
@@ -42,6 +44,8 @@ const VALID_ROUTES: RouteType[] = [
   'admin-voting',
   'admin-voting-analytics',
   'admin-br-management',
+  'faculty-dashboard',
+  'faculty-preferences',
   'account-settings'
 ];
 
@@ -62,6 +66,13 @@ const BR_ALLOWED_ROUTES: RouteType[] = [
   'account-settings'
 ];
 
+const FACULTY_ALLOWED_ROUTES: RouteType[] = [
+  'faculty-dashboard',
+  'faculty-preferences',
+  'timetables',
+  'account-settings'
+];
+
 const ADMIN_ALLOWED_ROUTES: RouteType[] = [
   'home',
   'setup',
@@ -76,11 +87,12 @@ const ADMIN_ALLOWED_ROUTES: RouteType[] = [
   'account-settings'
 ];
 
-function getNormalizedRole(user: AuthenticatedVotingUser | null): 'student' | 'br' | 'admin' {
+function getNormalizedRole(user: AuthenticatedVotingUser | null): 'student' | 'br' | 'admin' | 'faculty' {
   if (!user) return 'student';
   const r = (user.systemRole || user.role || '').toLowerCase();
   if (r === 'admin' || r === 'registrar') return 'admin';
   if (r === 'br') return 'br';
+  if (r === 'faculty') return 'faculty';
   return 'student';
 }
 
@@ -88,6 +100,7 @@ function getDefaultDashboardForUser(user: AuthenticatedVotingUser): RouteType {
   const role = getNormalizedRole(user);
   if (role === 'admin') return 'home';
   if (role === 'br') return 'br-dashboard';
+  if (role === 'faculty') return 'faculty-dashboard';
   return 'student-dashboard';
 }
 
@@ -100,6 +113,9 @@ function enforceRoleRoute(route: RouteType, user: AuthenticatedVotingUser | null
   if (role === 'br') {
     return BR_ALLOWED_ROUTES.includes(route) ? route : 'br-dashboard';
   }
+  if (role === 'faculty') {
+    return FACULTY_ALLOWED_ROUTES.includes(route) ? route : 'faculty-dashboard';
+  }
   return ADMIN_ALLOWED_ROUTES.includes(route) ? route : 'home';
 }
 
@@ -107,7 +123,11 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState<AuthenticatedVotingUser | null>(() => {
     try {
       const saved = sessionStorage.getItem('smartgrid_user');
-      return saved ? JSON.parse(saved) : null;
+      const parsed: AuthenticatedVotingUser | null = saved ? JSON.parse(saved) : null;
+      if (parsed?.institutionId) {
+        institutionalStore.switchInstitution(parsed.institutionId);
+      }
+      return parsed;
     } catch {
       return null;
     }
@@ -116,6 +136,12 @@ export default function App() {
   const [showAuthPage, setShowAuthPage] = useState(false);
   const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
   const [setupStep, setSetupStep] = useState(0);
+  const [pendingOnboarding, setPendingOnboarding] = useState<{
+    institutionId: string;
+    institutionName: string;
+    institutionCode: string;
+    campusName: string;
+  } | null>(null);
 
   // Normalize route strings
   const normalizeRoute = useCallback((r: string): RouteType => {
@@ -211,6 +237,9 @@ export default function App() {
         setShowAuthPage(false);
         window.location.hash = '';
       } else {
+        if (verifiedUser.institutionId) {
+          institutionalStore.switchInstitution(verifiedUser.institutionId);
+        }
         handleSyncAuthenticatedUser(verifiedUser);
         syncUserCohortInStore(verifiedUser);
         setCurrentRoute(prev => {
@@ -252,10 +281,30 @@ export default function App() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handleLogin = (user: AuthenticatedVotingUser) => {
+  const handleLogin = (
+    user: AuthenticatedVotingUser,
+    options?: {
+      launchOnboardingModal?: boolean;
+      institutionId?: string;
+      institutionName?: string;
+      institutionCode?: string;
+      campusName?: string;
+    }
+  ) => {
+    if (user.institutionId) {
+      institutionalStore.switchInstitution(user.institutionId);
+    }
     persistUser(user);
     syncUserCohortInStore(user);
     setShowAuthPage(false);
+    if (options?.launchOnboardingModal && options.institutionId) {
+      setPendingOnboarding({
+        institutionId: options.institutionId,
+        institutionName: options.institutionName || user.institution || '',
+        institutionCode: options.institutionCode || 'UNIV',
+        campusName: options.campusName || 'Main Campus'
+      });
+    }
     const initialRoute = getDefaultDashboardForUser(user);
     setCurrentRoute(initialRoute);
     window.location.hash = initialRoute;
@@ -263,6 +312,9 @@ export default function App() {
   };
 
   const handleSwitchUser = (user: AuthenticatedVotingUser) => {
+    if (user.institutionId) {
+      institutionalStore.switchInstitution(user.institutionId);
+    }
     persistUser(user);
     syncUserCohortInStore(user);
     const safeRoute = enforceRoleRoute(currentRoute, user);
@@ -316,6 +368,7 @@ export default function App() {
   const isAdmin = normalizedRole === 'admin';
   const isBr = normalizedRole === 'br';
   const isStudent = normalizedRole === 'student';
+  const isFaculty = normalizedRole === 'faculty';
 
   // Ensure active route is strictly permitted for current user's verified role
   const effectiveRoute = enforceRoleRoute(currentRoute, currentUser);
@@ -434,6 +487,19 @@ export default function App() {
         )}
 
       {/* =========================================================
+          FACULTY-ONLY DASHBOARD & AVAILABILITY PREFERENCES
+         ========================================================= */}
+      {isFaculty &&
+        (effectiveRoute === 'faculty-dashboard' || effectiveRoute === 'faculty-preferences') && (
+          <FacultyDashboardPage
+            currentUser={currentUser}
+            subView={effectiveRoute === 'faculty-preferences' ? 'preferences' : 'dashboard'}
+            onNavigate={handleNavigate}
+            onUserSynced={handleSyncAuthenticatedUser}
+          />
+        )}
+
+      {/* =========================================================
           SHARED ROLE-SCOPED PAGES: TIMETABLES & ACCOUNT PROFILE
          ========================================================= */}
       {effectiveRoute === 'timetables' && (
@@ -450,6 +516,22 @@ export default function App() {
           currentUser={currentUser}
           onUserUpdated={handleSyncAuthenticatedUser}
           onSignOut={handleSignOut}
+        />
+      )}
+
+      {pendingOnboarding && isAdmin && (
+        <UniversityOnboardingModal
+          existingInstitutionId={pendingOnboarding.institutionId}
+          initialName={pendingOnboarding.institutionName}
+          initialCode={pendingOnboarding.institutionCode}
+          initialCampusName={pendingOnboarding.campusName}
+          initialRegistrarName={currentUser.name}
+          initialRegistrarEmail={currentUser.email}
+          onClose={() => setPendingOnboarding(null)}
+          onCompleted={newInstId => {
+            institutionalStore.switchInstitution(newInstId);
+            setPendingOnboarding(null);
+          }}
         />
       )}
     </AuthenticatedLayout>

@@ -22,6 +22,7 @@ export interface DbUserRow {
   must_reset_password: number;
   credential_hint: string | null;
   institution: string;
+  institution_id?: string;
   created_at: string;
 }
 
@@ -30,6 +31,7 @@ export interface AuthTokenPayload {
   email: string;
   name: string;
   role: VotingUserRole;
+  institutionId?: string;
   batchId: string | null;
   brGenderRole: BrGenderRole | null;
   exp: number;
@@ -239,7 +241,293 @@ export function initializeVotingDatabase(): void {
     `UPDATE users SET registration_number = '2K26-BSCS-005', section = 'Section A' WHERE id = 'user-student-zoya' AND (registration_number IS NULL OR registration_number = '')`
   ).run();
 
+  // Safe migration for multi-university tenant architecture
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS institutions (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      code TEXT UNIQUE NOT NULL,
+      campus_name TEXT,
+      accreditation TEXT,
+      academic_year TEXT DEFAULT '2026–2027',
+      current_term TEXT DEFAULT 'Fall Semester 2026',
+      working_days TEXT DEFAULT 'Mon,Tue,Wed,Thu,Fri',
+      day_start_time TEXT DEFAULT '09:00',
+      day_end_time TEXT DEFAULT '17:00',
+      period_length_minutes INTEGER DEFAULT 50,
+      short_break_minutes INTEGER DEFAULT 10,
+      midday_break_enabled INTEGER DEFAULT 1,
+      midday_break_start TEXT DEFAULT '13:00',
+      midday_break_duration INTEGER DEFAULT 60,
+      lab_duration_minutes INTEGER DEFAULT 180,
+      logo_url TEXT,
+      timezone TEXT DEFAULT 'UTC',
+      is_sample INTEGER DEFAULT 0,
+      created_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS institution_data (
+      institution_id TEXT PRIMARY KEY REFERENCES institutions(id) ON DELETE CASCADE,
+      payload TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+  `);
+
+  const uCols = db.prepare(`PRAGMA table_info(users)`).all() as Array<{ name: string }>;
+  if (!uCols.some(c => c.name === 'institution_id')) {
+    db.exec(`ALTER TABLE users ADD COLUMN institution_id TEXT;`);
+    db.exec(`UPDATE users SET institution_id = 'inst-western-poly';`);
+  }
+
+  const bCols = db.prepare(`PRAGMA table_info(batches)`).all() as Array<{ name: string }>;
+  if (!bCols.some(c => c.name === 'institution_id')) {
+    db.exec(`ALTER TABLE batches ADD COLUMN institution_id TEXT;`);
+    db.exec(`UPDATE batches SET institution_id = 'inst-western-poly';`);
+  }
+
+  const pCols = db.prepare(`PRAGMA table_info(polls)`).all() as Array<{ name: string }>;
+  if (!pCols.some(c => c.name === 'institution_id')) {
+    db.exec(`ALTER TABLE polls ADD COLUMN institution_id TEXT;`);
+    db.exec(`UPDATE polls SET institution_id = 'inst-western-poly';`);
+  }
+
+  // Ensure inst-western-poly exists in institutions
+  db.prepare(`
+    INSERT OR IGNORE INTO institutions (
+      id, name, code, campus_name, accreditation, academic_year, current_term,
+      working_days, day_start_time, day_end_time, period_length_minutes, short_break_minutes,
+      midday_break_enabled, midday_break_start, midday_break_duration, lab_duration_minutes,
+      timezone, is_sample, created_at
+    ) VALUES (
+      'inst-western-poly', 'Western Polytechnic Institute', 'WPI', 'Main Academic Complex',
+      'PEC & NCEAC Accredited (Engineering & Computing)', '2026–2027', 'Fall Semester 2026',
+      'Mon,Tue,Wed,Thu,Fri', '09:00', '17:00', 50, 10, 1, '13:00', 60, 180,
+      'Asia/Karachi (PKT)', 1, datetime('now')
+    )
+  `).run();
+
+  // Ensure inst-apex-tech exists in institutions (Distinct University B)
+  db.prepare(`
+    INSERT OR IGNORE INTO institutions (
+      id, name, code, campus_name, accreditation, academic_year, current_term,
+      working_days, day_start_time, day_end_time, period_length_minutes, short_break_minutes,
+      midday_break_enabled, midday_break_start, midday_break_duration, lab_duration_minutes,
+      timezone, is_sample, created_at
+    ) VALUES (
+      'inst-apex-tech', 'Apex Institute of Science & Technology', 'AIST', 'Downtown Innovation Campus',
+      'ABET & National Board of Accreditation (NBA)', '2026–2027', 'Spring Semester 2026',
+      'Mon,Tue,Wed,Thu,Fri,Sat', '08:30', '16:30', 60, 15, 1, '12:15', 45, 120,
+      'America/New_York (EST)', 0, datetime('now')
+    )
+  `).run();
+
+  // Backfill institution_id on existing users and batches where null
+  db.prepare(`UPDATE users SET institution_id = 'inst-western-poly' WHERE institution_id IS NULL OR institution_id = ''`).run();
+  db.prepare(`UPDATE batches SET institution_id = 'inst-western-poly' WHERE institution_id IS NULL OR institution_id = ''`).run();
+  db.prepare(`UPDATE polls SET institution_id = 'inst-western-poly' WHERE institution_id IS NULL OR institution_id = ''`).run();
+
   seedInitialVotingData();
+  seedMissingFacultyAccounts();
+  seedApexInstituteData();
+}
+
+function seedMissingFacultyAccounts(): void {
+  try {
+    const insertUser = db.prepare(`
+      INSERT OR IGNORE INTO users (
+        id, name, email, password_hash, role, gender, batch_id,
+        registration_number, section,
+        is_active, must_reset_password, credential_hint, institution, institution_id, created_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Western Polytechnic', 'inst-western-poly', datetime('now'))
+    `);
+
+    insertUser.run(
+      'user-faculty-jehanzeb',
+      'Dr. Jehanzeb Ahmad',
+      'jehanzeb.ahmad@westernpoly.edu',
+      hashPassword('Faculty@2026'),
+      'faculty',
+      'male',
+      null,
+      null,
+      null,
+      1,
+      0,
+      'Faculty@2026'
+    );
+
+    insertUser.run(
+      'user-faculty-turing',
+      'Prof. Alan Turing',
+      'a.turing@westernpoly.edu',
+      hashPassword('Faculty@2026'),
+      'faculty',
+      'male',
+      null,
+      null,
+      null,
+      1,
+      0,
+      'Faculty@2026'
+    );
+  } catch (err) {
+    console.warn('Faculty seeding notice:', err);
+  }
+}
+
+function seedApexInstituteData(): void {
+  try {
+    // 1. Seed Batches for Apex Institute
+    const insertBatch = db.prepare(`
+      INSERT OR IGNORE INTO batches (id, code, name, department_code, year, semester, student_count, institution_id, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 'inst-apex-tech', datetime('now'))
+    `);
+
+    insertBatch.run('batch-apex-2k25-bme', '2K25-BME', 'BS Mechanical Engineering — Batch 2K25', 'BME', 2, 4, 85);
+    insertBatch.run('batch-apex-2k25-bsds', '2K25-BSDS', 'BS Data Science — Batch 2K25', 'BSDS', 2, 4, 95);
+
+    // 2. Seed Users for Apex Institute (Admin, Faculty, Male & Female BRs, Students)
+    const insertUser = db.prepare(`
+      INSERT OR IGNORE INTO users (
+        id, name, email, password_hash, role, gender, batch_id,
+        registration_number, section,
+        is_active, must_reset_password, credential_hint, institution, institution_id, created_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Apex Institute of Science & Technology', 'inst-apex-tech', datetime('now'))
+    `);
+
+    // Apex Admin
+    insertUser.run(
+      'user-apex-admin',
+      'Dr. Arthur Vance',
+      'admin@apextech.edu',
+      hashPassword('Admin@2026'),
+      'admin',
+      'male',
+      null,
+      null,
+      null,
+      1,
+      0,
+      'Admin@2026'
+    );
+
+    // Apex Faculty
+    insertUser.run(
+      'user-apex-vance',
+      'Dr. Marcus Vance',
+      'm.vance@apextech.edu',
+      hashPassword('Faculty@2026'),
+      'faculty',
+      'male',
+      null,
+      null,
+      null,
+      1,
+      0,
+      'Faculty@2026'
+    );
+
+    insertUser.run(
+      'user-apex-rostova',
+      'Prof. Elena Rostova',
+      'e.rostova@apextech.edu',
+      hashPassword('Faculty@2026'),
+      'faculty',
+      'female',
+      null,
+      null,
+      null,
+      1,
+      0,
+      'Faculty@2026'
+    );
+
+    // Apex Male BR
+    insertUser.run(
+      'user-apex-br-liam',
+      'Liam Chen',
+      'br.male@apextech.edu',
+      hashPassword('BR@2026'),
+      'br',
+      'male',
+      'batch-apex-2k25-bme',
+      '2K25-BME-002',
+      'Section A',
+      1,
+      0,
+      'BR@2026'
+    );
+
+    // Apex Female BR
+    insertUser.run(
+      'user-apex-br-aria',
+      'Aria Thorne',
+      'br.female@apextech.edu',
+      hashPassword('BR@2026'),
+      'br',
+      'female',
+      'batch-apex-2k25-bsds',
+      '2K25-BSDS-003',
+      'Section A',
+      1,
+      0,
+      'BR@2026'
+    );
+
+    // Apex Student
+    insertUser.run(
+      'user-apex-student-alex',
+      'Alex Rivera',
+      'student.alex@apextech.edu',
+      hashPassword('Student@2026'),
+      'student',
+      'male',
+      'batch-apex-2k25-bme',
+      '2K25-BME-001',
+      'Section A',
+      1,
+      0,
+      'Student@2026'
+    );
+
+    // 3. Seed BR assignments
+    const insertAssign = db.prepare(`
+      INSERT OR IGNORE INTO br_assignments (id, batch_id, user_id, gender_role, is_active, assigned_by, assigned_at)
+      VALUES (?, ?, ?, ?, 1, 'user-apex-admin', datetime('now'))
+    `);
+    insertAssign.run('assign-apex-liam', 'batch-apex-2k25-bme', 'user-apex-br-liam', 'male');
+    insertAssign.run('assign-apex-aria', 'batch-apex-2k25-bsds', 'user-apex-br-aria', 'female');
+
+    // 4. Seed Poll for Apex
+    const insertPoll = db.prepare(`
+      INSERT OR IGNORE INTO polls (
+        id, title, description, batch_id, target_scope,
+        submitted_by_user_id, submitted_by_name, br_gender_role,
+        status, result_visibility, start_at, end_at, published_at, institution_id, created_at, updated_at
+      )
+      VALUES (?, ?, ?, ?, 'all_batches', ?, ?, ?, 'Published', 'after_vote', datetime('now', '-1 day'), datetime('now', '+5 days'), datetime('now', '-1 day'), 'inst-apex-tech', datetime('now', '-1 day'), datetime('now'))
+    `);
+    insertPoll.run(
+      'poll-apex-gpu-lab',
+      'Extend Saturday High-Performance GPU Cluster Hours for Capstone AI',
+      'Proposal to extend Ada-DS1 high-performance cluster access until 18:30 on Saturdays for senior robotics and machine learning research.',
+      'batch-apex-2k25-bsds',
+      'user-apex-br-aria',
+      'Aria Thorne',
+      'female'
+    );
+
+    const insertOption = db.prepare(`
+      INSERT OR IGNORE INTO poll_options (id, poll_id, label, sort_order)
+      VALUES (?, ?, ?, ?)
+    `);
+    insertOption.run('opt-apex-gpu-1', 'poll-apex-gpu-lab', 'Approve Saturday Extension to 18:30', 1);
+    insertOption.run('opt-apex-gpu-2', 'poll-apex-gpu-lab', 'Keep Standard 16:30 Saturday Close', 2);
+  } catch (err) {
+    console.warn('Apex seeding notice:', err);
+  }
 }
 
 function seedInitialVotingData(): void {
@@ -360,6 +648,22 @@ function seedInitialVotingData(): void {
       'user-faculty-turing',
       'Prof. Alan Turing',
       'a.turing@westernpoly.edu',
+      hashPassword('Faculty@2026'),
+      'faculty',
+      'male',
+      null,
+      null,
+      null,
+      1,
+      0,
+      'Faculty@2026',
+      threeDaysAgo
+    );
+
+    insertUser.run(
+      'user-faculty-jehanzeb',
+      'Dr. Jehanzeb Ahmad',
+      'jehanzeb.ahmad@westernpoly.edu',
       hashPassword('Faculty@2026'),
       'faculty',
       'male',

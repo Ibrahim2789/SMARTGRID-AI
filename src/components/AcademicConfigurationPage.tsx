@@ -21,8 +21,10 @@ import {
   Lock,
   Sparkles,
   Sliders,
-  ShieldCheck
+  ShieldCheck,
+  Upload
 } from 'lucide-react';
+import { DataImportWizard } from './DataImportWizard';
 
 interface AcademicConfigurationPageProps {
   onNavigate: (route: RouteType) => void;
@@ -113,6 +115,7 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
   const [timingValidationErrors, setTimingValidationErrors] = useState<string[]>([]);
   const [statusNotice, setStatusNotice] = useState<string | null>(null);
   const [showSlotTimeline, setShowSlotTimeline] = useState<boolean>(false);
+  const [showImportWizard, setShowImportWizard] = useState<boolean>(false);
 
   // Sync local state when saved timeStructure updates or resets
   useEffect(() => {
@@ -350,6 +353,15 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+          <button
+            type="button"
+            onClick={() => setShowImportWizard(true)}
+            className="btn-secondary text-xs h-10 px-4"
+          >
+            <Upload className="w-3.5 h-3.5" />
+            <span>Import CSV Dataset</span>
+          </button>
+
           <button
             type="button"
             onClick={handleResetToDefaults}
@@ -1152,6 +1164,16 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
           </div>
         )}
       </div>
+
+      {showImportWizard && (
+        <DataImportWizard
+          onClose={() => setShowImportWizard(false)}
+          onSuccess={summary => {
+            setShowImportWizard(false);
+            showToast(summary);
+          }}
+        />
+      )}
     </div>
   );
 };

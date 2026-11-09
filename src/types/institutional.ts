@@ -283,6 +283,8 @@ export interface StudentGroup extends BaseEntity {
   year: number; // 1, 2, 3, 4
   semester?: number; // 1 to 8
   section?: string; // 'A', 'B', 'C', 'D', 'E'
+  departmentCode?: string;
+  academicYear?: number;
   homeRoom?: string; // e.g. 'CR-18-IAEC'
   size: number;
   sharedCourseIds: string[];

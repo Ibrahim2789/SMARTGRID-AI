@@ -31,11 +31,17 @@ import {
   FileText,
   ShieldCheck,
   Send,
-  User
+  User,
+  Building2,
+  PlusCircle,
+  Upload,
+  Check
 } from 'lucide-react';
-import { useInstitutionalData, institutionalStore } from '../data/store';
+import { useInstitutionalData, institutionalStore, InstitutionSummary } from '../data/store';
 import { computeAcademicScheduleConfig } from '../types/institutional';
 import { AuthenticatedVotingUser } from '../services/votingApi';
+import { UniversityOnboardingModal } from './UniversityOnboardingModal';
+import { DataImportWizard } from './DataImportWizard';
 
 interface AuthenticatedLayoutProps {
   activeRoute: RouteType;
@@ -69,11 +75,14 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
   const isAdminRole = normalizedRole === 'admin' || normalizedRole === 'registrar';
   const isBrRole = normalizedRole === 'br';
   const isStudentRole = normalizedRole === 'student';
+  const isFacultyRole = normalizedRole === 'faculty';
 
   const homeRouteForRole: RouteType = isStudentRole
     ? 'student-dashboard'
     : isBrRole
     ? 'br-dashboard'
+    : isFacultyRole
+    ? 'faculty-dashboard'
     : 'home';
 
   const [secondaryOpen, setSecondaryOpen] = useState<boolean>(() => {
@@ -105,6 +114,18 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
   const [termDropdownOpen, setTermDropdownOpen] = useState(false);
   const [activeUtilityPanel, setActiveUtilityPanel] = useState<UtilityPanelType>(null);
   const [activeInsightSubView, setActiveInsightSubView] = useState<InsightSubView>('analytics');
+
+  const [showOnboardingModal, setShowOnboardingModal] = useState(false);
+  const [showImportWizard, setShowImportWizard] = useState(false);
+
+  const availableInstitutions = institutionalStore.getAvailableInstitutions();
+  const currentInstitutionId = institutionalStore.getCurrentInstitutionId();
+  const currentInstSummary = availableInstitutions.find(i => i.id === currentInstitutionId);
+
+  const handleSwitchInstitution = (instId: string) => {
+    institutionalStore.switchInstitution(instId);
+    setTermDropdownOpen(false);
+  };
 
   const [notifications, setNotifications] = useState([
     {
@@ -505,10 +526,76 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
     }
   ];
 
+  const facultyNavigationGroups: NavGroupItem[] = [
+    {
+      id: 'group-faculty-workspace',
+      code: '01',
+      heading: 'FACULTY WORKSPACE',
+      items: [
+        {
+          id: 'nav-faculty-dashboard',
+          label: 'My Teaching Schedule',
+          icon: Calendar,
+          meta: 'Personal',
+          metaAccent: true,
+          isActive: activeRoute === 'faculty-dashboard',
+          onClick: () => {
+            setActiveUtilityPanel(null);
+            onNavigate('faculty-dashboard');
+            setMobileDrawerOpen(false);
+          }
+        },
+        {
+          id: 'nav-faculty-matrix',
+          label: 'Institutional Matrix',
+          icon: BookOpen,
+          meta: 'All Classes',
+          isActive: activeRoute === 'timetables',
+          onClick: () => {
+            setActiveUtilityPanel(null);
+            onNavigate('timetables');
+            setMobileDrawerOpen(false);
+          }
+        },
+        {
+          id: 'nav-faculty-preferences',
+          label: 'Availability & Blocks',
+          icon: Clock,
+          isActive: activeRoute === 'faculty-preferences',
+          onClick: () => {
+            setActiveUtilityPanel(null);
+            onNavigate('faculty-preferences');
+            setMobileDrawerOpen(false);
+          }
+        }
+      ]
+    },
+    {
+      id: 'group-faculty-account',
+      code: '02',
+      heading: 'ACCOUNT',
+      items: [
+        {
+          id: 'nav-faculty-profile',
+          label: 'Faculty Profile',
+          icon: User,
+          isActive: activeRoute === 'account-settings',
+          onClick: () => {
+            setActiveUtilityPanel(null);
+            onNavigate('account-settings');
+            setMobileDrawerOpen(false);
+          }
+        }
+      ]
+    }
+  ];
+
   const navigationGroups = isStudentRole
     ? studentNavigationGroups
     : isBrRole
     ? brNavigationGroups
+    : isFacultyRole
+    ? facultyNavigationGroups
     : adminNavigationGroups;
 
   const toggleUtilityPanel = (panel: Exclude<UtilityPanelType, null>) => {
@@ -879,12 +966,21 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
                 className="w-full min-w-0 flex items-center justify-between gap-1.5 px-2.5 py-1.5 rounded-lg bg-[#323232] hover:bg-[#383838] transition-colors text-left cursor-pointer"
               >
                 <div className="min-w-0">
-                  <div className="text-[10px] font-medium uppercase tracking-wider text-[#9E9D96] truncate leading-tight">
-                    {isStudentRole
-                      ? `STUDENT · ${currentUser.batchCode || 'COHORT'}`
-                      : isBrRole
-                      ? `BR · ${currentUser.batchCode || 'COHORT'}`
-                      : institutionName}
+                  <div className="text-[10px] font-medium uppercase tracking-wider text-[#9E9D96] truncate leading-tight flex items-center gap-1.5">
+                    <span className="truncate">
+                      {isStudentRole
+                        ? `STUDENT · ${currentUser.batchCode || 'COHORT'}`
+                        : isBrRole
+                        ? `BR · ${currentUser.batchCode || 'COHORT'}`
+                        : isFacultyRole
+                        ? `FACULTY · TEACHING`
+                        : institutionName}
+                    </span>
+                    {currentInstSummary?.isDemoTemplate && (
+                      <span className="text-[8.5px] px-1 py-0.2 rounded bg-[#E8D36B]/20 text-[#E8D36B] font-mono-tabular shrink-0">
+                        Demo
+                      </span>
+                    )}
                   </div>
                   <div className="text-[11.5px] font-semibold text-white flex items-center gap-1.5 leading-tight mt-0.5">
                     <span className="truncate">{activeTerm}</span>
@@ -894,26 +990,99 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
               </button>
 
               {isAdminRole && termDropdownOpen && (
-                <div className="absolute left-3 right-3 top-[86px] bg-[#1F1F1F] border border-[#3E3E3E] rounded-xl p-1.5 shadow-xl z-50">
-                  <div className="px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-[#8E8C84]">
-                    Switch Academic Term
+                <div className="absolute left-2.5 right-2.5 top-[86px] bg-[#1F1F1F] border border-[#3E3E3E] rounded-xl p-2 shadow-2xl z-50 space-y-2 max-h-[420px] overflow-y-auto">
+                  {/* Section 1: Switch Active University */}
+                  <div>
+                    <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-[#8E8C84] flex items-center justify-between">
+                      <span className="flex items-center gap-1 text-[#B8EEEE]">
+                        <Building2 className="w-3 h-3" />
+                        Active University
+                      </span>
+                      <span className="text-[9px] text-[#8E8C84]">Multi-Tenant</span>
+                    </div>
+                    <div className="space-y-0.5 mt-1">
+                      {availableInstitutions.map(inst => {
+                        const isSelected = inst.id === currentInstitutionId;
+                        return (
+                          <button
+                            key={inst.id}
+                            onClick={() => handleSwitchInstitution(inst.id)}
+                            className={`w-full text-left px-2 py-1.5 rounded-lg text-xs transition-colors flex items-center justify-between cursor-pointer ${
+                              isSelected
+                                ? 'bg-[#383838] text-white font-medium'
+                                : 'text-[#C2C0B8] hover:bg-[#2C2C2C] hover:text-white'
+                            }`}
+                          >
+                            <div className="min-w-0 pr-1">
+                              <div className="truncate text-[11px] font-medium leading-tight">
+                                {inst.name}
+                              </div>
+                              <div className="text-[9.5px] text-[#8E8C84] leading-tight flex items-center gap-1 mt-0.5">
+                                <span>{inst.code}</span>
+                                <span>·</span>
+                                {inst.isDemoTemplate ? (
+                                  <span className="text-[#E8D36B]">Sample Demo</span>
+                                ) : (
+                                  <span className="text-[#B7F77C]">Configured</span>
+                                )}
+                              </div>
+                            </div>
+                            {isSelected && (
+                              <CheckCircle2 className="w-3.5 h-3.5 text-[#B7F77C] shrink-0" />
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
-                  {['Fall 2026', 'Spring 2027', 'Summer Intensive 2027'].map(term => (
+
+                  {/* Section 2: Quick Onboard & Import Actions */}
+                  <div className="pt-1.5 border-t border-[#333333] space-y-1">
                     <button
-                      key={term}
-                      onClick={() => handleSelectTerm(term)}
-                      className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-colors ${
-                        activeTerm === term
-                          ? 'bg-[#383838] text-white'
-                          : 'text-[#C2C0B8] hover:bg-[#2C2C2C] hover:text-white'
-                      }`}
+                      onClick={() => {
+                        setTermDropdownOpen(false);
+                        setShowOnboardingModal(true);
+                      }}
+                      className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg bg-[#2A2A2A] hover:bg-[#353535] text-[11px] text-[#B8EEEE] font-medium transition-colors cursor-pointer"
                     >
-                      <span>{term}</span>
-                      {activeTerm === term && (
-                        <CheckCircle2 className="w-3.5 h-3.5 text-[#B7F77C]" />
-                      )}
+                      <PlusCircle className="w-3.5 h-3.5 shrink-0" />
+                      <span>+ Onboard New University</span>
                     </button>
-                  ))}
+
+                    <button
+                      onClick={() => {
+                        setTermDropdownOpen(false);
+                        setShowImportWizard(true);
+                      }}
+                      className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg bg-[#2A2A2A] hover:bg-[#353535] text-[11px] text-[#EAE8E1] font-medium transition-colors cursor-pointer"
+                    >
+                      <Upload className="w-3.5 h-3.5 text-[#B7F77C] shrink-0" />
+                      <span>Universal CSV Importer</span>
+                    </button>
+                  </div>
+
+                  {/* Section 3: Academic Term Selector */}
+                  <div className="pt-1.5 border-t border-[#333333]">
+                    <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-[#8E8C84]">
+                      Academic Term
+                    </div>
+                    {['Fall 2026', 'Spring 2027', 'Summer Intensive 2027'].map(term => (
+                      <button
+                        key={term}
+                        onClick={() => handleSelectTerm(term)}
+                        className={`w-full flex items-center justify-between px-2 py-1 rounded-lg text-xs font-medium cursor-pointer transition-colors ${
+                          activeTerm === term
+                            ? 'bg-[#383838] text-white'
+                            : 'text-[#C2C0B8] hover:bg-[#2C2C2C] hover:text-white'
+                        }`}
+                      >
+                        <span className="text-[11px]">{term}</span>
+                        {activeTerm === term && (
+                          <Check className="w-3.5 h-3.5 text-[#B7F77C]" />
+                        )}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
@@ -995,6 +1164,8 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
                       }`
                     : isStudentRole
                     ? `Student · ${currentUser.batchCode || ''}`
+                    : isFacultyRole
+                    ? 'Faculty · Instructor'
                     : currentUser.role}
                 </div>
               </div>
@@ -1192,10 +1363,75 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
           </div>
         )}
 
+        {/* Universal Multi-University Context & Quick Switch Header (Admins/Registrars) */}
+        {isAdminRole && (
+          <div className="bg-[#EDEAE0]/70 border-b border-[#E4E2DA] px-6 sm:px-10 py-2.5 flex flex-wrap items-center justify-between gap-3 text-xs shrink-0">
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <span className="text-[11px] font-semibold text-[#77766F] uppercase tracking-wider flex items-center gap-1.5">
+                <Building2 className="w-3.5 h-3.5 text-[#171717]" />
+                University Workspace:
+              </span>
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-[#171717]">{institutionName}</span>
+                {(currentInstSummary as any)?.isDemoTemplate ? (
+                  <span className="px-2 py-0.5 rounded text-[10.5px] font-medium bg-[#E8D36B]/30 text-[#6B5A10] border border-[#E8D36B]/50">
+                    Sample Demo Template
+                  </span>
+                ) : (
+                  <span className="px-2 py-0.5 rounded text-[10.5px] font-medium bg-[#B7F77C]/30 text-[#2B5412] border border-[#B7F77C]/50">
+                    Configured ({activeTiming.workingDays.length} Days · {activeTiming.periodLengthMinutes}m Slots)
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setShowImportWizard(true)}
+                className="px-2.5 py-1.5 rounded-lg bg-white hover:bg-[#F7F6EF] border border-[#E4E2DA] text-xs font-medium text-[#171717] flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                title="Universal CSV & Excel Data Importer"
+              >
+                <Upload className="w-3.5 h-3.5 text-[#171717]" />
+                <span>Import Data (CSV)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowOnboardingModal(true)}
+                className="px-2.5 py-1.5 rounded-lg bg-[#171717] hover:bg-[#2B2B2B] text-white text-xs font-medium flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                title="Configure and Onboard a New University"
+              >
+                <PlusCircle className="w-3.5 h-3.5 text-[#B8EEEE]" />
+                <span>+ Onboard University</span>
+              </button>
+            </div>
+          </div>
+        )}
+
         <main className="flex-1 w-full max-w-[1340px] mx-auto px-6 sm:px-10 lg:px-12 py-8 lg:py-10">
           {children}
         </main>
       </div>
+
+      {showOnboardingModal && (
+        <UniversityOnboardingModal
+          onClose={() => setShowOnboardingModal(false)}
+          onCompleted={newInstId => {
+            setShowOnboardingModal(false);
+            institutionalStore.switchInstitution(newInstId);
+          }}
+        />
+      )}
+
+      {showImportWizard && (
+        <DataImportWizard
+          onClose={() => setShowImportWizard(false)}
+          onSuccess={() => {
+            setShowImportWizard(false);
+          }}
+        />
+      )}
     </div>
   );
 };

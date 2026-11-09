@@ -98,6 +98,31 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({ onOpenAuth
     fallbackGroups[0]?.id || store.studentGroups[0]?.id || ''
   );
 
+  // Department quick filter in hero demo
+  const [demoDeptFilter, setDemoDeptFilter] = useState<'ALL' | 'BEE' | 'BSCS' | 'BESE' | 'BCE'>('ALL');
+
+  const visibleDemoGroups = React.useMemo(() => {
+    if (demoDeptFilter === 'ALL') {
+      return fallbackGroups;
+    }
+    const matching = store.studentGroups.filter(g => g.code.includes(`-${demoDeptFilter}-`));
+    return matching.length > 0 ? matching.slice(0, 4) : fallbackGroups;
+  }, [demoDeptFilter, fallbackGroups, store.studentGroups]);
+
+  const handleSelectDept = (dept: 'ALL' | 'BEE' | 'BSCS' | 'BESE' | 'BCE') => {
+    setDemoDeptFilter(dept);
+    if (dept === 'ALL') {
+      if (!fallbackGroups.some(g => g.id === activeDemoGroupId)) {
+        setActiveDemoGroupId(fallbackGroups[0]?.id || '');
+      }
+    } else {
+      const matching = store.studentGroups.filter(g => g.code.includes(`-${dept}-`));
+      if (matching.length > 0 && !matching.some(g => g.id === activeDemoGroupId)) {
+        setActiveDemoGroupId(matching[0].id);
+      }
+    }
+  };
+
   // Problem Section interactive comparison toggle
   const [problemView, setProblemView] = useState<'conflict' | 'resolved'>('conflict');
 
@@ -797,6 +822,31 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({ onOpenAuth
                   <span>See How It Works</span>
                 </button>
               </div>
+
+              {/* Floating Quality & Constraint Badges with pure CSS micro-interactions */}
+              <div className="flex flex-wrap items-center justify-center gap-2.5 pt-3">
+                <div
+                  className="animate-float-subtle inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white border border-[#E4E2DA] shadow-xs text-xs font-medium text-[#171717]"
+                  style={{ animationDelay: '0s' }}
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5 text-[#2E7D32]" />
+                  <span>PEC & NCEAC Accreditation Compliant</span>
+                </div>
+                <div
+                  className="animate-float-subtle inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white border border-[#E4E2DA] shadow-xs text-xs font-medium text-[#171717]"
+                  style={{ animationDelay: '1.2s' }}
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-[#00838F]" />
+                  <span>Zero Room & Instructor Clashes</span>
+                </div>
+                <div
+                  className="animate-float-subtle inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white border border-[#E4E2DA] shadow-xs text-xs font-medium text-[#171717]"
+                  style={{ animationDelay: '2.4s' }}
+                >
+                  <Coffee className="w-3.5 h-3.5 text-[#E65100]" />
+                  <span>Protected 13:00 Lunch & Prayer Break</span>
+                </div>
+              </div>
             </motion.div>
 
             {/* Hero Visual Anchor: Interactive Live Class Timetable Preview */}
@@ -806,8 +856,8 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({ onOpenAuth
               transition={{ duration: 0.65, delay: 0.12, ease: [0.16, 1, 0.3, 1] }}
               className="bg-white border border-[#E4E2DA] rounded-2xl overflow-hidden shadow-xs"
             >
-              {/* Preview Window Top Bar */}
-              <div className="px-4 sm:px-6 py-3.5 bg-[#171717] text-white flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              {/* Preview Window Top Bar with Department Filter Tabs & Section Switcher */}
+              <div className="px-4 sm:px-6 py-3 bg-[#171717] text-white flex flex-col lg:flex-row lg:items-center justify-between gap-3">
                 <div className="flex items-center gap-3">
                   <div className="flex items-center gap-1.5">
                     <span className="w-2.5 h-2.5 rounded-full bg-white/25" />
@@ -819,28 +869,49 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({ onOpenAuth
                   </span>
                 </div>
 
-                {/* Quick Section Switcher inside the Hero Preview */}
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <span className="text-[11px] text-white/60 mr-1 hidden md:inline">
-                    Switch section:
-                  </span>
-                  {fallbackGroups.map(grp => {
-                    const active = grp.id === activeDemoGroup?.id;
-                    return (
-                      <button
-                        key={grp.id}
-                        type="button"
-                        onClick={() => setActiveDemoGroupId(grp.id)}
-                        className={`px-2.5 py-1 rounded-lg text-[11px] font-mono-tabular transition-colors cursor-pointer ${
-                          active
-                            ? 'bg-[#B7F77C] text-[#171717] font-bold'
-                            : 'bg-[#292929] text-white/80 hover:text-white'
-                        }`}
-                      >
-                        {grp.code}
-                      </button>
-                    );
-                  })}
+                {/* Interactive Department & Section Quick Switcher */}
+                <div className="flex flex-wrap items-center gap-2.5">
+                  {/* Department Filter Pills */}
+                  <div className="inline-flex items-center p-0.5 rounded-lg bg-white/10 border border-white/10 text-[11px] font-mono-tabular">
+                    {(['ALL', 'BEE', 'BSCS', 'BESE', 'BCE'] as const).map(deptKey => {
+                      const isDeptActive = demoDeptFilter === deptKey;
+                      return (
+                        <button
+                          key={deptKey}
+                          type="button"
+                          onClick={() => handleSelectDept(deptKey)}
+                          className={`px-2 py-0.5 rounded-md font-medium transition-colors cursor-pointer ${
+                            isDeptActive
+                              ? 'bg-white text-[#171717] font-bold shadow-xs'
+                              : 'text-white/70 hover:text-white'
+                          }`}
+                        >
+                          {deptKey}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Section Switcher inside the Hero Preview */}
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {visibleDemoGroups.map(grp => {
+                      const active = grp.id === activeDemoGroup?.id;
+                      return (
+                        <button
+                          key={grp.id}
+                          type="button"
+                          onClick={() => setActiveDemoGroupId(grp.id)}
+                          className={`px-2.5 py-1 rounded-lg text-[11px] font-mono-tabular transition-colors cursor-pointer ${
+                            active
+                              ? 'bg-[#B7F77C] text-[#171717] font-bold'
+                              : 'bg-[#292929] text-white/80 hover:text-white hover:bg-[#333333]'
+                          }`}
+                        >
+                          {grp.code}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
 

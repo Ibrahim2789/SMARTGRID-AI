@@ -56,6 +56,8 @@ export const ClassDetailsModal: React.FC<ClassDetailsModalProps> = ({
       : VALID_CONTINUOUS_LAB_BLOCKS;
 
   const [isReassigning, setIsReassigning] = useState(false);
+  const [isSwapping, setIsSwapping] = useState(false);
+  const [selectedSwapSectionId, setSelectedSwapSectionId] = useState<string>('');
   const [selectedDay, setSelectedDay] = useState<DayOfWeek>('Mon');
   const [selectedPeriod, setSelectedPeriod] = useState<string>('');
   const [selectedRoomId, setSelectedRoomId] = useState<string>('');
@@ -100,6 +102,22 @@ export const ClassDetailsModal: React.FC<ClassDetailsModalProps> = ({
     setTimeout(() => {
       onClose();
     }, 900);
+  };
+
+  const otherSections = store.sections.filter(s =>
+    s.id !== classItem.id &&
+    Boolean(s.assignedSlot) &&
+    (s.studentGroupId === classItem.studentGroupId || !classItem.studentGroupId)
+  );
+
+  const handleExecuteSwap = () => {
+    if (!selectedSwapSectionId) return;
+    const res = institutionalStore.swapSectionSlots(classItem.id, selectedSwapSectionId);
+    setSavedNotice(res.message);
+    setIsSwapping(false);
+    setTimeout(() => {
+      onClose();
+    }, 1000);
   };
 
   const handleToggleLock = () => {
@@ -317,6 +335,59 @@ export const ClassDetailsModal: React.FC<ClassDetailsModalProps> = ({
                 </div>
               </motion.div>
             )}
+
+            {isSwapping && isStoreBacked && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                className="p-4 rounded-xl bg-[#EDEAE0] border border-[#E4E2DA] space-y-3"
+              >
+                <div className="text-xs font-semibold text-[#171717] flex items-center justify-between">
+                  <span>Direct Timetable Slot Swap</span>
+                  <button
+                    type="button"
+                    onClick={() => setIsSwapping(false)}
+                    className="text-[11px] text-[#77766F] hover:text-[#171717] underline cursor-pointer font-normal"
+                  >
+                    Cancel
+                  </button>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="block text-[11px] font-medium text-[#77766F]">
+                    Select Cohort Class Session to Swap With
+                  </label>
+                  <select
+                    value={selectedSwapSectionId}
+                    onChange={e => setSelectedSwapSectionId(e.target.value)}
+                    className="input-field h-9 text-xs font-mono-tabular"
+                  >
+                    <option value="">-- Choose a session to swap with --</option>
+                    {otherSections.map(sec => {
+                      const course = store.courses.find(c => c.id === sec.courseId);
+                      return (
+                        <option key={sec.id} value={sec.id}>
+                          {course?.code || sec.courseId} · {sec.assignedSlot?.day} {sec.assignedSlot?.timeSlot} ({sec.sessionType || 'Lecture'})
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
+
+                <div className="flex justify-end pt-1">
+                  <button
+                    type="button"
+                    disabled={!selectedSwapSectionId}
+                    onClick={handleExecuteSwap}
+                    className="btn-primary h-8 text-xs disabled:opacity-50"
+                  >
+                    <ArrowRightLeft className="w-3.5 h-3.5" />
+                    <span>Execute Slot Swap</span>
+                  </button>
+                </div>
+              </motion.div>
+            )}
           </AnimatePresence>
 
           {/* Validation Status Banner */}
@@ -339,11 +410,28 @@ export const ClassDetailsModal: React.FC<ClassDetailsModalProps> = ({
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => setIsReassigning(!isReassigning)}
+                onClick={() => {
+                  setIsReassigning(!isReassigning);
+                  setIsSwapping(false);
+                }}
+                className="btn-secondary h-9 text-xs"
+              >
+                <Clock className="w-3.5 h-3.5" />
+                <span>Move Slot</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsSwapping(!isSwapping);
+                  setIsReassigning(false);
+                  if (!selectedSwapSectionId && otherSections[0]) {
+                    setSelectedSwapSectionId(otherSections[0].id);
+                  }
+                }}
                 className="btn-secondary h-9 text-xs"
               >
                 <ArrowRightLeft className="w-3.5 h-3.5" />
-                <span>Move Slot / Room</span>
+                <span>Swap Slot</span>
               </button>
               <button
                 type="button"

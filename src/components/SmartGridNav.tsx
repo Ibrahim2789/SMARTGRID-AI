@@ -34,6 +34,8 @@ export type RouteType =
   | 'admin-voting'
   | 'admin-voting-analytics'
   | 'admin-br-management'
+  | 'faculty-dashboard'
+  | 'faculty-preferences'
   | 'account-settings'
   | 'portal'
   | 'timetable'
@@ -106,26 +108,49 @@ export const SmartGridNav: React.FC<SmartGridNavProps> = ({
     return activeRoute === id;
   };
 
-  const presetPersonas = [
-    {
-      name: 'Dr. Katherine Reynolds',
-      role: 'Registrar',
-      email: 'k.reynolds@westernpoly.edu',
-      institution: 'Western Polytechnic'
-    },
-    {
-      name: 'Prof. Alan Turing',
-      role: 'Faculty',
-      email: 'a.turing@westernpoly.edu',
-      institution: 'Western Polytechnic'
-    },
-    {
-      name: 'Maya Lin (CS Y1)',
-      role: 'Student',
-      email: 'm.lin@westernpoly.edu',
-      institution: 'Western Polytechnic'
-    }
-  ];
+  const isApex = storeSnapshot.institutionProfile?.id === 'inst-apex-tech';
+
+  const presetPersonas = isApex
+    ? [
+        {
+          name: 'Dr. Marcus Vance',
+          role: 'Admin',
+          email: 'admin@apextech.edu',
+          institution: 'Apex Institute of Science & Tech'
+        },
+        {
+          name: 'Prof. Elena Rostova',
+          role: 'Faculty',
+          email: 'e.rostova@apextech.edu',
+          institution: 'Apex Institute of Science & Tech'
+        },
+        {
+          name: 'Alex Rivera (BME Y2)',
+          role: 'Student',
+          email: 'student.alex@apextech.edu',
+          institution: 'Apex Institute of Science & Tech'
+        }
+      ]
+    : [
+        {
+          name: 'Dr. Katherine Reynolds',
+          role: 'Registrar',
+          email: 'k.reynolds@westernpoly.edu',
+          institution: 'Western Polytechnic'
+        },
+        {
+          name: 'Prof. Alan Turing',
+          role: 'Faculty',
+          email: 'a.turing@westernpoly.edu',
+          institution: 'Western Polytechnic'
+        },
+        {
+          name: 'Maya Lin (CS Y1)',
+          role: 'Student',
+          email: 'm.lin@westernpoly.edu',
+          institution: 'Western Polytechnic'
+        }
+      ];
 
   return (
     <header className="sticky top-0 z-40 w-full bg-[#F7F6EF]/95 backdrop-blur-md border-b border-[#E4E2DA]">

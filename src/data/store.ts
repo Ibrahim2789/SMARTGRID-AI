@@ -62,15 +62,58 @@ import {
   largeSampleAuditLogs
 } from './largeSampleDataset';
 
+import {
+  apexInstitutionProfile,
+  apexTerms,
+  apexCampuses,
+  apexBuildings,
+  apexRooms,
+  apexDepartments,
+  apexPrograms,
+  apexCourses,
+  apexInstructors,
+  apexStudentGroups,
+  apexSections,
+  apexTimeStructure,
+  apexConstraintRules,
+  apexFeedbackPolls,
+  apexAuditLogs
+} from './apexSampleData';
+
 export interface InstitutionProfile {
+  id?: string;
   name: string;
   campusCode: string;
+  campusName?: string;
+  code?: string;
   accreditation: string;
+  academicYear?: string;
+  currentTermName?: string;
   registrarName: string;
   registrarEmail: string;
   autoConflictSweep: boolean;
   defaultSessionMinutes: number;
   timezone: string;
+  isSample?: boolean;
+}
+
+export interface InstitutionSummary {
+  id: string;
+  name: string;
+  code: string;
+  campusName: string;
+  accreditation?: string;
+  isSample: boolean;
+  workingDays: DayOfWeek[];
+  dayStartTime: string;
+  dayEndTime: string;
+  periodLengthMinutes: number;
+  shortBreakMinutes: number;
+  middayBreakEnabled: boolean;
+  middayBreakStart: string;
+  middayBreakDuration: number;
+  labDurationMinutes: number;
+  isDemoTemplate?: boolean;
 }
 
 export interface FeedbackPollItem {
@@ -108,14 +151,18 @@ export interface InstitutionalDataStore {
 }
 
 const defaultInstitutionProfile: InstitutionProfile = {
-  name: 'University of Engineering & Computing',
-  campusCode: 'UEC-MAIN-01',
+  id: 'inst-western-poly',
+  name: 'Western Polytechnic Institute',
+  campusCode: 'WPI-MAIN-01',
+  campusName: 'Main Academic Complex',
+  code: 'WPI',
   accreditation: 'PEC & NCEAC Accredited Programs (BEE, BCE, BESE, BSCS)',
   registrarName: 'Dr. Katherine Reynolds',
-  registrarEmail: 'registrar@university.edu',
+  registrarEmail: 'k.reynolds@westernpoly.edu',
   autoConflictSweep: true,
   defaultSessionMinutes: 50,
-  timezone: 'Asia/Karachi (PKT)'
+  timezone: 'Asia/Karachi (PKT)',
+  isSample: true
 };
 
 const defaultFeedbackPolls: FeedbackPollItem[] = [
@@ -173,28 +220,10 @@ const defaultFeedbackPolls: FeedbackPollItem[] = [
   }
 ];
 
-const STORAGE_KEY = 'smartgrid_institutional_data_v5';
+const ACTIVE_INST_KEY = 'smartgrid_active_inst_id_v6';
+const REGISTERED_INSTITUTIONS_KEY = 'smartgrid_registered_institutions_v6';
 
-function loadInitialData(): InstitutionalDataStore {
-  try {
-    if (typeof localStorage !== 'undefined') {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (parsed && parsed.terms && parsed.rooms && parsed.courses) {
-          return {
-            institutionProfile: parsed.institutionProfile || defaultInstitutionProfile,
-            selectedClassGroupId: parsed.selectedClassGroupId || parsed.studentGroups?.[0]?.id || 'grp-2k24-bee-a',
-            feedbackPolls: parsed.feedbackPolls || defaultFeedbackPolls,
-            ...parsed
-          };
-        }
-      }
-    }
-  } catch (e) {
-    console.warn('Failed to parse stored institutional data, falling back to university dataset', e);
-  }
-
+export function getWesternPolyInitialData(): InstitutionalDataStore {
   return {
     institutionProfile: defaultInstitutionProfile,
     selectedClassGroupId: universityStudentGroups[0]?.id || 'grp-2k24-bee-a',
@@ -216,13 +245,92 @@ function loadInitialData(): InstitutionalDataStore {
   };
 }
 
-let currentStore: InstitutionalDataStore = loadInitialData();
+export function getApexInitialData(): InstitutionalDataStore {
+  return {
+    institutionProfile: apexInstitutionProfile,
+    selectedClassGroupId: apexStudentGroups[0]?.id || 'apex-grp-2k25-bme-a',
+    terms: apexTerms,
+    campuses: apexCampuses,
+    buildings: apexBuildings,
+    rooms: apexRooms,
+    departments: apexDepartments,
+    programs: apexPrograms,
+    courses: apexCourses,
+    instructors: apexInstructors,
+    studentGroups: apexStudentGroups,
+    sections: apexSections,
+    timeStructure: apexTimeStructure,
+    constraints: apexConstraintRules,
+    scenarios: [
+      {
+        id: 'apex-scen-1',
+        termId: 'apex-term-2026-spring',
+        name: 'Spring 2026 Baseline Optimal Schedule',
+        version: '1.0.0',
+        status: 'published',
+        createdAt: '2026-02-01T08:00:00Z',
+        updatedAt: '2026-02-01T08:00:00Z',
+        author: 'Dr. Marcus Vance',
+        metrics: {
+          clashCount: 0,
+          satisfactionScore: 99.4,
+          roomUtilizationPercent: 86.5,
+          instructorSatisfaction: 95.8,
+          studentTransitScore: 93.2
+        },
+        assignments: {}
+      }
+    ],
+    auditLogs: apexAuditLogs,
+    feedbackPolls: apexFeedbackPolls
+  };
+}
+
+function loadDataForInstitution(instId: string): InstitutionalDataStore {
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const storageKey = `smartgrid_inst_data_${instId}`;
+      const raw = localStorage.getItem(storageKey);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && parsed.terms && parsed.rooms && parsed.courses) {
+          return {
+            ...parsed,
+            institutionProfile: parsed.institutionProfile || (instId === 'inst-apex-tech' ? apexInstitutionProfile : defaultInstitutionProfile),
+            selectedClassGroupId: parsed.selectedClassGroupId || parsed.studentGroups?.[0]?.id || ''
+          };
+        }
+      }
+    }
+  } catch (e) {
+    console.warn(`Failed to parse stored data for institution ${instId}:`, e);
+  }
+
+  if (instId === 'inst-apex-tech') {
+    return getApexInitialData();
+  }
+  return getWesternPolyInitialData();
+}
+
+function getActiveInstId(): string {
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const stored = localStorage.getItem(ACTIVE_INST_KEY);
+      if (stored) return stored;
+    }
+  } catch {}
+  return 'inst-western-poly';
+}
+
+let currentInstitutionId = getActiveInstId();
+let currentStore: InstitutionalDataStore = loadDataForInstitution(currentInstitutionId);
 const listeners = new Set<() => void>();
 
 function notifyListeners() {
   try {
     if (typeof localStorage !== 'undefined') {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(currentStore));
+      localStorage.setItem(`smartgrid_inst_data_${currentInstitutionId}`, JSON.stringify(currentStore));
+      localStorage.setItem(ACTIVE_INST_KEY, currentInstitutionId);
     }
   } catch (e) {
     console.warn('LocalStorage save failed', e);
@@ -233,6 +341,254 @@ function notifyListeners() {
 export const institutionalStore = {
   get(): InstitutionalDataStore {
     return currentStore;
+  },
+
+  getCurrentInstitutionId(): string {
+    return currentInstitutionId;
+  },
+
+  getAvailableInstitutions(): InstitutionSummary[] {
+    const defaultList: InstitutionSummary[] = [
+      {
+        id: 'inst-western-poly',
+        name: 'Western Polytechnic Institute',
+        code: 'WPI',
+        campusName: 'Main Academic Complex',
+        accreditation: 'PEC & NCEAC Accredited (Engineering & Computing)',
+        isSample: true,
+        workingDays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'],
+        dayStartTime: '09:00',
+        dayEndTime: '17:00',
+        periodLengthMinutes: 50,
+        shortBreakMinutes: 10,
+        middayBreakEnabled: true,
+        middayBreakStart: '13:00',
+        middayBreakDuration: 60,
+        labDurationMinutes: 180
+      },
+      {
+        id: 'inst-apex-tech',
+        name: 'Apex Institute of Science & Technology',
+        code: 'AIST',
+        campusName: 'Downtown Innovation Campus',
+        accreditation: 'ABET & National Board of Accreditation (NBA)',
+        isSample: false,
+        workingDays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
+        dayStartTime: '08:30',
+        dayEndTime: '16:30',
+        periodLengthMinutes: 60,
+        shortBreakMinutes: 15,
+        middayBreakEnabled: true,
+        middayBreakStart: '12:15',
+        middayBreakDuration: 45,
+        labDurationMinutes: 120
+      }
+    ];
+
+    try {
+      if (typeof localStorage !== 'undefined') {
+        const custom = localStorage.getItem(REGISTERED_INSTITUTIONS_KEY);
+        if (custom) {
+          const parsed = JSON.parse(custom) as InstitutionSummary[];
+          if (Array.isArray(parsed)) {
+            const ids = new Set(defaultList.map(i => i.id));
+            parsed.forEach(p => {
+              if (!ids.has(p.id)) defaultList.push(p);
+            });
+          }
+        }
+      }
+    } catch {}
+
+    return defaultList;
+  },
+
+  switchInstitution(institutionId: string) {
+    if (institutionId === currentInstitutionId) return;
+    try {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem(`smartgrid_inst_data_${currentInstitutionId}`, JSON.stringify(currentStore));
+      }
+    } catch {}
+
+    currentInstitutionId = institutionId;
+    currentStore = loadDataForInstitution(institutionId);
+    notifyListeners();
+  },
+
+  registerNewInstitution(profile: InstitutionProfile, config: Partial<TimeStructure>): string {
+    const instId = profile.id || `inst-${(profile.code || 'univ').toLowerCase().replace(/[^a-z0-9]/g, '-')}-${Date.now().toString(36)}`;
+    const fullProfile: InstitutionProfile = {
+      ...profile,
+      id: instId,
+      isSample: false
+    };
+
+    const computed = computeAcademicScheduleConfig(config);
+    const newSummary: InstitutionSummary = {
+      id: instId,
+      name: fullProfile.name,
+      code: fullProfile.code || 'UNIV',
+      campusName: fullProfile.campusName || 'Main Campus',
+      accreditation: fullProfile.accreditation,
+      isSample: false,
+      workingDays: computed.workingDays,
+      dayStartTime: computed.dayStartTime,
+      dayEndTime: computed.dayEndTime,
+      periodLengthMinutes: computed.periodLengthMinutes,
+      shortBreakMinutes: computed.shortBreakMinutes,
+      middayBreakEnabled: computed.middayBreak.enabled,
+      middayBreakStart: computed.middayBreak.startTime24,
+      middayBreakDuration: computed.middayBreak.durationMinutes,
+      labDurationMinutes: computed.labDurationMinutes
+    };
+
+    try {
+      if (typeof localStorage !== 'undefined') {
+        const existing = this.getAvailableInstitutions();
+        const updated = [...existing.filter(i => i.id !== instId), newSummary];
+        localStorage.setItem(REGISTERED_INSTITUTIONS_KEY, JSON.stringify(updated));
+      }
+    } catch {}
+
+    const freshData: InstitutionalDataStore = {
+      institutionProfile: fullProfile,
+      selectedClassGroupId: '',
+      terms: [
+        {
+          id: `term-${instId}-1`,
+          name: 'Academic Term 2026',
+          code: 'TERM-2026',
+          startDate: '2026-09-01',
+          endDate: '2026-12-31',
+          status: 'active',
+          weeksCount: 16
+        }
+      ],
+      campuses: [
+        {
+          id: `campus-${instId}-1`,
+          name: fullProfile.campusName || 'Main Campus',
+          code: `${fullProfile.code || 'MAIN'}-01`,
+          address: '450 University Boulevard'
+        }
+      ],
+      buildings: [
+        {
+          id: `bld-${instId}-1`,
+          campusId: `campus-${instId}-1`,
+          name: 'Academic Hall',
+          code: 'AH-01',
+          floors: 3
+        }
+      ],
+      rooms: [],
+      departments: [],
+      programs: [],
+      courses: [],
+      instructors: [],
+      studentGroups: [],
+      sections: [],
+      timeStructure: {
+        id: `time-${instId}-1`,
+        name: `${fullProfile.name} Time Structure`,
+        workingDays: computed.workingDays,
+        dayStartTime: computed.dayStartTime,
+        dayEndTime: computed.dayEndTime,
+        periodLengthMinutes: computed.periodLengthMinutes,
+        shortBreakEnabled: computed.shortBreakEnabled,
+        shortBreakMinutes: computed.shortBreakMinutes,
+        includeBreakAfterLastSlot: computed.includeBreakAfterLastSlot,
+        middayBreakEnabled: computed.middayBreak.enabled,
+        middayBreakMode: computed.middayBreak.mode,
+        middayBreakStartTime: computed.middayBreak.startTime24,
+        middayBreakDurationMinutes: computed.middayBreak.durationMinutes,
+        labDurationMinutes: computed.labDurationMinutes,
+        fridayAfternoonShiftEnabled: false,
+        fridayAfternoonStartTime: '14:30',
+        periods: computed.periods,
+        breaks: computed.middayBreak.enabled
+          ? [
+              {
+                id: `break-${instId}-lunch`,
+                name: 'University Lunch & Rest Break',
+                startTime: computed.middayBreak.startTime24,
+                endTime: computed.middayBreak.endTime24,
+                days: computed.workingDays
+              }
+            ]
+          : []
+      },
+      constraints: [
+        {
+          id: `rule-${instId}-no-room-clash`,
+          code: 'HARD_NO_ROOM_CLASH',
+          name: 'Zero Room Double-Bookings',
+          description: 'Enforces that no classroom or specialized laboratory hosts more than one course simultaneously.',
+          kind: 'hard',
+          weight: 100,
+          category: 'room',
+          enabled: true
+        },
+        {
+          id: `rule-${instId}-no-faculty-clash`,
+          code: 'HARD_NO_FACULTY_CLASH',
+          name: 'Zero Faculty Overlaps',
+          description: 'No professor or instructor can be scheduled for concurrent lectures or labs.',
+          kind: 'hard',
+          weight: 100,
+          category: 'instructor',
+          enabled: true
+        }
+      ],
+      scenarios: [],
+      auditLogs: [
+        {
+          id: `audit-${instId}-init`,
+          timestamp: new Date().toISOString(),
+          userId: 'user-admin',
+          userName: fullProfile.registrarName,
+          action: 'create',
+          entityType: 'term',
+          entityId: `term-${instId}-1`,
+          summary: `Initialized institutional configuration for ${fullProfile.name}.`
+        }
+      ],
+      feedbackPolls: []
+    };
+
+    currentInstitutionId = instId;
+    currentStore = freshData;
+    notifyListeners();
+    return instId;
+  },
+
+  clearCatalogToCleanSlate() {
+    currentStore = {
+      ...currentStore,
+      rooms: [],
+      departments: [],
+      programs: [],
+      courses: [],
+      instructors: [],
+      studentGroups: [],
+      sections: [],
+      scenarios: []
+    };
+    this.addAuditLog('delete', 'scenario', 'clean-slate', 'Cleared all academic catalog items to clean slate.');
+    notifyListeners();
+  },
+
+  loadDemoTemplate(templateId: 'western' | 'apex' = 'western') {
+    if (templateId === 'apex') {
+      currentStore = getApexInitialData();
+      currentInstitutionId = 'inst-apex-tech';
+    } else {
+      currentStore = getWesternPolyInitialData();
+      currentInstitutionId = 'inst-western-poly';
+    }
+    this.addAuditLog('restore', 'scenario', 'demo-template', `Loaded ${templateId === 'apex' ? 'Apex Institute' : 'Western Polytechnic'} demo reference dataset.`);
+    notifyListeners();
   },
 
   subscribe(listener: () => void) {
@@ -1334,7 +1690,189 @@ export const institutionalStore = {
       ...currentStore,
       feedbackPolls: [newPoll, ...currentPolls]
     };
-    this.addAuditLog('create', 'constraint', newPoll.id, `Submitted schedule feedback proposal: "${newPoll.title}".`);
+    notifyListeners();
+  },
+
+  // 11b. Interactive Swap & Drag Validation
+  swapSectionSlots(sectionIdA: string, sectionIdB: string): { success: boolean; message: string } {
+    const secA = currentStore.sections.find(s => s.id === sectionIdA);
+    const secB = currentStore.sections.find(s => s.id === sectionIdB);
+    if (!secA || !secB) return { success: false, message: 'Sections not found.' };
+
+    const slotA = secA.assignedSlot;
+    const slotB = secB.assignedSlot;
+
+    currentStore = {
+      ...currentStore,
+      sections: currentStore.sections.map(s => {
+        if (s.id === sectionIdA) {
+          if (!slotB) return { ...s, assignedSlot: undefined };
+          return {
+            ...s,
+            assignedSlot: {
+              ...slotB,
+              roomId: slotB.roomId || s.assignedSlot?.roomId || '',
+              sessionType: s.sessionType || slotB.sessionType,
+              spanSlots: s.spanSlots || slotB.spanSlots
+            }
+          };
+        }
+        if (s.id === sectionIdB) {
+          if (!slotA) return { ...s, assignedSlot: undefined };
+          return {
+            ...s,
+            assignedSlot: {
+              ...slotA,
+              roomId: slotA.roomId || s.assignedSlot?.roomId || '',
+              sessionType: s.sessionType || slotA.sessionType,
+              spanSlots: s.spanSlots || slotA.spanSlots
+            }
+          };
+        }
+        return s;
+      })
+    };
+    const courseA = currentStore.courses.find(c => c.id === secA.courseId)?.code || secA.courseId;
+    const courseB = currentStore.courses.find(c => c.id === secB.courseId)?.code || secB.courseId;
+    this.addAuditLog('update', 'section', `${sectionIdA}_${sectionIdB}`, `Swapped slots between ${courseA} and ${courseB}.`);
+    notifyListeners();
+    return { success: true, message: `Successfully swapped ${courseA} and ${courseB}.` };
+  },
+
+  validateSlotMoveOrSwap(
+    sectionId: string,
+    targetDay: DayOfWeek,
+    targetPeriod: string,
+    targetRoomId?: string,
+    swapTargetSectionId?: string
+  ): {
+    valid: boolean;
+    hasConflicts: boolean;
+    conflicts: Array<{ type: 'instructor' | 'cohort' | 'room' | 'lunch' | 'lab_boundary'; message: string; severity: 'hard' | 'warning' }>;
+  } {
+    const sec = currentStore.sections.find(s => s.id === sectionId);
+    if (!sec) return { valid: false, hasConflicts: true, conflicts: [{ type: 'cohort', message: 'Section not found', severity: 'hard' }] };
+
+    const conflicts: Array<{ type: 'instructor' | 'cohort' | 'room' | 'lunch' | 'lab_boundary'; message: string; severity: 'hard' | 'warning' }> = [];
+    const instructor = currentStore.instructors.find(i => i.id === sec.instructorId);
+    const cohort = currentStore.studentGroups.find(g => g.id === sec.studentGroupId);
+    const room = currentStore.rooms.find(r => r.id === targetRoomId);
+    const isLab = sec.sessionType === 'Lab' || Boolean(sec.spanSlots && sec.spanSlots > 1);
+
+    const computedTiming = computeAcademicScheduleConfig(currentStore.timeStructure);
+
+    // 1. Check Lunch Break Protection
+    if (computedTiming.middayBreak.enabled) {
+      const lunchRange = computedTiming.middayBreak.timeRangeLabel;
+      if (targetPeriod.includes('13:') || targetPeriod.includes('1:00') || targetPeriod === lunchRange) {
+        conflicts.push({
+          type: 'lunch',
+          message: `Target period falls inside the protected University Midday/Lunch Break (${lunchRange}).`,
+          severity: 'warning'
+        });
+      }
+    }
+
+    // 2. Check 3-Hour Continuous Lab boundary
+    if (isLab) {
+      const validLabBlock = getLabBlockByStartPeriod(targetPeriod, currentStore.timeStructure);
+      if (!validLabBlock) {
+        conflicts.push({
+          type: 'lab_boundary',
+          message: `Selected period "${targetPeriod}" is not a standard 3-hour continuous lab start block (e.g. 09:00, 10:00, 14:00).`,
+          severity: 'warning'
+        });
+      }
+    }
+
+    // Other scheduled sections occupying this slot (excluding self and swap target)
+    const sectionsAtTarget = currentStore.sections.filter(s => {
+      if (s.id === sectionId || s.id === swapTargetSectionId) return false;
+      if (!s.assignedSlot) return false;
+      if (s.assignedSlot.day !== targetDay) return false;
+      const covered = getCoveredPeriodsForAssignment(
+        s.assignedSlot.timeSlot,
+        s.assignedSlot.spanSlots || (s.sessionType === 'Lab' ? 3 : 1),
+        currentStore.timeStructure
+      );
+      return covered.includes(targetPeriod);
+    });
+
+    // 3. Check Instructor Collision
+    if (sec.instructorId) {
+      const instConflict = sectionsAtTarget.find(s => s.instructorId === sec.instructorId);
+      if (instConflict) {
+        const otherCourse = currentStore.courses.find(c => c.id === instConflict.courseId);
+        conflicts.push({
+          type: 'instructor',
+          message: `Instructor ${instructor?.name || 'Faculty member'} is already teaching ${otherCourse?.code || 'another section'} at ${targetDay} ${targetPeriod}.`,
+          severity: 'hard'
+        });
+      }
+      // Check instructor unavailable slots
+      if (instructor?.unavailableSlots?.some(u => u.day === targetDay && u.timeSlot === targetPeriod)) {
+        conflicts.push({
+          type: 'instructor',
+          message: `${instructor?.name || 'Faculty member'} has blocked ${targetDay} ${targetPeriod} for research or department meetings.`,
+          severity: 'warning'
+        });
+      }
+    }
+
+    // 4. Check Cohort Collision
+    if (sec.studentGroupId) {
+      const cohortConflict = sectionsAtTarget.find(s => s.studentGroupId === sec.studentGroupId);
+      if (cohortConflict) {
+        const otherCourse = currentStore.courses.find(c => c.id === cohortConflict.courseId);
+        conflicts.push({
+          type: 'cohort',
+          message: `Cohort ${cohort?.code || 'Class'} already has ${otherCourse?.code || 'another session'} scheduled at ${targetDay} ${targetPeriod}.`,
+          severity: 'hard'
+        });
+      }
+    }
+
+    // 5. Check Room Collision
+    if (targetRoomId) {
+      const roomConflict = sectionsAtTarget.find(s => s.assignedSlot?.roomId === targetRoomId);
+      if (roomConflict) {
+        const otherCourse = currentStore.courses.find(c => c.id === roomConflict.courseId);
+        const otherCohort = currentStore.studentGroups.find(g => g.id === roomConflict.studentGroupId);
+        conflicts.push({
+          type: 'room',
+          message: `Room ${room?.code || targetRoomId} is occupied by ${otherCourse?.code || 'another section'} (${otherCohort?.code || ''}) at ${targetDay} ${targetPeriod}.`,
+          severity: 'hard'
+        });
+      }
+      if (room && isLab && room.type !== 'lab' && room.type !== 'studio') {
+        conflicts.push({
+          type: 'room',
+          message: `Selected room "${room.code}" is a standard lecture hall, but this course requires a specialized Laboratory.`,
+          severity: 'warning'
+        });
+      }
+    }
+
+    return {
+      valid: conflicts.filter(c => c.severity === 'hard').length === 0,
+      hasConflicts: conflicts.length > 0,
+      conflicts
+    };
+  },
+
+  updateInstructorPreferences(instructorId: string, updates: Partial<Instructor>) {
+    currentStore = {
+      ...currentStore,
+      instructors: currentStore.instructors.map(i => {
+        if (i.id !== instructorId) return i;
+        return {
+          ...i,
+          ...updates
+        };
+      })
+    };
+    const inst = currentStore.instructors.find(i => i.id === instructorId);
+    this.addAuditLog('update', 'instructor', instructorId, `Updated teaching preferences & availability for ${inst?.name || instructorId}.`);
     notifyListeners();
   },
 

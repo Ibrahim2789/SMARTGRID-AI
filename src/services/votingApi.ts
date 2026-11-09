@@ -10,6 +10,7 @@ export interface AuthenticatedVotingUser {
   role: string;
   systemRole?: 'admin' | 'br' | 'student' | 'faculty';
   institution?: string;
+  institutionId?: string;
   batchId?: string | null;
   batchCode?: string | null;
   batchName?: string | null;
@@ -179,8 +180,28 @@ export function markSessionActive(user: AuthenticatedVotingUser): void {
   }
 }
 
-export async function fetchPublicBatches(): Promise<PublicBatchOption[]> {
-  const res = await fetch('/api/auth/batches-public');
+export interface RegisteredInstitutionDTO {
+  id: string;
+  name: string;
+  code: string;
+  campusName?: string;
+  isDemoTemplate?: boolean;
+  studentCount?: number;
+}
+
+export async function fetchInstitutionsApi(): Promise<RegisteredInstitutionDTO[]> {
+  try {
+    const res = await fetch('/api/institutions');
+    const data = await res.json().catch(() => ({ institutions: [] }));
+    return data.institutions || [];
+  } catch {
+    return [];
+  }
+}
+
+export async function fetchPublicBatches(institutionId?: string): Promise<PublicBatchOption[]> {
+  const query = institutionId ? `?institutionId=${encodeURIComponent(institutionId)}` : '';
+  const res = await fetch(`/api/auth/batches-public${query}`);
   const data = await res.json().catch(() => ({ batches: [] }));
   if (!res.ok) {
     throw new Error(data.error || 'Failed to load batches.');
@@ -193,9 +214,11 @@ export async function registerStudentAccount(payload: {
   email: string;
   registrationNumber: string;
   batchId: string;
+  customBatchCode?: string;
   section: string;
   password: string;
   confirmPassword: string;
+  institutionId?: string;
 }): Promise<AuthenticatedVotingUser> {
   const res = await fetch('/api/auth/register-student', {
     method: 'POST',
@@ -210,11 +233,72 @@ export async function registerStudentAccount(payload: {
   return data.user as AuthenticatedVotingUser;
 }
 
+export async function activateFacultyAccount(payload: {
+  name: string;
+  email: string;
+  department: string;
+  institutionId: string;
+  password: string;
+  confirmPassword: string;
+}): Promise<AuthenticatedVotingUser> {
+  const res = await fetch('/api/auth/activate-faculty', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data.error || 'Faculty account activation failed.');
+  }
+  markSessionActive(data.user);
+  return data.user as AuthenticatedVotingUser;
+}
+
+export async function registerUniversityAccount(payload: {
+  name: string;
+  code: string;
+  campusName: string;
+  adminName: string;
+  adminEmail: string;
+  adminPassword: string;
+  workingDays?: string;
+  dayStartTime?: string;
+  dayEndTime?: string;
+  periodLengthMinutes?: number;
+  shortBreakMinutes?: number;
+  middayBreakEnabled?: boolean;
+  middayBreakStart?: string;
+  middayBreakDuration?: number;
+  labDurationMinutes?: number;
+}): Promise<{
+  institutionId: string;
+  institutionName: string;
+  institutionCode: string;
+  user: AuthenticatedVotingUser;
+}> {
+  const res = await fetch('/api/institutions/register', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data.error || 'Failed to register university.');
+  }
+  markSessionActive(data.user);
+  return {
+    institutionId: data.institutionId,
+    institutionName: data.institutionName || payload.name,
+    institutionCode: data.institutionCode || payload.code.toUpperCase(),
+    user: data.user as AuthenticatedVotingUser
+  };
+}
+
 export async function loginWithBackend(
   email: string,
   password?: string,
   quickSwitch = false,
-  expectedPortalRole?: 'student' | 'br' | 'admin'
+  expectedPortalRole?: 'student' | 'br' | 'admin' | 'faculty'
 ): Promise<AuthenticatedVotingUser> {
   const res = await fetch('/api/auth/login', {
     method: 'POST',
