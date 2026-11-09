@@ -822,31 +822,6 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({ onOpenAuth
                   <span>See How It Works</span>
                 </button>
               </div>
-
-              {/* Floating Quality & Constraint Badges with pure CSS micro-interactions */}
-              <div className="flex flex-wrap items-center justify-center gap-2.5 pt-3">
-                <div
-                  className="animate-float-subtle inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white border border-[#E4E2DA] shadow-xs text-xs font-medium text-[#171717]"
-                  style={{ animationDelay: '0s' }}
-                >
-                  <CheckCircle2 className="w-3.5 h-3.5 text-[#2E7D32]" />
-                  <span>PEC & NCEAC Accreditation Compliant</span>
-                </div>
-                <div
-                  className="animate-float-subtle inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white border border-[#E4E2DA] shadow-xs text-xs font-medium text-[#171717]"
-                  style={{ animationDelay: '1.2s' }}
-                >
-                  <Sparkles className="w-3.5 h-3.5 text-[#00838F]" />
-                  <span>Zero Room & Instructor Clashes</span>
-                </div>
-                <div
-                  className="animate-float-subtle inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white border border-[#E4E2DA] shadow-xs text-xs font-medium text-[#171717]"
-                  style={{ animationDelay: '2.4s' }}
-                >
-                  <Coffee className="w-3.5 h-3.5 text-[#E65100]" />
-                  <span>Protected 13:00 Lunch & Prayer Break</span>
-                </div>
-              </div>
             </motion.div>
 
             {/* Hero Visual Anchor: Interactive Live Class Timetable Preview */}
