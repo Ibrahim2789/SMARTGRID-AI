@@ -331,6 +331,37 @@ function notifyListeners() {
     if (typeof localStorage !== 'undefined') {
       localStorage.setItem(`smartgrid_inst_data_${currentInstitutionId}`, JSON.stringify(currentStore));
       localStorage.setItem(ACTIVE_INST_KEY, currentInstitutionId);
+
+      // Keep REGISTERED_INSTITUTIONS_KEY synchronized with the active institution's profile & timing
+      const prof = currentStore.institutionProfile;
+      const ts = currentStore.timeStructure;
+      if (prof && ts) {
+        const computed = computeAcademicScheduleConfig(ts);
+        const existingRaw = localStorage.getItem(REGISTERED_INSTITUTIONS_KEY);
+        const existingList: InstitutionSummary[] = existingRaw ? JSON.parse(existingRaw) : [];
+        const updatedSummary: InstitutionSummary = {
+          id: currentInstitutionId,
+          name: prof.name,
+          code: prof.code || prof.campusCode?.split('-')[0] || 'UNIV',
+          campusName: prof.campusName || 'Main Campus',
+          accreditation: prof.accreditation,
+          isSample: Boolean(prof.isSample),
+          workingDays: computed.workingDays,
+          dayStartTime: computed.dayStartTime,
+          dayEndTime: computed.dayEndTime,
+          periodLengthMinutes: computed.periodLengthMinutes,
+          shortBreakMinutes: computed.shortBreakMinutes,
+          middayBreakEnabled: computed.middayBreak.enabled,
+          middayBreakStart: computed.middayBreak.startTime24,
+          middayBreakDuration: computed.middayBreak.durationMinutes,
+          labDurationMinutes: computed.labDurationMinutes
+        };
+        const merged = [
+          ...existingList.filter(item => item.id !== currentInstitutionId),
+          updatedSummary
+        ];
+        localStorage.setItem(REGISTERED_INSTITUTIONS_KEY, JSON.stringify(merged));
+      }
     }
   } catch (e) {
     console.warn('LocalStorage save failed', e);
@@ -672,6 +703,68 @@ export const institutionalStore = {
     notifyListeners();
   },
 
+  saveProfileConfig(profile: Partial<InstitutionProfile>) {
+    this.updateInstitutionProfile(profile);
+  },
+
+  saveAcademicCalendarConfig(calendar: {
+    academicYear: string;
+    currentTermName: string;
+    terms: AcademicTerm[];
+  }) {
+    const baseProfile = currentStore.institutionProfile || defaultInstitutionProfile;
+    currentStore = {
+      ...currentStore,
+      institutionProfile: {
+        ...baseProfile,
+        academicYear: calendar.academicYear,
+        currentTermName: calendar.currentTermName
+      },
+      terms: calendar.terms.map((t, idx) => ({
+        ...t,
+        id: t.id || `term-${currentInstitutionId}-${idx + 1}`,
+        isSample: false,
+        is_sample: false
+      }))
+    };
+    this.addAuditLog(
+      'update',
+      'term',
+      calendar.terms[0]?.id || 'calendar',
+      `Saved academic calendar (${calendar.academicYear}, active term: ${calendar.currentTermName}, ${calendar.terms.length} terms).`
+    );
+    notifyListeners();
+  },
+
+  saveOperatingHoursConfig(hours: Partial<TimeStructure>) {
+    this.updateTimeStructure({
+      workingDays: hours.workingDays,
+      dayStartTime: hours.dayStartTime,
+      dayEndTime: hours.dayEndTime,
+      fridayAfternoonShiftEnabled: hours.fridayAfternoonShiftEnabled,
+      fridayAfternoonStartTime: hours.fridayAfternoonStartTime
+    });
+  },
+
+  saveSessionAndBreakPolicyConfig(policy: Partial<TimeStructure>): {
+    success: boolean;
+    errors: string[];
+    placedCount?: number;
+    summaryText?: string;
+  } {
+    if (policy.periodLengthMinutes) {
+      const baseProfile = currentStore.institutionProfile || defaultInstitutionProfile;
+      currentStore = {
+        ...currentStore,
+        institutionProfile: {
+          ...baseProfile,
+          defaultSessionMinutes: policy.periodLengthMinutes
+        }
+      };
+    }
+    return this.saveAcademicTimingConfig(policy);
+  },
+
   exportStoreJSON(): string {
     return JSON.stringify(currentStore, null, 2);
   },
@@ -875,6 +968,9 @@ export const institutionalStore = {
     }
 
     const computed = computeAcademicScheduleConfig(candidateConfig);
+    const customBreaks = (newConfig.breaks || currentStore.timeStructure.breaks || []).filter(
+      b => b.id !== 'brk-lunch' && !b.id.endsWith('-lunch')
+    );
     const updatedBreaks = [
       ...(computed.middayBreak.enabled
         ? [
@@ -886,7 +982,8 @@ export const institutionalStore = {
               days: computed.workingDays
             }
           ]
-        : [])
+        : []),
+      ...customBreaks
     ];
 
     currentStore = {

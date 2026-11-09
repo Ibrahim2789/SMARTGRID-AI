@@ -5,7 +5,6 @@ import {
   Clock,
   Coffee,
   Layers,
-  DoorOpen,
   CheckCircle2,
   ArrowRight,
   ArrowLeft,
@@ -59,9 +58,10 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showImportWizard, setShowImportWizard] = useState(false);
   const [onboardingError, setOnboardingError] = useState<string | null>(null);
+  const [stepSavedToast, setStepSavedToast] = useState<string | null>(null);
 
   // =========================================================
-  // STEP 0: Institution Identity & Profile
+  // SCREEN 1: Institution Profile Customization
   // =========================================================
   const [name, setName] = useState(
     initialName || (isEditingExisting ? existingSnapshot.institutionProfile?.name || '' : '')
@@ -72,6 +72,11 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
   const [campusName, setCampusName] = useState(
     initialCampusName || existingSnapshot.institutionProfile?.campusName || 'Main Campus'
   );
+  const [campusCode, setCampusCode] = useState(
+    isEditingExisting
+      ? existingSnapshot.institutionProfile?.campusCode || 'MAIN-01'
+      : `${(initialCode || 'UNIV').toUpperCase()}-MAIN-01`
+  );
   const [timezone, setTimezone] = useState(
     existingSnapshot.institutionProfile?.timezone || 'UTC'
   );
@@ -80,16 +85,21 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
       'National Higher Education Accreditation Council'
   );
   const [registrarName, setRegistrarName] = useState(
-    initialRegistrarName || existingSnapshot.institutionProfile?.registrarName || 'Academic Registrar'
+    initialRegistrarName ||
+      existingSnapshot.institutionProfile?.registrarName ||
+      'Academic Registrar'
   );
   const [registrarEmail, setRegistrarEmail] = useState(
     initialRegistrarEmail ||
       existingSnapshot.institutionProfile?.registrarEmail ||
       'registrar@university.edu'
   );
+  const [autoConflictSweep, setAutoConflictSweep] = useState<boolean>(
+    existingSnapshot.institutionProfile?.autoConflictSweep !== false
+  );
 
   // =========================================================
-  // STEP 1: Custom Academic Calendar (Terms / Semesters)
+  // SCREEN 2: Academic Calendar Structure (Semesters / Terms)
   // =========================================================
   const [calendarSystem, setCalendarSystem] = useState<CalendarSystemType>('semester');
   const [academicYear, setAcademicYear] = useState(
@@ -128,7 +138,7 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
   const [newTermWeeks, setNewTermWeeks] = useState<number>(8);
 
   // =========================================================
-  // STEP 2: Operating Hours & Standard Course Durations
+  // SCREEN 3: Daily Operating Hours Configuration
   // =========================================================
   const [workingDays, setWorkingDays] = useState<DayOfWeek[]>(() =>
     isEditingExisting && existingSnapshot.timeStructure.workingDays?.length
@@ -141,6 +151,16 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
   const [dayEndTime, setDayEndTime] = useState(
     isEditingExisting ? existingSnapshot.timeStructure.dayEndTime || '17:00' : '17:00'
   );
+  const [fridayAfternoonShiftEnabled, setFridayAfternoonShiftEnabled] = useState<boolean>(
+    isEditingExisting ? Boolean(existingSnapshot.timeStructure.fridayAfternoonShiftEnabled) : false
+  );
+  const [fridayAfternoonStartTime, setFridayAfternoonStartTime] = useState<string>(
+    isEditingExisting ? existingSnapshot.timeStructure.fridayAfternoonStartTime || '14:30' : '14:30'
+  );
+
+  // =========================================================
+  // SCREEN 4: Session Duration & Break Policy Settings
+  // =========================================================
   const [periodLengthMinutes, setPeriodLengthMinutes] = useState<number>(
     isEditingExisting ? existingSnapshot.timeStructure.periodLengthMinutes || 50 : 50
   );
@@ -150,9 +170,6 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
   const [defaultLectureHoursPerWeek, setDefaultLectureHoursPerWeek] = useState<number>(3);
   const [defaultLabHoursPerWeek, setDefaultLabHoursPerWeek] = useState<number>(3);
 
-  // =========================================================
-  // STEP 3: Break Structures & Protected Windows
-  // =========================================================
   const [shortBreakEnabled, setShortBreakEnabled] = useState<boolean>(
     isEditingExisting ? existingSnapshot.timeStructure.shortBreakEnabled !== false : true
   );
@@ -174,14 +191,8 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
   const [middayBreakDurationMinutes, setMiddayBreakDurationMinutes] = useState<number>(
     isEditingExisting ? existingSnapshot.timeStructure.middayBreakDurationMinutes || 60 : 60
   );
-  const [fridayAfternoonShiftEnabled, setFridayAfternoonShiftEnabled] = useState<boolean>(
-    isEditingExisting ? Boolean(existingSnapshot.timeStructure.fridayAfternoonShiftEnabled) : false
-  );
-  const [fridayAfternoonStartTime, setFridayAfternoonStartTime] = useState<string>(
-    isEditingExisting ? existingSnapshot.timeStructure.fridayAfternoonStartTime || '14:30' : '14:30'
-  );
 
-  // Custom Additional Institutional Breaks (e.g., Morning Tea, Friday Assembly, Senate Hour)
+  // Custom Additional Institutional Breaks
   const [customBreaks, setCustomBreaks] = useState<TimeBlockBreak[]>(() => {
     if (isEditingExisting && existingSnapshot.timeStructure.breaks?.length) {
       return existingSnapshot.timeStructure.breaks.filter(
@@ -196,7 +207,7 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
   const [newBreakDays, setNewBreakDays] = useState<DayOfWeek[]>(['Mon', 'Tue', 'Wed', 'Thu', 'Fri']);
 
   // =========================================================
-  // STEP 4: Academic Structure (Departments & Cohorts)
+  // SCREEN 5: Academic Catalog & Facilities (Starter Seed / Import)
   // =========================================================
   const [departments, setDepartments] = useState<
     Array<{ name: string; code: string; school: string }>
@@ -207,9 +218,6 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
   const [newDeptName, setNewDeptName] = useState('');
   const [newDeptCode, setNewDeptCode] = useState('');
 
-  // =========================================================
-  // STEP 5: Campus Facilities & Curriculum
-  // =========================================================
   const [rooms, setRooms] = useState<
     Array<{ code: string; capacity: number; type: 'lecture' | 'lab' }>
   >([
@@ -230,7 +238,6 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
   ]);
   const [newCourseCode, setNewCourseCode] = useState('');
   const [newCourseTitle, setNewCourseTitle] = useState('');
-  const [newCourseCr, setNewCourseCr] = useState<number>(3);
   const [newCourseIsLab, setNewCourseIsLab] = useState<boolean>(false);
 
   const [instructors, setInstructors] = useState<
@@ -240,11 +247,10 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
     { name: 'Prof. Sarah Jenkins', title: 'Associate Professor', email: 's.jenkins@university.edu' }
   ]);
   const [newInstName, setNewInstName] = useState('');
-  const [newInstTitle, setNewInstTitle] = useState('Associate Professor');
   const [newInstEmail, setNewInstEmail] = useState('');
 
   // =========================================================
-  // HELPER ACTIONS & PRESETS
+  // PRESET & HELPER HANDLERS
   // =========================================================
   const applyInstitutionPreset = (preset: 'semester-5day' | 'trimester-6day' | 'quarter-block') => {
     setOnboardingError(null);
@@ -548,7 +554,7 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
       {
         code: newCourseCode.trim().toUpperCase(),
         title: newCourseTitle.trim(),
-        cr: Math.max(1, Number(newCourseCr) || 3),
+        cr: newCourseIsLab ? 1 : 3,
         isLab: newCourseIsLab
       }
     ]);
@@ -562,7 +568,7 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
       ...instructors,
       {
         name: newInstName.trim(),
-        title: newInstTitle.trim() || 'Faculty',
+        title: 'Associate Professor',
         email: newInstEmail.trim().toLowerCase()
       }
     ]);
@@ -591,6 +597,103 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
   const timingValidation = validateAcademicTimingConfig(timingCandidate);
   const activeTermObj = terms.find(t => t.status === 'active') || terms[0];
 
+  // =========================================================
+  // DIRECT MAPPING TO institutionalStore METHODS PER STEP
+  // =========================================================
+  const persistCurrentStepToStore = (stepIndex: number): boolean => {
+    setOnboardingError(null);
+    setStepSavedToast(null);
+
+    if (stepIndex === 0) {
+      if (!name.trim() || !code.trim()) {
+        setOnboardingError('Please enter your university full name and short code.');
+        return false;
+      }
+      if (isEditingExisting) {
+        institutionalStore.saveProfileConfig({
+          name: name.trim(),
+          code: code.trim().toUpperCase(),
+          campusName: campusName.trim() || 'Main Campus',
+          campusCode: campusCode.trim().toUpperCase() || `${code.trim().toUpperCase()}-MAIN-01`,
+          accreditation: accreditation.trim(),
+          registrarName: registrarName.trim(),
+          registrarEmail: registrarEmail.trim(),
+          timezone: timezone || 'UTC',
+          autoConflictSweep
+        });
+        setStepSavedToast('Saved Step 1 (Institution Profile) to institutionalStore.');
+      }
+      return true;
+    }
+
+    if (stepIndex === 1) {
+      if (terms.length === 0) {
+        setOnboardingError('Please configure at least one academic semester or term.');
+        return false;
+      }
+      if (isEditingExisting) {
+        institutionalStore.saveAcademicCalendarConfig({
+          academicYear: academicYear.trim(),
+          currentTermName: activeTermObj?.name || terms[0].name,
+          terms
+        });
+        setStepSavedToast('Saved Step 2 (Academic Calendar & Terms) to institutionalStore.');
+      }
+      return true;
+    }
+
+    if (stepIndex === 2) {
+      if (workingDays.length === 0) {
+        setOnboardingError('Please select at least one university working day.');
+        return false;
+      }
+      if (dayEndTime <= dayStartTime) {
+        setOnboardingError('Daily closing time must be later than daily opening time.');
+        return false;
+      }
+      if (isEditingExisting) {
+        institutionalStore.saveOperatingHoursConfig({
+          workingDays,
+          dayStartTime,
+          dayEndTime,
+          fridayAfternoonShiftEnabled,
+          fridayAfternoonStartTime
+        });
+        setStepSavedToast('Saved Step 3 (Daily Operating Hours) to institutionalStore.');
+      }
+      return true;
+    }
+
+    if (stepIndex === 3) {
+      if (!timingValidation.valid) {
+        setOnboardingError(
+          timingValidation.errors[0] || 'Invalid session duration or break policy settings.'
+        );
+        return false;
+      }
+      if (isEditingExisting) {
+        const res = institutionalStore.saveSessionAndBreakPolicyConfig({
+          ...timingCandidate,
+          breaks: customBreaks
+        });
+        if (!res.success) {
+          setOnboardingError(res.errors[0] || 'Could not save session duration and break policy.');
+          return false;
+        }
+        setStepSavedToast('Saved Step 4 (Session Durations & Break Policies) to institutionalStore.');
+      }
+      return true;
+    }
+
+    return true;
+  };
+
+  const handleAdvanceStep = () => {
+    const ok = persistCurrentStepToStore(activeStep);
+    if (!ok) return;
+    setActiveStep(prev => Math.min(steps.length - 1, prev + 1));
+  };
+
   const handleFinalizeOnboarding = () => {
     if (!name.trim() || !code.trim()) {
       setActiveStep(0);
@@ -605,8 +708,10 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
     }
 
     if (!timingValidation.valid) {
-      setActiveStep(2);
-      setOnboardingError(timingValidation.errors[0] || 'Invalid operating hours or break configuration.');
+      setActiveStep(3);
+      setOnboardingError(
+        timingValidation.errors[0] || 'Invalid operating hours or break policy configuration.'
+      );
       return;
     }
 
@@ -614,22 +719,22 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
     setIsSubmitting(true);
 
     try {
-      const newInstId =
+      const targetInstId =
         existingInstitutionId ||
         `inst-${code.toLowerCase().replace(/[^a-z0-9]/g, '-')}-${Date.now().toString(36)}`;
 
       const profile: InstitutionProfile = {
-        id: newInstId,
+        id: targetInstId,
         name: name.trim(),
         code: code.trim().toUpperCase(),
-        campusCode: `${code.toUpperCase()}-MAIN-01`,
-        campusName: campusName.trim(),
+        campusCode: campusCode.trim().toUpperCase() || `${code.toUpperCase()}-MAIN-01`,
+        campusName: campusName.trim() || 'Main Campus',
         accreditation: accreditation.trim(),
         academicYear: academicYear.trim(),
         currentTermName: activeTermObj?.name || 'Fall Semester 2026',
         registrarName: registrarName.trim(),
         registrarEmail: registrarEmail.trim(),
-        autoConflictSweep: true,
+        autoConflictSweep,
         defaultSessionMinutes: periodLengthMinutes,
         timezone: timezone || 'UTC',
         isSample: false
@@ -639,7 +744,7 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
         ...(computedPreview.middayBreak.enabled
           ? [
               {
-                id: `break-${newInstId}-lunch`,
+                id: `break-${targetInstId}-lunch`,
                 name: 'University Midday / Lunch Break',
                 startTime: computedPreview.middayBreak.startTime24,
                 endTime: computedPreview.middayBreak.endTime24,
@@ -656,107 +761,132 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
         breaks: allBreaks
       };
 
-      // 1. Save institution profile, custom academic calendar terms, operating hours, course durations & break structures into institutionalStore
-      institutionalStore.registerNewInstitution(profile, timeConfig, terms);
-      institutionalStore.setTerms(terms);
-      institutionalStore.updateTimeStructure(timeConfig);
+      // Map directly to institutionalStore methods to persist all 4 core wizard steps globally
+      if (!isEditingExisting) {
+        institutionalStore.registerNewInstitution(profile, timeConfig, terms);
+      }
+      institutionalStore.saveProfileConfig(profile);
+      institutionalStore.saveAcademicCalendarConfig({
+        academicYear: academicYear.trim(),
+        currentTermName: activeTermObj?.name || terms[0].name,
+        terms
+      });
+      institutionalStore.saveOperatingHoursConfig({
+        workingDays,
+        dayStartTime,
+        dayEndTime,
+        fridayAfternoonShiftEnabled,
+        fridayAfternoonStartTime
+      });
+      institutionalStore.saveSessionAndBreakPolicyConfig({
+        ...timeConfig,
+        breaks: customBreaks
+      });
 
-      // 2. Populate configured departments, rooms, courses, and instructors
+      // Populate starter catalog entities if the institution catalog is currently empty
       const current = institutionalStore.get();
-      const bldId = current.buildings[0]?.id || 'bld-main';
-
-      departments.forEach((d, i) => {
-        institutionalStore.addDepartment({
-          id: `dept-${d.code.toLowerCase()}-${i}`,
-          code: d.code,
-          name: d.name,
-          school: d.school,
-          colorHex: i === 0 ? '#1E3A8A' : i === 1 ? '#047857' : '#B45309'
+      if (current.departments.length === 0) {
+        departments.forEach((d, i) => {
+          institutionalStore.addDepartment({
+            id: `dept-${d.code.toLowerCase()}-${i}`,
+            code: d.code,
+            name: d.name,
+            school: d.school,
+            colorHex: i === 0 ? '#1E3A8A' : i === 1 ? '#047857' : '#B45309'
+          });
         });
-      });
+      }
 
-      const updatedStore = institutionalStore.get();
-      const firstDeptId = updatedStore.departments[0]?.id || 'dept-gen';
+      const afterDepts = institutionalStore.get();
+      const bldId = afterDepts.buildings[0]?.id || 'bld-main';
+      const firstDeptId = afterDepts.departments[0]?.id || 'dept-gen';
 
-      rooms.forEach((r, i) => {
-        institutionalStore.addRoom({
-          id: `room-${r.code.toLowerCase()}-${i}`,
-          code: r.code,
-          name: `${r.code} (${r.type === 'lab' ? 'Laboratory' : 'Lecture Hall'})`,
-          buildingId: bldId,
-          capacity: r.capacity,
-          type: r.type,
-          equipment:
-            r.type === 'lab'
-              ? ['Specialized Workstations', 'Safety System']
-              : ['Projector', 'Whiteboard'],
-          isAccessible: true,
-          isAvailable: true
+      if (afterDepts.rooms.length === 0) {
+        rooms.forEach((r, i) => {
+          institutionalStore.addRoom({
+            id: `room-${r.code.toLowerCase()}-${i}`,
+            code: r.code,
+            name: `${r.code} (${r.type === 'lab' ? 'Laboratory' : 'Lecture Hall'})`,
+            buildingId: bldId,
+            capacity: r.capacity,
+            type: r.type,
+            equipment:
+              r.type === 'lab'
+                ? ['Specialized Workstations', 'Safety System']
+                : ['Projector', 'Whiteboard'],
+            isAccessible: true,
+            isAvailable: true
+          });
         });
-      });
+      }
 
-      courses.forEach((c, i) => {
-        institutionalStore.addCourse({
-          id: `course-${c.code.toLowerCase()}-${i}`,
-          departmentId: firstDeptId,
-          code: c.code,
-          title: c.title,
-          creditHours: c.cr,
-          lectureHours: c.isLab ? 0 : defaultLectureHoursPerWeek,
-          labHours: c.isLab ? defaultLabHoursPerWeek : 0,
-          weeklyContactHours: c.isLab ? defaultLabHoursPerWeek : defaultLectureHoursPerWeek,
-          requiredRoomType: c.isLab ? 'lab' : 'lecture'
+      if (afterDepts.courses.length === 0) {
+        courses.forEach((c, i) => {
+          institutionalStore.addCourse({
+            id: `course-${c.code.toLowerCase()}-${i}`,
+            departmentId: firstDeptId,
+            code: c.code,
+            title: c.title,
+            creditHours: c.cr,
+            lectureHours: c.isLab ? 0 : defaultLectureHoursPerWeek,
+            labHours: c.isLab ? defaultLabHoursPerWeek : 0,
+            weeklyContactHours: c.isLab ? defaultLabHoursPerWeek : defaultLectureHoursPerWeek,
+            requiredRoomType: c.isLab ? 'lab' : 'lecture'
+          });
         });
-      });
+      }
 
-      instructors.forEach((inst, i) => {
-        institutionalStore.addInstructor({
-          id: `instructor-${Date.now()}-${i}`,
-          departmentId: firstDeptId,
-          name: inst.name,
-          email: inst.email,
-          title: inst.title,
-          maxWeeklyHours: 14,
-          maxConsecutiveHours: 3,
-          preferredDays: workingDays,
-          unavailableSlots: []
+      if (afterDepts.instructors.length === 0) {
+        instructors.forEach((inst, i) => {
+          institutionalStore.addInstructor({
+            id: `instructor-${Date.now()}-${i}`,
+            departmentId: firstDeptId,
+            name: inst.name,
+            email: inst.email,
+            title: inst.title,
+            maxWeeklyHours: 14,
+            maxConsecutiveHours: 3,
+            preferredDays: workingDays,
+            unavailableSlots: []
+          });
         });
-      });
+      }
 
-      institutionalStore.addStudentGroup({
-        id: `group-2k26-${code.toLowerCase()}-a`,
-        programId: updatedStore.programs[0]?.id || 'prog-gen',
-        name: `${code.toUpperCase()} First Year Cohort A`,
-        code: `2K26-${code.toUpperCase()}-A`,
-        year: 1,
-        size: 40,
-        homeRoom: rooms[0]?.code || 'HALL-A',
-        sharedCourseIds: []
-      });
+      if (afterDepts.studentGroups.length === 0) {
+        institutionalStore.addStudentGroup({
+          id: `group-2k26-${code.toLowerCase()}-a`,
+          programId: afterDepts.programs[0]?.id || 'prog-gen',
+          name: `${code.toUpperCase()} First Year Cohort A`,
+          code: `2K26-${code.toUpperCase()}-A`,
+          year: 1,
+          size: 40,
+          homeRoom: rooms[0]?.code || 'HALL-A',
+          sharedCourseIds: []
+        });
+      }
 
-      // 3. Run configuration-driven solver using the newly saved operating hours, durations, and break structures
+      // Synthesize timetable using the newly persisted institutionalStore configuration
       institutionalStore.runTimetableSolver({
         forceRescheduleAll: true,
-        strategyName: `${activeTermObj?.name || 'Inaugural'} Timetable`
+        strategyName: `${activeTermObj?.name || 'Configured'} Timetable`
       });
 
       setIsSubmitting(false);
-      onCompleted?.(newInstId);
+      onCompleted?.(targetInstId);
       onClose();
     } catch (err: any) {
       setIsSubmitting(false);
-      setOnboardingError(`Setup encountered an error: ${err?.message || err}`);
+      setOnboardingError(`Configuration error: ${err?.message || err}`);
     }
   };
 
+  // Sequential Wizard Screens (Steps 1–4 as requested + Step 5 Catalog & Global Save)
   const steps = [
-    { title: '1. Identity', icon: Building2 },
+    { title: '1. Institution Profile', icon: Building2 },
     { title: '2. Academic Calendar', icon: Calendar },
-    { title: '3. Hours & Durations', icon: Clock },
-    { title: '4. Break Structures', icon: Coffee },
-    { title: '5. Departments', icon: Layers },
-    { title: '6. Facilities & Courses', icon: DoorOpen },
-    { title: '7. Review & Save', icon: Sparkles }
+    { title: '3. Daily Operating Hours', icon: Clock },
+    { title: '4. Session & Break Policy', icon: Coffee },
+    { title: '5. Catalog & Persist', icon: Layers }
   ];
 
   return (
@@ -780,14 +910,14 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
             <div>
               <div className="flex items-center gap-2 flex-wrap">
                 <h2 className="font-serif-editorial text-lg text-[#171717] font-semibold">
-                  University Setup &amp; Configuration Wizard
+                  University Configuration &amp; Onboarding Wizard
                 </h2>
                 <span className="text-[10px] font-mono-tabular font-bold px-2 py-0.5 rounded-full bg-[#B8EEEE] text-[#171717] border border-[#95DFDF]">
-                  Dynamic Multi-Tenant Engine
+                  Global Store Persistence
                 </span>
               </div>
               <p className="text-xs text-[#77766F] mt-0.5">
-                Define your custom academic calendar, operating hours, course durations, and break structures in institutionalStore.
+                Configure 1) Institution Profile, 2) Academic Calendar, 3) Daily Operating Hours, and 4) Session &amp; Break Policies.
               </p>
             </div>
           </div>
@@ -800,9 +930,9 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
           </button>
         </div>
 
-        {/* Multi-Step Stepper Bar */}
+        {/* Sequential Stepper Bar */}
         <div className="px-6 py-2.5 bg-white border-b border-[#E4E2DA] overflow-x-auto">
-          <div className="flex items-center justify-between min-w-[680px] gap-1.5">
+          <div className="flex items-center justify-between min-w-[640px] gap-2">
             {steps.map((st, sIdx) => {
               const Icon = st.icon;
               const isActive = activeStep === sIdx;
@@ -815,7 +945,7 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
                     setOnboardingError(null);
                     setActiveStep(sIdx);
                   }}
-                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-[11px] transition-colors cursor-pointer shrink-0 ${
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs transition-colors cursor-pointer shrink-0 ${
                     isActive
                       ? 'bg-[#171717] text-white font-semibold shadow-xs'
                       : isPast
@@ -841,18 +971,25 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
             </div>
           )}
 
+          {stepSavedToast && !onboardingError && (
+            <div className="px-3.5 py-2 rounded-xl bg-[#B7F77C]/30 border border-[#98DF58] text-[#171717] text-xs font-medium flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-[#2E7D32] shrink-0" />
+              <span>{stepSavedToast}</span>
+            </div>
+          )}
+
           {/* =========================================================
-              STEP 0: Institution Identity & Quick Architecture Presets
+              SCREEN 1: Institution Profile Customization
              ========================================================= */}
           {activeStep === 0 && (
             <div className="space-y-5">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 pb-3 border-b border-[#E4E2DA]">
                 <div>
                   <h3 className="font-serif-editorial text-lg text-[#171717] font-semibold">
-                    1. Institution Identity &amp; Campus Profile
+                    Screen 1: Institution Profile Customization
                   </h3>
                   <p className="text-xs text-[#77766F] mt-0.5">
-                    Configure your university branding, timezone, and administrative contact, or start from an academic preset.
+                    Maps to <code>institutionalStore.saveProfileConfig()</code> &amp; <code>updateInstitutionProfile()</code>.
                   </p>
                 </div>
                 <div className="flex items-center gap-1.5 flex-wrap">
@@ -901,7 +1038,11 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
                   <input
                     type="text"
                     value={code}
-                    onChange={e => setCode(e.target.value.toUpperCase())}
+                    onChange={e => {
+                      const val = e.target.value.toUpperCase();
+                      setCode(val);
+                      setCampusCode(`${val || 'UNIV'}-MAIN-01`);
+                    }}
                     placeholder="e.g. AIST, MIT, NUST"
                     className="input-field text-xs font-mono-tabular uppercase"
                   />
@@ -917,6 +1058,19 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
                     onChange={e => setCampusName(e.target.value)}
                     placeholder="e.g. Downtown Innovation Campus"
                     className="input-field text-xs"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-[#171717]">
+                    Campus Identifier Code
+                  </label>
+                  <input
+                    type="text"
+                    value={campusCode}
+                    onChange={e => setCampusCode(e.target.value.toUpperCase())}
+                    placeholder="e.g. AIST-MAIN-01"
+                    className="input-field text-xs font-mono-tabular uppercase"
                   />
                 </div>
 
@@ -942,7 +1096,7 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
                   </select>
                 </div>
 
-                <div className="space-y-1.5 md:col-span-2">
+                <div className="space-y-1.5">
                   <label className="text-xs font-semibold text-[#171717]">
                     Accreditation &amp; Governance Body
                   </label>
@@ -957,7 +1111,7 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
 
                 <div className="space-y-1.5">
                   <label className="text-xs font-semibold text-[#171717]">
-                    Registrar / Administrator Name
+                    Registrar / Administrator Full Name
                   </label>
                   <input
                     type="text"
@@ -981,28 +1135,44 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
                   />
                 </div>
               </div>
+
+              <div className="p-3.5 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] flex items-center justify-between">
+                <div>
+                  <div className="text-xs font-semibold text-[#171717]">
+                    Automated Hard-Constraint Conflict Sweep
+                  </div>
+                  <div className="text-[11px] text-[#77766F]">
+                    Automatically validate room, instructor, and cohort collisions whenever schedule settings change
+                  </div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={autoConflictSweep}
+                  onChange={e => setAutoConflictSweep(e.target.checked)}
+                  className="w-4 h-4 accent-[#171717]"
+                />
+              </div>
             </div>
           )}
 
           {/* =========================================================
-              STEP 1: Custom Academic Calendar (Terms / Semesters)
+              SCREEN 2: Academic Calendar Structure (Semesters / Terms)
              ========================================================= */}
           {activeStep === 1 && (
             <div className="space-y-5">
               <div>
                 <h3 className="font-serif-editorial text-lg text-[#171717] font-semibold">
-                  2. Custom Academic Calendar (Terms, Semesters &amp; Sessions)
+                  Screen 2: Academic Calendar Structure (Semesters / Terms)
                 </h3>
                 <p className="text-xs text-[#77766F] mt-0.5">
-                  Define your academic year and term structure (Semesters, Trimesters, Quarters, or Custom Blocks). Saved directly into institutionalStore.
+                  Maps directly to <code>institutionalStore.saveAcademicCalendarConfig()</code> &amp; <code>setTerms()</code>.
                 </p>
               </div>
 
-              {/* Calendar Model & Academic Year */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA]">
                 <div className="md:col-span-2 space-y-1.5">
                   <label className="text-xs font-semibold text-[#171717]">
-                    Academic Calendar Structure
+                    Academic Calendar Structure Model
                   </label>
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                     {(
@@ -1043,14 +1213,14 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
                 </div>
               </div>
 
-              {/* Configured Terms Table/List */}
+              {/* Terms List */}
               <div className="space-y-2.5">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-semibold text-[#171717]">
-                    Configured Academic Terms ({terms.length})
+                    Configured Semesters &amp; Terms ({terms.length})
                   </span>
                   <span className="text-[11px] text-[#77766F]">
-                    Click <strong>Set Active</strong> to mark the current scheduling term
+                    Active Term: <strong>{activeTermObj?.name || 'None'}</strong>
                   </span>
                 </div>
 
@@ -1121,7 +1291,7 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
               {/* Add Custom Term Form */}
               <div className="p-3.5 rounded-xl border border-[#E4E2DA] bg-[#F7F6EF]/50 space-y-3">
                 <div className="text-xs font-semibold text-[#171717]">
-                  Add Academic Term / Semester / Summer Session
+                  Add Academic Term / Semester / Intensive Session
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-5 gap-2.5">
                   <input
@@ -1170,23 +1340,23 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
           )}
 
           {/* =========================================================
-              STEP 2: Operating Hours & Standard Course Durations
+              SCREEN 3: Daily Operating Hours Configuration
              ========================================================= */}
           {activeStep === 2 && (
             <div className="space-y-5">
               <div>
                 <h3 className="font-serif-editorial text-lg text-[#171717] font-semibold">
-                  3. Operating Hours &amp; Standard Course Durations
+                  Screen 3: Daily Operating Hours Configuration
                 </h3>
                 <p className="text-xs text-[#77766F] mt-0.5">
-                  Replace any fixed 9–5 or 50-minute assumptions with your institution's exact operating window and course/lab durations.
+                  Maps directly to <code>institutionalStore.saveOperatingHoursConfig()</code> &amp; <code>updateTimeStructure()</code>.
                 </p>
               </div>
 
               {/* Working Days Selector */}
-              <div className="space-y-2">
-                <label className="text-xs font-semibold text-[#171717]">
-                  University Working Days
+              <div className="p-4 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] space-y-3">
+                <label className="text-xs font-semibold text-[#171717] block">
+                  University Working Days (Select Active Instructional Days)
                 </label>
                 <div className="flex flex-wrap gap-2">
                   {(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as DayOfWeek[]).map(d => {
@@ -1196,10 +1366,10 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
                         key={d}
                         type="button"
                         onClick={() => toggleDay(d)}
-                        className={`px-3.5 py-1.5 rounded-xl text-xs font-mono-tabular transition-colors cursor-pointer border ${
+                        className={`px-4 py-2 rounded-xl text-xs font-mono-tabular transition-colors cursor-pointer border ${
                           active
-                            ? 'bg-[#171717] text-white border-[#171717] font-bold'
-                            : 'bg-[#F7F6EF] text-[#77766F] border-[#E4E2DA] hover:text-[#171717]'
+                            ? 'bg-[#171717] text-white border-[#171717] font-bold shadow-2xs'
+                            : 'bg-white text-[#77766F] border-[#E4E2DA] hover:text-[#171717]'
                         }`}
                       >
                         {d} {active && '✓'}
@@ -1207,43 +1377,108 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
                     );
                   })}
                 </div>
-                <div className="text-[11px] text-[#77766F]">
-                  Active operating week: <strong>{workingDays.join(', ')}</strong> ({workingDays.length} days/week)
+                <div className="text-[11px] text-[#57564F]">
+                  Configured operating week: <strong>{workingDays.join(', ')}</strong> ({workingDays.length} days per week)
                 </div>
               </div>
 
-              {/* Daily Operating Window */}
+              {/* Daily Opening & Closing Times */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-[#171717]">
-                    Daily Opening Time (First Period Start)
+                <div className="p-4 rounded-xl border border-[#E4E2DA] bg-white space-y-2">
+                  <label className="text-xs font-semibold text-[#171717] block">
+                    Campus Daily Opening Time (First Slot Start)
                   </label>
                   <input
                     type="time"
                     value={dayStartTime}
                     onChange={e => setDayStartTime(e.target.value)}
-                    className="input-field text-xs font-mono-tabular"
+                    className="input-field text-sm font-mono-tabular"
                   />
+                  <p className="text-[11px] text-[#77766F]">
+                    No lecture or lab session will be scheduled prior to {dayStartTime}.
+                  </p>
                 </div>
 
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-[#171717]">
-                    Daily Closing Time (Campus Day End)
+                <div className="p-4 rounded-xl border border-[#E4E2DA] bg-white space-y-2">
+                  <label className="text-xs font-semibold text-[#171717] block">
+                    Campus Daily Closing Time (Final Slot End)
                   </label>
                   <input
                     type="time"
                     value={dayEndTime}
                     onChange={e => setDayEndTime(e.target.value)}
-                    className="input-field text-xs font-mono-tabular"
+                    className="input-field text-sm font-mono-tabular"
                   />
+                  <p className="text-[11px] text-[#77766F]">
+                    All lectures and continuous laboratories must conclude by {dayEndTime}.
+                  </p>
                 </div>
               </div>
 
-              {/* Standard Lecture & Lab Durations (Presets + Custom Input) */}
+              {/* Friday / Day-Specific Shift Configuration */}
+              <div className="p-4 rounded-xl border border-[#E4E2DA] bg-[#F7F6EF]/50 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-xs font-semibold text-[#171717]">
+                      Friday Extended Midday / Afternoon Shift Policy
+                    </div>
+                    <div className="text-[11px] text-[#77766F]">
+                      Optionally shift Friday afternoon session start time (e.g., for Friday congregation / assembly window)
+                    </div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={fridayAfternoonShiftEnabled}
+                    onChange={e => setFridayAfternoonShiftEnabled(e.target.checked)}
+                    className="w-4 h-4 accent-[#171717]"
+                  />
+                </div>
+
+                {fridayAfternoonShiftEnabled && (
+                  <div className="flex items-center justify-between pt-2 border-t border-[#E4E2DA]">
+                    <span className="text-xs text-[#57564F]">Friday Afternoon Session Resumes At:</span>
+                    <input
+                      type="time"
+                      value={fridayAfternoonStartTime}
+                      onChange={e => setFridayAfternoonStartTime(e.target.value)}
+                      className="input-field h-8 w-32 text-xs font-mono-tabular bg-white"
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* Operating Hours Summary Banner */}
+              <div className="p-3.5 rounded-xl bg-[#B7F77C]/25 border border-[#98DF58] text-xs text-[#171717] flex items-center justify-between">
+                <span>
+                  <strong>Daily Operating Window:</strong> {computedPreview.operatingHoursLabel} across{' '}
+                  {workingDays.length} working days ({workingDays.join(', ')})
+                </span>
+                <span className="font-mono-tabular font-bold">
+                  {computedPreview.slots.length} Slots / Day
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* =========================================================
+              SCREEN 4: Session Duration & Break Policy Settings
+             ========================================================= */}
+          {activeStep === 3 && (
+            <div className="space-y-5">
+              <div>
+                <h3 className="font-serif-editorial text-lg text-[#171717] font-semibold">
+                  Screen 4: Session Duration &amp; Break Policy Settings
+                </h3>
+                <p className="text-xs text-[#77766F] mt-0.5">
+                  Maps directly to <code>institutionalStore.saveSessionAndBreakPolicyConfig()</code> &amp; <code>saveAcademicTimingConfig()</code>.
+                </p>
+              </div>
+
+              {/* 1. Lecture & Lab Session Durations */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA]">
                 <div className="space-y-2">
                   <label className="text-xs font-semibold text-[#171717] flex items-center justify-between">
-                    <span>Standard Lecture Slot Duration (Minutes)</span>
+                    <span>Regular Lecture Session Duration</span>
                     <span className="font-mono-tabular text-[#171717] font-bold">
                       {periodLengthMinutes} mins
                     </span>
@@ -1265,7 +1500,7 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
                     ))}
                   </div>
                   <div className="flex items-center gap-2 pt-1">
-                    <span className="text-[11px] text-[#77766F]">Custom minutes:</span>
+                    <span className="text-[11px] text-[#77766F]">Custom duration (mins):</span>
                     <input
                       type="number"
                       min={20}
@@ -1279,7 +1514,7 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
 
                 <div className="space-y-2">
                   <label className="text-xs font-semibold text-[#171717] flex items-center justify-between">
-                    <span>Continuous Laboratory Duration (Minutes)</span>
+                    <span>Continuous Laboratory Session Duration</span>
                     <span className="font-mono-tabular text-[#171717] font-bold">
                       {labDurationMinutes} mins ({computedPreview.labDurationHoursLabel})
                     </span>
@@ -1301,7 +1536,7 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
                     ))}
                   </div>
                   <div className="flex items-center gap-2 pt-1">
-                    <span className="text-[11px] text-[#77766F]">Custom lab minutes:</span>
+                    <span className="text-[11px] text-[#77766F]">Custom lab (mins):</span>
                     <input
                       type="number"
                       min={45}
@@ -1312,18 +1547,15 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
                     />
                   </div>
                 </div>
-              </div>
 
-              {/* Standard Weekly Course Contact Hours Defaults */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-[#171717]">
-                    Default Weekly Contact Hours (Theory Course)
+                <div className="space-y-1">
+                  <label className="text-[11px] font-semibold text-[#171717]">
+                    Standard Theory Course Contact Hours / Week
                   </label>
                   <select
                     value={defaultLectureHoursPerWeek}
                     onChange={e => setDefaultLectureHoursPerWeek(Number(e.target.value))}
-                    className="input-field text-xs bg-white"
+                    className="input-field h-8 text-xs bg-white"
                   >
                     <option value={2}>2 Contact Hours / Week</option>
                     <option value={3}>3 Contact Hours / Week (Standard)</option>
@@ -1331,14 +1563,14 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
                   </select>
                 </div>
 
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-[#171717]">
-                    Default Weekly Contact Hours (Laboratory Course)
+                <div className="space-y-1">
+                  <label className="text-[11px] font-semibold text-[#171717]">
+                    Standard Laboratory Course Contact Hours / Week
                   </label>
                   <select
                     value={defaultLabHoursPerWeek}
                     onChange={e => setDefaultLabHoursPerWeek(Number(e.target.value))}
-                    className="input-field text-xs bg-white"
+                    className="input-field h-8 text-xs bg-white"
                   >
                     <option value={2}>2 Lab Hours / Week</option>
                     <option value={3}>3 Lab Hours / Week (Standard)</option>
@@ -1346,32 +1578,16 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
                   </select>
                 </div>
               </div>
-            </div>
-          )}
 
-          {/* =========================================================
-              STEP 3: Break Structures & Protected Windows
-             ========================================================= */}
-          {activeStep === 3 && (
-            <div className="space-y-5">
-              <div>
-                <h3 className="font-serif-editorial text-lg text-[#171717] font-semibold">
-                  4. Break Structures &amp; Protected Institutional Windows
-                </h3>
-                <p className="text-xs text-[#77766F] mt-0.5">
-                  Configure short inter-class transition breaks, midday lunch windows, Friday afternoon shifts, and custom institutional breaks.
-                </p>
-              </div>
-
-              {/* 1. Short Inter-Class Break */}
-              <div className="p-4 rounded-xl border border-[#E4E2DA] bg-[#F7F6EF]/50 space-y-3">
+              {/* 2. Short Inter-Class Break Policy */}
+              <div className="p-4 rounded-xl border border-[#E4E2DA] bg-white space-y-3">
                 <div className="flex items-center justify-between">
                   <div>
                     <div className="text-xs font-semibold text-[#171717]">
-                      Short Inter-Class Transition Break
+                      Short Inter-Class Transition Break Policy
                     </div>
                     <div className="text-[11px] text-[#77766F]">
-                      Buffer time between consecutive lecture periods for room transitions
+                      Passing buffer between consecutive lecture slots
                     </div>
                   </div>
                   <input
@@ -1389,7 +1605,7 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
                 {shortBreakEnabled && (
                   <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-[#E4E2DA]">
                     <div className="flex items-center gap-2">
-                      <span className="text-[11px] text-[#77766F]">Transition Duration:</span>
+                      <span className="text-[11px] text-[#77766F]">Break Minutes:</span>
                       {[5, 10, 15, 20].map(m => (
                         <button
                           key={m}
@@ -1398,10 +1614,10 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
                           className={`px-2.5 py-1 rounded-lg text-xs font-mono-tabular border cursor-pointer ${
                             shortBreakMinutes === m
                               ? 'bg-[#171717] text-white border-[#171717]'
-                              : 'bg-white text-[#57564F] border-[#E4E2DA]'
+                              : 'bg-[#F7F6EF] text-[#57564F] border-[#E4E2DA]'
                           }`}
                         >
-                          {m} mins
+                          {m}m
                         </button>
                       ))}
                     </div>
@@ -1413,21 +1629,21 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
                         onChange={e => setIncludeBreakAfterLastSlot(e.target.checked)}
                         className="w-3.5 h-3.5 accent-[#171717]"
                       />
-                      <span>Include break after final slot before lunch/closing</span>
+                      <span>Include transition break after final period</span>
                     </label>
                   </div>
                 )}
               </div>
 
-              {/* 2. Midday Lunch & Rest Break */}
-              <div className="p-4 rounded-xl border border-[#E4E2DA] bg-[#F7F6EF]/50 space-y-3">
+              {/* 3. Midday Lunch Break Policy */}
+              <div className="p-4 rounded-xl border border-[#E4E2DA] bg-white space-y-3">
                 <div className="flex items-center justify-between">
                   <div>
                     <div className="text-xs font-semibold text-[#171717]">
-                      University Midday / Lunch Break Window
+                      University Midday / Lunch Break Policy
                     </div>
                     <div className="text-[11px] text-[#77766F]">
-                      Protected midday window across all departments where no lectures or labs are placed
+                      Protected university-wide midday window where no lectures or labs can overlap
                     </div>
                   </div>
                   <input
@@ -1441,14 +1657,14 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
                 {middayBreakEnabled && (
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-[#E4E2DA]">
                     <div className="space-y-1">
-                      <label className="text-[11px] text-[#77766F]">Placement Mode</label>
+                      <label className="text-[11px] text-[#77766F]">Break Mode</label>
                       <select
                         value={middayBreakMode}
                         onChange={e => setMiddayBreakMode(e.target.value as 'fixed' | 'auto')}
                         className="input-field h-8 text-xs bg-white"
                       >
                         <option value="fixed">Fixed Start Time</option>
-                        <option value="auto">Auto-Center After Morning Slots</option>
+                        <option value="auto">Auto-Center Midday</option>
                       </select>
                     </div>
                     <div className="space-y-1">
@@ -1478,120 +1694,89 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
                 )}
               </div>
 
-              {/* 3. Friday Afternoon Shift & Custom Protected Breaks */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="p-3.5 rounded-xl border border-[#E4E2DA] bg-white space-y-2.5">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="text-xs font-semibold text-[#171717]">
-                        Friday Extended Midday / Prayer Shift
-                      </div>
-                      <div className="text-[10.5px] text-[#77766F]">
-                        Shifts Friday afternoon session start time
-                      </div>
-                    </div>
-                    <input
-                      type="checkbox"
-                      checked={fridayAfternoonShiftEnabled}
-                      onChange={e => setFridayAfternoonShiftEnabled(e.target.checked)}
-                      className="w-4 h-4 accent-[#171717]"
-                    />
-                  </div>
-                  {fridayAfternoonShiftEnabled && (
-                    <div className="flex items-center justify-between pt-1">
-                      <span className="text-[11px] text-[#57564F]">Friday Afternoon Start:</span>
-                      <input
-                        type="time"
-                        value={fridayAfternoonStartTime}
-                        onChange={e => setFridayAfternoonStartTime(e.target.value)}
-                        className="input-field h-8 w-28 text-xs font-mono-tabular"
-                      />
-                    </div>
-                  )}
+              {/* 4. Additional Custom Institutional Breaks */}
+              <div className="p-3.5 rounded-xl border border-[#E4E2DA] bg-[#F7F6EF]/50 space-y-2.5">
+                <div className="text-xs font-semibold text-[#171717]">
+                  Additional Protected Break Windows ({customBreaks.length})
                 </div>
-
-                {/* Add Custom Named Break Window */}
-                <div className="p-3.5 rounded-xl border border-[#E4E2DA] bg-white space-y-2">
-                  <div className="text-xs font-semibold text-[#171717]">
-                    Additional Institutional Break Windows ({customBreaks.length})
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <input
-                      type="text"
-                      placeholder="e.g. Convocation / Assembly Hour"
-                      value={newBreakName}
-                      onChange={e => setNewBreakName(e.target.value)}
-                      className="input-field h-8 text-xs flex-1"
-                    />
-                    <input
-                      type="time"
-                      value={newBreakStart}
-                      onChange={e => setNewBreakStart(e.target.value)}
-                      className="input-field h-8 w-22 text-xs font-mono-tabular"
-                    />
-                    <input
-                      type="time"
-                      value={newBreakEnd}
-                      onChange={e => setNewBreakEnd(e.target.value)}
-                      className="input-field h-8 w-22 text-xs font-mono-tabular"
-                    />
+                <div className="flex flex-wrap items-center gap-2">
+                  <input
+                    type="text"
+                    placeholder="Break Name (e.g. Convocation / Tea Break)"
+                    value={newBreakName}
+                    onChange={e => setNewBreakName(e.target.value)}
+                    className="input-field h-8 text-xs flex-1 min-w-[160px] bg-white"
+                  />
+                  <input
+                    type="time"
+                    value={newBreakStart}
+                    onChange={e => setNewBreakStart(e.target.value)}
+                    className="input-field h-8 w-24 text-xs font-mono-tabular bg-white"
+                  />
+                  <input
+                    type="time"
+                    value={newBreakEnd}
+                    onChange={e => setNewBreakEnd(e.target.value)}
+                    className="input-field h-8 w-24 text-xs font-mono-tabular bg-white"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAddCustomBreak}
+                    disabled={!newBreakName.trim()}
+                    className="btn-primary h-8 px-3 text-xs"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Add Break</span>
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-1">
+                  {workingDays.map(d => (
                     <button
+                      key={d}
                       type="button"
-                      onClick={handleAddCustomBreak}
-                      disabled={!newBreakName.trim()}
-                      className="btn-primary h-8 px-2.5 text-xs"
+                      onClick={() => toggleNewBreakDay(d)}
+                      className={`px-2 py-0.5 rounded text-[10px] font-mono-tabular cursor-pointer ${
+                        newBreakDays.includes(d)
+                          ? 'bg-[#171717] text-white'
+                          : 'bg-white text-[#77766F] border border-[#E4E2DA]'
+                      }`}
                     >
-                      <Plus className="w-3.5 h-3.5" />
+                      {d}
                     </button>
-                  </div>
-                  <div className="flex flex-wrap gap-1">
-                    {workingDays.map(d => (
-                      <button
-                        key={d}
-                        type="button"
-                        onClick={() => toggleNewBreakDay(d)}
-                        className={`px-1.5 py-0.5 rounded text-[10px] font-mono-tabular cursor-pointer ${
-                          newBreakDays.includes(d)
-                            ? 'bg-[#171717] text-white'
-                            : 'bg-[#F7F6EF] text-[#77766F]'
-                        }`}
+                  ))}
+                </div>
+                {customBreaks.length > 0 && (
+                  <div className="space-y-1 pt-1">
+                    {customBreaks.map((cb, idx) => (
+                      <div
+                        key={cb.id}
+                        className="px-2.5 py-1.5 rounded-lg bg-white border border-[#E4E2DA] flex items-center justify-between text-xs"
                       >
-                        {d}
-                      </button>
+                        <span>
+                          <strong>{cb.name}</strong> · {cb.startTime}–{cb.endTime} ({cb.days.join(', ')})
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setCustomBreaks(customBreaks.filter((_, i) => i !== idx))}
+                          className="text-[#77766F] hover:text-red-600 cursor-pointer"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     ))}
                   </div>
-                  {customBreaks.length > 0 && (
-                    <div className="space-y-1 pt-1">
-                      {customBreaks.map((cb, idx) => (
-                        <div
-                          key={cb.id}
-                          className="px-2.5 py-1 rounded-lg bg-[#F7F6EF] flex items-center justify-between text-[11px]"
-                        >
-                          <span>
-                            <strong>{cb.name}</strong> ({cb.startTime}–{cb.endTime} · {cb.days.join(', ')})
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => setCustomBreaks(customBreaks.filter((_, i) => i !== idx))}
-                            className="text-[#77766F] hover:text-red-600 cursor-pointer"
-                          >
-                            <Trash2 className="w-3 h-3" />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                )}
               </div>
 
-              {/* Dynamic Computed Schedule Slots Preview */}
+              {/* Live Generated Period Slots Preview */}
               <div className="p-3.5 rounded-xl bg-[#B7F77C]/25 border border-[#98DF58] space-y-2">
                 <div className="flex items-center justify-between text-xs text-[#171717]">
                   <span className="font-semibold">
-                    Live Generated Daily Period Grid ({computedPreview.slots.length} Slots · {computedPreview.continuousLabBlocks.length} Lab Windows)
+                    Computed Schedule Grid ({computedPreview.slots.length} Lecture Slots ·{' '}
+                    {computedPreview.continuousLabBlocks.length} Continuous Lab Blocks)
                   </span>
                   <span className="font-mono-tabular text-[11px]">
-                    {computedPreview.operatingHoursLabel}
+                    {computedPreview.summaryText}
                   </span>
                 </div>
                 <div className="flex flex-wrap gap-1.5">
@@ -1609,223 +1794,164 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
           )}
 
           {/* =========================================================
-              STEP 4: Academic Structure & Departments
+              SCREEN 5: Academic Catalog & Global Store Persistence
              ========================================================= */}
           {activeStep === 4 && (
             <div className="space-y-5">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 pb-3 border-b border-[#E4E2DA]">
                 <div>
                   <h3 className="font-serif-editorial text-lg text-[#171717] font-semibold">
-                    5. Academic Structure &amp; Departments
+                    Screen 5: Academic Catalog &amp; Global Store Persistence
                   </h3>
                   <p className="text-xs text-[#77766F] mt-0.5">
-                    Define faculties, degree programs, and initial student cohorts, or bulk import via CSV.
+                    Review your 4 core configuration layers, optionally customize or CSV-import departments/rooms/courses, and persist globally to <code>institutionalStore</code>.
                   </p>
                 </div>
                 <button
                   type="button"
                   onClick={() => setShowImportWizard(true)}
-                  className="btn-secondary h-8 px-3 text-xs inline-flex items-center gap-1.5"
+                  className="btn-secondary h-8 px-3 text-xs inline-flex items-center gap-1.5 shrink-0"
                 >
                   <Upload className="w-3.5 h-3.5" />
-                  <span>Bulk Import via CSV</span>
+                  <span>Bulk CSV / Excel Import</span>
                 </button>
               </div>
 
-              <div className="space-y-2">
-                {departments.map((d, i) => (
-                  <div
-                    key={d.code}
-                    className="p-3 rounded-xl border border-[#E4E2DA] bg-[#F7F6EF]/40 flex items-center justify-between"
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <span className="w-6 h-6 rounded-md bg-[#171717] text-white text-[10px] font-mono-tabular font-bold flex items-center justify-center">
-                        {d.code}
-                      </span>
-                      <div>
-                        <div className="text-xs font-semibold text-[#171717]">{d.name}</div>
-                        <div className="text-[11px] text-[#77766F]">{d.school}</div>
-                      </div>
-                    </div>
-                    {departments.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => setDepartments(departments.filter((_, idx) => idx !== i))}
-                        className="text-[#77766F] hover:text-red-600 p-1 cursor-pointer"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    )}
+              {/* 4-Step Configuration Audit Summary Cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                <div className="p-3 rounded-xl border border-[#E4E2DA] bg-[#F7F6EF]">
+                  <div className="text-[10.5px] font-semibold text-[#77766F]">
+                    1. Institution Profile
                   </div>
-                ))}
-              </div>
-
-              <div className="p-3 rounded-xl border border-[#E4E2DA] bg-white flex flex-wrap items-center gap-2">
-                <input
-                  type="text"
-                  placeholder="Department Name (e.g. Mechanical Engineering)"
-                  value={newDeptName}
-                  onChange={e => setNewDeptName(e.target.value)}
-                  className="input-field text-xs flex-1 min-w-[200px]"
-                />
-                <input
-                  type="text"
-                  placeholder="Code (ME)"
-                  value={newDeptCode}
-                  onChange={e => setNewDeptCode(e.target.value)}
-                  className="input-field text-xs w-24 font-mono-tabular uppercase"
-                />
-                <button
-                  type="button"
-                  onClick={handleAddDept}
-                  disabled={!newDeptName.trim() || !newDeptCode.trim()}
-                  className="btn-primary h-9 px-3 text-xs inline-flex items-center gap-1"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>Add Department</span>
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* =========================================================
-              STEP 5: Campus Facilities, Curriculum & Faculty
-             ========================================================= */}
-          {activeStep === 5 && (
-            <div className="space-y-5">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="font-serif-editorial text-lg text-[#171717] font-semibold">
-                    6. Campus Facilities, Course Catalog &amp; Faculty
-                  </h3>
-                  <p className="text-xs text-[#77766F] mt-0.5">
-                    Configure classrooms, laboratories, initial courses, and instructors.
-                  </p>
+                  <div className="font-semibold text-xs text-[#171717] mt-0.5 truncate">
+                    {name || 'Unnamed'} ({code || 'UNIV'})
+                  </div>
+                  <div className="text-[10.5px] text-[#57564F] truncate">
+                    {campusName} · {timezone}
+                  </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setShowImportWizard(true)}
-                  className="btn-secondary h-8 px-3 text-xs inline-flex items-center gap-1.5"
-                >
-                  <Upload className="w-3.5 h-3.5" />
-                  <span>Bulk CSV Import</span>
-                </button>
-              </div>
 
-              {/* Rooms Section */}
-              <div className="space-y-2">
-                <div className="text-xs font-semibold text-[#171717]">
-                  Classrooms &amp; Laboratories ({rooms.length})
+                <div className="p-3 rounded-xl border border-[#E4E2DA] bg-[#F7F6EF]">
+                  <div className="text-[10.5px] font-semibold text-[#77766F]">
+                    2. Academic Calendar
+                  </div>
+                  <div className="font-mono-tabular font-bold text-xs text-[#171717] mt-0.5">
+                    {academicYear} · {terms.length} Terms
+                  </div>
+                  <div className="text-[10.5px] text-[#57564F] truncate">
+                    Active: {activeTermObj?.code} ({activeTermObj?.weeksCount}w)
+                  </div>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                  {rooms.map((r, i) => (
-                    <div
-                      key={r.code}
-                      className="p-2.5 rounded-xl border border-[#E4E2DA] bg-[#F7F6EF]/50 flex items-center justify-between"
-                    >
-                      <div>
-                        <div className="text-xs font-mono-tabular font-bold text-[#171717]">
-                          {r.code}
-                        </div>
-                        <div className="text-[11px] text-[#77766F]">
-                          {r.type === 'lab' ? 'Laboratory' : 'Lecture Hall'} · {r.capacity} Seats
-                        </div>
-                      </div>
-                      {rooms.length > 1 && (
-                        <button
-                          type="button"
-                          onClick={() => setRooms(rooms.filter((_, idx) => idx !== i))}
-                          className="text-[#77766F] hover:text-red-600 p-1 cursor-pointer"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      )}
-                    </div>
-                  ))}
+
+                <div className="p-3 rounded-xl border border-[#E4E2DA] bg-[#F7F6EF]">
+                  <div className="text-[10.5px] font-semibold text-[#77766F]">
+                    3. Operating Hours
+                  </div>
+                  <div className="font-mono-tabular font-bold text-xs text-[#171717] mt-0.5">
+                    {dayStartTime} – {dayEndTime}
+                  </div>
+                  <div className="text-[10.5px] text-[#57564F] truncate">
+                    {workingDays.length} Days ({workingDays.join(', ')})
+                  </div>
                 </div>
-                <div className="flex flex-wrap items-center gap-2 pt-1">
-                  <input
-                    type="text"
-                    placeholder="Room Code (HALL-101)"
-                    value={newRoomCode}
-                    onChange={e => setNewRoomCode(e.target.value)}
-                    className="input-field h-8 text-xs font-mono-tabular flex-1 min-w-[130px]"
-                  />
-                  <input
-                    type="number"
-                    placeholder="Seats"
-                    value={newRoomCap}
-                    onChange={e => setNewRoomCap(Number(e.target.value))}
-                    className="input-field h-8 text-xs w-20 font-mono-tabular"
-                  />
-                  <select
-                    value={newRoomType}
-                    onChange={e => setNewRoomType(e.target.value as 'lecture' | 'lab')}
-                    className="input-field h-8 text-xs w-28 bg-white"
-                  >
-                    <option value="lecture">Lecture Hall</option>
-                    <option value="lab">Laboratory</option>
-                  </select>
-                  <button
-                    type="button"
-                    onClick={handleAddRoom}
-                    disabled={!newRoomCode.trim()}
-                    className="btn-primary h-8 px-3 text-xs"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>Add Room</span>
-                  </button>
+
+                <div className="p-3 rounded-xl border border-[#E4E2DA] bg-[#F7F6EF]">
+                  <div className="text-[10.5px] font-semibold text-[#77766F]">
+                    4. Durations &amp; Breaks
+                  </div>
+                  <div className="font-mono-tabular font-bold text-xs text-[#171717] mt-0.5">
+                    {periodLengthMinutes}m Lecture · {computedPreview.labDurationHoursLabel} Lab
+                  </div>
+                  <div className="text-[10.5px] text-[#57564F] truncate">
+                    {shortBreakEnabled ? `${shortBreakMinutes}m Short` : '0m Short'} ·{' '}
+                    {middayBreakEnabled ? `${middayBreakDurationMinutes}m Lunch` : 'No Lunch'}
+                  </div>
                 </div>
               </div>
 
-              {/* Courses & Faculty Grid */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 border-t border-[#E4E2DA]">
-                {/* Courses Column */}
-                <div className="space-y-2 border border-[#E4E2DA] p-3 rounded-xl bg-[#F7F6EF]/30">
+              {/* Quick Catalog Editors (Departments, Rooms, Courses, Faculty) */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Departments & Rooms */}
+                <div className="p-3.5 rounded-xl border border-[#E4E2DA] bg-white space-y-3">
                   <div className="text-xs font-semibold text-[#171717]">
-                    Course Catalog ({courses.length})
+                    Departments ({departments.length}) &amp; Rooms ({rooms.length})
                   </div>
-                  <div className="space-y-1.5 max-h-40 overflow-y-auto">
-                    {courses.map((c, idx) => (
-                      <div
-                        key={c.code}
-                        className="p-2 rounded-lg bg-white border border-[#E4E2DA] flex items-center justify-between text-xs"
-                      >
-                        <div>
-                          <div className="font-mono-tabular font-bold text-[#171717]">{c.code}</div>
-                          <div className="text-[11px] text-[#77766F] truncate">{c.title}</div>
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-[10px] font-mono-tabular px-1.5 py-0.5 rounded bg-[#F7F6EF]">
-                            {c.isLab ? `Lab (${defaultLabHoursPerWeek}h)` : `${c.cr} Cr (${defaultLectureHoursPerWeek}h)`}
-                          </span>
-                          {courses.length > 1 && (
-                            <button
-                              type="button"
-                              onClick={() => setCourses(courses.filter((_, i) => i !== idx))}
-                              className="text-[#77766F] hover:text-red-600 cursor-pointer"
-                            >
-                              <Trash2 className="w-3 h-3" />
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="flex items-center gap-1.5 pt-1">
+                  <div className="flex items-center gap-1.5">
                     <input
                       type="text"
-                      placeholder="Code (CS-202)"
+                      placeholder="Dept Name"
+                      value={newDeptName}
+                      onChange={e => setNewDeptName(e.target.value)}
+                      className="input-field h-8 text-xs flex-1"
+                    />
+                    <input
+                      type="text"
+                      placeholder="Code"
+                      value={newDeptCode}
+                      onChange={e => setNewDeptCode(e.target.value)}
+                      className="input-field h-8 text-xs w-18 font-mono-tabular uppercase"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleAddDept}
+                      disabled={!newDeptName.trim() || !newDeptCode.trim()}
+                      className="btn-secondary h-8 px-2.5 text-xs"
+                    >
+                      + Dept
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="text"
+                      placeholder="Room Code (HALL-101)"
+                      value={newRoomCode}
+                      onChange={e => setNewRoomCode(e.target.value)}
+                      className="input-field h-8 text-xs flex-1 font-mono-tabular"
+                    />
+                    <input
+                      type="number"
+                      value={newRoomCap}
+                      onChange={e => setNewRoomCap(Number(e.target.value))}
+                      className="input-field h-8 text-xs w-16 font-mono-tabular"
+                    />
+                    <select
+                      value={newRoomType}
+                      onChange={e => setNewRoomType(e.target.value as 'lecture' | 'lab')}
+                      className="input-field h-8 text-xs w-24 bg-white"
+                    >
+                      <option value="lecture">Lecture</option>
+                      <option value="lab">Lab</option>
+                    </select>
+                    <button
+                      type="button"
+                      onClick={handleAddRoom}
+                      disabled={!newRoomCode.trim()}
+                      className="btn-secondary h-8 px-2.5 text-xs"
+                    >
+                      + Room
+                    </button>
+                  </div>
+                </div>
+
+                {/* Courses & Faculty */}
+                <div className="p-3.5 rounded-xl border border-[#E4E2DA] bg-white space-y-3">
+                  <div className="text-xs font-semibold text-[#171717]">
+                    Courses ({courses.length}) &amp; Instructors ({instructors.length})
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="text"
+                      placeholder="Code"
                       value={newCourseCode}
                       onChange={e => setNewCourseCode(e.target.value)}
-                      className="input-field h-8 text-xs w-24 font-mono-tabular uppercase bg-white"
+                      className="input-field h-8 text-xs w-20 font-mono-tabular uppercase"
                     />
                     <input
                       type="text"
                       placeholder="Course Title"
                       value={newCourseTitle}
                       onChange={e => setNewCourseTitle(e.target.value)}
-                      className="input-field h-8 text-xs flex-1 bg-white"
+                      className="input-field h-8 text-xs flex-1"
                     />
                     <label className="text-[10.5px] flex items-center gap-1 cursor-pointer">
                       <input
@@ -1839,123 +1965,45 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
                       type="button"
                       onClick={handleAddCourse}
                       disabled={!newCourseCode.trim() || !newCourseTitle.trim()}
-                      className="btn-primary h-8 px-2.5 text-xs"
+                      className="btn-secondary h-8 px-2.5 text-xs"
                     >
-                      <Plus className="w-3.5 h-3.5" />
+                      + Course
                     </button>
                   </div>
-                </div>
-
-                {/* Faculty Column */}
-                <div className="space-y-2 border border-[#E4E2DA] p-3 rounded-xl bg-[#F7F6EF]/30">
-                  <div className="text-xs font-semibold text-[#171717]">
-                    Faculty Roster ({instructors.length})
-                  </div>
-                  <div className="space-y-1.5 max-h-40 overflow-y-auto">
-                    {instructors.map((inst, idx) => (
-                      <div
-                        key={inst.email}
-                        className="p-2 rounded-lg bg-white border border-[#E4E2DA] flex items-center justify-between text-xs"
-                      >
-                        <div>
-                          <div className="font-semibold text-[#171717]">{inst.name}</div>
-                          <div className="text-[11px] text-[#77766F] truncate">{inst.email}</div>
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#B8EEEE]/40 text-[#171717]">
-                            {inst.title}
-                          </span>
-                          {instructors.length > 1 && (
-                            <button
-                              type="button"
-                              onClick={() => setInstructors(instructors.filter((_, i) => i !== idx))}
-                              className="text-[#77766F] hover:text-red-600 cursor-pointer"
-                            >
-                              <Trash2 className="w-3 h-3" />
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="flex items-center gap-1.5 pt-1">
+                  <div className="flex items-center gap-1.5">
                     <input
                       type="text"
-                      placeholder="Dr. Alan Grant"
+                      placeholder="Instructor Name"
                       value={newInstName}
                       onChange={e => setNewInstName(e.target.value)}
-                      className="input-field h-8 text-xs flex-1 bg-white"
+                      className="input-field h-8 text-xs flex-1"
                     />
                     <input
                       type="email"
-                      placeholder="grant@univ.edu"
+                      placeholder="email@univ.edu"
                       value={newInstEmail}
                       onChange={e => setNewInstEmail(e.target.value)}
-                      className="input-field h-8 text-xs flex-1 bg-white"
+                      className="input-field h-8 text-xs flex-1"
                     />
                     <button
                       type="button"
                       onClick={handleAddInstructor}
                       disabled={!newInstName.trim() || !newInstEmail.trim()}
-                      className="btn-primary h-8 px-2.5 text-xs"
+                      className="btn-secondary h-8 px-2.5 text-xs"
                     >
-                      <Plus className="w-3.5 h-3.5" />
+                      + Faculty
                     </button>
                   </div>
                 </div>
               </div>
-            </div>
-          )}
 
-          {/* =========================================================
-              STEP 6: Review, Save to institutionalStore & Synthesize
-             ========================================================= */}
-          {activeStep === 6 && (
-            <div className="space-y-5 py-2">
-              <div className="text-center space-y-2">
-                <div className="w-12 h-12 rounded-2xl bg-[#171717] text-white flex items-center justify-center mx-auto shadow-md">
-                  <Sparkles className="w-6 h-6 text-[#B7F77C]" />
-                </div>
-                <h3 className="font-serif-editorial text-2xl text-[#171717]">
-                  Save Configuration for {name || 'Your University'}
-                </h3>
-                <p className="text-xs text-[#77766F] max-w-lg mx-auto">
-                  Review your custom academic calendar, operating hours, course durations, and break structures before saving to institutionalStore and generating the timetable.
-                </p>
-              </div>
-
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 max-w-2xl mx-auto">
-                <div className="p-3 rounded-xl border border-[#E4E2DA] bg-[#F7F6EF]">
-                  <div className="text-[10.5px] text-[#77766F]">Academic Calendar</div>
-                  <div className="font-mono-tabular font-bold text-xs text-[#171717] mt-0.5">
-                    {terms.length} Terms ({activeTermObj?.code})
-                  </div>
-                </div>
-                <div className="p-3 rounded-xl border border-[#E4E2DA] bg-[#F7F6EF]">
-                  <div className="text-[10.5px] text-[#77766F]">Operating Window</div>
-                  <div className="font-mono-tabular font-bold text-xs text-[#171717] mt-0.5">
-                    {workingDays.length}d · {dayStartTime}–{dayEndTime}
-                  </div>
-                </div>
-                <div className="p-3 rounded-xl border border-[#E4E2DA] bg-[#F7F6EF]">
-                  <div className="text-[10.5px] text-[#77766F]">Course &amp; Lab Durations</div>
-                  <div className="font-mono-tabular font-bold text-xs text-[#171717] mt-0.5">
-                    {periodLengthMinutes}m Class · {computedPreview.labDurationHoursLabel} Lab
-                  </div>
-                </div>
-                <div className="p-3 rounded-xl border border-[#E4E2DA] bg-[#F7F6EF]">
-                  <div className="text-[10.5px] text-[#77766F]">Break Structures</div>
-                  <div className="font-mono-tabular font-bold text-xs text-[#171717] mt-0.5">
-                    {shortBreakEnabled ? `${shortBreakMinutes}m Short` : '0m'} ·{' '}
-                    {middayBreakEnabled ? `${middayBreakDurationMinutes}m Lunch` : 'No Lunch'}
-                  </div>
-                </div>
-              </div>
-
-              <div className="p-4 rounded-xl bg-[#B7F77C]/30 border border-[#98DF58] text-xs text-[#171717] max-w-xl mx-auto flex items-start gap-2.5">
+              <div className="p-4 rounded-xl bg-[#B7F77C]/30 border border-[#98DF58] text-xs text-[#171717] flex items-start gap-2.5">
                 <CheckCircle2 className="w-4 h-4 text-[#2E7D32] shrink-0 mt-0.5" />
                 <div>
-                  <strong>Zero Hardcoded Assumptions:</strong> Saving this wizard writes your custom academic calendar ({terms.map(t => t.code).join(', ')}), {computedPreview.slots.length} daily lecture slots ({periodLengthMinutes}m each), {computedPreview.continuousLabBlocks.length} continuous lab windows, and {customBreaks.length + (middayBreakEnabled ? 1 : 0)} protected break windows directly into <code>institutionalStore</code>.
+                  <strong>Direct Global Store Persistence:</strong> Clicking{' '}
+                  <strong>Save &amp; Persist Configuration</strong> commits your Institution Profile,{' '}
+                  {terms.length} Academic Calendar Terms, {workingDays.length}-Day Operating Hours,{' '}
+                  {periodLengthMinutes}m Lecture / {computedPreview.labDurationHoursLabel} Lab Session Durations, and Break Policies directly to <code>institutionalStore</code> and synthesizes the active timetable.
                 </div>
               </div>
             </div>
@@ -1969,37 +2017,23 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
             disabled={activeStep === 0}
             onClick={() => {
               setOnboardingError(null);
+              setStepSavedToast(null);
               setActiveStep(Math.max(0, activeStep - 1));
             }}
             className="btn-secondary h-9 px-4 text-xs font-semibold inline-flex items-center gap-1.5"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
-            <span>Previous Step</span>
+            <span>Previous Screen</span>
           </button>
 
           <div className="flex items-center gap-2">
             {activeStep < steps.length - 1 ? (
               <button
                 type="button"
-                onClick={() => {
-                  if (activeStep === 0 && (!name.trim() || !code.trim())) {
-                    setOnboardingError('Please enter a university name and acronym code to continue.');
-                    return;
-                  }
-                  if (activeStep === 1 && terms.length === 0) {
-                    setOnboardingError('Please define at least one academic term or semester.');
-                    return;
-                  }
-                  if ((activeStep === 2 || activeStep === 3) && !timingValidation.valid) {
-                    setOnboardingError(timingValidation.errors[0]);
-                    return;
-                  }
-                  setOnboardingError(null);
-                  setActiveStep(activeStep + 1);
-                }}
+                onClick={handleAdvanceStep}
                 className="btn-primary h-9 px-5 text-xs font-semibold inline-flex items-center gap-1.5"
               >
-                <span>Continue</span>
+                <span>Save &amp; Continue</span>
                 <ArrowRight className="w-3.5 h-3.5" />
               </button>
             ) : (
@@ -2012,8 +2046,8 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
                 <Sparkles className="w-4 h-4" />
                 <span>
                   {isSubmitting
-                    ? 'Saving & Synthesizing...'
-                    : 'Save Configuration & Generate Timetable'}
+                    ? 'Persisting to Store...'
+                    : 'Save & Persist Configuration'}
                 </span>
               </button>
             )}
