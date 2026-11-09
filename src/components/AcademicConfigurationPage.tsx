@@ -25,6 +25,7 @@ import {
   Upload
 } from 'lucide-react';
 import { DataImportWizard } from './DataImportWizard';
+import { UniversityOnboardingModal } from './UniversityOnboardingModal';
 
 interface AcademicConfigurationPageProps {
   onNavigate: (route: RouteType) => void;
@@ -116,6 +117,7 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
   const [statusNotice, setStatusNotice] = useState<string | null>(null);
   const [showSlotTimeline, setShowSlotTimeline] = useState<boolean>(false);
   const [showImportWizard, setShowImportWizard] = useState<boolean>(false);
+  const [showOnboardingModal, setShowOnboardingModal] = useState<boolean>(false);
 
   // Sync local state when saved timeStructure updates or resets
   useEffect(() => {
@@ -353,6 +355,15 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+          <button
+            type="button"
+            onClick={() => setShowOnboardingModal(true)}
+            className="btn-secondary text-xs h-10 px-4"
+          >
+            <Sliders className="w-3.5 h-3.5" />
+            <span>Multi-Step Setup Wizard</span>
+          </button>
+
           <button
             type="button"
             onClick={() => setShowImportWizard(true)}
@@ -1171,6 +1182,17 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
           onSuccess={summary => {
             setShowImportWizard(false);
             showToast(summary);
+          }}
+        />
+      )}
+
+      {showOnboardingModal && (
+        <UniversityOnboardingModal
+          existingInstitutionId={institutionalStore.getCurrentInstitutionId()}
+          onClose={() => setShowOnboardingModal(false)}
+          onCompleted={() => {
+            setShowOnboardingModal(false);
+            showToast('Saved custom academic calendar, operating hours, course durations, and break structures.');
           }}
         />
       )}

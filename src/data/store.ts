@@ -416,7 +416,11 @@ export const institutionalStore = {
     notifyListeners();
   },
 
-  registerNewInstitution(profile: InstitutionProfile, config: Partial<TimeStructure>): string {
+  registerNewInstitution(
+    profile: InstitutionProfile,
+    config: Partial<TimeStructure>,
+    customTerms?: AcademicTerm[]
+  ): string {
     const instId = profile.id || `inst-${(profile.code || 'univ').toLowerCase().replace(/[^a-z0-9]/g, '-')}-${Date.now().toString(36)}`;
     const fullProfile: InstitutionProfile = {
       ...profile,
@@ -451,34 +455,60 @@ export const institutionalStore = {
       }
     } catch {}
 
+    const resolvedTerms: AcademicTerm[] =
+      customTerms && customTerms.length > 0
+        ? customTerms.map((t, idx) => ({
+            ...t,
+            id: t.id || `term-${instId}-${idx + 1}`,
+            isSample: false,
+            is_sample: false
+          }))
+        : [
+            {
+              id: `term-${instId}-1`,
+              name: fullProfile.currentTermName || 'Fall Semester 2026',
+              code: 'TERM-2026-1',
+              startDate: '2026-09-01',
+              endDate: '2026-12-31',
+              status: 'active',
+              weeksCount: 16
+            }
+          ];
+
+    const defaultLunchBreak = computed.middayBreak.enabled
+      ? [
+          {
+            id: `break-${instId}-lunch`,
+            name: 'University Midday / Lunch Break',
+            startTime: computed.middayBreak.startTime24,
+            endTime: computed.middayBreak.endTime24,
+            days: computed.workingDays
+          }
+        ]
+      : [];
+
+    const customAdditionalBreaks = (config.breaks || []).filter(
+      b => b.id !== `break-${instId}-lunch` && b.id !== 'brk-lunch'
+    );
+
     const freshData: InstitutionalDataStore = {
       institutionProfile: fullProfile,
       selectedClassGroupId: '',
-      terms: [
-        {
-          id: `term-${instId}-1`,
-          name: 'Academic Term 2026',
-          code: 'TERM-2026',
-          startDate: '2026-09-01',
-          endDate: '2026-12-31',
-          status: 'active',
-          weeksCount: 16
-        }
-      ],
+      terms: resolvedTerms,
       campuses: [
         {
           id: `campus-${instId}-1`,
           name: fullProfile.campusName || 'Main Campus',
           code: `${fullProfile.code || 'MAIN'}-01`,
-          address: '450 University Boulevard'
+          address: `${fullProfile.name} Main Campus`
         }
       ],
       buildings: [
         {
           id: `bld-${instId}-1`,
           campusId: `campus-${instId}-1`,
-          name: 'Academic Hall',
-          code: 'AH-01',
+          name: 'Main Academic Complex',
+          code: `${fullProfile.code || 'AC'}-01`,
           floors: 3
         }
       ],
@@ -498,26 +528,16 @@ export const institutionalStore = {
         periodLengthMinutes: computed.periodLengthMinutes,
         shortBreakEnabled: computed.shortBreakEnabled,
         shortBreakMinutes: computed.shortBreakMinutes,
-        includeBreakAfterLastSlot: computed.includeBreakAfterLastSlot,
+        includeBreakAfterLastSlot: Boolean(config.includeBreakAfterLastSlot),
         middayBreakEnabled: computed.middayBreak.enabled,
         middayBreakMode: computed.middayBreak.mode,
         middayBreakStartTime: computed.middayBreak.startTime24,
         middayBreakDurationMinutes: computed.middayBreak.durationMinutes,
         labDurationMinutes: computed.labDurationMinutes,
-        fridayAfternoonShiftEnabled: false,
-        fridayAfternoonStartTime: '14:30',
+        fridayAfternoonShiftEnabled: Boolean(config.fridayAfternoonShiftEnabled),
+        fridayAfternoonStartTime: config.fridayAfternoonStartTime || '14:30',
         periods: computed.periods,
-        breaks: computed.middayBreak.enabled
-          ? [
-              {
-                id: `break-${instId}-lunch`,
-                name: 'University Lunch & Rest Break',
-                startTime: computed.middayBreak.startTime24,
-                endTime: computed.middayBreak.endTime24,
-                days: computed.workingDays
-              }
-            ]
-          : []
+        breaks: [...defaultLunchBreak, ...customAdditionalBreaks]
       },
       constraints: [
         {
@@ -550,8 +570,8 @@ export const institutionalStore = {
           userName: fullProfile.registrarName,
           action: 'create',
           entityType: 'term',
-          entityId: `term-${instId}-1`,
-          summary: `Initialized institutional configuration for ${fullProfile.name}.`
+          entityId: resolvedTerms[0]?.id || `term-${instId}-1`,
+          summary: `Initialized institutional configuration for ${fullProfile.name} (${computed.summaryText}).`
         }
       ],
       feedbackPolls: []
@@ -561,6 +581,15 @@ export const institutionalStore = {
     currentStore = freshData;
     notifyListeners();
     return instId;
+  },
+
+  setTerms(terms: AcademicTerm[]) {
+    currentStore = {
+      ...currentStore,
+      terms
+    };
+    this.addAuditLog('update', 'term', terms[0]?.id || 'terms', `Updated academic calendar (${terms.length} terms configured).`);
+    notifyListeners();
   },
 
   clearCatalogToCleanSlate() {
