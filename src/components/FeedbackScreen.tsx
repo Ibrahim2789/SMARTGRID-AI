@@ -699,12 +699,8 @@ export const FeedbackScreen: React.FC<FeedbackScreenProps> = ({ onNavigate }) =>
                 </p>
               </div>
 
-              {/* Merged Workload Equilibrium Status Indicator */}
+              {/* Action Control */}
               <div className="flex flex-wrap items-center gap-2.5 shrink-0">
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#E8F8E0] border border-[#B7E4A1] text-[11px] font-semibold text-[#1B5E20]">
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                  <span>Workload Equilibrium Verified · Max 6h/day</span>
-                </span>
                 <button
                   type="button"
                   onClick={() => onNavigate('setup')}
@@ -742,12 +738,7 @@ export const FeedbackScreen: React.FC<FeedbackScreenProps> = ({ onNavigate }) =>
                         {row.totalSessions} sessions
                       </td>
                       <td className="py-3 px-4 font-mono-tabular text-[#57564F]">
-                        <span className="px-2 py-0.5 rounded bg-[#B8EEEE]/60 text-[#171717] font-medium mr-1.5">
-                          {row.dayLectures} Lec
-                        </span>
-                        <span className="px-2 py-0.5 rounded bg-[#F2D8FA]/70 text-[#171717] font-medium">
-                          {row.dayLabs} Lab
-                        </span>
+                        {row.dayLectures} Lec · {row.dayLabs} Lab
                       </td>
                       <td className="py-3 px-4 font-mono-tabular text-[#57564F]">
                         {row.activeCohortsCount} cohorts
@@ -863,15 +854,10 @@ export const FeedbackScreen: React.FC<FeedbackScreenProps> = ({ onNavigate }) =>
                         <tr className="hover:bg-[#F7F6EF]/60 transition-colors">
                           <td className="py-3 px-5">
                             <div className="flex items-center gap-2.5">
-                              <span
-                                className={`font-mono-tabular font-bold px-2 py-0.5 rounded text-[11px] border ${
-                                  isLab
-                                    ? 'bg-[#F2D8FA]/70 border-[#DFB9EC] text-[#171717]'
-                                    : 'bg-[#B8EEEE]/70 border-[#95DFDF] text-[#171717]'
-                                }`}
-                              >
+                              <span className="font-mono-tabular font-bold text-[#171717]">
                                 {room.code}
                               </span>
+                              <span className="text-[#77766F]">—</span>
                               <span className="font-semibold text-[#171717]">{room.name}</span>
                             </div>
                           </td>

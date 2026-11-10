@@ -153,25 +153,24 @@ export const ClassDetailsModal: React.FC<ClassDetailsModalProps> = ({
         <div className="px-6 py-5 border-b border-[#E4E2DA] flex items-start justify-between bg-[#F7F6EF]">
           <div className="space-y-1.5">
             <div className="flex flex-wrap items-center gap-2 text-xs text-[#77766F]">
-              <span className="font-mono-tabular font-semibold px-2 py-0.5 rounded bg-[#B8EEEE] text-[#171717]">
+              <span className="font-mono-tabular font-semibold text-[#171717]">
                 {classItem.code}
               </span>
-              <span
-                className={`px-2 py-0.5 rounded border font-semibold ${
-                  isLab
-                    ? 'bg-[#F2D8FA] border-[#DFB9EC] text-[#171717]'
-                    : 'bg-white border-[#E4E2DA] text-[#171717]'
-                }`}
-              >
+              <span>·</span>
+              <span className="font-medium text-[#171717]">
                 {isLab
                   ? `Lab (${computedTiming.labDurationHoursLabel} Continuous / ${computedTiming.labDurationMinutes}m)`
                   : `Lecture (${computedTiming.periodLengthMinutes} Mins)`}
               </span>
+              <span>·</span>
               <span className="font-mono-tabular">{classItem.credits || 4} credits</span>
               {isLocked && (
-                <span className="px-2 py-0.5 rounded bg-[#E8D36B] text-[#171717] font-semibold inline-flex items-center gap-1">
-                  <Lock className="w-3 h-3" /> Pinned
-                </span>
+                <>
+                  <span>·</span>
+                  <span className="font-semibold text-[#171717] inline-flex items-center gap-1">
+                    <Lock className="w-3 h-3" /> Pinned
+                  </span>
+                </>
               )}
             </div>
             <h2 className="font-serif-editorial text-2xl text-[#171717]">
@@ -205,35 +204,27 @@ export const ClassDetailsModal: React.FC<ClassDetailsModalProps> = ({
             <div className="p-3.5 bg-[#F7F6EF] rounded-xl border border-[#E4E2DA] space-y-1">
               <div className="text-xs text-[#77766F] flex items-center gap-1.5">
                 <Clock className="w-3.5 h-3.5 text-[#171717]" />
-                <span>{isLab ? `Continuous ${computedTiming.labDurationHoursLabel} Lab Window` : 'Assigned Lecture Slot'}</span>
+                <span>{isLab ? `Continuous ${computedTiming.labDurationHoursLabel} Lab` : 'Scheduled Slot'}</span>
               </div>
               <div className="text-xs font-mono-tabular font-semibold text-[#171717]">
                 {classItem.day ? `${classItem.day} · ` : ''}{displayTimeWindow}
-              </div>
-              <div className="text-[10.5px] text-[#77766F]">
-                {isLab
-                  ? `${computedTiming.labSpanSlots} consecutive slots · No internal breaks`
-                  : `${computedTiming.periodLengthMinutes}-min lecture (${shortBreakSummary})`}
               </div>
             </div>
 
             <div className="p-3.5 bg-[#F7F6EF] rounded-xl border border-[#E4E2DA] space-y-1">
               <div className="text-xs text-[#77766F] flex items-center gap-1.5">
                 <MapPin className="w-3.5 h-3.5 text-[#171717]" />
-                <span>Campus Room / Lab</span>
+                <span>Assigned Room</span>
               </div>
               <div className="text-xs font-mono-tabular font-semibold text-[#171717]">
                 {classItem.room}
-              </div>
-              <div className="text-[10.5px] text-[#77766F]">
-                {isLab ? 'Certified Laboratory / Studio' : 'Academic Lecture Hall'}
               </div>
             </div>
 
             <div className="p-3.5 bg-[#F7F6EF] rounded-xl border border-[#E4E2DA] space-y-1">
               <div className="text-xs text-[#77766F] flex items-center gap-1.5">
                 <User className="w-3.5 h-3.5 text-[#171717]" />
-                <span>Faculty Instructor</span>
+                <span>Instructor</span>
               </div>
               <div className="text-xs font-semibold text-[#171717]">
                 {classItem.prof}
@@ -243,7 +234,7 @@ export const ClassDetailsModal: React.FC<ClassDetailsModalProps> = ({
             <div className="p-3.5 bg-[#F7F6EF] rounded-xl border border-[#E4E2DA] space-y-1">
               <div className="text-xs text-[#77766F] flex items-center gap-1.5">
                 <Users className="w-3.5 h-3.5 text-[#171717]" />
-                <span>Seat Utilization</span>
+                <span>Enrollment</span>
               </div>
               <div className="text-xs font-mono-tabular font-semibold text-[#171717]">
                 {classItem.enrolled || 38} / {classItem.capacity || 45} seats

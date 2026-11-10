@@ -40,6 +40,7 @@ import { computeAcademicScheduleConfig } from '../types/institutional';
 import { AuthenticatedVotingUser } from '../services/votingApi';
 import { UniversityOnboardingModal } from './UniversityOnboardingModal';
 import { DataImportWizard } from './DataImportWizard';
+import { GlobalSearch } from './GlobalSearch';
 
 interface AuthenticatedLayoutProps {
   activeRoute: RouteType;
@@ -617,7 +618,18 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
 
   const [isSidebarHovered, setIsSidebarHovered] = useState(false);
   const hoverTimeoutRef = useRef<number | null>(null);
-  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
+  // When opening the web app, the right sidebar options are collapsed except the first one (01. Workspace)
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>(() => ({
+    'group-academic': true,
+    'group-insights': true,
+    'group-community': true,
+    'group-system': true,
+    'group-student-account': true,
+    'group-br-voting': true,
+    'group-br-account': true,
+    'group-faculty-workload': true,
+    'group-faculty-account': true
+  }));
 
   const handleSidebarMouseEnter = () => {
     if (hoverTimeoutRef.current !== null) {
@@ -645,10 +657,13 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
   }, []);
 
   const toggleGroupCollapse = (groupId: string) => {
-    setCollapsedGroups(prev => ({
-      ...prev,
-      [groupId]: !prev[groupId]
-    }));
+    setCollapsedGroups(prev => {
+      const isCurrentlyCollapsed = prev[groupId] ?? true;
+      return {
+        ...prev,
+        [groupId]: !isCurrentlyCollapsed
+      };
+    });
   };
 
   const isRightSidebarExpanded = secondaryOpen || isSidebarHovered;
@@ -1067,19 +1082,8 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
                     </div>
                   </div>
 
-                  {/* Section 2: Quick Onboard & Import Actions */}
+                  {/* Section 2: Universal CSV Importer Action */}
                   <div className="pt-1.5 border-t border-[#333333] space-y-1">
-                    <button
-                      onClick={() => {
-                        setTermDropdownOpen(false);
-                        setShowOnboardingModal(true);
-                      }}
-                      className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg bg-[#2A2A2A] hover:bg-[#353535] text-[11px] text-[#B8EEEE] font-medium transition-colors cursor-pointer"
-                    >
-                      <PlusCircle className="w-3.5 h-3.5 shrink-0" />
-                      <span>+ Onboard New University</span>
-                    </button>
-
                     <button
                       onClick={() => {
                         setTermDropdownOpen(false);
@@ -1150,7 +1154,7 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
             >
               {navigationGroups.map((group, groupIdx) => {
                 const isCollapsible = groupIdx > 0;
-                const isGroupCollapsed = isCollapsible && Boolean(collapsedGroups[group.id]);
+                const isGroupCollapsed = isCollapsible && (collapsedGroups[group.id] ?? true);
 
                 return (
                   <div key={group.id} className="space-y-1">
@@ -1277,21 +1281,30 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
             </button>
             <SmartGridLogo variant="primary" theme="dark" size="xs" />
           </div>
-          {isAdminRole ? (
-            <button
-              onClick={() => onNavigate('generate')}
-              className="px-3 py-1.5 rounded-lg bg-[#B8EEEE] text-[#171717] text-xs font-semibold cursor-pointer"
-            >
-              Generate
-            </button>
-          ) : (
-            <button
-              onClick={onSignOut}
-              className="px-3 py-1.5 rounded-lg bg-[#292929] text-white text-xs font-semibold cursor-pointer"
-            >
-              Logout
-            </button>
-          )}
+          <div className="flex items-center gap-2">
+            {isAdminRole && (
+              <GlobalSearch
+                onNavigate={onNavigate}
+                onOpenSetupStep={openSetup}
+                variant="compact"
+              />
+            )}
+            {isAdminRole ? (
+              <button
+                onClick={() => onNavigate('generate')}
+                className="px-3 py-1.5 rounded-lg bg-[#B8EEEE] text-[#171717] text-xs font-semibold cursor-pointer"
+              >
+                Generate
+              </button>
+            ) : (
+              <button
+                onClick={onSignOut}
+                className="px-3 py-1.5 rounded-lg bg-[#292929] text-white text-xs font-semibold cursor-pointer"
+              >
+                Logout
+              </button>
+            )}
+          </div>
         </header>
 
         {/* Mobile Slide-Over Drawer */}
@@ -1317,7 +1330,7 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
 
                 {navigationGroups.map((group, groupIdx) => {
                   const isCollapsible = groupIdx > 0;
-                  const isGroupCollapsed = isCollapsible && Boolean(collapsedGroups[group.id]);
+                  const isGroupCollapsed = isCollapsible && (collapsedGroups[group.id] ?? true);
                   return (
                     <div key={group.id} className="space-y-1">
                       {isCollapsible ? (
@@ -1408,9 +1421,9 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
           </div>
         )}
 
-        {/* Main Background Top Bar with Collapse Sidebar Icon (Only on Main Background) */}
-        <div className="hidden md:flex items-center justify-between px-6 sm:px-10 pt-4 pb-1 shrink-0">
-          <div className="flex items-center gap-3">
+        {/* Main Background Top Bar with Collapse Sidebar Icon, Global Search, and Onboard/Import Actions */}
+        <div className="hidden md:flex items-center justify-between gap-4 px-6 sm:px-10 pt-4 pb-1 shrink-0">
+          <div className="flex items-center gap-3 shrink-0">
             <button
               type="button"
               onClick={handleToggleSidebar}
@@ -1438,27 +1451,21 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
             </button>
 
             {isAdminRole && (
-              <div className="flex items-center gap-2.5 text-xs">
-                <span className="text-[11px] font-semibold text-[#77766F] uppercase tracking-wider flex items-center gap-1.5">
-                  <Building2 className="w-3.5 h-3.5 text-[#171717]" />
-                  University Workspace:
-                </span>
+              <div className="flex items-center gap-2 text-xs">
                 <span className="font-semibold text-[#171717]">{institutionName}</span>
-                {(currentInstSummary as any)?.isDemoTemplate ? (
-                  <span className="px-2 py-0.5 rounded text-[10.5px] font-medium bg-[#E8D36B]/30 text-[#6B5A10] border border-[#E8D36B]/50">
-                    Sample Demo Template
-                  </span>
-                ) : (
-                  <span className="px-2 py-0.5 rounded text-[10.5px] font-medium bg-[#B7F77C]/30 text-[#2B5412] border border-[#B7F77C]/50">
-                    Configured ({activeTiming.workingDays.length} Days · {activeTiming.periodLengthMinutes}m Slots)
-                  </span>
-                )}
               </div>
             )}
           </div>
 
+          {/* Global Workspace Search Component */}
           {isAdminRole && (
-            <div className="flex items-center gap-2">
+            <div className="flex-1 max-w-md mx-auto flex justify-center">
+              <GlobalSearch onNavigate={onNavigate} onOpenSetupStep={openSetup} />
+            </div>
+          )}
+
+          {isAdminRole && (
+            <div className="flex items-center gap-2 shrink-0">
               <button
                 type="button"
                 onClick={() => setShowImportWizard(true)}
@@ -1467,16 +1474,6 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
               >
                 <Upload className="w-3.5 h-3.5 text-[#171717]" />
                 <span>Import Data (CSV)</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setShowOnboardingModal(true)}
-                className="px-2.5 py-1.5 rounded-lg bg-[#171717] hover:bg-[#2B2B2B] text-white text-xs font-medium flex items-center gap-1.5 cursor-pointer shadow-2xs"
-                title="Configure and Onboard a New University"
-              >
-                <PlusCircle className="w-3.5 h-3.5 text-[#B8EEEE]" />
-                <span>+ Onboard University</span>
               </button>
             </div>
           )}

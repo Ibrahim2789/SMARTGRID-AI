@@ -224,9 +224,32 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
   };
 
   // Interactive Drag-and-Drop and Slot Swap Logic
-  const handleDropOnSlot = (targetDay: string, targetPeriod: string) => {
+  const handleDropOnSlot = (targetDay: string, rawTargetPeriod: string) => {
     if (!draggedClassItem) return;
     setDragOverCellKey(null);
+
+    const isDraggedLab =
+      draggedClassItem.sessionType === 'Lab' ||
+      (draggedClassItem.spanSlots && draggedClassItem.spanSlots > 1);
+    let targetPeriod = rawTargetPeriod;
+
+    // If dragging a continuous Lab, ensure targetPeriod has enough consecutive slots in the same session to span its full duration
+    if (isDraggedLab) {
+      const desiredSpan = Math.max(
+        2,
+        draggedClassItem.spanSlots || computedTiming.labSpanSlots || 3
+      );
+      const targetSlotIdx = dynamicSlots.findIndex(s => s.period === rawTargetPeriod);
+      if (targetSlotIdx >= 0) {
+        const targetSession = dynamicSlots[targetSlotIdx].session;
+        const sessionSlots = dynamicSlots.filter(s => s.session === targetSession);
+        const posInSession = sessionSlots.findIndex(s => s.period === rawTargetPeriod);
+        if (posInSession >= 0 && posInSession + desiredSpan > sessionSlots.length) {
+          const clampedIndex = Math.max(0, sessionSlots.length - desiredSpan);
+          targetPeriod = sessionSlots[clampedIndex]?.period || rawTargetPeriod;
+        }
+      }
+    }
 
     // If dropped on the same slot, do nothing
     if (draggedClassItem.day === targetDay && draggedClassItem.time === targetPeriod) {
@@ -332,7 +355,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
   const handleSwapConflictingClass = () => {
     if (!conflictDialogData || !conflictDialogData.conflictingItem) return;
     const { sourceItem, conflictingItem } = conflictDialogData;
-    const res = institutionalStore.swapSectionSlots(sourceItem.id, conflictingItem.id);
+    institutionalStore.swapSectionSlots(sourceItem.id, conflictingItem.id);
     setConflictDialogData(null);
     setSweepNotice(`Swapped ${sourceItem.code} and ${conflictingItem.code}.`);
     setTimeout(() => setSweepNotice(null), 4000);
@@ -644,15 +667,6 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
     setShowExportMenu(false);
   };
 
-  const placedTotal = store.sections.filter(s => s.assignedSlot).length;
-  const activeTermsList = store.terms.filter(t => t.status === 'active');
-  const activeTerm = activeTermsList[0] || store.terms[0];
-  const activeSemestersLabel =
-    activeTermsList.length > 0
-      ? activeTermsList.map(t => t.name).join(' + ')
-      : activeTerm?.name || 'Configured Semester';
-  const configuredPolicy =
-    store.institutionProfile?.timetableManagementPolicy || 'whole_university';
   const currentInstructorObj = store.instructors.find(i => i.id === selectedInstructorId);
   const currentRoomObj = store.rooms.find(r => r.id === selectedRoomId);
   const visibleDays = calendarMode === 'day' ? [focusedDay] : days;
@@ -670,10 +684,6 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
     }
     return true;
   });
-  const activeLabCount = activeFilteredSections.filter(
-    s => s.sessionType === 'Lab' || (s.spanSlots && s.spanSlots > 1) || s.assignedSlot?.sessionType === 'Lab'
-  ).length;
-  const activeLectureCount = activeFilteredSections.length - activeLabCount;
 
   // Precompute Continuous Lab vertical spans (`rowSpan={spanCount}`) per visible day
   // Map key: `${day}__${slotNumber}`
@@ -694,20 +704,29 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
       if (skippedCells.has(cellKey)) return;
 
       const classesAtStart = (scheduleData[slotMeta.period]?.[day] || []).filter(filterClass);
-      const labItem = classesAtStart.find(c => c.sessionType === 'Lab' || (c.spanSlots && c.spanSlots > 1));
+      const labItem = classesAtStart.find(
+        c => c.sessionType === 'Lab' || (c.spanSlots && c.spanSlots > 1)
+      );
 
       if (!labItem) return;
 
       const labBlock = getLabBlockByStartPeriod(slotMeta.period, store.timeStructure);
-      const desiredSpan = labItem.spanSlots || labBlock?.spanSlots || computedTiming.labSpanSlots || 3;
+      const desiredSpan = Math.max(
+        2,
+        labItem.spanSlots || labBlock?.spanSlots || computedTiming.labSpanSlots || 3
+      );
 
-      // Collect consecutive slots in the same session (Morning or Afternoon) so a lab never crosses the midday break
-      const sameSessionSlots = dynamicSlots
+      // Collect consecutive slots in the same session, or fallback to remaining consecutive slots so the Lab always spans its full configured duration
+      let spannedSlots = dynamicSlots
         .slice(sIdx, sIdx + desiredSpan)
         .filter(s => s.session === slotMeta.session);
 
-      if (sameSessionSlots.length >= 2) {
-        const coveredSubsequent = sameSessionSlots.slice(1);
+      if (spannedSlots.length < desiredSpan) {
+        spannedSlots = dynamicSlots.slice(sIdx, Math.min(dynamicSlots.length, sIdx + desiredSpan));
+      }
+
+      if (spannedSlots.length >= 2) {
+        const coveredSubsequent = spannedSlots.slice(1);
         coveredSubsequent.forEach(subSlot => {
           skippedCells.add(`${day}__${subSlot.slotNumber}`);
         });
@@ -720,13 +739,13 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
         const continuousWindow =
           labItem.continuousTimeLabel ||
           labBlock?.continuousLabel ||
-          `${slotMeta.startTime} – ${sameSessionSlots[sameSessionSlots.length - 1].cycleEndTime}`;
+          `${slotMeta.startTime} – ${spannedSlots[spannedSlots.length - 1].cycleEndTime}`;
 
         labSpanByCell.set(cellKey, {
           labItem,
           concurrentItems: [...otherInSlot1, ...otherInSubsequent],
           continuousWindow,
-          rowSpanCount: sameSessionSlots.length
+          rowSpanCount: spannedSlots.length
         });
       }
     });
@@ -734,41 +753,13 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
 
   return (
     <div className="space-y-4">
-      {!hideNav && (
-        <SmartGridNav
-          activeRoute="timetable"
-          onNavigate={onNavigate}
-          onOpenAuth={onOpenAuth}
-          onSignOut={onSignOut}
-          currentUser={currentUser}
-        />
-      )}
 
       {/* =========================================================
-          1. COMPACT EDITORIAL HEADER & EXPORT / OPTIMIZE ACTIONS
+          1. COMPACT EDITORIAL HEADER & COLLAPSED EXPORT / OPTIMIZE ACTIONS
          ========================================================= */}
       <header className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-3 border-b border-[#E4E2DA]">
         <div>
-          <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-[#77766F]">
-            <span className="text-[#171717] font-semibold">{activeSemestersLabel}</span>
-            <span>·</span>
-            <span className="px-2 py-0.5 rounded bg-[#B8EEEE]/60 text-[#171717] font-semibold">
-              {configuredPolicy === 'whole_university'
-                ? 'Whole-University Policy'
-                : 'Department-Wise Policy'}
-            </span>
-            <span>·</span>
-            <span>{computedTiming.operatingHoursLabel}</span>
-            <span>·</span>
-            <span>
-              {activeLectureCount} Lectures ({computedTiming.periodLengthMinutes}m) &amp; {activeLabCount} Continuous Labs ({computedTiming.labDurationHoursLabel})
-            </span>
-            <span>·</span>
-            <span className="text-[#171717] font-semibold">
-              {conflicts.length === 0 ? '0 Clashes' : `${conflicts.length} Clashes`}
-            </span>
-          </div>
-          <h1 className="font-serif-editorial text-2xl sm:text-3xl text-[#171717] tracking-tight mt-0.5">
+          <h1 className="font-serif-editorial text-2xl sm:text-3xl text-[#171717] tracking-tight">
             {perspective === 'cohort' && activeGroupObj
               ? `Class Timetable: ${activeGroupObj.code}`
               : perspective === 'instructor' && currentInstructorObj
@@ -784,26 +775,16 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5 shrink-0">
-          {/* Prominent Export All Classes to Google Sheets Action */}
-          <button
-            onClick={() => handleExportGoogleSheets('all')}
-            disabled={isExportingSheets}
-            className="px-3.5 h-9 rounded-xl bg-[#B7F77C] hover:bg-[#a6ec68] border border-[#98DF58] text-[#171717] text-xs font-semibold inline-flex items-center gap-2 transition-colors cursor-pointer"
-            title="Export Google Sheets (.xlsx) with Weekly Overview + 1 separate worksheet per Class/Section"
-          >
-            <FileSpreadsheet className="w-4 h-4 text-[#171717]" />
-            <span>{isExportingSheets ? 'Preparing Sheets...' : 'Export to Google Sheets'}</span>
-          </button>
-
-          {/* Additional Export Dropdown Menu */}
+          {/* Collapsed Export Dropdown Menu (Includes Google Sheets, PDF, and CSV) */}
           <div className="relative" ref={exportDropdownRef}>
             <button
               onClick={() => setShowExportMenu(!showExportMenu)}
-              className="btn-secondary text-xs h-9 px-3"
-              title="More export options (CSV, PDF, Current Class or All Classes Google Sheets)"
+              disabled={isExportingSheets}
+              className="btn-secondary text-xs h-9 px-3.5"
+              title="Export timetable to Google Sheets (.xlsx), PDF, or CSV"
             >
               <Download className="w-3.5 h-3.5" />
-              <span>Export</span>
+              <span>{isExportingSheets ? 'Exporting...' : 'Export'}</span>
               <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showExportMenu ? 'rotate-180' : ''}`} />
             </button>
 
@@ -821,7 +802,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
                 <div className="p-2 space-y-1">
                   <button
                     onClick={() => handleExportGoogleSheets('all')}
-                    className="w-full text-left px-3 py-2 rounded-xl text-xs flex items-start gap-2.5 bg-[#B7F77C]/35 hover:bg-[#B7F77C]/60 transition-colors cursor-pointer text-[#171717]"
+                    className="w-full text-left px-3 py-2 rounded-xl text-xs flex items-start gap-2.5 hover:bg-[#F7F6EF] transition-colors cursor-pointer text-[#171717]"
                   >
                     <FileSpreadsheet className="w-4 h-4 text-[#171717] mt-0.5 shrink-0" />
                     <div>
@@ -1001,7 +982,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
 
         {/* ROW 2 (Fixed Height `min-h-[44px]` across all perspectives and calendar modes so layout never shifts) */}
         <div className="min-h-[44px] pt-2.5 border-t border-[#E4E2DA] flex flex-col lg:flex-row lg:items-center justify-between gap-2.5">
-          {/* Left Context Control (Always occupies h-8) */}
+          {/* Left Context Control (Clean selectors only — no extra colored info boxes) */}
           <div className="flex flex-wrap items-center gap-2 min-w-0">
             {(perspective === 'cohort' || perspective === 'master') && (
               <div className="inline-flex flex-wrap items-center p-1 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] shrink-0">
@@ -1014,37 +995,31 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
                       : 'text-[#77766F] hover:text-[#171717] border border-transparent'
                   }`}
                 >
-                  All Depts ({store.studentGroups.length})
+                  All Depts
                 </button>
-                {store.departments.map(dept => {
-                  const deptCount = store.studentGroups.filter(g => {
-                    const p = store.programs.find(pr => pr.id === g.programId);
-                    return p?.departmentId === dept.id;
-                  }).length;
-                  return (
-                    <button
-                      key={dept.id}
-                      type="button"
-                      onClick={() => {
-                        setSelectedDeptId(dept.id);
-                        const firstInDept = store.studentGroups.find(g => {
-                          const p = store.programs.find(pr => pr.id === g.programId);
-                          return p?.departmentId === dept.id;
-                        });
-                        if (firstInDept && perspective === 'cohort') {
-                          handleSelectCohort(firstInDept.id);
-                        }
-                      }}
-                      className={`h-7 px-2.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
-                        selectedDeptId === dept.id
-                          ? 'bg-white text-[#171717] border border-[#E4E2DA]'
-                          : 'text-[#77766F] hover:text-[#171717] border border-transparent'
-                      }`}
-                    >
-                      {dept.code} ({deptCount})
-                    </button>
-                  );
-                })}
+                {store.departments.map(dept => (
+                  <button
+                    key={dept.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedDeptId(dept.id);
+                      const firstInDept = store.studentGroups.find(g => {
+                        const p = store.programs.find(pr => pr.id === g.programId);
+                        return p?.departmentId === dept.id;
+                      });
+                      if (firstInDept && perspective === 'cohort') {
+                        handleSelectCohort(firstInDept.id);
+                      }
+                    }}
+                    className={`h-7 px-2.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
+                      selectedDeptId === dept.id
+                        ? 'bg-white text-[#171717] border border-[#E4E2DA]'
+                        : 'text-[#77766F] hover:text-[#171717] border border-transparent'
+                    }`}
+                  >
+                    {dept.code}
+                  </button>
+                ))}
               </div>
             )}
 
@@ -1061,11 +1036,11 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
                 <select
                   value={selectedCohortId}
                   onChange={e => handleSelectCohort(e.target.value)}
-                  className="input-field h-8 w-[240px] text-xs font-bold bg-[#B8EEEE]/45 border-[#95DFDF] text-[#171717] py-1 px-2.5 truncate"
+                  className="input-field h-8 w-[240px] text-xs font-semibold bg-white border-[#E4E2DA] text-[#171717] py-1 px-2.5 truncate"
                 >
                   {departmentFilteredGroups.map(g => (
                     <option key={g.id} value={g.id}>
-                      {g.code} — {g.name} {g.homeRoom ? `[${g.homeRoom}]` : ''}
+                      {g.code} — {g.name}
                     </option>
                   ))}
                 </select>
@@ -1077,24 +1052,6 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
                 >
                   <ChevronRight className="w-4 h-4" />
                 </button>
-                {activeGroupObj?.homeRoom && (
-                  <span className="hidden sm:inline-flex items-center gap-1 h-8 px-2.5 rounded-lg bg-[#B8F2E6]/60 border border-[#93DEC9] text-[#171717] font-mono-tabular text-xs font-semibold shrink-0">
-                    <MapPin className="w-3 h-3" />
-                    <span>{activeGroupObj.homeRoom}</span>
-                  </span>
-                )}
-              </div>
-            )}
-
-            {perspective === 'master' && (
-              <div className="inline-flex items-center gap-2 text-xs text-[#57564F]">
-                <span className="h-8 px-2.5 rounded-lg bg-[#F7F6EF] border border-[#E4E2DA] inline-flex items-center font-medium text-[#171717]">
-                  {selectedDeptId === 'all'
-                    ? `Showing All ${store.departments.length} University Departments (${placedTotal} Sessions)`
-                    : `Filtered: ${
-                        store.departments.find(d => d.id === selectedDeptId)?.name || 'Department'
-                      } (${activeFilteredSections.length} Sessions)`}
-                </span>
               </div>
             )}
 
@@ -1111,11 +1068,6 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
                     </option>
                   ))}
                 </select>
-                {currentInstructorObj && (
-                  <span className="h-8 px-2.5 rounded-lg bg-[#F7F6EF] border border-[#E4E2DA] inline-flex items-center text-xs text-[#57564F] font-mono-tabular">
-                    Max {currentInstructorObj.maxWeeklyHours}h/wk · {activeFilteredSections.length} Assigned Sessions
-                  </span>
-                )}
               </div>
             )}
 
@@ -1132,12 +1084,6 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
                     </option>
                   ))}
                 </select>
-                {currentRoomObj && (
-                  <span className="h-8 px-2.5 rounded-lg bg-[#F7F6EF] border border-[#E4E2DA] inline-flex items-center text-xs text-[#57564F] font-mono-tabular">
-                    {currentRoomObj.type === 'lab' ? 'Continuous Lab Facility' : 'Lecture Hall'} ·{' '}
-                    {activeFilteredSections.length} Booked Blocks
-                  </span>
-                )}
               </div>
             )}
           </div>
@@ -1182,12 +1128,6 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
                     {d}
                   </button>
                 ))}
-              </div>
-            )}
-
-            {calendarMode === 'agenda' && (
-              <div className="inline-flex items-center px-3 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] h-9 text-xs font-mono-tabular font-semibold text-[#171717]">
-                Agenda View · {activeFilteredSections.length} Scheduled Sessions
               </div>
             )}
           </div>
@@ -1286,6 +1226,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
             const dayColWidthPx =
               remainingWidthPx > 0 ? Math.floor(remainingWidthPx / numDayCols) : 0;
             const isCompactCol = numDayCols >= 7 || (dayColWidthPx > 0 && dayColWidthPx < 138);
+            const singleSlotHeightPx = 76;
 
             return (
               <table className="w-full table-fixed border-collapse text-left">
@@ -1368,28 +1309,25 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
                                 <span className="text-[#171717] font-semibold">
                                   University Midday / Lunch Break ({computedTiming.middayBreak.fullRangeLabel})
                                 </span>
-                                <span className="hidden md:inline">
-                                  · Protected break window (no lectures or labs scheduled)
-                                </span>
                               </div>
                             </td>
                           </tr>
                         )}
 
-                        {/* Regular Class Slot Row — Dynamically sized to fit all columns & configured slots */}
-                        <tr>
-                          {/* Left Column: Lecture Time + Short Break */}
-                          <td className="py-1.5 px-2 text-[10.5px] font-mono-tabular text-[#171717] align-top bg-[#F7F6EF]/40 overflow-hidden">
+                        {/* Regular Class Slot Row — Uniform height so spanned Lab blocks occupy full 3-hour height */}
+                        <tr className="h-[76px]">
+                          {/* Left Column: Lecture Time + Short Break Buffer */}
+                          <td className="h-[76px] py-1.5 px-2 text-[10.5px] font-mono-tabular text-[#171717] align-middle bg-[#F7F6EF]/40 overflow-hidden">
                             <div className="font-semibold text-[10.5px] text-[#171717] leading-tight truncate">
                               {slotMeta.period.replace(' AM', '').replace(' PM', '')}
                             </div>
-                            <div className="text-[9.5px] text-[#77766F] mt-0.5 leading-tight truncate">
-                              {computedTiming.shortBreakEnabled &&
+                            {computedTiming.shortBreakEnabled &&
                               computedTiming.shortBreakMinutes > 0 &&
-                              slotMeta.shortBreak !== 'No Break'
-                                ? `Brk ${slotMeta.shortBreak.replace(' AM', '').replace(' PM', '')}`
-                                : 'No Short Break'}
-                            </div>
+                              slotMeta.shortBreak !== 'No Break' && (
+                                <div className="text-[9.5px] text-[#77766F] mt-0.5 leading-tight truncate">
+                                  {computedTiming.shortBreakMinutes}m buffer
+                                </div>
+                              )}
                           </td>
 
                           {/* Day Cells */}
@@ -1404,12 +1342,13 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
 
                             const labSpanInfo = labSpanByCell.get(cellKey);
 
-                            // Render a Continuous Lab cell (`rowSpan={rowSpanCount}`)
+                            // Render a Continuous Lab cell (`rowSpan={rowSpanCount}`) stretching across 100% of the spanned rows
                             if (labSpanInfo) {
                               const { labItem, concurrentItems, continuousWindow, rowSpanCount } = labSpanInfo;
                               const pastel = getCoursePastel(labItem.code);
                               const isDragOver = dragOverCellKey === cellKey;
                               const isSwapSource = swapSourceItem?.id === labItem.id;
+                              const fullLabMinHeight = rowSpanCount * singleSlotHeightPx - 8;
 
                               return (
                                 <td
@@ -1427,7 +1366,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
                                     e.preventDefault();
                                     handleDropOnSlot(day, time);
                                   }}
-                                  className={`p-1 border-l border-[#E4E2DA] align-stretch bg-white overflow-hidden transition-colors ${
+                                  className={`h-[1px] p-1 border-l border-[#E4E2DA] align-top bg-white overflow-hidden transition-colors ${
                                     isDragOver ? 'bg-[#B8F2E6]/60 ring-2 ring-inset ring-[#93DEC9]' : ''
                                   }`}
                                 >
@@ -1444,29 +1383,30 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
                                     onClick={() => handleClassClick(labItem)}
                                     style={{
                                       backgroundColor: pastel.bg,
-                                      borderColor: pastel.border
+                                      borderColor: pastel.border,
+                                      minHeight: `${fullLabMinHeight}px`
                                     }}
-                                    className={`h-full ${
-                                      isCompactCol ? 'p-1.5' : 'p-2.5'
-                                    } rounded-xl border text-[#171717] flex flex-col items-center justify-center text-center gap-1.5 transition-all hover:-translate-y-0.5 cursor-grab active:cursor-grabbing min-w-0 overflow-hidden ${
+                                    className={`w-full h-full ${
+                                      isCompactCol ? 'p-2' : 'p-3'
+                                    } rounded-xl border text-[#171717] flex flex-col justify-between text-center transition-all hover:-translate-y-0.5 cursor-grab active:cursor-grabbing min-w-0 overflow-hidden ${
                                       isSwapSource ? 'ring-2 ring-[#171717] ring-offset-2 shadow-md' : ''
                                     }`}
                                   >
-                                    <div className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-white/80 text-[9.5px] font-mono-tabular font-bold text-[#171717] max-w-full truncate">
+                                    <div className="flex items-center justify-center gap-1 text-[9.5px] font-mono-tabular font-bold text-[#171717]/85 w-full truncate">
                                       <GripVertical className="w-2.5 h-2.5 text-[#77766F] shrink-0" />
                                       <span className="truncate">{labItem.code}</span>
                                       <span>·</span>
                                       <span className="shrink-0">
-                                        LAB {computedTiming.labDurationHoursLabel.toUpperCase()}
+                                        LAB ({computedTiming.labDurationHoursLabel})
                                       </span>
                                       {labItem.isLocked && <Lock className="w-2.5 h-2.5 shrink-0" />}
                                     </div>
 
-                                    <div className="font-serif-editorial text-[11.5px] sm:text-xs font-semibold leading-snug text-[#171717] line-clamp-2 break-words w-full">
+                                    <div className="my-auto py-1 font-serif-editorial text-xs sm:text-[13px] font-semibold leading-snug text-[#171717] line-clamp-3 break-words w-full">
                                       {labItem.title}
                                     </div>
 
-                                    <div className="w-full pt-1 border-t border-black/10 space-y-0.5 text-[9.5px] text-[#171717]/80 min-w-0">
+                                    <div className="w-full pt-1.5 border-t border-black/10 space-y-0.5 text-[9.5px] text-[#171717]/80 min-w-0">
                                       <div className="font-medium truncate">{labItem.prof}</div>
                                       <div className="font-mono-tabular font-semibold text-[#171717] truncate">
                                         {labItem.room}
@@ -1476,7 +1416,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
                                         {continuousWindow}
                                       </div>
                                       {perspective === 'master' && concurrentItems.length > 0 && (
-                                        <div className="text-[9px] px-1 rounded bg-white/70 inline-block">
+                                        <div className="text-[9px] font-mono-tabular font-semibold text-[#171717]/75 truncate">
                                           +{concurrentItems.length} more
                                         </div>
                                       )}
@@ -1514,7 +1454,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
                                   e.preventDefault();
                                   handleDropOnSlot(day, time);
                                 }}
-                                className={`p-1 border-l border-[#E4E2DA] align-middle overflow-hidden transition-colors ${
+                                className={`h-[76px] p-1 border-l border-[#E4E2DA] align-middle overflow-hidden transition-colors ${
                                   isDragOver ? 'bg-[#B8F2E6]/60 ring-2 ring-inset ring-[#93DEC9]' : ''
                                 } ${
                                   isWeekend && visibleItems.length === 0 ? 'bg-[#F7F6EF]/25' : ''
@@ -1548,7 +1488,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
                                         backgroundColor: pastel.bg,
                                         borderColor: pastel.border
                                       }}
-                                      className={`${
+                                      className={`w-full h-full min-h-[66px] ${
                                         isCompactCol ? 'px-1.5 py-1.5' : 'px-2 py-1.5'
                                       } rounded-xl border text-[#171717] flex flex-col items-center justify-center text-center gap-0.5 transition-all hover:-translate-y-0.5 cursor-grab active:cursor-grabbing min-w-0 overflow-hidden ${
                                         isSwapSource ? 'ring-2 ring-[#171717] ring-offset-2 shadow-md' : ''
@@ -1572,7 +1512,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
                                       </div>
 
                                       {perspective === 'master' && extraCount > 0 && (
-                                        <div className="text-[8.5px] font-mono-tabular font-semibold text-[#171717]/75 bg-white/65 rounded px-1 text-center truncate">
+                                        <div className="text-[8.5px] font-mono-tabular font-semibold text-[#171717]/75 text-center truncate">
                                           +{extraCount} more
                                         </div>
                                       )}

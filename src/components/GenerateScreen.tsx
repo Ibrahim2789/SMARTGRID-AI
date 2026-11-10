@@ -416,33 +416,12 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
 
   return (
     <div className="space-y-6">
-      {!hideNav && (
-        <SmartGridNav
-          activeRoute="generate"
-          onNavigate={onNavigate}
-          onOpenAuth={onOpenAuth}
-          onSignOut={onSignOut}
-          currentUser={currentUser}
-        />
-      )}
 
       {/* =========================================================
           PAGE HEADER
          ========================================================= */}
       <header className="flex flex-col lg:flex-row lg:items-end justify-between gap-4 pb-5 border-b border-[#E4E2DA]">
         <div className="space-y-1.5">
-          <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-[#77766F]">
-            <span>{store.institutionProfile?.name || 'University Workspace'}</span>
-            <span>·</span>
-            <span className="px-2 py-0.5 rounded bg-[#B8EEEE] text-[#171717] font-semibold">
-              Policy:{' '}
-              {configuredPolicy === 'whole_university'
-                ? 'Whole-University Integrated'
-                : 'Department-Wise Management'}
-            </span>
-            <span>·</span>
-            <span className="font-mono-tabular">{computedTiming.operatingHoursLabel}</span>
-          </div>
           <h1 className="font-serif-editorial text-3xl sm:text-4xl text-[#171717] tracking-tight">
             Timetable Generation Workspace
           </h1>
@@ -476,16 +455,13 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
          ========================================================= */}
       <section className="sf-card-white p-6 space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3.5 border-b border-[#E4E2DA]">
-          <div className="space-y-0.5">
+          <div>
             <div className="text-[11px] font-mono-tabular font-semibold uppercase tracking-wider text-[#77766F]">
               Step 01 · University Academic Calendar
             </div>
-            <h2 className="font-serif-editorial text-xl text-[#171717]">
+            <h2 className="font-serif-editorial text-xl text-[#171717] mt-0.5">
               Select Academic Semesters to Schedule
             </h2>
-            <p className="text-xs text-[#77766F]">
-              Multiple semesters may run simultaneously across different cohorts. Select one or more configured semesters for this scheduling run.
-            </p>
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
@@ -510,7 +486,7 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
               <div
                 key={term.id}
                 onClick={() => toggleTermSelection(term.id)}
-                className={`p-4 rounded-xl border transition-colors cursor-pointer flex flex-col justify-between min-h-[116px] ${
+                className={`p-4 rounded-xl border transition-colors cursor-pointer flex flex-col justify-between min-h-[104px] ${
                   isSelected
                     ? 'bg-[#171717] text-white border-[#171717]'
                     : 'bg-[#F7F6EF]/70 text-[#171717] border-[#E4E2DA] hover:bg-[#EDEAE0]/60'
@@ -528,17 +504,17 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
                       >
                         {term.code}
                       </span>
-                      <span
-                        className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
-                          isActiveStatus
-                            ? 'bg-[#B7F77C] text-[#171717]'
-                            : isSelected
-                            ? 'bg-white/15 text-white'
-                            : 'bg-white text-[#77766F] border border-[#E4E2DA]'
-                        }`}
-                      >
-                        {isActiveStatus ? 'Active Semester' : 'Inactive / Draft'}
-                      </span>
+                      {isActiveStatus && (
+                        <span
+                          className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                            isSelected
+                              ? 'bg-[#B7F77C] text-[#171717]'
+                              : 'bg-[#B7F77C] text-[#171717]'
+                          }`}
+                        >
+                          Active
+                        </span>
+                      )}
                     </div>
                     <h3
                       className={`font-serif-editorial text-base leading-snug truncate ${
@@ -561,7 +537,7 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
                 </div>
 
                 <div
-                  className={`pt-2.5 mt-2.5 border-t flex items-center justify-between text-[11px] font-mono-tabular ${
+                  className={`pt-2 mt-2 border-t text-[11px] font-mono-tabular ${
                     isSelected
                       ? 'border-white/15 text-white/80'
                       : 'border-[#E4E2DA] text-[#77766F]'
@@ -571,7 +547,6 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
                     {term.academicYear || store.institutionProfile?.academicYear || '2026–2027'} ·{' '}
                     {term.startDate} → {term.endDate}
                   </span>
-                  <span>{store.departments.length} Depts</span>
                 </div>
               </div>
             );
@@ -581,54 +556,33 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
 
       {/* =========================================================
           STEP 02: SCHEDULING POLICY & AGENDA SCOPE SELECTOR
-          (Fixed dimensions, stable container height, zero layout shift)
          ========================================================= */}
       <section className="sf-card-white p-6 space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3.5 border-b border-[#E4E2DA]">
-          <div className="space-y-0.5">
-            <div className="text-[11px] font-mono-tabular font-semibold uppercase tracking-wider text-[#77766F]">
-              Step 02 · Timetable Management Policy &amp; Scheduling Scope
-            </div>
-            <h2 className="font-serif-editorial text-xl text-[#171717]">
-              Select Scheduling Scope
-            </h2>
-            <p className="text-xs text-[#77766F]">
-              Generate an integrated timetable for the entire university or run department-specific scheduling.
-            </p>
+        <div className="pb-3.5 border-b border-[#E4E2DA]">
+          <div className="text-[11px] font-mono-tabular font-semibold uppercase tracking-wider text-[#77766F]">
+            Step 02 · Timetable Management Policy &amp; Scheduling Scope
           </div>
-
-          <div className="inline-flex items-center gap-1.5 px-3 h-8 rounded-lg bg-[#F7F6EF] border border-[#E4E2DA] text-xs text-[#57564F] shrink-0">
-            <ShieldCheck className="w-3.5 h-3.5 text-[#171717]" />
-            <span>
-              Default University Policy:{' '}
-              <strong className="text-[#171717]">
-                {configuredPolicy === 'whole_university'
-                  ? 'Whole-University'
-                  : 'Department-Wise'}
-              </strong>
-            </span>
-          </div>
+          <h2 className="font-serif-editorial text-xl text-[#171717] mt-0.5">
+            Select Scheduling Scope
+          </h2>
         </div>
 
-        {/* Fixed-dimension 3-option scope selector grid (zero layout shift on switch) */}
+        {/* 3-option scope selector grid */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
           {[
             {
               id: 'whole_university' as const,
               title: 'Whole-University Timetable',
-              badge: `${store.departments.length} Depts · ${store.studentGroups.length} Sections`,
               desc: 'Schedules all configured departments, semesters, batches, and sections in one integrated run with cross-department conflict prevention.'
             },
             {
               id: 'department_wise' as const,
               title: 'Department-Wise Timetable',
-              badge: 'Per-Department Scope',
               desc: 'Generates a timetable for a single department using its faculty, classrooms, laboratories, courses, batches, and sections.'
             },
             {
               id: 'custom_cohorts' as const,
               title: 'Custom Batch / Section Scope',
-              badge: `${selectedGroupIds.length} Selected`,
               desc: 'Select specific student batches or sections to schedule while keeping all other university sessions fixed.'
             }
           ].map(opt => {
@@ -638,40 +592,31 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
                 key={opt.id}
                 type="button"
                 onClick={() => setScopeMode(opt.id)}
-                className={`p-4 rounded-xl border text-left transition-colors cursor-pointer flex flex-col justify-between h-[124px] overflow-hidden ${
+                className={`p-4 rounded-xl border text-left transition-colors cursor-pointer flex flex-col justify-between min-h-[112px] ${
                   active
                     ? 'bg-[#171717] text-white border-[#171717]'
                     : 'bg-[#F7F6EF]/70 text-[#171717] border-[#E4E2DA] hover:bg-[#EDEAE0]/70'
                 }`}
               >
-                <div className="flex items-center justify-between gap-2 w-full">
-                  <span className="font-serif-editorial text-base font-medium truncate">
+                <div className="w-full">
+                  <span className="font-serif-editorial text-base font-medium truncate block">
                     {opt.title}
                   </span>
-                  <span
-                    className={`px-2 py-0.5 rounded text-[10px] font-mono-tabular font-semibold shrink-0 ${
-                      active
-                        ? 'bg-[#B7F77C] text-[#171717]'
-                        : 'bg-white text-[#57564F] border border-[#E4E2DA]'
+                  <p
+                    className={`text-xs leading-relaxed mt-1 line-clamp-2 ${
+                      active ? 'text-white/80' : 'text-[#77766F]'
                     }`}
                   >
-                    {opt.badge}
-                  </span>
+                    {opt.desc}
+                  </p>
                 </div>
-                <p
-                  className={`text-xs leading-relaxed line-clamp-2 ${
-                    active ? 'text-white/80' : 'text-[#77766F]'
-                  }`}
-                >
-                  {opt.desc}
-                </p>
               </button>
             );
           })}
         </div>
 
-        {/* Stable-height Context Bar for Selected Scope (prevents vertical jumping when switching modes) */}
-        <div className="min-h-[60px] p-3.5 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        {/* Stable-height Context Bar for Selected Scope */}
+        <div className="min-h-[52px] p-3.5 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           {scopeMode === 'whole_university' && (
             <>
               <div className="flex items-center gap-2.5 text-xs text-[#171717] min-w-0">
@@ -681,7 +626,7 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
                   {store.departments.map(d => d.code).join(', ')} — Cross-department shared faculty, classrooms, and labs are automatically synchronized.
                 </span>
               </div>
-              <span className="text-[11px] font-mono-tabular font-semibold px-2.5 py-1 rounded-lg bg-[#B7F77C]/60 text-[#171717] shrink-0">
+              <span className="text-[11px] font-mono-tabular font-semibold text-[#57564F] shrink-0">
                 {store.studentGroups.length} Sections · {store.sections.length} Sessions
               </span>
             </>
@@ -717,7 +662,7 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
                   })}
                 </div>
               </div>
-              <span className="text-[11px] font-mono-tabular font-semibold px-2.5 py-1 rounded-lg bg-[#B8EEEE] text-[#171717] shrink-0">
+              <span className="text-[11px] font-mono-tabular font-semibold text-[#57564F] shrink-0">
                 {scopedGroups.length} Dept Sections · {scopedSections.length} Sessions
               </span>
             </>
@@ -766,20 +711,16 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
 
       {/* =========================================================
           STEP 03: ACADEMIC HIERARCHY & RESOURCES SUMMARY
-          (University -> Departments -> Semesters -> Batches -> Sections)
          ========================================================= */}
       <section className="sf-card-white p-6 space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3.5 border-b border-[#E4E2DA]">
-          <div className="space-y-0.5">
+          <div>
             <div className="text-[11px] font-mono-tabular font-semibold uppercase tracking-wider text-[#77766F]">
               Step 03 · Academic Structure &amp; Resource Inventory
             </div>
-            <h2 className="font-serif-editorial text-xl text-[#171717]">
+            <h2 className="font-serif-editorial text-xl text-[#171717] mt-0.5">
               Included Departments, Batches, Sections &amp; Facilities
             </h2>
-            <p className="text-xs text-[#77766F]">
-              Overview of all academic cohorts, courses, faculty members, classrooms, and laboratories included in this generation run.
-            </p>
           </div>
 
           <button
@@ -799,9 +740,9 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
           </button>
         </div>
 
-        {/* 4 Equal-Height Summary Cards */}
+        {/* 4 Summary Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 items-stretch">
-          <div className="p-4 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] flex flex-col justify-between min-h-[104px]">
+          <div className="p-4 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] flex flex-col justify-between min-h-[96px]">
             <div className="flex items-center justify-between text-xs text-[#77766F]">
               <span className="font-semibold text-[#171717]">Departments &amp; Programs</span>
               <Building2 className="w-4 h-4 text-[#171717]" />
@@ -811,12 +752,12 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
                 {scopedDepartments.length} Depts
               </div>
               <div className="text-[11px] text-[#77766F] truncate mt-0.5">
-                {scopedDepartments.map(d => d.code).join(', ') || 'All University Departments'}
+                {scopedDepartments.map(d => d.code).join(', ') || 'All Departments'}
               </div>
             </div>
           </div>
 
-          <div className="p-4 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] flex flex-col justify-between min-h-[104px]">
+          <div className="p-4 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] flex flex-col justify-between min-h-[96px]">
             <div className="flex items-center justify-between text-xs text-[#77766F]">
               <span className="font-semibold text-[#171717]">Semesters &amp; Student Batches</span>
               <Calendar className="w-4 h-4 text-[#171717]" />
@@ -833,7 +774,7 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
             </div>
           </div>
 
-          <div className="p-4 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] flex flex-col justify-between min-h-[104px]">
+          <div className="p-4 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] flex flex-col justify-between min-h-[96px]">
             <div className="flex items-center justify-between text-xs text-[#77766F]">
               <span className="font-semibold text-[#171717]">Sections &amp; Curriculum</span>
               <BookOpen className="w-4 h-4 text-[#171717]" />
@@ -843,14 +784,14 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
                 {scopedGroups.length} Sections
               </div>
               <div className="text-[11px] text-[#77766F] truncate mt-0.5">
-                {scopedCourses.length} Courses · {scopedSections.length} Scheduled Sessions
+                {scopedCourses.length} Courses · {scopedSections.length} Sessions
               </div>
             </div>
           </div>
 
-          <div className="p-4 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] flex flex-col justify-between min-h-[104px]">
+          <div className="p-4 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] flex flex-col justify-between min-h-[96px]">
             <div className="flex items-center justify-between text-xs text-[#77766F]">
-              <span className="font-semibold text-[#171717]">Faculty &amp; Rooms / Labs</span>
+              <span className="font-semibold text-[#171717]">Faculty &amp; Facilities</span>
               <DoorOpen className="w-4 h-4 text-[#171717]" />
             </div>
             <div>
@@ -858,8 +799,7 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
                 {scopedInstructors.length} Faculty · {store.rooms.length} Rooms
               </div>
               <div className="text-[11px] text-[#77766F] truncate mt-0.5">
-                {store.rooms.filter(r => r.type === 'lecture').length} Classrooms &amp;{' '}
-                {store.rooms.filter(r => r.type === 'lab').length} Laboratories
+                {store.rooms.filter(r => r.type === 'lecture').length} Lecture · {store.rooms.filter(r => r.type === 'lab').length} Labs
               </div>
             </div>
           </div>
@@ -950,16 +890,13 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
         {/* Left 7 Cols: Step 04 — Scheduling Constraints & Progressive Disclosure Preferences */}
         <section className="lg:col-span-7 sf-card-white p-6 space-y-5">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3.5 border-b border-[#E4E2DA]">
-            <div className="space-y-0.5">
+            <div>
               <div className="text-[11px] font-mono-tabular font-semibold uppercase tracking-wider text-[#77766F]">
                 Step 04 · Scheduling Constraints &amp; Preferences
               </div>
-              <h2 className="font-serif-editorial text-xl text-[#171717]">
-                Active Institutional Rules &amp; Timing Invariants
+              <h2 className="font-serif-editorial text-xl text-[#171717] mt-0.5">
+                Active Rules &amp; Timing Invariants
               </h2>
-              <p className="text-xs text-[#77766F]">
-                Hard constraints are strictly enforced with zero clashing allowed. Expand advanced preferences to tune soft optimization weights.
-              </p>
             </div>
 
             <button
@@ -979,55 +916,31 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
 
           {/* Core Protected Invariants Grid */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="p-3.5 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] flex items-start gap-2.5">
-              <CheckCircle2 className="w-4 h-4 text-[#171717] shrink-0 mt-0.5" />
-              <div className="text-xs space-y-0.5">
-                <div className="font-semibold text-[#171717]">
-                  Zero Cross-Entity Overlaps
-                </div>
-                <p className="text-[11px] text-[#77766F]">
-                  No shared faculty, classroom, laboratory, or student section is ever double-booked.
-                </p>
+            <div className="p-3.5 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] flex items-center gap-2.5">
+              <CheckCircle2 className="w-4 h-4 text-[#171717] shrink-0" />
+              <div className="text-xs font-semibold text-[#171717]">
+                Zero Cross-Entity Overlaps
               </div>
             </div>
 
-            <div className="p-3.5 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] flex items-start gap-2.5">
-              <FlaskConical className="w-4 h-4 text-[#171717] shrink-0 mt-0.5" />
-              <div className="text-xs space-y-0.5">
-                <div className="font-semibold text-[#171717]">
-                  Continuous Laboratories ({computedTiming.labDurationHoursLabel})
-                </div>
-                <p className="text-[11px] text-[#77766F]">
-                  Labs span {computedTiming.labSpanSlots} consecutive slots without splitting across days or lunch.
-                </p>
+            <div className="p-3.5 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] flex items-center gap-2.5">
+              <FlaskConical className="w-4 h-4 text-[#171717] shrink-0" />
+              <div className="text-xs font-semibold text-[#171717]">
+                Continuous Labs ({computedTiming.labDurationHoursLabel} Unbroken)
               </div>
             </div>
 
-            <div className="p-3.5 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] flex items-start gap-2.5">
-              <Coffee className="w-4 h-4 text-[#171717] shrink-0 mt-0.5" />
-              <div className="text-xs space-y-0.5">
-                <div className="font-semibold text-[#171717]">
-                  Protected Midday Break Window
-                </div>
-                <p className="text-[11px] text-[#77766F]">
-                  {computedTiming.middayBreak.enabled
-                    ? `${computedTiming.middayBreak.fullRangeLabel} reserved across all working days.`
-                    : 'Continuous daytime slots enabled.'}
-                </p>
+            <div className="p-3.5 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] flex items-center gap-2.5">
+              <Coffee className="w-4 h-4 text-[#171717] shrink-0" />
+              <div className="text-xs font-semibold text-[#171717]">
+                Midday Break ({computedTiming.middayBreak.timeRangeLabel})
               </div>
             </div>
 
-            <div className="p-3.5 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] flex items-start gap-2.5">
-              <Clock className="w-4 h-4 text-[#171717] shrink-0 mt-0.5" />
-              <div className="text-xs space-y-0.5">
-                <div className="font-semibold text-[#171717]">
-                  {computedTiming.periodLengthMinutes}m Lectures &amp; Transition Buffers
-                </div>
-                <p className="text-[11px] text-[#77766F]">
-                  {computedTiming.shortBreakEnabled && computedTiming.shortBreakMinutes > 0
-                    ? `${computedTiming.shortBreakMinutes}-minute passing buffer after each lecture.`
-                    : 'Back-to-back lecture slots.'}
-                </p>
+            <div className="p-3.5 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] flex items-center gap-2.5">
+              <Clock className="w-4 h-4 text-[#171717] shrink-0" />
+              <div className="text-xs font-semibold text-[#171717]">
+                {computedTiming.periodLengthMinutes}m Lecture Blocks
               </div>
             </div>
           </div>

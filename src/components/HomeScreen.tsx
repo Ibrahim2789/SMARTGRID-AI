@@ -92,13 +92,6 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
       <section className="sf-card-white bg-white border border-[#E4E2DA] rounded-2xl p-6 sm:p-8 lg:p-10 relative overflow-hidden">
         <div className="relative z-10 grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
           <div className="lg:col-span-7 space-y-5">
-            <div className="inline-flex flex-wrap items-center gap-2 px-3 py-1 rounded-full bg-[#B8EEEE] border border-[#95DFDF] text-xs font-semibold text-[#171717]">
-              <Sparkles className="w-3.5 h-3.5 text-[#171717]" />
-              <span>
-                {store.institutionProfile?.name || 'University'} · {activeTerm?.name || 'Fall 2026'} ({activeTiming.operatingHoursLabel})
-              </span>
-            </div>
-
             <h1 className="font-serif-editorial text-3xl sm:text-4xl lg:text-[42px] leading-[1.12] text-[#171717] tracking-tight">
               Welcome back, {displayGreetingName}. Your university timetable workspace is ready.
             </h1>
@@ -126,14 +119,6 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                 <Calendar className="w-4 h-4" />
                 <span>View Weekly Matrix</span>
               </button>
-
-              <button
-                onClick={handleQuickExportSheets}
-                className="h-10 px-4 rounded-xl bg-[#B7F77C] hover:bg-[#a5eb68] border border-[#98DF58] text-[#171717] font-semibold text-xs sm:text-sm inline-flex items-center gap-2 transition-colors cursor-pointer"
-              >
-                <Download className="w-4 h-4" />
-                <span>Export Google Sheets (.xlsx)</span>
-              </button>
             </div>
           </div>
 
@@ -141,13 +126,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
           <div className="lg:col-span-5 bg-[#F7F6EF] border border-[#E4E2DA] rounded-2xl p-5 space-y-4">
             <div className="flex items-center justify-between">
               <span className="text-xs font-semibold text-[#171717]">Active Schedule Status</span>
-              <span
-                className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold ${
-                  unscheduledSections.length === 0
-                    ? 'bg-[#B7F77C] border border-[#98DF58] text-[#171717]'
-                    : 'bg-[#F2D8FA] border border-[#DFB9EC] text-[#171717]'
-                }`}
-              >
+              <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#171717]">
                 {unscheduledSections.length === 0 ? (
                   <>
                     <CheckCircle2 className="w-3.5 h-3.5" />
@@ -221,16 +200,13 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
       </section>
 
       {/* =========================================================
-          2. FOUR CORE WORKFLOW CARDS (Pastel StudyFetch Palette)
+          2. FOUR CORE WORKFLOW MODULES
          ========================================================= */}
       <section className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h2 className="font-serif-editorial text-2xl text-[#171717]">Core Workflows</h2>
-          <span className="text-xs text-[#77766F]">Select a module to manage or optimize</span>
-        </div>
+        <h2 className="font-serif-editorial text-2xl text-[#171717]">Core Workflows</h2>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {/* Card 1: Data & Setup */}
+          {/* Module 1: Data & Setup */}
           <div
             onClick={() => onNavigate('setup')}
             className="sf-pastel-cyan rounded-2xl p-5 flex flex-col justify-between cursor-pointer hover:shadow-md transition-all group"
@@ -240,24 +216,21 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                 <Database className="w-5 h-5" />
               </div>
               <div>
-                <div className="text-[11px] font-semibold uppercase tracking-wider text-[#171717]/70">
-                  Step 01 · Catalog
-                </div>
-                <h3 className="font-serif-editorial text-xl text-[#171717] mt-0.5">
-                  Academic Data & Setup
+                <h3 className="font-serif-editorial text-xl text-[#171717]">
+                  Academic Data &amp; Setup
                 </h3>
-                <p className="text-xs text-[#171717]/80 mt-1.5 leading-relaxed">
-                  Manage {store.departments.length} departments, {store.rooms.length} rooms, {store.courses.length} courses, and {store.studentGroups.length} sections.
+                <p className="text-xs text-[#171717]/80 mt-1 leading-relaxed">
+                  {store.departments.length} departments, {store.rooms.length} facilities, {store.courses.length} courses, {store.studentGroups.length} sections.
                 </p>
               </div>
             </div>
-            <div className="pt-4 mt-4 border-t border-[#171717]/10 flex items-center justify-between text-xs font-semibold text-[#171717]">
+            <div className="pt-3 mt-3 flex items-center justify-between text-xs font-semibold text-[#171717]">
               <span>Manage Records</span>
               <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
             </div>
           </div>
 
-          {/* Card 2: Academic Configuration */}
+          {/* Module 2: Academic Configuration */}
           <div
             onClick={() => onNavigate('academic-config')}
             className="sf-pastel-lavender rounded-2xl p-5 flex flex-col justify-between cursor-pointer hover:shadow-md transition-all group"
@@ -267,24 +240,21 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                 <Clock className="w-5 h-5" />
               </div>
               <div>
-                <div className="text-[11px] font-semibold uppercase tracking-wider text-[#171717]/70">
-                  Step 02 · Timing Rules
-                </div>
-                <h3 className="font-serif-editorial text-xl text-[#171717] mt-0.5">
+                <h3 className="font-serif-editorial text-xl text-[#171717]">
                   Academic Configuration
                 </h3>
-                <p className="text-xs text-[#171717]/80 mt-1.5 leading-relaxed">
-                  Set operating hours ({activeTiming.operatingHoursLabel}), lecture & lab durations, and midday breaks.
+                <p className="text-xs text-[#171717]/80 mt-1 leading-relaxed">
+                  Operating hours ({activeTiming.operatingHoursLabel}), lecture &amp; lab durations, and midday break window.
                 </p>
               </div>
             </div>
-            <div className="pt-4 mt-4 border-t border-[#171717]/10 flex items-center justify-between text-xs font-semibold text-[#171717]">
+            <div className="pt-3 mt-3 flex items-center justify-between text-xs font-semibold text-[#171717]">
               <span>Configure Timings</span>
               <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
             </div>
           </div>
 
-          {/* Card 3: Generate Schedule */}
+          {/* Module 3: Generate Schedule */}
           <div
             onClick={() => onNavigate('generate')}
             className="sf-pastel-mint rounded-2xl p-5 flex flex-col justify-between cursor-pointer hover:shadow-md transition-all group"
@@ -294,24 +264,21 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                 <Sparkles className="w-5 h-5" />
               </div>
               <div>
-                <div className="text-[11px] font-semibold uppercase tracking-wider text-[#171717]/70">
-                  Step 03 · Solver
-                </div>
-                <h3 className="font-serif-editorial text-xl text-[#171717] mt-0.5">
+                <h3 className="font-serif-editorial text-xl text-[#171717]">
                   Generate Schedule
                 </h3>
-                <p className="text-xs text-[#171717]/80 mt-1.5 leading-relaxed">
-                  Choose target departments and optimization priorities to build a conflict-free schedule.
+                <p className="text-xs text-[#171717]/80 mt-1 leading-relaxed">
+                  Scope selection, calendar terms, and constraint synthesis across all academic cohorts.
                 </p>
               </div>
             </div>
-            <div className="pt-4 mt-4 border-t border-[#171717]/10 flex items-center justify-between text-xs font-semibold text-[#171717]">
-              <span>Configure & Run</span>
+            <div className="pt-3 mt-3 flex items-center justify-between text-xs font-semibold text-[#171717]">
+              <span>Configure &amp; Run</span>
               <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
             </div>
           </div>
 
-          {/* Card 4: Timetables & Google Sheets Export */}
+          {/* Module 4: Timetables & Google Sheets Export */}
           <div
             onClick={() => onNavigate('timetables')}
             className="sf-pastel-lime rounded-2xl p-5 flex flex-col justify-between cursor-pointer hover:shadow-md transition-all group"
@@ -321,18 +288,15 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                 <Calendar className="w-5 h-5" />
               </div>
               <div>
-                <div className="text-[11px] font-semibold uppercase tracking-wider text-[#171717]/70">
-                  Step 04 · Schedule & Export
-                </div>
-                <h3 className="font-serif-editorial text-xl text-[#171717] mt-0.5">
-                  Timetables & Sheets
+                <h3 className="font-serif-editorial text-xl text-[#171717]">
+                  Timetables &amp; Sheets
                 </h3>
-                <p className="text-xs text-[#171717]/80 mt-1.5 leading-relaxed">
-                  Inspect schedules by Cohort, Course, Room, or Instructor, and export to Google Sheets.
+                <p className="text-xs text-[#171717]/80 mt-1 leading-relaxed">
+                  Weekly matrix view across classes, faculty, and rooms with multi-tab Google Sheets export.
                 </p>
               </div>
             </div>
-            <div className="pt-4 mt-4 border-t border-[#171717]/10 flex items-center justify-between text-xs font-semibold text-[#171717]">
+            <div className="pt-3 mt-3 flex items-center justify-between text-xs font-semibold text-[#171717]">
               <span>Open Grid</span>
               <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
             </div>
@@ -341,18 +305,13 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
       </section>
 
       {/* =========================================================
-          3. INSTITUTIONAL DATASET INVENTORY (Compact Horizontal Table)
+          3. INSTITUTIONAL DATASET INVENTORY (Clean Table without Redundant Badges)
          ========================================================= */}
       <section className="sf-card-white overflow-hidden">
         <div className="p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#E4E2DA]">
-          <div>
-            <h3 className="font-serif-editorial text-xl text-[#171717]">
-              University Dataset Inventory
-            </h3>
-            <p className="text-xs text-[#77766F] mt-0.5">
-              Inspect or update academic records in compact horizontal views before generating a schedule.
-            </p>
-          </div>
+          <h3 className="font-serif-editorial text-xl text-[#171717]">
+            University Dataset Inventory
+          </h3>
           <button
             onClick={() => onNavigate('setup')}
             className="btn-secondary text-xs py-1.5 px-3.5 shrink-0"
@@ -368,7 +327,6 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                 <th className="py-3 px-5">Catalog Category</th>
                 <th className="py-3 px-4">Active Records</th>
                 <th className="py-3 px-4">Institutional Breakdown</th>
-                <th className="py-3 px-4">Readiness Status</th>
                 <th className="py-3 px-5 text-right">Action</th>
               </tr>
             </thead>
@@ -447,12 +405,6 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                       <span className="text-[11px] text-[#77766F]">{item.unit}</span>
                     </td>
                     <td className="py-3.5 px-4 text-[#57564F]">{item.sub}</td>
-                    <td className="py-3.5 px-4">
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-[#E8F8E0] text-[#1B5E20] text-[11px] font-semibold">
-                        <CheckCircle2 className="w-3 h-3" />
-                        <span>Configured</span>
-                      </span>
-                    </td>
                     <td className="py-3.5 px-5 text-right">
                       <span className="inline-flex items-center gap-1 text-xs font-semibold text-[#171717] group-hover:translate-x-0.5 transition-transform">
                         <span>Manage Rows</span>

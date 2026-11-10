@@ -475,15 +475,9 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({ onOpenAuth
             >
               {/* Preview Toolbar */}
               <div className="px-4 sm:px-6 py-3.5 bg-[#F7F6EF] border-b border-[#E4E2DA] flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-                <div className="flex flex-wrap items-center gap-2.5">
+                <div className="flex flex-wrap items-center gap-2">
                   <span className="text-xs font-semibold text-[#171717]">
-                    Live Section Timetable Preview:
-                  </span>
-                  <span className="text-xs font-mono-tabular px-2.5 py-0.5 rounded bg-white border border-[#E4E2DA] text-[#171717] font-semibold">
                     {activeDemoGroup?.code} — {activeDemoGroup?.name}
-                  </span>
-                  <span className="text-xs text-[#77766F] hidden sm:inline">
-                    · Click any lecture or 3-hour lab block to inspect
                   </span>
                 </div>
 
@@ -519,7 +513,7 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({ onOpenAuth
                           onClick={() => setActiveDemoGroupId(grp.id)}
                           className={`px-2.5 py-1 rounded-lg text-[11px] font-mono-tabular transition-colors cursor-pointer whitespace-nowrap ${
                             active
-                              ? 'bg-[#B7F77C] text-[#171717] font-bold border border-[#98DF58]'
+                              ? 'bg-[#171717] text-white font-semibold border border-[#171717]'
                               : 'bg-white text-[#57564F] border border-[#E4E2DA] hover:text-[#171717]'
                           }`}
                         >
@@ -536,7 +530,7 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({ onOpenAuth
                     className="h-7 px-2.5 rounded-lg bg-white hover:bg-[#EDEAE0] border border-[#E4E2DA] text-[#171717] text-[11px] font-semibold inline-flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap"
                   >
                     <FileSpreadsheet className="w-3.5 h-3.5" />
-                    <span>{isExportingSample ? 'Exporting...' : 'Export .xlsx'}</span>
+                    <span>{isExportingSample ? 'Exporting...' : 'Export'}</span>
                   </button>
                 </div>
               </div>
@@ -593,8 +587,8 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({ onOpenAuth
                             </tr>
                           )}
 
-                          <tr>
-                            <td className="py-1.5 px-2.5 text-[10.5px] font-mono-tabular bg-[#F7F6EF]/50 text-center align-middle">
+                          <tr className="h-[58px]">
+                            <td className="h-[58px] py-1.5 px-2.5 text-[10.5px] font-mono-tabular bg-[#F7F6EF]/50 text-center align-middle">
                               <div className="font-semibold text-[#171717] leading-tight">
                                 {slotMeta.period.replace(' AM', '').replace(' PM', '')}
                               </div>
@@ -615,28 +609,24 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({ onOpenAuth
                                   <td
                                     key={day}
                                     rowSpan={3}
-                                    className="p-1 border-l border-[#E4E2DA] align-stretch bg-white"
+                                    className="h-[1px] p-1 border-l border-[#E4E2DA] align-top bg-white"
                                   >
                                     <div
                                       onClick={() => setSelectedClass(labItem)}
                                       style={{
                                         backgroundColor: pastel.bg,
-                                        borderColor: pastel.border
+                                        borderColor: pastel.border,
+                                        minHeight: '166px'
                                       }}
-                                      className="h-full min-h-[126px] rounded-xl p-2.5 border flex flex-col justify-between cursor-pointer hover:brightness-95 transition-all"
+                                      className="w-full h-full rounded-xl p-2.5 border flex flex-col justify-between cursor-pointer hover:brightness-95 transition-all"
                                     >
-                                      <div className="space-y-1">
-                                        <div className="flex items-center justify-between gap-1">
-                                          <span className="text-[9.5px] font-mono-tabular font-bold px-1.5 py-0.5 rounded bg-[#171717] text-white">
-                                            3-HR LAB
-                                          </span>
-                                          <span className="text-[9.5px] font-mono-tabular font-semibold text-[#171717]/80">
-                                            {labItem.room}
-                                          </span>
-                                        </div>
-                                        <div className="font-serif-editorial text-xs font-medium text-[#171717] leading-snug">
-                                          {labItem.title}
-                                        </div>
+                                      <div className="flex items-center justify-between gap-1 text-[9.5px] font-mono-tabular font-bold text-[#171717]">
+                                        <span>{labItem.code} · 3H LAB</span>
+                                        <span className="text-[#171717]/80">{labItem.room}</span>
+                                      </div>
+
+                                      <div className="my-auto py-1 font-serif-editorial text-xs font-medium text-[#171717] leading-snug text-center">
+                                        {labItem.title}
                                       </div>
 
                                       <div className="pt-1.5 border-t border-[#171717]/10 flex items-center justify-between text-[9.5px] text-[#171717]/80">
@@ -659,7 +649,7 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({ onOpenAuth
                                 return (
                                   <td
                                     key={day}
-                                    className="p-1 border-l border-[#E4E2DA] h-[44px] bg-white"
+                                    className="h-[58px] p-1 border-l border-[#E4E2DA] bg-white"
                                   />
                                 );
                               }
@@ -668,7 +658,7 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({ onOpenAuth
                               return (
                                 <td
                                   key={day}
-                                  className="p-1 border-l border-[#E4E2DA] align-top bg-white"
+                                  className="h-[58px] p-1 border-l border-[#E4E2DA] align-middle bg-white"
                                 >
                                   <div
                                     onClick={() => setSelectedClass(item)}
@@ -676,7 +666,7 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({ onOpenAuth
                                       backgroundColor: pastel.bg,
                                       borderColor: pastel.border
                                     }}
-                                    className="rounded-lg p-1.5 border cursor-pointer hover:brightness-95 transition-all"
+                                    className="w-full h-full min-h-[48px] rounded-lg p-1.5 border flex flex-col justify-center cursor-pointer hover:brightness-95 transition-all"
                                   >
                                     <div className="flex items-center justify-between gap-1">
                                       <span className="text-[10px] font-mono-tabular font-bold text-[#171717]">
