@@ -11,8 +11,6 @@ import {
   Settings,
   LogOut,
   ChevronDown,
-  PanelLeftClose,
-  PanelLeftOpen,
   Menu,
   X,
   Users,
@@ -598,6 +596,44 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
     ? facultyNavigationGroups
     : adminNavigationGroups;
 
+  const [isSidebarHovered, setIsSidebarHovered] = useState(false);
+  const hoverTimeoutRef = useRef<number | null>(null);
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
+
+  const handleSidebarMouseEnter = () => {
+    if (hoverTimeoutRef.current !== null) {
+      window.clearTimeout(hoverTimeoutRef.current);
+      hoverTimeoutRef.current = null;
+    }
+    setIsSidebarHovered(true);
+  };
+
+  const handleSidebarMouseLeave = () => {
+    if (hoverTimeoutRef.current !== null) {
+      window.clearTimeout(hoverTimeoutRef.current);
+    }
+    hoverTimeoutRef.current = window.setTimeout(() => {
+      setIsSidebarHovered(false);
+    }, 120);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (hoverTimeoutRef.current !== null) {
+        window.clearTimeout(hoverTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  const toggleGroupCollapse = (groupId: string) => {
+    setCollapsedGroups(prev => ({
+      ...prev,
+      [groupId]: !prev[groupId]
+    }));
+  };
+
+  const isRightSidebarExpanded = secondaryOpen || isSidebarHovered;
+
   const toggleUtilityPanel = (panel: Exclude<UtilityPanelType, null>) => {
     setActiveUtilityPanel(prev => (prev === panel ? null : panel));
   };
@@ -606,9 +642,11 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
     <div className="h-screen w-full overflow-hidden flex bg-[#F7F6EF] text-[#171717]">
       {/* =========================================================
            1. LEFT COLUMN (72px, Fixed 100vh):
-              Reserved EXCLUSIVELY for Personal Utilities & Account
+              Personal Utilities & Account (Hover opens Right Sidebar)
           ========================================================= */}
       <aside
+        onMouseEnter={handleSidebarMouseEnter}
+        onMouseLeave={handleSidebarMouseLeave}
         className="fixed inset-y-0 left-0 z-40 hidden md:flex flex-col items-center justify-between w-[72px] h-screen bg-[#171717] text-white py-3.5 shrink-0 select-none border-r border-[#242424]"
         aria-label="Personal utilities and account controls"
       >
@@ -619,28 +657,11 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
               setActiveUtilityPanel(null);
               onNavigate(homeRouteForRole);
             }}
-            title={`${institutionName} · SmartGrid AI`}
+            title={institutionName}
             aria-label="Dashboard"
             className="rounded-xl transition-transform hover:scale-105 cursor-pointer focus:outline-none"
           >
             <SmartGridLogo variant="icon" theme="dark" size="md" />
-          </button>
-
-          <button
-            onClick={handleToggleSidebar}
-            title={secondaryOpen ? 'Collapse navigation sidebar' : 'Expand navigation sidebar'}
-            aria-label={secondaryOpen ? 'Collapse navigation sidebar' : 'Expand navigation sidebar'}
-            className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors cursor-pointer ${
-              !secondaryOpen
-                ? 'bg-[#2E2E2E] text-[#B8EEEE] hover:bg-[#383838]'
-                : 'text-[#9E9D96] hover:text-white hover:bg-[#242424]'
-            }`}
-          >
-            {secondaryOpen ? (
-              <PanelLeftClose className="w-[18px] h-[18px]" />
-            ) : (
-              <PanelLeftOpen className="w-[18px] h-[18px]" />
-            )}
           </button>
 
           <div className="w-7 h-[1px] bg-[#2E2E2E]" />
@@ -690,7 +711,7 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
           </div>
         </div>
 
-        {/* Bottom: Settings, User Profile/Avatar, Sign Out */}
+        {/* Bottom: Settings, User Profile/Avatar, Single Logout Button */}
         <div className="flex flex-col items-center gap-2.5 w-full px-2">
           <div className="w-7 h-[1px] bg-[#2E2E2E]" />
 
@@ -729,8 +750,8 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
 
           <button
             onClick={onSignOut}
-            title="Sign Out"
-            aria-label="Sign out"
+            title="Log Out"
+            aria-label="Log out"
             className="w-9 h-9 rounded-xl flex items-center justify-center text-[#9E9D96] hover:text-white hover:bg-[#242424] transition-colors cursor-pointer"
           >
             <LogOut className="w-[16px] h-[16px]" />
@@ -915,15 +936,9 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
                       setActiveUtilityPanel(null);
                       onNavigate('account-settings');
                     }}
-                    className="flex-1 py-1.5 px-2.5 rounded-lg bg-[#292929] hover:bg-[#333333] text-xs text-white cursor-pointer"
+                    className="w-full py-1.5 px-2.5 rounded-lg bg-[#292929] hover:bg-[#333333] text-xs text-white cursor-pointer"
                   >
                     Account Settings
-                  </button>
-                  <button
-                    onClick={onSignOut}
-                    className="py-1.5 px-3 rounded-lg bg-[#382424] hover:bg-[#4A2C2C] text-xs text-[#F2D8FA] cursor-pointer"
-                  >
-                    Sign Out
                   </button>
                 </div>
               </div>
@@ -934,36 +949,33 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
 
       {/* =========================================================
            2. RIGHT COLUMN (Fixed 100vh):
-              Role-Specific Navigation Menu (256px Expanded / 60px Collapsed Icon Rail)
+              Role-Specific Navigation Menu
+              - Smoothly opens when hovering Left Sidebar or when expanded
+              - Completely collapses (no icons) when collapsed
+              - No web app name on the right sidebar
+              - All option groups collapsible except the first one
           ========================================================= */}
       <aside
-        className={`fixed inset-y-0 left-[72px] z-30 hidden md:flex flex-col h-screen bg-[#292929] text-[#EAE8E1] shrink-0 select-none border-r border-[#1F1F1F] transition-[width] duration-200 ease-in-out overflow-hidden ${
-          secondaryOpen ? 'w-[256px]' : 'w-[60px]'
+        onMouseEnter={handleSidebarMouseEnter}
+        onMouseLeave={handleSidebarMouseLeave}
+        className={`fixed inset-y-0 left-[72px] z-30 hidden md:flex flex-col h-screen bg-[#292929] text-[#EAE8E1] shrink-0 select-none transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] overflow-hidden ${
+          isRightSidebarExpanded
+            ? 'w-[256px] opacity-100 border-r border-[#1F1F1F] shadow-xl'
+            : 'w-0 opacity-0 pointer-events-none border-r-0'
         }`}
         aria-label="Main application navigation"
+        aria-hidden={!isRightSidebarExpanded}
       >
-        {secondaryOpen ? (
+        {isRightSidebarExpanded && (
           <div className="w-[256px] h-screen flex flex-col justify-between overflow-hidden">
-            {/* Compact Brand & Context Sidebar Header */}
-            <div className="px-3 py-2.5 border-b border-[#363636] relative flex flex-col gap-2 shrink-0">
-              <div className="flex items-center justify-between gap-2 px-0.5">
-                <SmartGridLogo variant="primary" theme="dark" size="xs" />
-                <button
-                  onClick={handleToggleSidebar}
-                  title="Collapse navigation sidebar to icon rail"
-                  aria-label="Collapse navigation sidebar"
-                  className="w-7 h-7 rounded-lg text-[#9E9D96] hover:text-white hover:bg-[#353535] flex items-center justify-center shrink-0 transition-colors cursor-pointer"
-                >
-                  <PanelLeftClose className="w-4 h-4" />
-                </button>
-              </div>
-
+            {/* Context & Term Selector Header (No Web App Name, No Collapse Icon) */}
+            <div className="px-3 py-3 border-b border-[#363636] relative flex flex-col gap-2 shrink-0">
               <button
                 onClick={() => {
                   if (isAdminRole) setTermDropdownOpen(prev => !prev);
                 }}
                 title={`${institutionName} · ${activeTerm}`}
-                className="w-full min-w-0 flex items-center justify-between gap-1.5 px-2.5 py-1.5 rounded-lg bg-[#323232] hover:bg-[#383838] transition-colors text-left cursor-pointer"
+                className="w-full min-w-0 flex items-center justify-between gap-1.5 px-2.5 py-2 rounded-lg bg-[#323232] hover:bg-[#383838] transition-colors text-left cursor-pointer"
               >
                 <div className="min-w-0">
                   <div className="text-[10px] font-medium uppercase tracking-wider text-[#9E9D96] truncate leading-tight flex items-center gap-1.5">
@@ -990,7 +1002,7 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
               </button>
 
               {isAdminRole && termDropdownOpen && (
-                <div className="absolute left-2.5 right-2.5 top-[86px] bg-[#1F1F1F] border border-[#3E3E3E] rounded-xl p-2 shadow-2xl z-50 space-y-2 max-h-[420px] overflow-y-auto">
+                <div className="absolute left-2.5 right-2.5 top-[58px] bg-[#1F1F1F] border border-[#3E3E3E] rounded-xl p-2 shadow-2xl z-50 space-y-2 max-h-[420px] overflow-y-auto">
                   {/* Section 1: Switch Active University */}
                   <div>
                     <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-[#8E8C84] flex items-center justify-between">
@@ -1087,73 +1099,99 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
               )}
             </div>
 
-            {/* Dynamic Role Navigation Groups */}
+            {/* Dynamic Role Navigation Groups (First group fixed open; all other groups collapsible) */}
             <nav
-              className="flex-1 flex flex-col justify-start gap-5 px-2.5 py-3 overflow-y-auto"
+              className="flex-1 flex flex-col justify-start gap-4 px-2.5 py-3 overflow-y-auto"
               aria-label="Workspace navigation hierarchy"
             >
-              {navigationGroups.map(group => (
-                <div key={group.id} className="space-y-1">
-                  <div className="px-2.5 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-[#8A8880] select-none">
-                    <span className="font-mono-tabular text-[#6E6C65]">{group.code}.</span>
-                    <span>{group.heading}</span>
-                  </div>
+              {navigationGroups.map((group, groupIdx) => {
+                const isCollapsible = groupIdx > 0;
+                const isGroupCollapsed = isCollapsible && Boolean(collapsedGroups[group.id]);
 
-                  <div className="space-y-0.5">
-                    {group.items.map(item => {
-                      const Icon = item.icon;
-                      return (
-                        <button
-                          key={item.id}
-                          onClick={item.onClick}
-                          title={`${item.label}${item.meta ? ` (${item.meta})` : ''} · ${group.heading}`}
-                          aria-current={item.isActive ? 'page' : undefined}
-                          className={`group relative w-full h-[29px] flex items-center justify-between gap-2 px-2.5 rounded-md text-[12.5px] leading-none transition-colors cursor-pointer ${
-                            item.isActive
-                              ? 'bg-[#383838] text-white font-medium'
-                              : 'text-[#C2C0B8] hover:bg-white/[0.05] hover:text-white font-normal'
+                return (
+                  <div key={group.id} className="space-y-1">
+                    {isCollapsible ? (
+                      <button
+                        type="button"
+                        onClick={() => toggleGroupCollapse(group.id)}
+                        aria-expanded={!isGroupCollapsed}
+                        className="w-full px-2.5 py-1 rounded-md flex items-center justify-between gap-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-[#8A8880] hover:text-[#EAE8E1] hover:bg-white/[0.04] transition-colors select-none cursor-pointer"
+                      >
+                        <span className="flex items-center gap-1.5 truncate">
+                          <span className="font-mono-tabular text-[#6E6C65]">{group.code}.</span>
+                          <span className="truncate">{group.heading}</span>
+                        </span>
+                        <ChevronDown
+                          className={`w-3.5 h-3.5 text-[#8A8880] shrink-0 transition-transform duration-200 ${
+                            isGroupCollapsed ? '-rotate-90' : 'rotate-0'
                           }`}
-                        >
-                          {item.isActive && (
-                            <span
-                              className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-r-full bg-[#B8EEEE]"
-                              aria-hidden="true"
-                            />
-                          )}
+                        />
+                      </button>
+                    ) : (
+                      <div className="px-2.5 py-1 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-[#8A8880] select-none">
+                        <span className="font-mono-tabular text-[#6E6C65]">{group.code}.</span>
+                        <span>{group.heading}</span>
+                      </div>
+                    )}
 
-                          <span className="flex items-center gap-2.5 min-w-0">
-                            <Icon
-                              className={`w-[15px] h-[15px] shrink-0 transition-colors ${
+                    {!isGroupCollapsed && (
+                      <div className="space-y-0.5">
+                        {group.items.map(item => {
+                          const Icon = item.icon;
+                          return (
+                            <button
+                              key={item.id}
+                              onClick={item.onClick}
+                              title={`${item.label}${item.meta ? ` (${item.meta})` : ''} · ${group.heading}`}
+                              aria-current={item.isActive ? 'page' : undefined}
+                              className={`group relative w-full h-[29px] flex items-center justify-between gap-2 px-2.5 rounded-md text-[12.5px] leading-none transition-colors cursor-pointer ${
                                 item.isActive
-                                  ? 'text-[#B8EEEE]'
-                                  : 'text-[#96948C] group-hover:text-[#D6D4CE]'
-                              }`}
-                            />
-                            <span className="truncate">{item.label}</span>
-                          </span>
-
-                          {item.meta && (
-                            <span
-                              className={`text-[11px] font-mono-tabular shrink-0 ${
-                                item.isActive
-                                  ? 'text-[#B8EEEE] font-medium'
-                                  : item.metaAccent
-                                  ? 'text-[#A6A49D]'
-                                  : 'text-[#7E7C74] group-hover:text-[#A6A49D]'
+                                  ? 'bg-[#383838] text-white font-medium'
+                                  : 'text-[#C2C0B8] hover:bg-white/[0.05] hover:text-white font-normal'
                               }`}
                             >
-                              {item.meta}
-                            </span>
-                          )}
-                        </button>
-                      );
-                    })}
+                              {item.isActive && (
+                                <span
+                                  className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-r-full bg-[#B8EEEE]"
+                                  aria-hidden="true"
+                                />
+                              )}
+
+                              <span className="flex items-center gap-2.5 min-w-0">
+                                <Icon
+                                  className={`w-[15px] h-[15px] shrink-0 transition-colors ${
+                                    item.isActive
+                                      ? 'text-[#B8EEEE]'
+                                      : 'text-[#96948C] group-hover:text-[#D6D4CE]'
+                                  }`}
+                                />
+                                <span className="truncate">{item.label}</span>
+                              </span>
+
+                              {item.meta && (
+                                <span
+                                  className={`text-[11px] font-mono-tabular shrink-0 ${
+                                    item.isActive
+                                      ? 'text-[#B8EEEE] font-medium'
+                                      : item.metaAccent
+                                      ? 'text-[#A6A49D]'
+                                      : 'text-[#7E7C74] group-hover:text-[#A6A49D]'
+                                  }`}
+                                >
+                                  {item.meta}
+                                </span>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </nav>
 
-            {/* Bottom Logged-In Role Indicator & Logout */}
+            {/* Bottom Logged-In User Summary (No Duplicate Logout Button) */}
             <div className="px-3 py-2.5 border-t border-[#363636] flex items-center justify-between gap-2 text-xs">
               <div className="min-w-0">
                 <div className="font-semibold text-white truncate">{currentUser.name}</div>
@@ -1169,76 +1207,18 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
                     : currentUser.role}
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={onSignOut}
-                title="Sign Out"
-                className="px-2.5 py-1.5 rounded-lg bg-[#383838] hover:bg-[#444444] text-[11px] font-medium text-white shrink-0 cursor-pointer"
-              >
-                Logout
-              </button>
             </div>
-          </div>
-        ) : (
-          /* COLLAPSED STATE (60px) */
-          <div className="w-[60px] h-screen flex flex-col items-center justify-between py-2.5 px-1.5 overflow-hidden">
-            <div className="w-full flex flex-col items-center pb-2 border-b border-[#363636] shrink-0">
-              <button
-                onClick={handleToggleSidebar}
-                title={`Expand navigation sidebar (${institutionName} · ${activeTerm})`}
-                aria-label="Expand navigation sidebar"
-                className="w-9 h-8 rounded-lg bg-[#333333] hover:bg-[#3E3E3E] text-[#B8EEEE] flex items-center justify-center transition-colors cursor-pointer"
-              >
-                <PanelLeftOpen className="w-4 h-4" />
-              </button>
-            </div>
-
-            <nav
-              className="flex-1 w-full flex flex-col items-center justify-start gap-2 py-2 overflow-hidden"
-              aria-label="Collapsed workspace navigation"
-            >
-              {navigationGroups.map((group, gIdx) => (
-                <div key={group.id} className="w-full flex flex-col items-center gap-0.5">
-                  {gIdx > 0 && <div className="w-6 h-[1px] bg-[#363636] mb-1" />}
-                  {group.items.map(item => {
-                    const Icon = item.icon;
-                    return (
-                      <button
-                        key={item.id}
-                        onClick={item.onClick}
-                        title={`${item.label}${item.meta ? ` (${item.meta})` : ''} — ${group.code}. ${group.heading}`}
-                        aria-label={item.label}
-                        aria-current={item.isActive ? 'page' : undefined}
-                        className={`relative w-9 h-[27px] rounded-md flex items-center justify-center transition-colors cursor-pointer ${
-                          item.isActive
-                            ? 'bg-[#383838] text-[#B8EEEE]'
-                            : 'text-[#9E9D96] hover:bg-white/[0.06] hover:text-white'
-                        }`}
-                      >
-                        {item.isActive && (
-                          <span
-                            className="absolute left-0 top-1.5 bottom-1.5 w-[2.5px] rounded-r-full bg-[#B8EEEE]"
-                            aria-hidden="true"
-                          />
-                        )}
-                        <Icon className="w-[15px] h-[15px] shrink-0" />
-                      </button>
-                    );
-                  })}
-                </div>
-              ))}
-            </nav>
           </div>
         )}
       </aside>
 
       {/* =========================================================
-           3. CENTRAL CONTENT AREA + MOBILE DRAWER
+           3. CENTRAL CONTENT AREA + MAIN BACKGROUND SIDEBAR TOGGLE
           ========================================================= */}
       <div
         ref={mainScrollRef}
-        className={`flex-1 min-w-0 h-screen overflow-y-auto overflow-x-hidden flex flex-col bg-[#F7F6EF] transition-[margin-left] duration-200 ease-in-out ${
-          secondaryOpen ? 'md:ml-[328px]' : 'md:ml-[132px]'
+        className={`flex-1 min-w-0 h-screen overflow-y-auto overflow-x-hidden flex flex-col bg-[#F7F6EF] transition-[margin-left] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+          isRightSidebarExpanded ? 'md:ml-[328px]' : 'md:ml-[72px]'
         }`}
       >
         {/* Mobile Sticky Header */}
@@ -1280,12 +1260,9 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
             <div className="relative w-72 max-w-[85vw] bg-[#292929] text-white h-full flex flex-col justify-between p-4 z-10 overflow-y-auto">
               <div className="space-y-4">
                 <div className="flex items-center justify-between pb-3 border-b border-[#383838]">
-                  <SmartGridLogo
-                    variant="primary"
-                    theme="dark"
-                    size="xs"
-                    subtitle={`${institutionName} · ${activeTerm}`}
-                  />
+                  <div className="text-xs font-semibold text-white">
+                    {institutionName} · {activeTerm}
+                  </div>
                   <button
                     onClick={() => setMobileDrawerOpen(false)}
                     className="p-1 text-[#A6A49D] hover:text-white cursor-pointer"
@@ -1294,54 +1271,78 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
                   </button>
                 </div>
 
-                {navigationGroups.map(group => (
-                  <div key={group.id} className="space-y-1">
-                    <div className="px-2.5 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-[#8E8C84]">
-                      <span className="font-mono-tabular text-[#6E6C65]">{group.code}.</span>
-                      <span>{group.heading}</span>
-                    </div>
-                    <div className="space-y-0.5">
-                      {group.items.map(item => {
-                        const Icon = item.icon;
-                        return (
-                          <button
-                            key={item.id}
-                            onClick={item.onClick}
-                            className={`relative w-full flex items-center justify-between px-3 py-2 rounded-md text-xs cursor-pointer ${
-                              item.isActive
-                                ? 'bg-[#383838] text-white font-medium'
-                                : 'text-[#C2C0B8] hover:bg-white/[0.05] hover:text-white'
+                {navigationGroups.map((group, groupIdx) => {
+                  const isCollapsible = groupIdx > 0;
+                  const isGroupCollapsed = isCollapsible && Boolean(collapsedGroups[group.id]);
+                  return (
+                    <div key={group.id} className="space-y-1">
+                      {isCollapsible ? (
+                        <button
+                          type="button"
+                          onClick={() => toggleGroupCollapse(group.id)}
+                          className="w-full px-2.5 py-1 flex items-center justify-between gap-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-[#8E8C84] cursor-pointer"
+                        >
+                          <span className="flex items-center gap-1.5">
+                            <span className="font-mono-tabular text-[#6E6C65]">{group.code}.</span>
+                            <span>{group.heading}</span>
+                          </span>
+                          <ChevronDown
+                            className={`w-3.5 h-3.5 transition-transform duration-200 ${
+                              isGroupCollapsed ? '-rotate-90' : 'rotate-0'
                             }`}
-                          >
-                            {item.isActive && (
-                              <span
-                                className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-r-full bg-[#B8EEEE]"
-                                aria-hidden="true"
-                              />
-                            )}
-                            <span className="flex items-center gap-2.5">
-                              <Icon
-                                className={`w-4 h-4 ${
-                                  item.isActive ? 'text-[#B8EEEE]' : 'text-[#A6A49D]'
-                                }`}
-                              />
-                              <span>{item.label}</span>
-                            </span>
-                            {item.meta && (
-                              <span
-                                className={`text-[10.5px] font-mono-tabular ${
-                                  item.isActive ? 'text-[#B8EEEE]' : 'text-[#8E8C84]'
+                          />
+                        </button>
+                      ) : (
+                        <div className="px-2.5 py-1 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-[#8E8C84]">
+                          <span className="font-mono-tabular text-[#6E6C65]">{group.code}.</span>
+                          <span>{group.heading}</span>
+                        </div>
+                      )}
+                      {!isGroupCollapsed && (
+                        <div className="space-y-0.5">
+                          {group.items.map(item => {
+                            const Icon = item.icon;
+                            return (
+                              <button
+                                key={item.id}
+                                onClick={item.onClick}
+                                className={`relative w-full flex items-center justify-between px-3 py-2 rounded-md text-xs cursor-pointer ${
+                                  item.isActive
+                                    ? 'bg-[#383838] text-white font-medium'
+                                    : 'text-[#C2C0B8] hover:bg-white/[0.05] hover:text-white'
                                 }`}
                               >
-                                {item.meta}
-                              </span>
-                            )}
-                          </button>
-                        );
-                      })}
+                                {item.isActive && (
+                                  <span
+                                    className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-r-full bg-[#B8EEEE]"
+                                    aria-hidden="true"
+                                  />
+                                )}
+                                <span className="flex items-center gap-2.5">
+                                  <Icon
+                                    className={`w-4 h-4 ${
+                                      item.isActive ? 'text-[#B8EEEE]' : 'text-[#A6A49D]'
+                                    }`}
+                                  />
+                                  <span>{item.label}</span>
+                                </span>
+                                {item.meta && (
+                                  <span
+                                    className={`text-[10.5px] font-mono-tabular ${
+                                      item.isActive ? 'text-[#B8EEEE]' : 'text-[#8E8C84]'
+                                    }`}
+                                  >
+                                    {item.meta}
+                                  </span>
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
 
               <div className="pt-4 mt-4 border-t border-[#383838] flex items-center justify-between">
@@ -1363,15 +1364,41 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
           </div>
         )}
 
-        {/* Universal Multi-University Context & Quick Switch Header (Admins/Registrars) */}
-        {isAdminRole && (
-          <div className="bg-[#EDEAE0]/70 border-b border-[#E4E2DA] px-6 sm:px-10 py-2.5 flex flex-wrap items-center justify-between gap-3 text-xs shrink-0">
-            <div className="flex items-center gap-2.5 flex-wrap">
-              <span className="text-[11px] font-semibold text-[#77766F] uppercase tracking-wider flex items-center gap-1.5">
-                <Building2 className="w-3.5 h-3.5 text-[#171717]" />
-                University Workspace:
-              </span>
-              <div className="flex items-center gap-2">
+        {/* Main Background Top Bar with Collapse Sidebar Icon (Only on Main Background) */}
+        <div className="hidden md:flex items-center justify-between px-6 sm:px-10 pt-4 pb-1 shrink-0">
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={handleToggleSidebar}
+              title={secondaryOpen ? 'Collapse sidebar' : 'Pin sidebar open'}
+              aria-label={secondaryOpen ? 'Collapse sidebar' : 'Pin sidebar open'}
+              className="w-9 h-9 rounded-xl bg-white/80 hover:bg-white border border-[#E4E2DA] text-[#171717] flex items-center justify-center transition-all cursor-pointer shadow-2xs"
+            >
+              {/* Sidebar Split-Panel Collapse Icon */}
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <rect x="3" y="3" width="18" height="18" rx="4" />
+                <line x1="9.5" y1="3" x2="9.5" y2="21" />
+                <line x1="6" y1="8" x2="7.2" y2="8" />
+                <line x1="6" y1="12" x2="7.2" y2="12" />
+              </svg>
+            </button>
+
+            {isAdminRole && (
+              <div className="flex items-center gap-2.5 text-xs">
+                <span className="text-[11px] font-semibold text-[#77766F] uppercase tracking-wider flex items-center gap-1.5">
+                  <Building2 className="w-3.5 h-3.5 text-[#171717]" />
+                  University Workspace:
+                </span>
                 <span className="font-semibold text-[#171717]">{institutionName}</span>
                 {(currentInstSummary as any)?.isDemoTemplate ? (
                   <span className="px-2 py-0.5 rounded text-[10.5px] font-medium bg-[#E8D36B]/30 text-[#6B5A10] border border-[#E8D36B]/50">
@@ -1383,8 +1410,10 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
                   </span>
                 )}
               </div>
-            </div>
+            )}
+          </div>
 
+          {isAdminRole && (
             <div className="flex items-center gap-2">
               <button
                 type="button"
@@ -1406,10 +1435,10 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
                 <span>+ Onboard University</span>
               </button>
             </div>
-          </div>
-        )}
+          )}
+        </div>
 
-        <main className="flex-1 w-full max-w-[1340px] mx-auto px-6 sm:px-10 lg:px-12 py-8 lg:py-10">
+        <main className="flex-1 w-full max-w-[1340px] mx-auto px-6 sm:px-10 lg:px-12 py-6 lg:py-8">
           {children}
         </main>
       </div>

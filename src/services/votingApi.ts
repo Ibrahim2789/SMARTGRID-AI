@@ -646,3 +646,46 @@ export async function saveInstructorPreferenceBackend(
   );
 }
 
+export interface UniversityDetectionResult {
+  status: 'idle' | 'detecting' | 'detected' | 'unrecognized' | 'unsupported';
+  domain?: string;
+  institutionId?: string;
+  institutionName?: string;
+  institutionCode?: string;
+  campusName?: string;
+  message?: string;
+}
+
+export async function detectUniversityByEmailApi(
+  email: string
+): Promise<UniversityDetectionResult> {
+  const res = await fetch(
+    `/api/auth/detect-university?email=${encodeURIComponent(email.trim())}`
+  );
+  const data = await res.json().catch(() => ({ status: 'idle' }));
+  return data as UniversityDetectionResult;
+}
+
+export async function requestPasswordRecoveryApi(payload: {
+  email: string;
+  role: string;
+}): Promise<{
+  status: string;
+  accountFound: boolean;
+  role: string;
+  institutionName?: string;
+  message: string;
+}> {
+  const res = await fetch('/api/auth/forgot-password', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data.error || 'Unable to process password recovery request.');
+  }
+  return data;
+}
+
+

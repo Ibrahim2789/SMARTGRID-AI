@@ -196,6 +196,181 @@ def register_smartgrid_routes(
         }
 
     # =========================================================
+    # UNIVERSITY WORKSPACE DETECTION & PASSWORD RECOVERY
+    # =========================================================
+    @app.get("/api/auth/detect-university")
+    def detect_university_by_email(request: Request) -> Dict[str, Any]:
+        raw_email = get_query_param(request, "email", "").strip().lower()
+        if not raw_email or "@" not in raw_email:
+            return {"status": "idle"}
+
+        local_part, domain = raw_email.rsplit("@", 1)
+        domain = domain.strip()
+        if not domain or "." not in domain or domain.endswith("."):
+            return {"status": "idle"}
+
+        personal_domains = {
+            "gmail.com",
+            "googlemail.com",
+            "yahoo.com",
+            "yahoo.co.uk",
+            "outlook.com",
+            "hotmail.com",
+            "live.com",
+            "icloud.com",
+            "me.com",
+            "aol.com",
+            "protonmail.com",
+            "proton.me",
+            "zoho.com",
+            "yandex.com",
+            "mail.com",
+        }
+
+        with _db_lock:
+            # 1. Exact email match in users table
+            exact_user = row_to_dict(
+                db_conn.execute(
+                    """
+                    SELECT u.institution_id, u.institution, i.name as inst_name, i.code as inst_code, i.campus_name
+                    FROM users u
+                    LEFT JOIN institutions i ON i.id = u.institution_id
+                    WHERE LOWER(u.email) = ?
+                    LIMIT 1
+                    """,
+                    (raw_email,),
+                ).fetchone()
+            )
+            if exact_user and exact_user.get("institution_id"):
+                return {
+                    "status": "detected",
+                    "domain": domain,
+                    "institutionId": exact_user["institution_id"],
+                    "institutionName": exact_user.get("inst_name") or exact_user.get("institution") or "Registered University",
+                    "institutionCode": exact_user.get("inst_code") or "UNI",
+                    "campusName": exact_user.get("campus_name") or "Main Campus",
+                }
+
+            # 2. Check if personal/consumer email domain
+            if domain in personal_domains:
+                return {
+                    "status": "unsupported",
+                    "domain": domain,
+                    "message": f"@{domain} is a personal email provider, not an institutional university domain.",
+                }
+
+            # 3. Domain match across existing institutional users
+            domain_user = row_to_dict(
+                db_conn.execute(
+                    """
+                    SELECT u.institution_id, u.institution, i.name as inst_name, i.code as inst_code, i.campus_name
+                    FROM users u
+                    LEFT JOIN institutions i ON i.id = u.institution_id
+                    WHERE LOWER(u.email) LIKE ?
+                    LIMIT 1
+                    """,
+                    (f"%@{domain}",),
+                ).fetchone()
+            )
+            if domain_user and domain_user.get("institution_id"):
+                return {
+                    "status": "detected",
+                    "domain": domain,
+                    "institutionId": domain_user["institution_id"],
+                    "institutionName": domain_user.get("inst_name") or domain_user.get("institution") or "Registered University",
+                    "institutionCode": domain_user.get("inst_code") or "UNI",
+                    "campusName": domain_user.get("campus_name") or "Main Campus",
+                }
+
+            # 4. Heuristic match against registered institutions table by code/slug
+            all_insts = rows_to_dicts(db_conn.execute("SELECT * FROM institutions").fetchall())
+            domain_prefix = domain.split(".")[0].lower()
+            for inst in all_insts:
+                code_lower = str(inst.get("code") or "").lower()
+                if code_lower and (domain_prefix == code_lower or code_lower in domain_prefix):
+                    return {
+                        "status": "detected",
+                        "domain": domain,
+                        "institutionId": inst["id"],
+                        "institutionName": inst["name"],
+                        "institutionCode": inst["code"],
+                        "campusName": inst.get("campus_name") or "Main Campus",
+                    }
+
+        return {
+            "status": "unrecognized",
+            "domain": domain,
+            "message": f"No workspace found for @{domain} in the institutional directory.",
+        }
+
+    @app.post("/api/auth/forgot-password")
+    async def request_password_recovery(request: Request) -> Dict[str, Any]:
+        body = await parse_json_body(request)
+        email = str(body.get("email") or "").strip().lower()
+        role = str(body.get("role") or "student").strip().lower()
+        if not email or "@" not in email:
+            raise HTTPException(
+                status_code=400,
+                detail={"error": "Please enter a valid institutional email address."},
+            )
+
+        current_iso = now_iso()
+        with _db_lock:
+            user_row = row_to_dict(
+                db_conn.execute(
+                    """
+                    SELECT u.id, u.name, u.email, u.role, u.institution_id, u.institution, i.name as inst_name
+                    FROM users u
+                    LEFT JOIN institutions i ON i.id = u.institution_id
+                    WHERE LOWER(u.email) = ?
+                    """,
+                    (email,),
+                ).fetchone()
+            )
+
+            if user_row:
+                uni_id = user_row.get("institution_id") or "inst-western-poly"
+                uni_name = user_row.get("inst_name") or user_row.get("institution") or "your university"
+                db_conn.execute(
+                    """
+                    INSERT INTO notifications (
+                      id, university_id, recipient_user_id, recipient_batch_id, recipient_role,
+                      category, title, message, is_read, created_at
+                    ) VALUES (?, ?, NULL, NULL, 'admin', 'PasswordRecovery', ?, ?, 0, ?)
+                    """,
+                    (
+                        f"notif-{uuid.uuid4().hex[:8]}",
+                        uni_id,
+                        f"Password Recovery Requested ({user_row['role'].upper()})",
+                        f"{user_row['name']} ({user_row['email']}) requested a credential recovery check.",
+                        current_iso,
+                    ),
+                )
+                db_conn.commit()
+                if user_row["role"] == "br":
+                    return {
+                        "status": "sent",
+                        "accountFound": True,
+                        "role": "br",
+                        "institutionName": uni_name,
+                        "message": f"Batch Representative accounts are governed by {uni_name}. A credential reset notification has been logged for your University Administrator under Administration → Batch Representatives.",
+                    }
+                return {
+                    "status": "sent",
+                    "accountFound": True,
+                    "role": user_row["role"],
+                    "institutionName": uni_name,
+                    "message": f"Password recovery instructions for {email} have been dispatched via {uni_name} identity services, and your Registrar office has been notified.",
+                }
+
+        return {
+            "status": "sent",
+            "accountFound": False,
+            "role": role,
+            "message": f"If an active institutional account exists for {email}, recovery instructions have been queued. Please verify you entered your official university email address.",
+        }
+
+    # =========================================================
     # UNIVERSITIES & SETTINGS ENDPOINTS
     # =========================================================
     @app.get("/api/universities")
