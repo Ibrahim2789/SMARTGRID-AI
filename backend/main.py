@@ -1713,7 +1713,20 @@ def delete_poll(pollId: str, request: Request) -> Dict[str, Any]:
     return {"message": "Question permanently removed."}
 
 
+# Register all Academic, Preference, Hybrid AI Optimization (DSatur + GA + SA),
+# Tabu Search Rescheduling, Timetable Versioning, Analytics, and Notification routes
+from app.api_routes import register_smartgrid_routes  # noqa: E402
+
+register_smartgrid_routes(
+    app=app,
+    require_auth_user=require_auth_user,
+    parse_json_body=parse_json_body,
+    get_query_param=get_query_param,
+)
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("PYTHON_BACKEND_PORT", "8001"))
     host = os.environ.get("PYTHON_BACKEND_HOST", "127.0.0.1")
     run_fastapi_app(app, host=host, port=port)
+

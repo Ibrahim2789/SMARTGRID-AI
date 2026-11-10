@@ -263,6 +263,249 @@ def initialize_voting_database() -> None:
               FOREIGN KEY (student_user_id) REFERENCES users(id) ON DELETE CASCADE,
               FOREIGN KEY (batch_id) REFERENCES batches(id) ON DELETE CASCADE
             );
+
+            CREATE TABLE IF NOT EXISTS departments (
+              id TEXT PRIMARY KEY,
+              university_id TEXT NOT NULL DEFAULT 'inst-western-poly',
+              code TEXT NOT NULL,
+              name TEXT NOT NULL,
+              faculty_group TEXT DEFAULT 'Engineering & Computing',
+              head_of_department TEXT,
+              created_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS programs (
+              id TEXT PRIMARY KEY,
+              university_id TEXT NOT NULL DEFAULT 'inst-western-poly',
+              department_id TEXT,
+              code TEXT NOT NULL,
+              name TEXT NOT NULL,
+              degree_level TEXT NOT NULL DEFAULT 'Undergraduate',
+              duration_years INTEGER NOT NULL DEFAULT 4,
+              total_semesters INTEGER NOT NULL DEFAULT 8,
+              created_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS semesters (
+              id TEXT PRIMARY KEY,
+              university_id TEXT NOT NULL DEFAULT 'inst-western-poly',
+              code TEXT NOT NULL,
+              name TEXT NOT NULL,
+              academic_year TEXT NOT NULL DEFAULT '2026–2027',
+              semester_number INTEGER NOT NULL DEFAULT 1,
+              is_current INTEGER NOT NULL DEFAULT 1,
+              created_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS sections (
+              id TEXT PRIMARY KEY,
+              university_id TEXT NOT NULL DEFAULT 'inst-western-poly',
+              batch_id TEXT NOT NULL,
+              code TEXT NOT NULL,
+              name TEXT NOT NULL,
+              student_count INTEGER NOT NULL DEFAULT 50,
+              created_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS instructors (
+              id TEXT PRIMARY KEY,
+              university_id TEXT NOT NULL DEFAULT 'inst-western-poly',
+              user_id TEXT,
+              department_code TEXT NOT NULL,
+              name TEXT NOT NULL,
+              email TEXT,
+              designation TEXT NOT NULL DEFAULT 'Professor',
+              specialization TEXT,
+              max_weekly_hours INTEGER NOT NULL DEFAULT 15,
+              max_lectures_per_day INTEGER NOT NULL DEFAULT 3,
+              unavailable_slots TEXT NOT NULL DEFAULT '[]',
+              preferred_slots TEXT NOT NULL DEFAULT '[]',
+              avoid_early_morning INTEGER NOT NULL DEFAULT 0,
+              avoid_late_afternoon INTEGER NOT NULL DEFAULT 0,
+              created_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS classrooms (
+              id TEXT PRIMARY KEY,
+              university_id TEXT NOT NULL DEFAULT 'inst-western-poly',
+              name TEXT NOT NULL,
+              building TEXT NOT NULL DEFAULT 'Main Academic Block',
+              floor INTEGER NOT NULL DEFAULT 1,
+              type TEXT NOT NULL DEFAULT 'Theory',
+              capacity INTEGER NOT NULL DEFAULT 60,
+              equipment TEXT NOT NULL DEFAULT '[]',
+              unavailable_slots TEXT NOT NULL DEFAULT '[]',
+              created_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS courses (
+              id TEXT PRIMARY KEY,
+              university_id TEXT NOT NULL DEFAULT 'inst-western-poly',
+              code TEXT NOT NULL,
+              title TEXT NOT NULL,
+              department_code TEXT NOT NULL,
+              batch_id TEXT NOT NULL,
+              semester INTEGER NOT NULL DEFAULT 3,
+              type TEXT NOT NULL DEFAULT 'Theory',
+              credit_hours INTEGER NOT NULL DEFAULT 3,
+              hours_per_week INTEGER NOT NULL DEFAULT 3,
+              instructor_id TEXT NOT NULL,
+              student_count INTEGER NOT NULL DEFAULT 60,
+              required_room_type TEXT NOT NULL DEFAULT 'Theory',
+              required_equipment TEXT NOT NULL DEFAULT '[]',
+              sections_count INTEGER NOT NULL DEFAULT 1,
+              created_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS student_preferences (
+              id TEXT PRIMARY KEY,
+              university_id TEXT NOT NULL DEFAULT 'inst-western-poly',
+              student_user_id TEXT NOT NULL,
+              batch_id TEXT NOT NULL,
+              preferred_start_window TEXT NOT NULL DEFAULT '09:00-14:00',
+              preferred_lab_slots TEXT NOT NULL DEFAULT '[]',
+              avoid_early_morning INTEGER NOT NULL DEFAULT 0,
+              avoid_late_evening INTEGER NOT NULL DEFAULT 1,
+              max_acceptable_idle_gaps INTEGER NOT NULL DEFAULT 1,
+              compact_schedule_weight REAL NOT NULL DEFAULT 0.85,
+              preferred_free_day TEXT,
+              notes TEXT,
+              updated_at TEXT NOT NULL,
+              UNIQUE(student_user_id)
+            );
+
+            CREATE TABLE IF NOT EXISTS instructor_preferences (
+              id TEXT PRIMARY KEY,
+              university_id TEXT NOT NULL DEFAULT 'inst-western-poly',
+              instructor_id TEXT NOT NULL,
+              preferred_days TEXT NOT NULL DEFAULT '["Mon","Tue","Wed","Thu","Fri"]',
+              preferred_slots TEXT NOT NULL DEFAULT '[]',
+              unavailable_slots TEXT NOT NULL DEFAULT '[]',
+              max_consecutive_hours INTEGER NOT NULL DEFAULT 2,
+              avoid_early_morning INTEGER NOT NULL DEFAULT 0,
+              avoid_late_afternoon INTEGER NOT NULL DEFAULT 0,
+              notes TEXT,
+              updated_at TEXT NOT NULL,
+              UNIQUE(instructor_id)
+            );
+
+            CREATE TABLE IF NOT EXISTS optimization_runs (
+              id TEXT PRIMARY KEY,
+              university_id TEXT NOT NULL DEFAULT 'inst-western-poly',
+              triggered_by_user_id TEXT,
+              algorithm_pipeline TEXT NOT NULL DEFAULT 'hybrid_dsatur_ga_sa',
+              status TEXT NOT NULL DEFAULT 'Completed',
+              hyperparameters TEXT NOT NULL DEFAULT '{}',
+              objective_weights TEXT NOT NULL DEFAULT '{}',
+              dsatur_initial_fitness REAL,
+              ga_best_fitness REAL,
+              sa_final_fitness REAL,
+              hard_constraint_violations INTEGER NOT NULL DEFAULT 0,
+              execution_time_ms INTEGER NOT NULL DEFAULT 0,
+              generations_executed INTEGER NOT NULL DEFAULT 0,
+              sa_iterations_executed INTEGER NOT NULL DEFAULT 0,
+              convergence_history TEXT NOT NULL DEFAULT '[]',
+              summary_metrics TEXT NOT NULL DEFAULT '{}',
+              created_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS optimization_scores (
+              id TEXT PRIMARY KEY,
+              optimization_run_id TEXT NOT NULL,
+              university_id TEXT NOT NULL DEFAULT 'inst-western-poly',
+              batch_id TEXT,
+              overall_fitness_score REAL NOT NULL DEFAULT 0,
+              hard_constraint_score REAL NOT NULL DEFAULT 100,
+              student_preference_score REAL NOT NULL DEFAULT 0,
+              compactness_score REAL NOT NULL DEFAULT 0,
+              workload_balance_score REAL NOT NULL DEFAULT 0,
+              instructor_preference_score REAL NOT NULL DEFAULT 0,
+              batch_fairness_score REAL NOT NULL DEFAULT 0,
+              room_utilization_score REAL NOT NULL DEFAULT 0,
+              average_idle_gaps_per_day REAL NOT NULL DEFAULT 0,
+              created_at TEXT NOT NULL,
+              FOREIGN KEY (optimization_run_id) REFERENCES optimization_runs(id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS timetable_versions (
+              id TEXT PRIMARY KEY,
+              university_id TEXT NOT NULL DEFAULT 'inst-western-poly',
+              optimization_run_id TEXT,
+              version_name TEXT NOT NULL,
+              status TEXT NOT NULL DEFAULT 'Draft',
+              fitness_score REAL NOT NULL DEFAULT 0,
+              hard_conflicts_count INTEGER NOT NULL DEFAULT 0,
+              entries_json TEXT NOT NULL DEFAULT '[]',
+              metrics_json TEXT NOT NULL DEFAULT '{}',
+              created_by_user_id TEXT,
+              published_at TEXT,
+              created_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS disruption_events (
+              id TEXT PRIMARY KEY,
+              university_id TEXT NOT NULL DEFAULT 'inst-western-poly',
+              timetable_version_id TEXT,
+              disruption_type TEXT NOT NULL,
+              title TEXT NOT NULL,
+              description TEXT NOT NULL,
+              affected_instructor_id TEXT,
+              affected_classroom_id TEXT,
+              affected_batch_id TEXT,
+              affected_day TEXT,
+              affected_slots TEXT NOT NULL DEFAULT '[]',
+              severity TEXT NOT NULL DEFAULT 'Medium',
+              status TEXT NOT NULL DEFAULT 'Resolved',
+              reported_by_user_id TEXT,
+              created_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS rescheduling_proposals (
+              id TEXT PRIMARY KEY,
+              university_id TEXT NOT NULL DEFAULT 'inst-western-poly',
+              disruption_event_id TEXT NOT NULL,
+              timetable_version_id TEXT,
+              algorithm_used TEXT NOT NULL DEFAULT 'tabu_search_rescheduler',
+              status TEXT NOT NULL DEFAULT 'Pending',
+              affected_classes_count INTEGER NOT NULL DEFAULT 0,
+              moved_classes_count INTEGER NOT NULL DEFAULT 0,
+              unchanged_classes_count INTEGER NOT NULL DEFAULT 0,
+              stability_score REAL NOT NULL DEFAULT 100.0,
+              new_fitness_score REAL NOT NULL DEFAULT 0.0,
+              hard_conflicts_introduced INTEGER NOT NULL DEFAULT 0,
+              diff_payload TEXT NOT NULL DEFAULT '[]',
+              updated_entries_json TEXT NOT NULL DEFAULT '[]',
+              execution_time_ms INTEGER NOT NULL DEFAULT 0,
+              reviewed_by_user_id TEXT,
+              reviewed_at TEXT,
+              created_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS notifications (
+              id TEXT PRIMARY KEY,
+              university_id TEXT NOT NULL DEFAULT 'inst-western-poly',
+              recipient_user_id TEXT,
+              recipient_batch_id TEXT,
+              recipient_role TEXT,
+              category TEXT NOT NULL DEFAULT 'System',
+              title TEXT NOT NULL,
+              message TEXT NOT NULL,
+              is_read INTEGER NOT NULL DEFAULT 0,
+              created_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS audit_logs (
+              id TEXT PRIMARY KEY,
+              university_id TEXT NOT NULL DEFAULT 'inst-western-poly',
+              actor_user_id TEXT,
+              actor_name TEXT,
+              actor_role TEXT,
+              action TEXT NOT NULL,
+              entity_type TEXT NOT NULL,
+              entity_id TEXT,
+              details TEXT NOT NULL DEFAULT '{}',
+              created_at TEXT NOT NULL
+            );
             """
         )
 
@@ -339,6 +582,7 @@ def initialize_voting_database() -> None:
         db_conn.commit()
         _seed_initial_western_poly_data()
         _seed_apex_tech_data()
+        _seed_academic_catalog()
 
 
 def _seed_initial_western_poly_data() -> None:
@@ -525,4 +769,96 @@ def _seed_apex_tech_data() -> None:
         """
     )
     db_conn.commit()
+
+
+def _seed_academic_catalog() -> None:
+    cnt_row = db_conn.execute("SELECT COUNT(*) as cnt FROM courses WHERE university_id = 'inst-western-poly'").fetchone()
+    if cnt_row and int(cnt_row["cnt"]) > 0:
+        return
+
+    current_iso = now_iso()
+
+    # Seed departments
+    depts = [
+        ("dept-wpu-bscs", "inst-western-poly", "BSCS", "Department of Computer Science", "Engineering & Computing", "Prof. Alan Turing"),
+        ("dept-wpu-bese", "inst-western-poly", "BESE", "Department of Software Engineering", "Engineering & Computing", "Dr. Jehanzeb Ahmad"),
+        ("dept-wpu-bee", "inst-western-poly", "BEE", "Department of Electrical Engineering", "Engineering & Computing", "Dr. Nikola Tesla"),
+        ("dept-wpu-bce", "inst-western-poly", "BCE", "Department of Computer Systems Engineering", "Engineering & Computing", "Dr. Grace Hopper"),
+    ]
+    for d_id, u_id, code, name, fg, hod in depts:
+        db_conn.execute(
+            """
+            INSERT OR IGNORE INTO departments (id, university_id, code, name, faculty_group, head_of_department, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (d_id, u_id, code, name, fg, hod, current_iso),
+        )
+
+    # Seed instructors
+    instructors = [
+        ("inst-turing", "inst-western-poly", "user-faculty-turing", "BSCS", "Prof. Alan Turing", "a.turing@westernpoly.edu", "Professor", "Algorithms & Artificial Intelligence", 15, 3, '["Fri-14:00","Fri-15:00"]', '["Mon-09:00","Tue-09:00","Wed-10:00"]', 0, 1),
+        ("inst-jehanzeb", "inst-western-poly", "user-faculty-jehanzeb", "BESE", "Dr. Jehanzeb Ahmad", "jehanzeb.ahmad@westernpoly.edu", "Associate Professor", "Distributed Software Architecture", 15, 3, '["Mon-15:00"]', '["Mon-10:00","Tue-10:00","Thu-09:00"]', 0, 0),
+        ("inst-hopper", "inst-western-poly", None, "BCE", "Dr. Grace Hopper", "g.hopper@westernpoly.edu", "Professor", "Compilers & Embedded Systems", 15, 3, '[]', '["Tue-09:00","Wed-09:00","Thu-10:00"]', 0, 1),
+        ("inst-lovelace", "inst-western-poly", None, "BSCS", "Dr. Ada Lovelace", "a.lovelace@westernpoly.edu", "Assistant Professor", "Machine Learning & Data Science", 15, 3, '["Wed-15:00"]', '["Mon-11:00","Wed-11:00","Thu-11:00"]', 1, 0),
+        ("inst-dijkstra", "inst-western-poly", None, "BESE", "Prof. Edsger Dijkstra", "e.dijkstra@westernpoly.edu", "Professor", "Formal Methods & Operating Systems", 15, 3, '[]', '["Mon-09:00","Wed-09:00","Fri-09:00"]', 0, 1),
+        ("inst-tesla", "inst-western-poly", None, "BEE", "Dr. Nikola Tesla", "n.tesla@westernpoly.edu", "Professor", "Power Systems & Electromagnetics", 15, 3, '[]', '["Tue-10:00","Thu-10:00"]', 0, 0),
+    ]
+    for i_id, u_id, usr_id, dept, name, email, desig, spec, mwh, mlpd, unavail, pref, aem, ala in instructors:
+        db_conn.execute(
+            """
+            INSERT OR IGNORE INTO instructors (
+              id, university_id, user_id, department_code, name, email, designation, specialization,
+              max_weekly_hours, max_lectures_per_day, unavailable_slots, preferred_slots,
+              avoid_early_morning, avoid_late_afternoon, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (i_id, u_id, usr_id, dept, name, email, desig, spec, mwh, mlpd, unavail, pref, aem, ala, current_iso),
+        )
+
+    # Seed classrooms
+    classrooms = [
+        ("room-lh-101", "inst-western-poly", "LH-101 (Turing Lecture Hall)", "Computing Block A", 1, "Theory", 120, '["Projector","SmartBoard","AudioSystem"]', '[]'),
+        ("room-lh-102", "inst-western-poly", "LH-102 (Shannon Hall)", "Computing Block A", 1, "Theory", 110, '["Projector","SmartBoard"]', '[]'),
+        ("room-lh-201", "inst-western-poly", "LH-201 (Engineering Auditorium)", "Engineering Block B", 2, "Theory", 130, '["Projector","AudioSystem"]', '[]'),
+        ("room-lh-202", "inst-western-poly", "LH-202 (Systems Seminar Room)", "Engineering Block B", 2, "Theory", 100, '["Projector","Whiteboard"]', '[]'),
+        ("room-lab-ai", "inst-western-poly", "LAB-301 (AI & GPU Computing Lab)", "Computing Block A", 3, "Lab", 120, '["GPUWorkstations","Projector","LinuxCluster"]', '[]'),
+        ("room-lab-se", "inst-western-poly", "LAB-302 (Software Systems Lab)", "Computing Block A", 3, "Lab", 110, '["Workstations","SmartBoard"]', '[]'),
+        ("room-lab-ee", "inst-western-poly", "LAB-105 (Power & Embedded Lab)", "Engineering Block B", 1, "Lab", 115, '["Oscilloscopes","EmbeddedKits","Projector"]', '[]'),
+    ]
+    for r_id, u_id, name, bldg, flr, rtype, cap, equip, unavail in classrooms:
+        db_conn.execute(
+            """
+            INSERT OR IGNORE INTO classrooms (
+              id, university_id, name, building, floor, type, capacity, equipment, unavailable_slots, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (r_id, u_id, name, bldg, flr, rtype, cap, equip, unavail, current_iso),
+        )
+
+    # Seed courses
+    courses = [
+        ("crs-cs301", "inst-western-poly", "CS-301", "Design & Analysis of Algorithms", "BSCS", "batch-2k25-bscs", 3, "Theory", 3, 3, "inst-turing", 110, "Theory", '["Projector"]'),
+        ("crs-cs302", "inst-western-poly", "CS-302", "Artificial Intelligence & Heuristics", "BSCS", "batch-2k25-bscs", 3, "Theory", 3, 3, "inst-lovelace", 110, "Theory", '["Projector"]'),
+        ("crs-cs302l", "inst-western-poly", "CS-302L", "Artificial Intelligence Lab", "BSCS", "batch-2k25-bscs", 3, "Lab", 1, 3, "inst-lovelace", 110, "Lab", '["GPUWorkstations"]'),
+        ("crs-se301", "inst-western-poly", "SE-301", "Software Architecture & Design", "BESE", "batch-2k24-bese", 5, "Theory", 3, 3, "inst-jehanzeb", 95, "Theory", '["Projector"]'),
+        ("crs-se302", "inst-western-poly", "SE-302", "Operating Systems Internals", "BESE", "batch-2k24-bese", 5, "Theory", 3, 3, "inst-dijkstra", 95, "Theory", '["Projector"]'),
+        ("crs-se302l", "inst-western-poly", "SE-302L", "Operating Systems Kernel Lab", "BESE", "batch-2k24-bese", 5, "Lab", 1, 3, "inst-dijkstra", 95, "Lab", '["Workstations"]'),
+        ("crs-ee301", "inst-western-poly", "EE-301", "Power Systems & Smart Grids", "BEE", "batch-2k24-bee", 5, "Theory", 3, 3, "inst-tesla", 105, "Theory", '["Projector"]'),
+        ("crs-ce201", "inst-western-poly", "CE-201", "Microprocessor & Embedded Systems", "BCE", "batch-2k25-bce", 3, "Theory", 3, 3, "inst-hopper", 90, "Theory", '["Projector"]'),
+        ("crs-ce201l", "inst-western-poly", "CE-201L", "Embedded Systems Interfacing Lab", "BCE", "batch-2k25-bce", 3, "Lab", 1, 3, "inst-hopper", 90, "Lab", '["EmbeddedKits"]'),
+    ]
+    for c_id, u_id, code, title, dept, b_id, sem, ctype, ch, hpw, i_id, scnt, rtype, req_eq in courses:
+        db_conn.execute(
+            """
+            INSERT OR IGNORE INTO courses (
+              id, university_id, code, title, department_code, batch_id, semester,
+              type, credit_hours, hours_per_week, instructor_id, student_count,
+              required_room_type, required_equipment, sections_count, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+            """,
+            (c_id, u_id, code, title, dept, b_id, sem, ctype, ch, hpw, i_id, scnt, rtype, req_eq, current_iso),
+        )
+
+    db_conn.commit()
+
 

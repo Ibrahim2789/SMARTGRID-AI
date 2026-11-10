@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { RouteType } from './SmartGridNav';
 import { useInstitutionalData, institutionalStore } from '../data/store';
+import { getStoredUser, runHybridOptimizationBackend } from '../services/votingApi';
 import {
   TimetableScenario,
   computeAcademicScheduleConfig,
@@ -166,6 +167,15 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({ onNavigate, curr
     const interval = setInterval(() => {
       setStepIndex(prev => (prev < generationSteps.length - 1 ? prev + 1 : prev));
     }, 320);
+
+    const storedUser = getStoredUser();
+    if (storedUser) {
+      runHybridOptimizationBackend(storedUser, {
+        versionName: scenarioName
+      }).catch(() => {
+        // Non-blocking background sync with Python FastAPI optimization engine
+      });
+    }
 
     setTimeout(() => {
       clearInterval(interval);

@@ -140,7 +140,7 @@ export function isCurrentlySignedOut(): boolean {
   return isSessionSignedOut;
 }
 
-function getStoredUser(): AuthenticatedVotingUser | null {
+export function getStoredUser(): AuthenticatedVotingUser | null {
   if (isSessionSignedOut) return null;
   try {
     const raw = sessionStorage.getItem('smartgrid_user');
@@ -558,3 +558,91 @@ export async function deletePollAdmin(
     }
   );
 }
+
+// =========================================================
+// PYTHON FASTAPI HYBRID AI OPTIMIZATION & RESCHEDULING CLIENT
+// =========================================================
+
+export async function runHybridOptimizationBackend(
+  currentUser: AuthenticatedVotingUser,
+  payload?: Record<string, unknown>
+): Promise<Record<string, unknown>> {
+  return authorizedFetch<Record<string, unknown>>(
+    '/api/optimization/run',
+    currentUser,
+    {
+      method: 'POST',
+      body: JSON.stringify(payload || {})
+    }
+  );
+}
+
+export async function compareOptimizationAlgorithmsBackend(
+  currentUser: AuthenticatedVotingUser,
+  payload?: Record<string, unknown>
+): Promise<Record<string, unknown>> {
+  return authorizedFetch<Record<string, unknown>>(
+    '/api/optimization/compare',
+    currentUser,
+    {
+      method: 'POST',
+      body: JSON.stringify(payload || {})
+    }
+  );
+}
+
+export async function reportDisruptionAndRescheduleBackend(
+  currentUser: AuthenticatedVotingUser,
+  payload: Record<string, unknown>
+): Promise<Record<string, unknown>> {
+  return authorizedFetch<Record<string, unknown>>(
+    '/api/rescheduling/disruptions',
+    currentUser,
+    {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    }
+  );
+}
+
+export async function approveReschedulingProposalBackend(
+  currentUser: AuthenticatedVotingUser,
+  proposalId: string
+): Promise<Record<string, unknown>> {
+  return authorizedFetch<Record<string, unknown>>(
+    `/api/rescheduling/proposals/${encodeURIComponent(proposalId)}/approve`,
+    currentUser,
+    {
+      method: 'POST'
+    }
+  );
+}
+
+export async function saveStudentPreferenceBackend(
+  currentUser: AuthenticatedVotingUser,
+  payload: Record<string, unknown>
+): Promise<Record<string, unknown>> {
+  return authorizedFetch<Record<string, unknown>>(
+    '/api/preferences/student',
+    currentUser,
+    {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    }
+  );
+}
+
+export async function saveInstructorPreferenceBackend(
+  currentUser: AuthenticatedVotingUser,
+  payload: Record<string, unknown>
+): Promise<Record<string, unknown>> {
+  return authorizedFetch<Record<string, unknown>>(
+    '/api/preferences/instructor',
+    currentUser,
+    {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    }
+  );
+}
+

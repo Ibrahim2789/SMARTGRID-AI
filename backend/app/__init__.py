@@ -1,0 +1,3 @@
+"""
+SmartGrid AI — Application Package
+"""
