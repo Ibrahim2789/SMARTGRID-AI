@@ -1,4 +1,5 @@
 export type TermStatus = 'draft' | 'active' | 'archived';
+export type TimetableManagementPolicy = 'whole_university' | 'department_wise';
 export type RoomType = 'lecture' | 'lab' | 'seminar' | 'studio';
 export type DayOfWeek = 'Mon' | 'Tue' | 'Wed' | 'Thu' | 'Fri' | 'Sat' | 'Sun';
 export type DegreeLevel = 'Undergraduate' | 'Graduate' | 'Postgraduate';
@@ -15,10 +16,12 @@ export interface AcademicTerm extends BaseEntity {
   id: string;
   name: string;
   code: string;
+  academicYear?: string;
   startDate: string; // ISO YYYY-MM-DD
   endDate: string;
   status: TermStatus;
   weeksCount: number;
+  departmentIds?: string[];
 }
 
 export interface Campus extends BaseEntity {
@@ -278,6 +281,8 @@ export interface Instructor extends BaseEntity {
 export interface StudentGroup extends BaseEntity {
   id: string;
   programId: string;
+  termId?: string;
+  batchCode?: string;
   name: string;
   code: string; // e.g. '2K24-BEE-A' or '2K25-BSCS-A'
   year: number; // 1, 2, 3, 4

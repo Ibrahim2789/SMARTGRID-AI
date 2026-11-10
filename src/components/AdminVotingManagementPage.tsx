@@ -1132,159 +1132,148 @@ export const AdminVotingManagementPage: React.FC<AdminVotingManagementPageProps>
                 </button>
               </div>
 
-              <div className="space-y-4">
-                {batches.map(batch => (
-                  <div
-                    key={batch.id}
-                    className="bg-white border border-[#E4E2DA] rounded-3xl p-5 sm:p-6 shadow-xs space-y-4"
-                  >
-                    <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-[#E4E2DA]">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-sm text-[#171717]">{batch.code}</span>
-                          <span>·</span>
-                          <h3 className="text-sm font-semibold text-[#57564F]">{batch.name}</h3>
-                        </div>
-                        <div className="text-[11px] text-[#77766F] mt-1">
-                          Department: {batch.departmentCode} · Year {batch.year} (Semester{' '}
-                          {batch.semester}) · {batch.studentCount} Enrolled Students
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div className="p-4 rounded-2xl bg-[#B8EEEE]/20 border border-[#8FD8D8] space-y-2">
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="font-bold text-[#171717]">Male Representative</span>
-                          {batch.maleRepresentative ? (
-                            <span className="text-[11px] font-semibold text-[#1B5E20]">
-                              Assigned
-                            </span>
-                          ) : (
-                            <span className="text-[11px] font-semibold text-[#6E5100]">
-                              Vacant Slot
-                            </span>
-                          )}
-                        </div>
-
-                        {batch.maleRepresentative ? (
-                          <div className="space-y-1">
-                            <div className="text-xs font-bold text-[#171717]">
-                              {batch.maleRepresentative.name}
+              <div className="bg-white border border-[#E4E2DA] rounded-2xl overflow-hidden shadow-xs">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-[#F7F6EF] border-b border-[#E4E2DA] text-[11px] font-semibold uppercase tracking-wider text-[#77766F]">
+                        <th className="py-3 px-4">Batch &amp; Department</th>
+                        <th className="py-3 px-3">Sem / Size</th>
+                        <th className="py-3 px-4">Male Representative</th>
+                        <th className="py-3 px-4">Female Representative</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#E4E2DA] text-xs">
+                      {batches.map(batch => (
+                        <tr key={batch.id} className="hover:bg-[#F7F6EF]/60 transition-colors align-top">
+                          <td className="py-3.5 px-4">
+                            <div className="font-mono-tabular font-bold text-[#171717]">{batch.code}</div>
+                            <div className="text-[11px] text-[#57564F] mt-0.5">{batch.name}</div>
+                            <div className="text-[10.5px] text-[#77766F] mt-0.5">
+                              Dept: {batch.departmentCode} · Year {batch.year}
                             </div>
-                            <div className="text-[11px] text-[#57564F] font-mono-tabular truncate">
-                              {batch.maleRepresentative.email}
-                            </div>
-                            {batch.maleRepresentative.credentialHint && (
-                              <div className="text-[11px] text-[#57564F] font-mono-tabular">
-                                Pass: <strong>{batch.maleRepresentative.credentialHint}</strong>
+                          </td>
+                          <td className="py-3.5 px-3 font-mono-tabular text-[11px] text-[#57564F] whitespace-nowrap">
+                            <div>Sem {batch.semester}</div>
+                            <div className="text-[#77766F]">{batch.studentCount} students</div>
+                          </td>
+                          <td className="py-3.5 px-4">
+                            {batch.maleRepresentative ? (
+                              <div className="space-y-0.5">
+                                <div className="font-semibold text-[#171717] flex items-center gap-1.5">
+                                  <span>{batch.maleRepresentative.name}</span>
+                                  <span className="px-1.5 py-0.2 rounded bg-[#E8F8E0] text-[#1B5E20] text-[10px]">
+                                    Assigned
+                                  </span>
+                                </div>
+                                <div className="text-[11px] text-[#57564F] font-mono-tabular truncate max-w-[180px]">
+                                  {batch.maleRepresentative.email}
+                                </div>
+                                {batch.maleRepresentative.credentialHint && (
+                                  <div className="text-[10.5px] text-[#77766F] font-mono-tabular">
+                                    Pass: {batch.maleRepresentative.credentialHint}
+                                  </div>
+                                )}
+                                {onSwitchUser && (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      handleTestLoginAsBr(
+                                        batch.maleRepresentative!.email,
+                                        batch.maleRepresentative!.credentialHint
+                                      )
+                                    }
+                                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#171717] underline cursor-pointer pt-0.5"
+                                  >
+                                    <LogIn className="w-3 h-3" />
+                                    <span>Test Login</span>
+                                  </button>
+                                )}
+                              </div>
+                            ) : (
+                              <div className="space-y-1">
+                                <span className="inline-block px-1.5 py-0.5 rounded bg-[#FFF4E5] text-[#6E5100] text-[10px] font-semibold">
+                                  Vacant Slot
+                                </span>
+                                <div>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setBrFormBatchId(batch.id);
+                                      setBrFormGender('male');
+                                      setBrFormEmail(
+                                        `br.male.${batch.code.toLowerCase().replace(/[^a-z0-9]/g, '')}@westernpoly.edu`
+                                      );
+                                    }}
+                                    className="text-[11px] font-bold text-[#171717] underline cursor-pointer"
+                                  >
+                                    + Assign Male BR →
+                                  </button>
+                                </div>
                               </div>
                             )}
-                            {onSwitchUser && (
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  handleTestLoginAsBr(
-                                    batch.maleRepresentative!.email,
-                                    batch.maleRepresentative!.credentialHint
-                                  )
-                                }
-                                className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-semibold text-[#171717] underline cursor-pointer"
-                              >
-                                <LogIn className="w-3 h-3" />
-                                <span>Test Login as This BR</span>
-                              </button>
-                            )}
-                          </div>
-                        ) : (
-                          <div className="space-y-2">
-                            <p className="text-[11px] text-[#57564F]">
-                              No active Male BR assigned to {batch.code}.
-                            </p>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setBrFormBatchId(batch.id);
-                                setBrFormGender('male');
-                                setBrFormEmail(
-                                  `br.male.${batch.code.toLowerCase().replace(/[^a-z0-9]/g, '')}@westernpoly.edu`
-                                );
-                              }}
-                              className="text-[11px] font-bold text-[#171717] underline cursor-pointer"
-                            >
-                              + Assign Male BR in Form →
-                            </button>
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="p-4 rounded-2xl bg-[#F2D8FA]/25 border border-[#D8B4E2] space-y-2">
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="font-bold text-[#171717]">Female Representative</span>
-                          {batch.femaleRepresentative ? (
-                            <span className="text-[11px] font-semibold text-[#1B5E20]">
-                              Assigned
-                            </span>
-                          ) : (
-                            <span className="text-[11px] font-semibold text-[#6E5100]">
-                              Vacant Slot
-                            </span>
-                          )}
-                        </div>
-
-                        {batch.femaleRepresentative ? (
-                          <div className="space-y-1">
-                            <div className="text-xs font-bold text-[#171717]">
-                              {batch.femaleRepresentative.name}
-                            </div>
-                            <div className="text-[11px] text-[#57564F] font-mono-tabular truncate">
-                              {batch.femaleRepresentative.email}
-                            </div>
-                            {batch.femaleRepresentative.credentialHint && (
-                              <div className="text-[11px] text-[#57564F] font-mono-tabular">
-                                Pass: <strong>{batch.femaleRepresentative.credentialHint}</strong>
+                          </td>
+                          <td className="py-3.5 px-4">
+                            {batch.femaleRepresentative ? (
+                              <div className="space-y-0.5">
+                                <div className="font-semibold text-[#171717] flex items-center gap-1.5">
+                                  <span>{batch.femaleRepresentative.name}</span>
+                                  <span className="px-1.5 py-0.2 rounded bg-[#E8F8E0] text-[#1B5E20] text-[10px]">
+                                    Assigned
+                                  </span>
+                                </div>
+                                <div className="text-[11px] text-[#57564F] font-mono-tabular truncate max-w-[180px]">
+                                  {batch.femaleRepresentative.email}
+                                </div>
+                                {batch.femaleRepresentative.credentialHint && (
+                                  <div className="text-[10.5px] text-[#77766F] font-mono-tabular">
+                                    Pass: {batch.femaleRepresentative.credentialHint}
+                                  </div>
+                                )}
+                                {onSwitchUser && (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      handleTestLoginAsBr(
+                                        batch.femaleRepresentative!.email,
+                                        batch.femaleRepresentative!.credentialHint
+                                      )
+                                    }
+                                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#171717] underline cursor-pointer pt-0.5"
+                                  >
+                                    <LogIn className="w-3 h-3" />
+                                    <span>Test Login</span>
+                                  </button>
+                                )}
+                              </div>
+                            ) : (
+                              <div className="space-y-1">
+                                <span className="inline-block px-1.5 py-0.5 rounded bg-[#FFF4E5] text-[#6E5100] text-[10px] font-semibold">
+                                  Vacant Slot
+                                </span>
+                                <div>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setBrFormBatchId(batch.id);
+                                      setBrFormGender('female');
+                                      setBrFormEmail(
+                                        `br.female.${batch.code.toLowerCase().replace(/[^a-z0-9]/g, '')}@westernpoly.edu`
+                                      );
+                                    }}
+                                    className="text-[11px] font-bold text-[#171717] underline cursor-pointer"
+                                  >
+                                    + Assign Female BR →
+                                  </button>
+                                </div>
                               </div>
                             )}
-                            {onSwitchUser && (
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  handleTestLoginAsBr(
-                                    batch.femaleRepresentative!.email,
-                                    batch.femaleRepresentative!.credentialHint
-                                  )
-                                }
-                                className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-semibold text-[#171717] underline cursor-pointer"
-                              >
-                                <LogIn className="w-3 h-3" />
-                                <span>Test Login as This BR</span>
-                              </button>
-                            )}
-                          </div>
-                        ) : (
-                          <div className="space-y-2">
-                            <p className="text-[11px] text-[#57564F]">
-                              No active Female BR assigned to {batch.code}.
-                            </p>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setBrFormBatchId(batch.id);
-                                setBrFormGender('female');
-                                setBrFormEmail(
-                                  `br.female.${batch.code.toLowerCase().replace(/[^a-z0-9]/g, '')}@westernpoly.edu`
-                                );
-                              }}
-                              className="text-[11px] font-bold text-[#171717] underline cursor-pointer"
-                            >
-                              + Assign Female BR in Form →
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                ))}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
 
@@ -1292,7 +1281,7 @@ export const AdminVotingManagementPage: React.FC<AdminVotingManagementPageProps>
               <div className="bg-white border border-[#E4E2DA] rounded-3xl p-6 shadow-xs space-y-5">
                 <div className="border-b border-[#E4E2DA] pb-3">
                   <h3 className="font-serif-editorial text-xl text-[#171717]">
-                    Create BR Login Account & Assign Slot
+                    Create BR Login Account &amp; Assign Slot
                   </h3>
                   <p className="text-xs text-[#77766F] mt-0.5">
                     Creates a verified Batch Representative account and issues login credentials.
@@ -1405,82 +1394,86 @@ export const AdminVotingManagementPage: React.FC<AdminVotingManagementPageProps>
                     className="w-full btn-primary py-2.5 text-xs font-semibold justify-center"
                   >
                     <KeyRound className="w-4 h-4" />
-                    <span>Create BR Account & Issue Credentials</span>
+                    <span>Create BR Account &amp; Issue Credentials</span>
                   </button>
                 </form>
               </div>
 
-              <div className="bg-white border border-[#E4E2DA] rounded-3xl p-6 shadow-xs space-y-4">
-                <h3 className="text-base font-bold text-[#171717]">
-                  Issued BR Accounts Directory ({brAccounts.length})
-                </h3>
+              <div className="bg-white border border-[#E4E2DA] rounded-2xl overflow-hidden shadow-xs">
+                <div className="p-4 border-b border-[#E4E2DA] flex items-center justify-between">
+                  <h3 className="text-sm font-bold text-[#171717]">
+                    Issued BR Accounts Directory ({brAccounts.length})
+                  </h3>
+                </div>
 
-                <div className="space-y-3 max-h-[440px] overflow-y-auto pr-1">
-                  {brAccounts.map(acc => (
-                    <div
-                      key={acc.id}
-                      className="p-3.5 rounded-2xl bg-[#F7F6EF] border border-[#E4E2DA] space-y-2"
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-xs font-bold text-[#171717] truncate">
-                          {acc.name}
-                        </span>
-                        <span
-                          className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                            acc.isActive
-                              ? 'bg-[#E8F8E0] text-[#1B5E20]'
-                              : 'bg-[#FDE8E8] text-[#8B1E1E]'
-                          }`}
-                        >
-                          {acc.isActive ? 'Active' : 'Deactivated'}
-                        </span>
-                      </div>
-
-                      <div className="text-[11px] text-[#57564F] font-mono-tabular">
-                        <div>Email: {acc.email}</div>
-                        {acc.credentialHint && <div>Password: {acc.credentialHint}</div>}
-                      </div>
-
-                      <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-[#E4E2DA]">
-                        <span className="text-[10px] text-[#77766F]">
-                          {acc.batchCode || 'No batch'} · {acc.questionsSubmittedCount} questions
-                        </span>
-
-                        <div className="flex items-center gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setResettingBr(acc);
-                              setResetPasswordInput('BR-NewPass@2026');
-                            }}
-                            className="px-2 py-1 rounded-lg bg-white border border-[#E4E2DA] text-[10px] font-semibold text-[#171717] hover:bg-[#EDEAE0] cursor-pointer"
-                          >
-                            Reset Pass
-                          </button>
-
-                          {acc.isActive ? (
-                            <button
-                              type="button"
-                              onClick={() => handleBrAccountAction(acc.id, 'deactivate')}
-                              className="px-2 py-1 rounded-lg bg-[#FDE8E8] text-[10px] font-semibold text-[#8B1E1E] cursor-pointer inline-flex items-center gap-1"
+                <div className="overflow-x-auto max-h-[420px]">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-[#F7F6EF] border-b border-[#E4E2DA] text-[10.5px] font-semibold uppercase tracking-wider text-[#77766F]">
+                        <th className="py-2.5 px-3.5">Representative</th>
+                        <th className="py-2.5 px-3">Batch</th>
+                        <th className="py-2.5 px-3">Status</th>
+                        <th className="py-2.5 px-3.5 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#E4E2DA] text-xs">
+                      {brAccounts.map(acc => (
+                        <tr key={acc.id} className="hover:bg-[#F7F6EF]/60 transition-colors">
+                          <td className="py-2.5 px-3.5">
+                            <div className="font-semibold text-[#171717]">{acc.name}</div>
+                            <div className="text-[10.5px] font-mono-tabular text-[#57564F] truncate max-w-[160px]">
+                              {acc.email}
+                            </div>
+                          </td>
+                          <td className="py-2.5 px-3 font-mono-tabular text-[11px] text-[#57564F]">
+                            {acc.batchCode || '—'}
+                          </td>
+                          <td className="py-2.5 px-3">
+                            <span
+                              className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                acc.isActive
+                                  ? 'bg-[#E8F8E0] text-[#1B5E20]'
+                                  : 'bg-[#FDE8E8] text-[#8B1E1E]'
+                              }`}
                             >
-                              <UserX className="w-3 h-3" />
-                              <span>Deactivate</span>
-                            </button>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => handleBrAccountAction(acc.id, 'activate')}
-                              className="px-2 py-1 rounded-lg bg-[#E8F8E0] text-[10px] font-semibold text-[#1B5E20] cursor-pointer inline-flex items-center gap-1"
-                            >
-                              <UserCheck className="w-3 h-3" />
-                              <span>Activate</span>
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
+                              {acc.isActive ? 'Active' : 'Deactivated'}
+                            </span>
+                          </td>
+                          <td className="py-2.5 px-3.5 text-right whitespace-nowrap">
+                            <div className="inline-flex items-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setResettingBr(acc);
+                                  setResetPasswordInput('BR-NewPass@2026');
+                                }}
+                                className="px-2 py-1 rounded bg-[#F7F6EF] border border-[#E4E2DA] text-[10px] font-semibold text-[#171717] hover:bg-[#EDEAE0] cursor-pointer"
+                              >
+                                Reset Pass
+                              </button>
+                              {acc.isActive ? (
+                                <button
+                                  type="button"
+                                  onClick={() => handleBrAccountAction(acc.id, 'deactivate')}
+                                  className="px-2 py-1 rounded bg-[#FDE8E8] text-[10px] font-semibold text-[#8B1E1E] cursor-pointer"
+                                >
+                                  Deactivate
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => handleBrAccountAction(acc.id, 'activate')}
+                                  className="px-2 py-1 rounded bg-[#E8F8E0] text-[10px] font-semibold text-[#1B5E20] cursor-pointer"
+                                >
+                                  Activate
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               </div>
             </div>

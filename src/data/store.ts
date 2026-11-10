@@ -15,6 +15,7 @@ import {
   TimetableScenario, 
   AuditLogEntry,
   DayOfWeek,
+  TimetableManagementPolicy,
   SectionSlotAssignment,
   UNIVERSITY_PERIODS,
   VALID_CONTINUOUS_LAB_BLOCKS,
@@ -89,6 +90,8 @@ export interface InstitutionProfile {
   accreditation: string;
   academicYear?: string;
   currentTermName?: string;
+  activeTermIds?: string[];
+  timetableManagementPolicy?: TimetableManagementPolicy;
   registrarName: string;
   registrarEmail: string;
   autoConflictSweep: boolean;
@@ -157,6 +160,9 @@ const defaultInstitutionProfile: InstitutionProfile = {
   campusName: 'Main Academic Complex',
   code: 'WPI',
   accreditation: 'PEC & NCEAC Accredited Programs (BEE, BCE, BESE, BSCS)',
+  academicYear: '2026–2027',
+  currentTermName: 'Fall Semester 2026',
+  timetableManagementPolicy: 'whole_university',
   registrarName: 'Dr. Katherine Reynolds',
   registrarEmail: 'k.reynolds@westernpoly.edu',
   autoConflictSweep: true,
@@ -1082,6 +1088,79 @@ export const institutionalStore = {
     notifyListeners();
   },
 
+  toggleTermActiveStatus(termId: string) {
+    const target = currentStore.terms.find(t => t.id === termId);
+    if (!target) return;
+    const isCurrentlyActive = target.status === 'active';
+    const activeCount = currentStore.terms.filter(t => t.status === 'active').length;
+    if (isCurrentlyActive && activeCount <= 1) {
+      // Ensure at least one semester remains active
+      return;
+    }
+    const nextStatus = isCurrentlyActive ? 'draft' : 'active';
+    const nextTerms = currentStore.terms.map(t =>
+      t.id === termId ? { ...t, status: nextStatus as AcademicTerm['status'] } : t
+    );
+    const activeNames = nextTerms.filter(t => t.status === 'active').map(t => t.name);
+    const baseProfile = currentStore.institutionProfile || defaultInstitutionProfile;
+    currentStore = {
+      ...currentStore,
+      terms: nextTerms,
+      institutionProfile: {
+        ...baseProfile,
+        currentTermName: activeNames.join(' + ') || baseProfile.currentTermName,
+        activeTermIds: nextTerms.filter(t => t.status === 'active').map(t => t.id)
+      }
+    };
+    this.addAuditLog(
+      'update',
+      'term',
+      termId,
+      `${nextStatus === 'active' ? 'Activated' : 'Deactivated'} academic semester "${target.name}" (${activeNames.length} active semester(s)).`
+    );
+    notifyListeners();
+  },
+
+  deleteTerm(termId: string) {
+    if (currentStore.terms.length <= 1) return;
+    const target = currentStore.terms.find(t => t.id === termId);
+    let remaining = currentStore.terms.filter(t => t.id !== termId);
+    if (!remaining.some(t => t.status === 'active') && remaining.length > 0) {
+      remaining = remaining.map((t, i) => (i === 0 ? { ...t, status: 'active' } : t));
+    }
+    const activeNames = remaining.filter(t => t.status === 'active').map(t => t.name);
+    const baseProfile = currentStore.institutionProfile || defaultInstitutionProfile;
+    currentStore = {
+      ...currentStore,
+      terms: remaining,
+      institutionProfile: {
+        ...baseProfile,
+        currentTermName: activeNames.join(' + ') || remaining[0]?.name,
+        activeTermIds: remaining.filter(t => t.status === 'active').map(t => t.id)
+      }
+    };
+    this.addAuditLog('delete', 'term', termId, `Deleted academic semester "${target?.name || termId}".`);
+    notifyListeners();
+  },
+
+  setTimetableManagementPolicy(policy: TimetableManagementPolicy) {
+    const baseProfile = currentStore.institutionProfile || defaultInstitutionProfile;
+    currentStore = {
+      ...currentStore,
+      institutionProfile: {
+        ...baseProfile,
+        timetableManagementPolicy: policy
+      }
+    };
+    this.addAuditLog(
+      'update',
+      'campus',
+      'timetable-policy',
+      `Updated university timetable management policy to ${policy === 'whole_university' ? 'Whole-University Integrated Scheduling' : 'Department-wise Timetable Management'}.`
+    );
+    notifyListeners();
+  },
+
   // 2. Departments & Programs
   addDepartment(dept: Department) {
     currentStore = {
@@ -1334,6 +1413,8 @@ export const institutionalStore = {
   // 8. Real Combinatorial Solver Engine (Dynamic Admin-Configured Timings, Breaks & Continuous Labs)
   runTimetableSolver(options?: {
     termId?: string;
+    termIds?: string[];
+    policyMode?: TimetableManagementPolicy;
     departmentId?: string;
     selectedGroupIds?: string[];
     strategyName?: string;
@@ -1364,18 +1445,37 @@ export const institutionalStore = {
     const validPeriodsSet = new Set(periods);
     const validDaysSet = new Set(days);
     const groupFilter = options?.selectedGroupIds ? new Set(options.selectedGroupIds) : null;
+    const targetDeptId =
+      options?.policyMode === 'department_wise' && options?.departmentId && options.departmentId !== 'all'
+        ? options.departmentId
+        : options?.departmentId && options.departmentId !== 'all'
+        ? options.departmentId
+        : null;
+
+    const isSectionInDepartment = (sec: Section, deptId: string): boolean => {
+      const group = currentStore.studentGroups.find(g => g.id === sec.studentGroupId);
+      const prog = currentStore.programs.find(p => p.id === group?.programId);
+      if (prog?.departmentId === deptId) return true;
+      const course = currentStore.courses.find(c => c.id === sec.courseId);
+      return course?.departmentId === deptId;
+    };
 
     const sectionsToSolve: Section[] = [];
     const fixedSections: Section[] = [];
 
     currentStore.sections.forEach(sec => {
-      const inScope = !groupFilter || groupFilter.has(sec.studentGroupId);
+      const matchesGroup = !groupFilter || groupFilter.has(sec.studentGroupId);
+      const matchesDept = !targetDeptId || isSectionInDepartment(sec, targetDeptId);
+      const inScope = matchesGroup && matchesDept;
       const hasValidExistingSlot =
         Boolean(sec.assignedSlot) &&
         validDaysSet.has(sec.assignedSlot!.day) &&
         validPeriodsSet.has(sec.assignedSlot!.timeSlot);
 
-      if (options?.forceRescheduleAll || !hasValidExistingSlot) {
+      if (!inScope && hasValidExistingSlot) {
+        // Keep out-of-scope department/cohort sections fixed so shared rooms/faculty don't clash
+        fixedSections.push(sec);
+      } else if (options?.forceRescheduleAll || !hasValidExistingSlot) {
         sectionsToSolve.push(sec);
       } else if (sec.isLocked && sec.assignedSlot) {
         fixedSections.push(sec);
@@ -1682,6 +1782,43 @@ export const institutionalStore = {
       roomUtilization,
       scenario: newScenario
     };
+  },
+
+  restoreScenario(scenarioId: string) {
+    const target = currentStore.scenarios.find(sc => sc.id === scenarioId);
+    if (!target) return;
+
+    const hasAssignments = target.assignments && Object.keys(target.assignments).length > 0;
+    const updatedSections = hasAssignments
+      ? currentStore.sections.map(sec => {
+          const savedSlot = target.assignments[sec.id];
+          return savedSlot ? { ...sec, assignedSlot: savedSlot } : sec;
+        })
+      : currentStore.sections;
+
+    const updatedScenarios = currentStore.scenarios.map(sc => {
+      if (sc.id === scenarioId) {
+        return { ...sc, status: 'published' as const, updatedAt: new Date().toISOString() };
+      }
+      if (sc.status === 'published') {
+        return { ...sc, status: 'archived' as const };
+      }
+      return sc;
+    });
+
+    currentStore = {
+      ...currentStore,
+      sections: updatedSections,
+      scenarios: updatedScenarios
+    };
+
+    this.addAuditLog(
+      'restore',
+      'scenario',
+      scenarioId,
+      `Restored timetable version "${target.name}" (${target.version}) as active published baseline.`
+    );
+    notifyListeners();
   },
 
   // 9. Constraints & Rules

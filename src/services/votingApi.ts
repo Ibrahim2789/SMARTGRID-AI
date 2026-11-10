@@ -688,4 +688,31 @@ export async function requestPasswordRecoveryApi(payload: {
   return data;
 }
 
+export interface SolveOptimizationApiResponse {
+  status: string;
+  metrics: {
+    placedCount: number;
+    unplacedCount: number;
+    conflictCount: number;
+    roomUtilization: number;
+    solverEngine: string;
+  };
+  assignments?: Record<string, unknown>;
+}
+
+export async function solveOptimizationApi(
+  payload: Record<string, unknown>
+): Promise<SolveOptimizationApiResponse> {
+  const res = await fetch('/api/optimization/solve', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  if (!res.ok) {
+    throw new Error('Optimization API unavailable');
+  }
+  return (await res.json()) as SolveOptimizationApiResponse;
+}
+
+
 

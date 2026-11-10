@@ -3,6 +3,7 @@ import { RouteType } from './SmartGridNav';
 import { useInstitutionalData, institutionalStore } from '../data/store';
 import {
   DayOfWeek,
+  TimetableManagementPolicy,
   DEFAULT_ACADEMIC_TIMING_CONFIG,
   computeAcademicScheduleConfig,
   validateAcademicTimingConfig,
@@ -22,7 +23,11 @@ import {
   Sparkles,
   Sliders,
   ShieldCheck,
-  Upload
+  Upload,
+  Plus,
+  Trash2,
+  Building2,
+  Layers
 } from 'lucide-react';
 import { DataImportWizard } from './DataImportWizard';
 import { UniversityOnboardingModal } from './UniversityOnboardingModal';
@@ -118,6 +123,36 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
   const [showSlotTimeline, setShowSlotTimeline] = useState<boolean>(false);
   const [showImportWizard, setShowImportWizard] = useState<boolean>(false);
   const [showOnboardingModal, setShowOnboardingModal] = useState<boolean>(false);
+
+  // Academic Calendar Add Semester State
+  const [newSemName, setNewSemName] = useState('');
+  const [newSemCode, setNewSemCode] = useState('');
+  const [newSemYear, setNewSemYear] = useState(profile?.academicYear || '2026–2027');
+  const [newSemStart, setNewSemStart] = useState('2026-09-01');
+  const [newSemEnd, setNewSemEnd] = useState('2026-12-20');
+  const [newSemWeeks, setNewSemWeeks] = useState<number>(16);
+  const [newSemActive, setNewSemActive] = useState<boolean>(true);
+
+  const currentPolicy: TimetableManagementPolicy =
+    profile?.timetableManagementPolicy || 'whole_university';
+  const activeTermsList = store.terms.filter(t => t.status === 'active');
+
+  const handleAddSemester = () => {
+    if (!isAdmin || !newSemName.trim() || !newSemCode.trim()) return;
+    institutionalStore.addTerm({
+      id: `term-custom-${Date.now().toString(36)}`,
+      name: newSemName.trim(),
+      code: newSemCode.trim().toUpperCase(),
+      academicYear: newSemYear.trim() || profile?.academicYear || '2026–2027',
+      startDate: newSemStart || '2026-09-01',
+      endDate: newSemEnd || '2026-12-20',
+      status: newSemActive ? 'active' : 'draft',
+      weeksCount: Math.max(1, Number(newSemWeeks) || 16)
+    });
+    showToast(`Added academic semester "${newSemName.trim()}" (${newSemCode.trim().toUpperCase()}).`);
+    setNewSemName('');
+    setNewSemCode('');
+  };
 
   // Sync local state when saved timeStructure updates or resets
   useEffect(() => {
@@ -514,6 +549,280 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
             </button>
           ))}
         </div>
+      </div>
+
+      {/* =========================================================
+          UNIVERSITY ACADEMIC CALENDAR & TIMETABLE MANAGEMENT POLICY
+         ========================================================= */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
+        {/* PANEL A: UNIVERSITY ACADEMIC CALENDAR (MULTI-SEMESTER SUPPORT) */}
+        <section className="lg:col-span-7 sf-card-white p-6 flex flex-col justify-between space-y-5">
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[#E4E2DA] pb-4">
+              <div className="space-y-1">
+                <div className="text-[11px] font-mono-tabular font-semibold uppercase tracking-wider text-[#77766F]">
+                  University Academic Calendar · Multi-Cohort Semesters
+                </div>
+                <h2 className="font-serif-editorial text-xl text-[#171717] flex items-center gap-2">
+                  <Calendar className="w-4 h-4 text-[#171717]" />
+                  <span>Configured Semesters &amp; Active Periods</span>
+                </h2>
+                <p className="text-xs text-[#77766F]">
+                  Define custom semester names, academic years, and dates. Multiple semesters (e.g., Fall, Spring, Summer) can be active simultaneously for different cohorts.
+                </p>
+              </div>
+              <span className="px-2.5 py-1 rounded-lg bg-[#B7F77C] text-[#171717] font-mono-tabular text-xs font-semibold shrink-0">
+                {activeTermsList.length} Active / {store.terms.length} Total
+              </span>
+            </div>
+
+            <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+              {store.terms.map(term => {
+                const isActive = term.status === 'active';
+                return (
+                  <div
+                    key={term.id}
+                    className={`p-3 rounded-xl border flex flex-wrap items-center justify-between gap-3 transition-colors ${
+                      isActive
+                        ? 'bg-[#B7F77C]/20 border-[#98DF58]'
+                        : 'bg-[#F7F6EF]/60 border-[#E4E2DA]'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3 min-w-[200px]">
+                      <span className="px-2 py-1 rounded-md bg-[#171717] text-white text-[10px] font-mono-tabular font-bold">
+                        {term.code}
+                      </span>
+                      <div>
+                        <div className="text-xs font-semibold text-[#171717] flex items-center gap-2 flex-wrap">
+                          <span>{term.name}</span>
+                          {term.academicYear && (
+                            <span className="text-[10.5px] font-mono-tabular text-[#77766F]">
+                              ({term.academicYear})
+                            </span>
+                          )}
+                          <span
+                            className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                              isActive
+                                ? 'bg-[#171717] text-[#B7F77C]'
+                                : 'bg-white text-[#77766F] border border-[#E4E2DA]'
+                            }`}
+                          >
+                            {isActive ? 'Active' : 'Inactive'}
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-[#77766F] font-mono-tabular mt-0.5">
+                          {term.startDate} → {term.endDate} · {term.weeksCount} weeks
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          institutionalStore.toggleTermActiveStatus(term.id);
+                          showToast(
+                            `Updated active status for "${term.name}".`
+                          );
+                        }}
+                        className={`h-8 px-3 rounded-lg text-xs font-semibold border transition-colors cursor-pointer ${
+                          isActive
+                            ? 'bg-white text-[#171717] border-[#E4E2DA] hover:bg-[#F7F6EF]'
+                            : 'bg-[#171717] text-white border-[#171717]'
+                        }`}
+                      >
+                        {isActive ? 'Deactivate' : 'Activate'}
+                      </button>
+                      {store.terms.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            institutionalStore.deleteTerm(term.id);
+                            showToast(`Removed semester "${term.name}".`);
+                          }}
+                          className="h-8 w-8 rounded-lg border border-[#E4E2DA] bg-white hover:bg-[#FDE8E8] text-[#77766F] hover:text-[#8B1E1E] flex items-center justify-center transition-colors cursor-pointer"
+                          title="Delete semester"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Add New Semester Form */}
+          <div className="p-3.5 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] space-y-2.5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-[#171717]">
+                Add Semester to Academic Calendar
+              </span>
+              <label className="inline-flex items-center gap-1.5 text-[11px] text-[#57564F] cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={newSemActive}
+                  onChange={e => setNewSemActive(e.target.checked)}
+                  className="w-3.5 h-3.5 accent-[#171717]"
+                />
+                <span>Mark Active Immediately</span>
+              </label>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-6 gap-2">
+              <input
+                type="text"
+                placeholder="Semester Name (e.g. Spring 2027)"
+                value={newSemName}
+                onChange={e => setNewSemName(e.target.value)}
+                className="input-field h-9 text-xs bg-white sm:col-span-2"
+              />
+              <input
+                type="text"
+                placeholder="Code (SPR-27)"
+                value={newSemCode}
+                onChange={e => setNewSemCode(e.target.value.toUpperCase())}
+                className="input-field h-9 text-xs font-mono-tabular uppercase bg-white"
+              />
+              <input
+                type="text"
+                placeholder="Academic Yr"
+                value={newSemYear}
+                onChange={e => setNewSemYear(e.target.value)}
+                className="input-field h-9 text-xs font-mono-tabular bg-white"
+              />
+              <input
+                type="date"
+                value={newSemStart}
+                onChange={e => setNewSemStart(e.target.value)}
+                className="input-field h-9 text-xs font-mono-tabular bg-white"
+              />
+              <div className="flex items-center gap-1.5">
+                <input
+                  type="date"
+                  value={newSemEnd}
+                  onChange={e => setNewSemEnd(e.target.value)}
+                  className="input-field h-9 text-xs font-mono-tabular bg-white flex-1 min-w-0"
+                  title="Semester End Date"
+                />
+                <button
+                  type="button"
+                  onClick={handleAddSemester}
+                  disabled={!newSemName.trim() || !newSemCode.trim()}
+                  className="btn-primary h-9 px-3 text-xs shrink-0 disabled:opacity-50"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Add</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* PANEL B: UNIVERSITY TIMETABLE MANAGEMENT POLICY */}
+        <section className="lg:col-span-5 sf-card-white p-6 flex flex-col justify-between space-y-5">
+          <div className="space-y-4">
+            <div className="flex items-start justify-between gap-3 border-b border-[#E4E2DA] pb-4">
+              <div className="space-y-1">
+                <div className="text-[11px] font-mono-tabular font-semibold uppercase tracking-wider text-[#77766F]">
+                  Institutional Governance · Scheduling Policy
+                </div>
+                <h2 className="font-serif-editorial text-xl text-[#171717] flex items-center gap-2">
+                  <Building2 className="w-4 h-4 text-[#171717]" />
+                  <span>Timetable Management Policy</span>
+                </h2>
+                <p className="text-xs text-[#77766F]">
+                  Configure how timetable generation and resource allocation operate across your university’s departments.
+                </p>
+              </div>
+              <span className="px-2.5 py-1 rounded-lg bg-[#B8EEEE] text-[#171717] font-mono-tabular text-xs font-semibold shrink-0">
+                {currentPolicy === 'whole_university' ? 'Whole-University' : 'Department-Wise'}
+              </span>
+            </div>
+
+            <div className="space-y-3">
+              <button
+                type="button"
+                onClick={() => {
+                  institutionalStore.setTimetableManagementPolicy('whole_university');
+                  showToast('Activated Policy: Whole-University Integrated Timetable Management.');
+                }}
+                className={`w-full p-4 rounded-xl border text-left transition-colors cursor-pointer ${
+                  currentPolicy === 'whole_university'
+                    ? 'bg-[#171717] text-white border-[#171717]'
+                    : 'bg-[#F7F6EF] text-[#171717] border-[#E4E2DA] hover:bg-[#EDEAE0]'
+                }`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-semibold">
+                    Policy 1: Whole-University Timetable Management
+                  </span>
+                  {currentPolicy === 'whole_university' && (
+                    <span className="px-2 py-0.5 rounded-full bg-[#B7F77C] text-[#171717] text-[10px] font-bold">
+                      Configured Policy
+                    </span>
+                  )}
+                </div>
+                <p
+                  className={`text-[11px] mt-1.5 leading-relaxed ${
+                    currentPolicy === 'whole_university' ? 'text-[#B8EEEE]' : 'text-[#57564F]'
+                  }`}
+                >
+                  All configured departments ({store.departments.length}), semesters, batches, and sections ({store.studentGroups.length}) are scheduled in one integrated operation. Prevents cross-department shared faculty, classroom, and laboratory double-booking while providing both university-wide and department-specific views.
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  institutionalStore.setTimetableManagementPolicy('department_wise');
+                  showToast('Activated Policy: Department-wise Timetable Management.');
+                }}
+                className={`w-full p-4 rounded-xl border text-left transition-colors cursor-pointer ${
+                  currentPolicy === 'department_wise'
+                    ? 'bg-[#171717] text-white border-[#171717]'
+                    : 'bg-[#F7F6EF] text-[#171717] border-[#E4E2DA] hover:bg-[#EDEAE0]'
+                }`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-semibold">
+                    Policy 2: Department-wise Timetable Management
+                  </span>
+                  {currentPolicy === 'department_wise' && (
+                    <span className="px-2 py-0.5 rounded-full bg-[#B7F77C] text-[#171717] text-[10px] font-bold">
+                      Configured Policy
+                    </span>
+                  )}
+                </div>
+                <p
+                  className={`text-[11px] mt-1.5 leading-relaxed ${
+                    currentPolicy === 'department_wise' ? 'text-[#B8EEEE]' : 'text-[#57564F]'
+                  }`}
+                >
+                  Each department generates and manages its own timetable using department-specific faculty, classrooms, laboratories, courses, batches, and sections, while university administrators retain a master overview of all departmental schedules.
+                </p>
+              </button>
+            </div>
+          </div>
+
+          <div className="p-3.5 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] flex items-center justify-between gap-3 text-xs">
+            <div className="flex items-center gap-2 text-[#57564F]">
+              <Layers className="w-4 h-4 text-[#171717] shrink-0" />
+              <span>
+                Hierarchy: <strong className="text-[#171717]">{store.departments.length} Depts</strong> ·{' '}
+                <strong className="text-[#171717]">{store.programs.length} Programs</strong> ·{' '}
+                <strong className="text-[#171717]">{store.studentGroups.length} Sections</strong>
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => onNavigate('generate')}
+              className="text-xs font-semibold text-[#171717] underline hover:opacity-80 cursor-pointer shrink-0"
+            >
+              Open Generator →
+            </button>
+          </div>
+        </section>
       </div>
 
       {/* =========================================================

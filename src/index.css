@@ -283,3 +283,49 @@
 .animate-float-subtle {
   animation: floatSubtle 4s ease-in-out infinite;
 }
+
+@keyframes sgFlowParticle {
+  0% {
+    transform: translateX(-100%);
+    opacity: 0;
+  }
+  20% {
+    opacity: 1;
+  }
+  80% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(350%);
+    opacity: 0;
+  }
+}
+
+@keyframes sgStepIconPulse {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(183, 247, 124, 0.45);
+  }
+  50% {
+    transform: scale(1.06);
+    box-shadow: 0 0 0 8px rgba(183, 247, 124, 0);
+  }
+}
+
+.sg-flow-particle {
+  animation: sgFlowParticle 3.2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+.sg-step-icon-active {
+  animation: sgStepIconPulse 2.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-float-subtle,
+  .sg-flow-particle,
+  .sg-step-icon-active {
+    animation: none !important;
+    transform: none !important;
+  }
+}
+

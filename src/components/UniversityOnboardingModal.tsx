@@ -23,6 +23,7 @@ import {
   TimeBlockBreak,
   TimeStructure,
   TermStatus,
+  TimetableManagementPolicy,
   computeAcademicScheduleConfig,
   validateAcademicTimingConfig
 } from '../types/institutional';
@@ -97,6 +98,10 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
   const [autoConflictSweep, setAutoConflictSweep] = useState<boolean>(
     existingSnapshot.institutionProfile?.autoConflictSweep !== false
   );
+  const [timetableManagementPolicy, setTimetableManagementPolicy] =
+    useState<TimetableManagementPolicy>(
+      existingSnapshot.institutionProfile?.timetableManagementPolicy || 'whole_university'
+    );
 
   // =========================================================
   // SCREEN 2: Academic Calendar Structure (Semesters / Terms)
@@ -133,9 +138,11 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
 
   const [newTermName, setNewTermName] = useState('');
   const [newTermCode, setNewTermCode] = useState('');
+  const [newTermAcademicYear, setNewTermAcademicYear] = useState('2026–2027');
   const [newTermStart, setNewTermStart] = useState('2027-06-01');
   const [newTermEnd, setNewTermEnd] = useState('2027-08-01');
   const [newTermWeeks, setNewTermWeeks] = useState<number>(8);
+  const [newTermActive, setNewTermActive] = useState<boolean>(true);
 
   // =========================================================
   // SCREEN 3: Daily Operating Hours Configuration
@@ -472,9 +479,10 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
       id: `term-custom-${Date.now().toString(36)}`,
       name: newTermName.trim(),
       code: newTermCode.trim().toUpperCase(),
+      academicYear: newTermAcademicYear.trim() || academicYear.trim(),
       startDate: newTermStart || '2026-09-01',
       endDate: newTermEnd || '2026-12-20',
-      status: terms.length === 0 ? 'active' : 'draft',
+      status: terms.length === 0 || newTermActive ? 'active' : 'draft',
       weeksCount: Math.max(1, Number(newTermWeeks) || 16)
     };
     setTerms([...terms, created]);
@@ -482,12 +490,20 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
     setNewTermCode('');
   };
 
-  const handleSetActiveTerm = (termId: string) => {
+  const handleToggleTermActive = (termId: string) => {
+    const activeCount = terms.filter(t => t.status === 'active').length;
     setTerms(
-      terms.map(t => ({
-        ...t,
-        status: (t.id === termId ? 'active' : t.status === 'active' ? 'draft' : t.status) as TermStatus
-      }))
+      terms.map(t => {
+        if (t.id !== termId) return t;
+        const isCurrentActive = t.status === 'active';
+        if (isCurrentActive && activeCount <= 1) {
+          return t;
+        }
+        return {
+          ...t,
+          status: (isCurrentActive ? 'draft' : 'active') as TermStatus
+        };
+      })
     );
   };
 
@@ -619,9 +635,10 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
           registrarName: registrarName.trim(),
           registrarEmail: registrarEmail.trim(),
           timezone: timezone || 'UTC',
-          autoConflictSweep
+          autoConflictSweep,
+          timetableManagementPolicy
         });
-        setStepSavedToast('Saved Step 1 (Institution Profile) to institutionalStore.');
+        setStepSavedToast('Saved Step 1 (Institution Profile & Policy) to institutionalStore.');
       }
       return true;
     }
@@ -631,13 +648,14 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
         setOnboardingError('Please configure at least one academic semester or term.');
         return false;
       }
+      const activeNames = terms.filter(t => t.status === 'active').map(t => t.name);
       if (isEditingExisting) {
         institutionalStore.saveAcademicCalendarConfig({
           academicYear: academicYear.trim(),
-          currentTermName: activeTermObj?.name || terms[0].name,
+          currentTermName: activeNames.join(' + ') || activeTermObj?.name || terms[0].name,
           terms
         });
-        setStepSavedToast('Saved Step 2 (Academic Calendar & Terms) to institutionalStore.');
+        setStepSavedToast('Saved Step 2 (Academic Calendar & Active Semesters) to institutionalStore.');
       }
       return true;
     }
@@ -723,6 +741,7 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
         existingInstitutionId ||
         `inst-${code.toLowerCase().replace(/[^a-z0-9]/g, '-')}-${Date.now().toString(36)}`;
 
+      const activeNames = terms.filter(t => t.status === 'active').map(t => t.name);
       const profile: InstitutionProfile = {
         id: targetInstId,
         name: name.trim(),
@@ -731,7 +750,9 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
         campusName: campusName.trim() || 'Main Campus',
         accreditation: accreditation.trim(),
         academicYear: academicYear.trim(),
-        currentTermName: activeTermObj?.name || 'Fall Semester 2026',
+        currentTermName: activeNames.join(' + ') || activeTermObj?.name || terms[0]?.name || 'Configured Semester',
+        activeTermIds: terms.filter(t => t.status === 'active').map(t => t.id),
+        timetableManagementPolicy,
         registrarName: registrarName.trim(),
         registrarEmail: registrarEmail.trim(),
         autoConflictSweep,
@@ -1136,6 +1157,66 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
                 </div>
               </div>
 
+              {/* University Timetable Management Policy */}
+              <div className="p-4 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-xs font-semibold text-[#171717]">
+                      University Timetable Management Policy
+                    </div>
+                    <div className="text-[11px] text-[#77766F]">
+                      Choose whether your university schedules all departments in a single integrated operation or lets each department manage its own timetable.
+                    </div>
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setTimetableManagementPolicy('whole_university')}
+                    className={`p-3.5 rounded-xl border text-left transition-colors cursor-pointer ${
+                      timetableManagementPolicy === 'whole_university'
+                        ? 'bg-[#171717] text-white border-[#171717]'
+                        : 'bg-white text-[#171717] border-[#E4E2DA] hover:bg-[#EDEAE0]'
+                    }`}
+                  >
+                    <div className="text-xs font-semibold">
+                      Policy 1: Whole-University Timetable Management
+                    </div>
+                    <div
+                      className={`text-[11px] mt-1 leading-relaxed ${
+                        timetableManagementPolicy === 'whole_university'
+                          ? 'text-[#B8EEEE]'
+                          : 'text-[#77766F]'
+                      }`}
+                    >
+                      All departments scheduled together in one operation. Prevents cross-department shared faculty, classroom, and laboratory clashes.
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTimetableManagementPolicy('department_wise')}
+                    className={`p-3.5 rounded-xl border text-left transition-colors cursor-pointer ${
+                      timetableManagementPolicy === 'department_wise'
+                        ? 'bg-[#171717] text-white border-[#171717]'
+                        : 'bg-white text-[#171717] border-[#E4E2DA] hover:bg-[#EDEAE0]'
+                    }`}
+                  >
+                    <div className="text-xs font-semibold">
+                      Policy 2: Department-wise Timetable Management
+                    </div>
+                    <div
+                      className={`text-[11px] mt-1 leading-relaxed ${
+                        timetableManagementPolicy === 'department_wise'
+                          ? 'text-[#B8EEEE]'
+                          : 'text-[#77766F]'
+                      }`}
+                    >
+                      Each department generates and manages its own timetable using department-scoped faculty, rooms, labs, batches, and sections.
+                    </div>
+                  </button>
+                </div>
+              </div>
+
               <div className="p-3.5 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] flex items-center justify-between">
                 <div>
                   <div className="text-xs font-semibold text-[#171717]">
@@ -1215,12 +1296,18 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
 
               {/* Terms List */}
               <div className="space-y-2.5">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <span className="text-xs font-semibold text-[#171717]">
-                    Configured Semesters &amp; Terms ({terms.length})
+                    Configured Semesters &amp; Terms ({terms.length}) — Multiple Semesters May Be Active Simultaneously
                   </span>
                   <span className="text-[11px] text-[#77766F]">
-                    Active Term: <strong>{activeTermObj?.name || 'None'}</strong>
+                    Active:{' '}
+                    <strong>
+                      {terms
+                        .filter(t => t.status === 'active')
+                        .map(t => t.name)
+                        .join(' + ') || 'None'}
+                    </strong>
                   </span>
                 </div>
 
@@ -1243,9 +1330,18 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
                           <div>
                             <div className="text-xs font-semibold text-[#171717] flex items-center gap-2">
                               <span>{term.name}</span>
-                              {isCurrentActive && (
+                              {term.academicYear && (
+                                <span className="text-[10px] font-mono-tabular text-[#77766F]">
+                                  ({term.academicYear})
+                                </span>
+                              )}
+                              {isCurrentActive ? (
                                 <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[#171717] text-[#B7F77C]">
-                                  Active Term
+                                  Active
+                                </span>
+                              ) : (
+                                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[#F7F6EF] text-[#77766F] border border-[#E4E2DA]">
+                                  Inactive / Draft
                                 </span>
                               )}
                             </div>
@@ -1256,21 +1352,23 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
                         </div>
 
                         <div className="flex items-center gap-2">
-                          {!isCurrentActive && (
-                            <button
-                              type="button"
-                              onClick={() => handleSetActiveTerm(term.id)}
-                              className="px-2.5 py-1 rounded-lg bg-[#F7F6EF] hover:bg-[#EDEAE0] border border-[#E4E2DA] text-[11px] font-semibold text-[#171717] cursor-pointer"
-                            >
-                              Set Active
-                            </button>
-                          )}
+                          <button
+                            type="button"
+                            onClick={() => handleToggleTermActive(term.id)}
+                            className={`px-2.5 py-1 rounded-lg border text-[11px] font-semibold cursor-pointer transition-colors ${
+                              isCurrentActive
+                                ? 'bg-white hover:bg-[#F7F6EF] border-[#E4E2DA] text-[#171717]'
+                                : 'bg-[#171717] text-white border-[#171717]'
+                            }`}
+                          >
+                            {isCurrentActive ? 'Deactivate' : 'Activate'}
+                          </button>
                           {terms.length > 1 && (
                             <button
                               type="button"
                               onClick={() => {
                                 const remaining = terms.filter((_, i) => i !== idx);
-                                if (isCurrentActive && remaining.length > 0) {
+                                if (!remaining.some(r => r.status === 'active') && remaining.length > 0) {
                                   remaining[0].status = 'active';
                                 }
                                 setTerms(remaining);
@@ -1293,10 +1391,10 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
                 <div className="text-xs font-semibold text-[#171717]">
                   Add Academic Term / Semester / Intensive Session
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-5 gap-2.5">
+                <div className="grid grid-cols-1 sm:grid-cols-6 gap-2.5">
                   <input
                     type="text"
-                    placeholder="Term Name (e.g. Summer 2027)"
+                    placeholder="Semester Name (e.g. Summer 2027)"
                     value={newTermName}
                     onChange={e => setNewTermName(e.target.value)}
                     className="input-field h-9 text-xs bg-white sm:col-span-2"
@@ -1307,6 +1405,13 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
                     value={newTermCode}
                     onChange={e => setNewTermCode(e.target.value.toUpperCase())}
                     className="input-field h-9 text-xs font-mono-tabular uppercase bg-white"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Year (2026–2027)"
+                    value={newTermAcademicYear}
+                    onChange={e => setNewTermAcademicYear(e.target.value)}
+                    className="input-field h-9 text-xs font-mono-tabular bg-white"
                   />
                   <input
                     type="date"
@@ -1335,6 +1440,15 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
                     </button>
                   </div>
                 </div>
+                <label className="inline-flex items-center gap-2 text-xs text-[#57564F] cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={newTermActive}
+                    onChange={e => setNewTermActive(e.target.checked)}
+                    className="w-3.5 h-3.5 accent-[#171717]"
+                  />
+                  <span>Activate this semester immediately upon creation</span>
+                </label>
               </div>
             </div>
           )}

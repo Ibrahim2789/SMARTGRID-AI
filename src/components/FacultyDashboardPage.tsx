@@ -130,11 +130,33 @@ export const FacultyDashboardPage: React.FC<FacultyDashboardPageProps> = ({
     Sun: 7
   };
 
+  const [scheduleSearch, setScheduleSearch] = useState('');
+  const [scheduleDayFilter, setScheduleDayFilter] = useState<string>('ALL');
+
   const sortedSessions = [...scheduledSessions].sort((a, b) => {
     const dayA = daysOrder[a.assignedSlot?.day as DayOfWeek] || 99;
     const dayB = daysOrder[b.assignedSlot?.day as DayOfWeek] || 99;
     if (dayA !== dayB) return dayA - dayB;
     return (a.assignedSlot?.timeSlot || '').localeCompare(b.assignedSlot?.timeSlot || '');
+  });
+
+  const filteredSessions = sortedSessions.filter(sec => {
+    if (scheduleDayFilter !== 'ALL' && sec.assignedSlot?.day !== scheduleDayFilter) {
+      return false;
+    }
+    const q = scheduleSearch.trim().toLowerCase();
+    if (!q) return true;
+    const course = store.courses.find(c => c.id === sec.courseId);
+    const cohort = store.studentGroups.find(g => g.id === sec.studentGroupId);
+    const room = store.rooms.find(r => r.id === sec.assignedSlot?.roomId);
+    return (
+      (course?.code || '').toLowerCase().includes(q) ||
+      (course?.title || '').toLowerCase().includes(q) ||
+      (cohort?.code || '').toLowerCase().includes(q) ||
+      (room?.code || '').toLowerCase().includes(q) ||
+      (room?.name || '').toLowerCase().includes(q) ||
+      sec.sectionNumber.toLowerCase().includes(q)
+    );
   });
 
   return (
@@ -253,8 +275,8 @@ export const FacultyDashboardPage: React.FC<FacultyDashboardPageProps> = ({
       {/* 4. Tab Content: My Weekly Schedule */}
       {activeTab === 'schedule' && (
         <div className="space-y-4">
-          <div className="sf-card-white p-5 space-y-4">
-            <div className="flex items-center justify-between border-b border-[#E4E2DA] pb-3">
+          <div className="sf-card-white overflow-hidden">
+            <div className="p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#E4E2DA]">
               <div>
                 <h2 className="font-serif-editorial text-xl text-[#171717]">
                   Assigned Teaching Schedule
@@ -263,80 +285,117 @@ export const FacultyDashboardPage: React.FC<FacultyDashboardPageProps> = ({
                   All current lecture sessions and continuous laboratory slots assigned to your institutional profile.
                 </p>
               </div>
-              <span className="text-xs font-mono-tabular text-[#77766F]">
-                {sortedSessions.length} active sessions
-              </span>
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  type="text"
+                  value={scheduleSearch}
+                  onChange={e => setScheduleSearch(e.target.value)}
+                  placeholder="Search course, section, room..."
+                  className="input-field h-8 text-xs w-48"
+                />
+                <select
+                  value={scheduleDayFilter}
+                  onChange={e => setScheduleDayFilter(e.target.value)}
+                  className="input-field h-8 text-xs w-28"
+                >
+                  <option value="ALL">All Days</option>
+                  {(['Mon', 'Tue', 'Wed', 'Thu', 'Fri'] as DayOfWeek[]).map(d => (
+                    <option key={d} value={d}>
+                      {d}
+                    </option>
+                  ))}
+                </select>
+                <span className="text-xs font-mono-tabular text-[#77766F] pl-1">
+                  {filteredSessions.length} sessions
+                </span>
+              </div>
             </div>
 
-            {sortedSessions.length === 0 ? (
+            {filteredSessions.length === 0 ? (
               <div className="p-8 text-center space-y-2">
                 <BookOpen className="w-8 h-8 text-[#77766F] mx-auto opacity-50" />
-                <div className="text-sm font-semibold text-[#171717]">No sessions currently assigned</div>
+                <div className="text-sm font-semibold text-[#171717]">No matching sessions found</div>
                 <p className="text-xs text-[#77766F] max-w-md mx-auto">
-                  The administrator or automatic solver has not allocated teaching sections to your profile yet, or generation is pending.
+                  No teaching sections match your current filter or the automatic solver has not allocated sections yet.
                 </p>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
-                {sortedSessions.map(sec => {
-                  const course = store.courses.find(c => c.id === sec.courseId);
-                  const cohort = store.studentGroups.find(g => g.id === sec.studentGroupId);
-                  const room = store.rooms.find(r => r.id === sec.assignedSlot?.roomId);
-                  const isLab = sec.sessionType === 'Lab' || (sec.spanSlots && sec.spanSlots > 1);
-                  const timeWindow = isLab
-                    ? (sec.assignedSlot?.continuousTimeLabel ||
-                       getLabBlockByStartPeriod(sec.assignedSlot?.timeSlot || '', store.timeStructure)?.continuousLabel ||
-                       sec.assignedSlot?.timeSlot)
-                    : sec.assignedSlot?.timeSlot;
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-[#F7F6EF] border-b border-[#E4E2DA] text-[11px] font-semibold uppercase tracking-wider text-[#77766F]">
+                      <th className="py-3 px-4">Course Code &amp; Name</th>
+                      <th className="py-3 px-4">Type</th>
+                      <th className="py-3 px-4">Batch &amp; Section</th>
+                      <th className="py-3 px-4">Day &amp; Time Window</th>
+                      <th className="py-3 px-4">Classroom / Lab</th>
+                      <th className="py-3 px-4 text-right">Enrolled</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#E4E2DA] text-xs">
+                    {filteredSessions.map(sec => {
+                      const course = store.courses.find(c => c.id === sec.courseId);
+                      const cohort = store.studentGroups.find(g => g.id === sec.studentGroupId);
+                      const room = store.rooms.find(r => r.id === sec.assignedSlot?.roomId);
+                      const isLab = sec.sessionType === 'Lab' || (sec.spanSlots && sec.spanSlots > 1);
+                      const timeWindow = isLab
+                        ? (sec.assignedSlot?.continuousTimeLabel ||
+                           getLabBlockByStartPeriod(sec.assignedSlot?.timeSlot || '', store.timeStructure)?.continuousLabel ||
+                           sec.assignedSlot?.timeSlot)
+                        : sec.assignedSlot?.timeSlot;
 
-                  return (
-                    <div
-                      key={sec.id}
-                      className="p-4 rounded-xl border border-[#E4E2DA] bg-[#F7F6EF] space-y-3 hover:border-[#171717]/30 transition-all"
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <span className="font-mono-tabular text-xs font-bold text-[#171717] bg-white px-2 py-0.5 rounded border border-[#E4E2DA]">
-                            {course?.code || sec.courseId}
-                          </span>
-                          <span className={`ml-1.5 text-[10px] font-semibold px-2 py-0.5 rounded ${
-                            isLab ? 'bg-[#F2D8FA] text-[#171717]' : 'bg-[#B8EEEE] text-[#171717]'
-                          }`}>
-                            {isLab ? `Lab (${computedTiming.labDurationHoursLabel})` : `Lecture (${computedTiming.periodLengthMinutes}m)`}
-                          </span>
-                        </div>
-                        <span className="text-xs font-mono-tabular font-semibold text-[#171717]">
-                          {sec.assignedSlot?.day}
-                        </span>
-                      </div>
-
-                      <div>
-                        <h3 className="font-serif-editorial text-base text-[#171717] leading-tight">
-                          {course?.title || 'Academic Course'}
-                        </h3>
-                        <p className="text-xs text-[#77766F] mt-0.5">
-                          Section: <strong className="text-[#171717]">{sec.sectionNumber}</strong> · Cohort: <strong className="text-[#171717]">{cohort?.code}</strong>
-                        </p>
-                      </div>
-
-                      <div className="pt-2 border-t border-[#E4E2DA] space-y-1 text-xs text-[#57564F]">
-                        <div className="flex items-center gap-1.5">
-                          <Clock className="w-3.5 h-3.5 text-[#171717] shrink-0" />
-                          <span className="font-mono-tabular font-medium text-[#171717]">{timeWindow}</span>
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                          <MapPin className="w-3.5 h-3.5 text-[#171717] shrink-0" />
-                          <span className="font-mono-tabular text-[#171717]">{room?.code || sec.assignedSlot?.roomId}</span>
-                          <span className="text-[#77766F]">({room?.name || 'Classroom'})</span>
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                          <Users className="w-3.5 h-3.5 text-[#171717] shrink-0" />
-                          <span className="font-mono-tabular">{sec.expectedEnrollment || cohort?.size || 40} Enrolled Students</span>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
+                      return (
+                        <tr
+                          key={sec.id}
+                          className="hover:bg-[#F7F6EF]/60 transition-colors"
+                        >
+                          <td className="py-3 px-4">
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono-tabular font-bold text-[#171717] bg-[#F7F6EF] px-2 py-0.5 rounded border border-[#E4E2DA]">
+                                {course?.code || sec.courseId}
+                              </span>
+                              <span className="font-medium text-[#171717]">
+                                {course?.title || 'Academic Course'}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="py-3 px-4">
+                            <span
+                              className={`inline-flex px-2 py-0.5 rounded text-[11px] font-semibold ${
+                                isLab ? 'bg-[#F2D8FA] text-[#171717]' : 'bg-[#B8EEEE] text-[#171717]'
+                              }`}
+                            >
+                              {isLab
+                                ? `Lab (${computedTiming.labDurationHoursLabel})`
+                                : `Lecture (${computedTiming.periodLengthMinutes}m)`}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4">
+                            <span className="font-mono-tabular font-semibold text-[#171717]">
+                              {cohort?.code || sec.studentGroupId}
+                            </span>
+                            <span className="text-[#77766F] ml-1.5">· Sec {sec.sectionNumber}</span>
+                          </td>
+                          <td className="py-3 px-4 font-mono-tabular">
+                            <span className="font-bold text-[#171717] mr-1.5">
+                              {sec.assignedSlot?.day}
+                            </span>
+                            <span className="text-[#57564F]">{timeWindow}</span>
+                          </td>
+                          <td className="py-3 px-4">
+                            <span className="font-mono-tabular font-semibold text-[#171717]">
+                              {room?.code || sec.assignedSlot?.roomId}
+                            </span>
+                            <span className="text-[#77766F] ml-1">({room?.name || 'Classroom'})</span>
+                          </td>
+                          <td className="py-3 px-4 text-right font-mono-tabular text-[#57564F]">
+                            {sec.expectedEnrollment || cohort?.size || 40}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
             )}
           </div>

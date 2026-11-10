@@ -645,8 +645,16 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
   };
 
   const placedTotal = store.sections.filter(s => s.assignedSlot).length;
-  const activeTerm = store.terms.find(t => t.status === 'active') || store.terms[0];
+  const activeTermsList = store.terms.filter(t => t.status === 'active');
+  const activeTerm = activeTermsList[0] || store.terms[0];
+  const activeSemestersLabel =
+    activeTermsList.length > 0
+      ? activeTermsList.map(t => t.name).join(' + ')
+      : activeTerm?.name || 'Configured Semester';
+  const configuredPolicy =
+    store.institutionProfile?.timetableManagementPolicy || 'whole_university';
   const currentInstructorObj = store.instructors.find(i => i.id === selectedInstructorId);
+  const currentRoomObj = store.rooms.find(r => r.id === selectedRoomId);
   const visibleDays = calendarMode === 'day' ? [focusedDay] : days;
 
   // Compute stats for the currently viewed Class/Section (or full view)
@@ -655,6 +663,11 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
     if (perspective === 'cohort') return s.studentGroupId === selectedCohortId;
     if (perspective === 'instructor') return s.instructorId === selectedInstructorId;
     if (perspective === 'room') return s.assignedSlot.roomId === selectedRoomId;
+    if (selectedDeptId !== 'all') {
+      const grp = store.studentGroups.find(g => g.id === s.studentGroupId);
+      const prog = store.programs.find(p => p.id === grp?.programId);
+      return prog?.departmentId === selectedDeptId;
+    }
     return true;
   });
   const activeLabCount = activeFilteredSections.filter(
@@ -737,12 +750,18 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
       <header className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-3 border-b border-[#E4E2DA]">
         <div>
           <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-[#77766F]">
-            <span>{activeTerm?.name || 'Fall Semester 2026'}</span>
+            <span className="text-[#171717] font-semibold">{activeSemestersLabel}</span>
+            <span>·</span>
+            <span className="px-2 py-0.5 rounded bg-[#B8EEEE]/60 text-[#171717] font-semibold">
+              {configuredPolicy === 'whole_university'
+                ? 'Whole-University Policy'
+                : 'Department-Wise Policy'}
+            </span>
             <span>·</span>
             <span>{computedTiming.operatingHoursLabel}</span>
             <span>·</span>
             <span>
-              {activeLectureCount} Lectures ({computedTiming.periodLengthMinutes}m) & {activeLabCount} Continuous Labs ({computedTiming.labDurationHoursLabel})
+              {activeLectureCount} Lectures ({computedTiming.periodLengthMinutes}m) &amp; {activeLabCount} Continuous Labs ({computedTiming.labDurationHoursLabel})
             </span>
             <span>·</span>
             <span className="text-[#171717] font-semibold">
@@ -754,8 +773,12 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
               ? `Class Timetable: ${activeGroupObj.code}`
               : perspective === 'instructor' && currentInstructorObj
               ? `Faculty Timetable: ${currentInstructorObj.name}`
-              : perspective === 'room'
-              ? `Room Schedule`
+              : perspective === 'room' && currentRoomObj
+              ? `Facility Schedule: ${currentRoomObj.code}`
+              : selectedDeptId !== 'all'
+              ? `Department Timetable: ${
+                  store.departments.find(d => d.id === selectedDeptId)?.name || 'Department'
+                }`
               : 'University Master Timetable'}
           </h1>
         </div>
@@ -886,50 +909,109 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
       )}
 
       {/* =========================================================
-          2. CLASS / SECTION TIMETABLE SWITCHER & VIEW CONTROLS
+          2. FIXED-DIMENSION AGENDA & SCHEDULING SCOPE SELECTOR
+          (Stable height & width across all perspectives and calendar modes — zero layout shift)
          ========================================================= */}
-      <div className="sf-card-white p-3.5 space-y-3">
-        {/* Top Row: Perspective Switcher + Department Filter + Search + Calendar Mode */}
-        <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-2">
-            {/* Perspective Tabs: Class/Section (Default) | All Classes | Faculty | Room */}
-            <div className="inline-flex flex-wrap items-center p-1 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA]">
+      <div className="sf-card-white p-3.5 space-y-2.5">
+        {/* ROW 1 (Fixed Height): Perspective Scope Tabs + Calendar Mode Tabs + Swap + Search */}
+        <div className="min-h-[40px] flex flex-col xl:flex-row xl:items-center justify-between gap-2.5">
+          {/* Perspective Tabs — Uniform height (h-8), fixed padding, non-shifting font weight */}
+          <div className="inline-flex flex-wrap items-center p-1 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] shrink-0">
+            {[
+              { id: 'cohort' as const, label: 'By Class / Section', icon: Users },
+              { id: 'master' as const, label: 'University Overview', icon: Layers },
+              { id: 'instructor' as const, label: 'By Faculty', icon: User },
+              { id: 'room' as const, label: 'By Room / Lab', icon: Building }
+            ].map(tab => {
+              const Icon = tab.icon;
+              const active = perspective === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setPerspective(tab.id)}
+                  className={`h-8 px-3 rounded-lg text-xs font-semibold inline-flex items-center justify-center gap-1.5 whitespace-nowrap transition-colors cursor-pointer ${
+                    active
+                      ? 'bg-[#171717] text-white'
+                      : 'text-[#77766F] hover:text-[#171717]'
+                  }`}
+                >
+                  <Icon className="w-3.5 h-3.5 shrink-0" />
+                  <span>{tab.label}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Right Controls: Week/Day/Agenda Mode + Swap Mode + Fixed-Width Search */}
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            {/* Fixed-width Calendar / Agenda Mode Switcher */}
+            <div className="inline-flex items-center p-1 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] shrink-0">
               {[
-                { id: 'cohort' as const, label: 'By Class / Section', icon: Users },
-                { id: 'master' as const, label: 'University Overview', icon: Layers },
-                { id: 'instructor' as const, label: 'By Faculty', icon: User },
-                { id: 'room' as const, label: 'By Room / Lab', icon: Building }
-              ].map(tab => {
-                const Icon = tab.icon;
-                const active = perspective === tab.id;
-                return (
-                  <button
-                    key={tab.id}
-                    type="button"
-                    onClick={() => setPerspective(tab.id)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
-                      active
-                        ? 'bg-[#171717] text-white'
-                        : 'text-[#77766F] hover:text-[#171717]'
-                    }`}
-                  >
-                    <Icon className="w-3.5 h-3.5" />
-                    <span>{tab.label}</span>
-                  </button>
-                );
-              })}
+                { id: 'week' as const, label: 'Week' },
+                { id: 'day' as const, label: 'Day' },
+                { id: 'agenda' as const, label: 'Agenda' }
+              ].map(mode => (
+                <button
+                  key={mode.id}
+                  type="button"
+                  onClick={() => setCalendarMode(mode.id)}
+                  className={`h-8 w-[68px] rounded-lg text-xs font-semibold inline-flex items-center justify-center transition-colors cursor-pointer ${
+                    calendarMode === mode.id
+                      ? 'bg-[#171717] text-white'
+                      : 'text-[#77766F] hover:text-[#171717]'
+                  }`}
+                >
+                  {mode.label}
+                </button>
+              ))}
             </div>
 
-            {/* Department Filter Pills (BEE, BCE, BESE, BSCS) */}
+            {/* Fixed-width Interactive Slot Swap Mode Button */}
+            <button
+              type="button"
+              onClick={() => {
+                setIsSwapMode(prev => !prev);
+                setSwapSourceItem(null);
+              }}
+              className={`h-10 px-3 w-[136px] rounded-xl text-xs font-semibold transition-colors cursor-pointer inline-flex items-center justify-center gap-1.5 border shrink-0 ${
+                isSwapMode
+                  ? 'bg-[#E8D36B] text-[#171717] border-[#D4BC4C]'
+                  : 'bg-[#F7F6EF] text-[#57564F] border-[#E4E2DA] hover:text-[#171717]'
+              }`}
+              title="Click to toggle Swap Mode: Select any two sessions to swap their positions"
+            >
+              <ArrowRightLeft className="w-3.5 h-3.5 shrink-0" />
+              <span className="truncate">{isSwapMode ? 'Swap: Active' : 'Swap Mode'}</span>
+            </button>
+
+            {/* Fixed-width Search Field */}
+            <div className="input-group-field h-10 px-3 gap-2 w-[215px] shrink-0">
+              <Search className="w-3.5 h-3.5 text-[#77766F] shrink-0" />
+              <input
+                type="text"
+                placeholder="Filter course, prof, room..."
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                className="text-xs w-full"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* ROW 2 (Fixed Height `min-h-[44px]` across all perspectives and calendar modes so layout never shifts) */}
+        <div className="min-h-[44px] pt-2.5 border-t border-[#E4E2DA] flex flex-col lg:flex-row lg:items-center justify-between gap-2.5">
+          {/* Left Context Control (Always occupies h-8) */}
+          <div className="flex flex-wrap items-center gap-2 min-w-0">
             {(perspective === 'cohort' || perspective === 'master') && (
-              <div className="inline-flex flex-wrap items-center p-1 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA]">
+              <div className="inline-flex flex-wrap items-center p-1 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] shrink-0">
                 <button
                   type="button"
                   onClick={() => setSelectedDeptId('all')}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
+                  className={`h-7 px-2.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
                     selectedDeptId === 'all'
-                      ? 'bg-white text-[#171717] font-semibold border border-[#E4E2DA]'
-                      : 'text-[#77766F] hover:text-[#171717]'
+                      ? 'bg-white text-[#171717] border border-[#E4E2DA]'
+                      : 'text-[#77766F] hover:text-[#171717] border border-transparent'
                   }`}
                 >
                   All Depts ({store.studentGroups.length})
@@ -953,10 +1035,10 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
                           handleSelectCohort(firstInDept.id);
                         }
                       }}
-                      className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
+                      className={`h-7 px-2.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
                         selectedDeptId === dept.id
-                          ? 'bg-white text-[#171717] font-semibold border border-[#E4E2DA]'
-                          : 'text-[#77766F] hover:text-[#171717]'
+                          ? 'bg-white text-[#171717] border border-[#E4E2DA]'
+                          : 'text-[#77766F] hover:text-[#171717] border border-transparent'
                       }`}
                     >
                       {dept.code} ({deptCount})
@@ -966,39 +1048,104 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
               </div>
             )}
 
+            {perspective === 'cohort' && (
+              <div className="inline-flex items-center gap-1.5 min-w-0">
+                <button
+                  type="button"
+                  onClick={handlePrevCohort}
+                  className="w-8 h-8 rounded-lg bg-[#F7F6EF] hover:bg-[#EDEAE0] border border-[#E4E2DA] flex items-center justify-center text-[#171717] cursor-pointer shrink-0"
+                  title="Previous Class/Section"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                <select
+                  value={selectedCohortId}
+                  onChange={e => handleSelectCohort(e.target.value)}
+                  className="input-field h-8 w-[240px] text-xs font-bold bg-[#B8EEEE]/45 border-[#95DFDF] text-[#171717] py-1 px-2.5 truncate"
+                >
+                  {departmentFilteredGroups.map(g => (
+                    <option key={g.id} value={g.id}>
+                      {g.code} — {g.name} {g.homeRoom ? `[${g.homeRoom}]` : ''}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={handleNextCohort}
+                  className="w-8 h-8 rounded-lg bg-[#F7F6EF] hover:bg-[#EDEAE0] border border-[#E4E2DA] flex items-center justify-center text-[#171717] cursor-pointer shrink-0"
+                  title="Next Class/Section"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+                {activeGroupObj?.homeRoom && (
+                  <span className="hidden sm:inline-flex items-center gap-1 h-8 px-2.5 rounded-lg bg-[#B8F2E6]/60 border border-[#93DEC9] text-[#171717] font-mono-tabular text-xs font-semibold shrink-0">
+                    <MapPin className="w-3 h-3" />
+                    <span>{activeGroupObj.homeRoom}</span>
+                  </span>
+                )}
+              </div>
+            )}
+
+            {perspective === 'master' && (
+              <div className="inline-flex items-center gap-2 text-xs text-[#57564F]">
+                <span className="h-8 px-2.5 rounded-lg bg-[#F7F6EF] border border-[#E4E2DA] inline-flex items-center font-medium text-[#171717]">
+                  {selectedDeptId === 'all'
+                    ? `Showing All ${store.departments.length} University Departments (${placedTotal} Sessions)`
+                    : `Filtered: ${
+                        store.departments.find(d => d.id === selectedDeptId)?.name || 'Department'
+                      } (${activeFilteredSections.length} Sessions)`}
+                </span>
+              </div>
+            )}
+
             {perspective === 'instructor' && (
-              <select
-                value={selectedInstructorId}
-                onChange={e => setSelectedInstructorId(e.target.value)}
-                className="input-field h-8 w-auto text-xs font-medium py-1"
-              >
-                {store.instructors.map(i => (
-                  <option key={i.id} value={i.id}>
-                    Faculty: {i.name} ({i.title})
-                  </option>
-                ))}
-              </select>
+              <div className="inline-flex flex-wrap items-center gap-2">
+                <select
+                  value={selectedInstructorId}
+                  onChange={e => setSelectedInstructorId(e.target.value)}
+                  className="input-field h-8 w-[280px] text-xs font-semibold py-1 px-2.5"
+                >
+                  {store.instructors.map(i => (
+                    <option key={i.id} value={i.id}>
+                      {i.name} ({i.title})
+                    </option>
+                  ))}
+                </select>
+                {currentInstructorObj && (
+                  <span className="h-8 px-2.5 rounded-lg bg-[#F7F6EF] border border-[#E4E2DA] inline-flex items-center text-xs text-[#57564F] font-mono-tabular">
+                    Max {currentInstructorObj.maxWeeklyHours}h/wk · {activeFilteredSections.length} Assigned Sessions
+                  </span>
+                )}
+              </div>
             )}
 
             {perspective === 'room' && (
-              <select
-                value={selectedRoomId}
-                onChange={e => setSelectedRoomId(e.target.value)}
-                className="input-field h-8 w-auto text-xs font-medium py-1"
-              >
-                {store.rooms.map(r => (
-                  <option key={r.id} value={r.id}>
-                    {r.type === 'lab' ? 'Lab' : 'Room'}: {r.code} ({r.capacity} seats)
-                  </option>
-                ))}
-              </select>
+              <div className="inline-flex flex-wrap items-center gap-2">
+                <select
+                  value={selectedRoomId}
+                  onChange={e => setSelectedRoomId(e.target.value)}
+                  className="input-field h-8 w-[280px] text-xs font-semibold py-1 px-2.5"
+                >
+                  {store.rooms.map(r => (
+                    <option key={r.id} value={r.id}>
+                      {r.type === 'lab' ? 'Lab' : 'Classroom'}: {r.code} ({r.capacity} seats)
+                    </option>
+                  ))}
+                </select>
+                {currentRoomObj && (
+                  <span className="h-8 px-2.5 rounded-lg bg-[#F7F6EF] border border-[#E4E2DA] inline-flex items-center text-xs text-[#57564F] font-mono-tabular">
+                    {currentRoomObj.type === 'lab' ? 'Continuous Lab Facility' : 'Lecture Hall'} ·{' '}
+                    {activeFilteredSections.length} Booked Blocks
+                  </span>
+                )}
+              </div>
             )}
           </div>
 
-          {/* Right Controls: 7-Day/5-Day Span + Week/Day/Agenda + Search */}
-          <div className="flex flex-wrap items-center gap-2">
+          {/* Right Sub-Mode Control (Always occupies h-8 so switching Week / Day / Agenda causes zero layout shift) */}
+          <div className="flex items-center gap-2 shrink-0">
             {calendarMode === 'week' && (
-              <div className="inline-flex items-center p-1 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA]">
+              <div className="inline-flex items-center p-1 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] h-9">
                 {[
                   { span: 7 as const, label: '7-Day (Mon–Sun)' },
                   { span: 5 as const, label: '5-Day (Mon–Fri)' }
@@ -1007,10 +1154,10 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
                     key={opt.span}
                     type="button"
                     onClick={() => setWeekColumnSpan(opt.span)}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
+                    className={`h-7 px-3 rounded-lg text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
                       weekColumnSpan === opt.span
-                        ? 'bg-white text-[#171717] font-semibold border border-[#E4E2DA]'
-                        : 'text-[#77766F] hover:text-[#171717]'
+                        ? 'bg-white text-[#171717] border border-[#E4E2DA]'
+                        : 'text-[#77766F] hover:text-[#171717] border border-transparent'
                     }`}
                   >
                     {opt.label}
@@ -1019,33 +1166,14 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
               </div>
             )}
 
-            <div className="inline-flex items-center p-1 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA]">
-              {[
-                { id: 'week' as const, label: 'Week' },
-                { id: 'day' as const, label: 'Day' },
-                { id: 'agenda' as const, label: 'Agenda' }
-              ].map(mode => (
-                <button
-                  key={mode.id}
-                  onClick={() => setCalendarMode(mode.id)}
-                  className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
-                    calendarMode === mode.id
-                      ? 'bg-[#171717] text-white'
-                      : 'text-[#77766F] hover:text-[#171717]'
-                  }`}
-                >
-                  {mode.label}
-                </button>
-              ))}
-            </div>
-
             {calendarMode === 'day' && (
-              <div className="inline-flex items-center gap-1 bg-[#F7F6EF] p-1 rounded-xl border border-[#E4E2DA]">
+              <div className="inline-flex items-center gap-1 bg-[#F7F6EF] p-1 rounded-xl border border-[#E4E2DA] h-9">
                 {FULL_SEVEN_DAYS.map(d => (
                   <button
                     key={d}
+                    type="button"
                     onClick={() => setFocusedDay(d)}
-                    className={`px-2 py-1 rounded-lg text-xs font-medium cursor-pointer ${
+                    className={`h-7 w-10 rounded-lg text-xs font-semibold cursor-pointer inline-flex items-center justify-center ${
                       focusedDay === d
                         ? 'bg-[#171717] text-white'
                         : 'text-[#77766F] hover:text-[#171717]'
@@ -1057,101 +1185,17 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
               </div>
             )}
 
-            {/* Interactive Slot Swap Mode Button */}
-            <button
-              type="button"
-              onClick={() => {
-                setIsSwapMode(prev => !prev);
-                setSwapSourceItem(null);
-              }}
-              className={`px-2.5 py-1 rounded-xl text-xs font-semibold transition-colors cursor-pointer inline-flex items-center gap-1.5 border ${
-                isSwapMode
-                  ? 'bg-[#E8D36B] text-[#171717] border-[#D4BC4C] shadow-2xs'
-                  : 'bg-[#F7F6EF] text-[#57564F] border-[#E4E2DA] hover:text-[#171717]'
-              }`}
-              title="Click to toggle Swap Mode: Select any two sessions to swap their positions"
-            >
-              <ArrowRightLeft className="w-3.5 h-3.5" />
-              <span>{isSwapMode ? 'Swap Mode: Active' : 'Swap Mode'}</span>
-            </button>
-
-            <div className="input-group-field h-8 px-2.5 gap-2 w-auto min-w-[205px]">
-              <Search className="w-3.5 h-3.5 text-[#77766F] shrink-0" />
-              <input
-                type="text"
-                placeholder="Filter course, prof, room..."
-                value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
-                className="text-xs"
-              />
-            </div>
+            {calendarMode === 'agenda' && (
+              <div className="inline-flex items-center px-3 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] h-9 text-xs font-mono-tabular font-semibold text-[#171717]">
+                Agenda View · {activeFilteredSections.length} Scheduled Sessions
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Dedicated Individual Class / Section Selector Strip */}
-        {perspective === 'cohort' && (
-          <div className="pt-2.5 border-t border-[#E4E2DA] space-y-2.5">
-            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-2.5">
-              {/* Active Class / Section Identity Banner */}
-              <div className="flex flex-wrap items-center gap-2.5">
-                <div className="inline-flex items-center gap-1">
-                  <button
-                    type="button"
-                    onClick={handlePrevCohort}
-                    className="w-7 h-7 rounded-lg bg-[#F7F6EF] hover:bg-[#EDEAE0] border border-[#E4E2DA] flex items-center justify-center text-[#171717] cursor-pointer"
-                    title="Previous Class/Section"
-                  >
-                    <ChevronLeft className="w-4 h-4" />
-                  </button>
-                  <select
-                    value={selectedCohortId}
-                    onChange={e => handleSelectCohort(e.target.value)}
-                    className="input-field h-8 w-auto text-xs font-bold bg-[#B8EEEE]/45 border-[#95DFDF] text-[#171717] py-1 px-2.5"
-                  >
-                    {departmentFilteredGroups.map(g => (
-                      <option key={g.id} value={g.id}>
-                        {g.code} — {g.name} {g.homeRoom ? `[${g.homeRoom}]` : ''}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    type="button"
-                    onClick={handleNextCohort}
-                    className="w-7 h-7 rounded-lg bg-[#F7F6EF] hover:bg-[#EDEAE0] border border-[#E4E2DA] flex items-center justify-center text-[#171717] cursor-pointer"
-                    title="Next Class/Section"
-                  >
-                    <ChevronRight className="w-4 h-4" />
-                  </button>
-                </div>
-
-                {activeGroupObj && (
-                  <div className="flex flex-wrap items-center gap-2 text-xs text-[#77766F]">
-                    <span className="px-2 py-0.5 rounded-md bg-[#F7F6EF] border border-[#E4E2DA] text-[#171717] font-medium">
-                      {activeGroupDept?.name || 'Engineering & Computing'}
-                    </span>
-                    {activeGroupObj.homeRoom && (
-                      <span className="px-2 py-0.5 rounded-md bg-[#B8F2E6]/60 border border-[#93DEC9] text-[#171717] font-mono-tabular font-semibold inline-flex items-center gap-1">
-                        <MapPin className="w-3 h-3" />
-                        <span>Home Room: {activeGroupObj.homeRoom}</span>
-                      </span>
-                    )}
-                    <span className="font-mono-tabular text-[11px]">
-                      {activeLectureCount} Lectures ({computedTiming.periodLengthMinutes}m) + {activeLabCount} Labs ({computedTiming.labDurationHoursLabel})
-                    </span>
-                  </div>
-                )}
-              </div>
-
-              <div className="text-[11px] text-[#77766F]">
-                Showing schedule for <strong className="text-[#171717]">{activeGroupObj?.code}</strong>
-              </div>
-            </div>
-          </div>
-        )}
-
         {/* Interactive Swap Mode Notification & Status Bar */}
         {isSwapMode && (
-          <div className="mt-3 p-3 rounded-xl bg-[#E8D36B]/35 border border-[#D4BC4C] flex items-center justify-between text-xs text-[#171717] transition-all">
+          <div className="p-3 rounded-xl bg-[#E8D36B]/35 border border-[#D4BC4C] flex items-center justify-between text-xs text-[#171717] transition-all">
             <div className="flex items-center gap-2">
               <ArrowRightLeft className="w-4 h-4 text-[#171717] shrink-0" />
               <span>

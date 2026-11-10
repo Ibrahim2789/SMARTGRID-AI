@@ -111,7 +111,29 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   const [termDropdownOpen, setTermDropdownOpen] = useState(false);
   const [activeUtilityPanel, setActiveUtilityPanel] = useState<UtilityPanelType>(null);
-  const [activeInsightSubView, setActiveInsightSubView] = useState<InsightSubView>('analytics');
+  const [activeInsightSubView, setActiveInsightSubView] = useState<InsightSubView>(() => {
+    try {
+      const saved = sessionStorage.getItem('smartgrid_insight_tab');
+      if (saved === 'analytics' || saved === 'optimization' || saved === 'history') {
+        return saved;
+      }
+    } catch {}
+    return 'analytics';
+  });
+
+  useEffect(() => {
+    const handleInsightEvent = (e: Event) => {
+      const custom = e as CustomEvent<InsightSubView>;
+      if (custom.detail) {
+        setActiveInsightSubView(custom.detail);
+        if (mainScrollRef.current) {
+          mainScrollRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+      }
+    };
+    window.addEventListener('smartgrid:insight-tab', handleInsightEvent);
+    return () => window.removeEventListener('smartgrid:insight-tab', handleInsightEvent);
+  }, []);
 
   const [showOnboardingModal, setShowOnboardingModal] = useState(false);
   const [showImportWizard, setShowImportWizard] = useState(false);
@@ -148,20 +170,20 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
     if (mainScrollRef.current) {
       mainScrollRef.current.scrollTo({ top: 0, behavior: 'smooth' });
     }
-  }, [activeRoute, setupStep]);
+  }, [activeRoute, setupStep, activeInsightSubView]);
 
-  const activeTermObj =
-    storeSnapshot.terms.find(t => t.status === 'active') || storeSnapshot.terms[0];
-  const activeTerm = activeTermObj?.name || 'Fall 2026';
+  const activeTermsList = storeSnapshot.terms.filter(t => t.status === 'active');
+  const activeTermObj = activeTermsList[0] || storeSnapshot.terms[0];
+  const activeTerm =
+    activeTermsList.length > 0
+      ? activeTermsList.map(t => t.name).join(' + ')
+      : activeTermObj?.name || 'Configured Semester';
   const institutionName =
     storeSnapshot.institutionProfile?.name || currentUser.institution || 'Western Polytechnic';
 
-  const handleSelectTerm = (termName: string) => {
+  const handleToggleTermActive = (termId: string) => {
     if (!isAdminRole) return;
-    if (activeTermObj) {
-      institutionalStore.updateTerm(activeTermObj.id, { name: termName });
-    }
-    setTermDropdownOpen(false);
+    institutionalStore.toggleTermActiveStatus(termId);
   };
 
   const scheduledCount = storeSnapshot.sections.filter(s => Boolean(s.assignedSlot)).length;
@@ -178,7 +200,7 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
     setMobileDrawerOpen(false);
   };
 
-  const openInsightSection = (subView: InsightSubView, elementId: string) => {
+  const openInsightSection = (subView: InsightSubView, _elementId?: string) => {
     if (!isAdminRole) return;
     setActiveUtilityPanel(null);
     setActiveInsightSubView(subView);
@@ -188,12 +210,9 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
     } catch {}
     onNavigate('feedback');
     setMobileDrawerOpen(false);
-    setTimeout(() => {
-      const targetEl = document.getElementById(elementId);
-      if (targetEl && mainScrollRef.current) {
-        targetEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }
-    }, 60);
+    if (mainScrollRef.current) {
+      mainScrollRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+    }
   };
 
   // =========================================================
@@ -1073,27 +1092,52 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
                     </button>
                   </div>
 
-                  {/* Section 3: Academic Term Selector */}
-                  <div className="pt-1.5 border-t border-[#333333]">
-                    <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-[#8E8C84]">
-                      Academic Term
+                  {/* Section 3: Configured Academic Semesters (Multi-Active Support) */}
+                  <div className="pt-1.5 border-t border-[#333333] space-y-1">
+                    <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-[#8E8C84] flex items-center justify-between">
+                      <span>Configured Semesters</span>
+                      <span className="text-[9px] text-[#B7F77C]">Multi-Active</span>
                     </div>
-                    {['Fall 2026', 'Spring 2027', 'Summer Intensive 2027'].map(term => (
-                      <button
-                        key={term}
-                        onClick={() => handleSelectTerm(term)}
-                        className={`w-full flex items-center justify-between px-2 py-1 rounded-lg text-xs font-medium cursor-pointer transition-colors ${
-                          activeTerm === term
-                            ? 'bg-[#383838] text-white'
-                            : 'text-[#C2C0B8] hover:bg-[#2C2C2C] hover:text-white'
-                        }`}
-                      >
-                        <span className="text-[11px]">{term}</span>
-                        {activeTerm === term && (
-                          <Check className="w-3.5 h-3.5 text-[#B7F77C]" />
-                        )}
-                      </button>
-                    ))}
+                    {storeSnapshot.terms.map(term => {
+                      const isTermActive = term.status === 'active';
+                      return (
+                        <button
+                          key={term.id}
+                          onClick={() => handleToggleTermActive(term.id)}
+                          className={`w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-colors ${
+                            isTermActive
+                              ? 'bg-[#383838] text-white'
+                              : 'text-[#C2C0B8] hover:bg-[#2C2C2C] hover:text-white'
+                          }`}
+                        >
+                          <div className="min-w-0 text-left pr-1">
+                            <div className="text-[11px] truncate">{term.name}</div>
+                            <div className="text-[9.5px] text-[#8E8C84] font-mono-tabular">
+                              {term.code} · {term.startDate}
+                            </div>
+                          </div>
+                          {isTermActive ? (
+                            <span className="text-[9px] px-1.5 py-0.5 rounded bg-[#B7F77C]/20 text-[#B7F77C] font-semibold shrink-0 flex items-center gap-1">
+                              <Check className="w-3 h-3" />
+                              Active
+                            </span>
+                          ) : (
+                            <span className="text-[9px] px-1.5 py-0.5 rounded bg-[#2C2C2C] text-[#8E8C84] shrink-0">
+                              Inactive
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                    <button
+                      onClick={() => {
+                        setTermDropdownOpen(false);
+                        onNavigate('academic-config');
+                      }}
+                      className="w-full text-left px-2 py-1.5 rounded-lg text-[10.5px] text-[#B8EEEE] hover:bg-[#2C2C2C] transition-colors cursor-pointer"
+                    >
+                      Manage Academic Calendar &amp; Policies →
+                    </button>
                   </div>
                 </div>
               )}
