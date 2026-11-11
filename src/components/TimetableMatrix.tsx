@@ -92,8 +92,6 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
   // Interactive Drag-and-Drop and Slot Swap State
   const [draggedClassItem, setDraggedClassItem] = useState<ClassItem | null>(null);
   const [dragOverCellKey, setDragOverCellKey] = useState<string | null>(null);
-  const [isSwapMode, setIsSwapMode] = useState<boolean>(false);
-  const [swapSourceItem, setSwapSourceItem] = useState<ClassItem | null>(null);
 
   // Interactive Conflict Inspector and Swap Confirmation Dialog States
   const [conflictDialogData, setConflictDialogData] = useState<{
@@ -292,39 +290,6 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
   };
 
   const handleClassClick = (cls: ClassItem) => {
-    if (isSwapMode) {
-      if (!swapSourceItem) {
-        setSwapSourceItem(cls);
-        setSweepNotice(`Selected ${cls.code} (${cls.day} ${cls.time}). Now click another class session to swap.`);
-      } else if (swapSourceItem.id === cls.id) {
-        setSwapSourceItem(null);
-        setSweepNotice('Swap selection cancelled.');
-      } else {
-        // Validate swap in both directions
-        const valA = institutionalStore.validateSlotMoveOrSwap(
-          swapSourceItem.id,
-          cls.day as any,
-          cls.time || '',
-          cls.roomId,
-          cls.id
-        );
-        const valB = institutionalStore.validateSlotMoveOrSwap(
-          cls.id,
-          swapSourceItem.day as any,
-          swapSourceItem.time || '',
-          swapSourceItem.roomId,
-          swapSourceItem.id
-        );
-
-        setSwapDialogData({
-          itemA: swapSourceItem,
-          itemB: cls,
-          conflictsA: valA.conflicts,
-          conflictsB: valB.conflicts
-        });
-      }
-      return;
-    }
     setSelectedClass(cls);
   };
 
@@ -333,8 +298,6 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
     const { itemA, itemB } = swapDialogData;
     const res = institutionalStore.swapSectionSlots(itemA.id, itemB.id);
     setSwapDialogData(null);
-    setSwapSourceItem(null);
-    setIsSwapMode(false);
     setSweepNotice(res.message);
     setTimeout(() => setSweepNotice(null), 4000);
   };
@@ -948,23 +911,6 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
               ))}
             </div>
 
-            {/* Fixed-width Interactive Slot Swap Mode Button */}
-            <button
-              type="button"
-              onClick={() => {
-                setIsSwapMode(prev => !prev);
-                setSwapSourceItem(null);
-              }}
-              className={`h-10 px-3 w-[136px] rounded-xl text-xs font-semibold transition-colors cursor-pointer inline-flex items-center justify-center gap-1.5 border shrink-0 ${
-                isSwapMode
-                  ? 'bg-[#E8D36B] text-[#171717] border-[#D4BC4C]'
-                  : 'bg-[#F7F6EF] text-[#57564F] border-[#E4E2DA] hover:text-[#171717]'
-              }`}
-              title="Click to toggle Swap Mode: Select any two sessions to swap their positions"
-            >
-              <ArrowRightLeft className="w-3.5 h-3.5 shrink-0" />
-              <span className="truncate">{isSwapMode ? 'Swap: Active' : 'Swap Mode'}</span>
-            </button>
 
             {/* Fixed-width Search Field */}
             <div className="input-group-field h-10 px-3 gap-2 w-[215px] shrink-0">
@@ -1133,28 +1079,6 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
           </div>
         </div>
 
-        {/* Interactive Swap Mode Notification & Status Bar */}
-        {isSwapMode && (
-          <div className="p-3 rounded-xl bg-[#E8D36B]/35 border border-[#D4BC4C] flex items-center justify-between text-xs text-[#171717] transition-all">
-            <div className="flex items-center gap-2">
-              <ArrowRightLeft className="w-4 h-4 text-[#171717] shrink-0" />
-              <span>
-                {swapSourceItem
-                  ? `First session selected: ${swapSourceItem.code} (${swapSourceItem.day} ${swapSourceItem.time}). Now click another class session or slot to preview conflict check and swap.`
-                  : 'Swap Mode Active: Click any class or lab session to select it, then click another session to swap them.'}
-              </span>
-            </div>
-            {swapSourceItem && (
-              <button
-                type="button"
-                onClick={() => setSwapSourceItem(null)}
-                className="text-[11px] font-semibold underline text-[#171717] hover:text-black cursor-pointer shrink-0 ml-2"
-              >
-                Cancel Selection
-              </button>
-            )}
-          </div>
-        )}
       </div>
 
       {/* =========================================================
@@ -1186,9 +1110,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
                         key={`${day}-${slotMeta.period}-${cls.id}`}
                         onClick={() => handleClassClick(cls)}
                         style={{ backgroundColor: pastel.bg, borderColor: pastel.border }}
-                        className={`p-4 rounded-xl border text-[#171717] cursor-pointer hover:-translate-y-0.5 transition-transform space-y-2 ${
-                          swapSourceItem?.id === cls.id ? 'ring-2 ring-[#171717] ring-offset-2' : ''
-                        }`}
+                        className="p-4 rounded-xl border text-[#171717] cursor-pointer hover:-translate-y-0.5 transition-transform space-y-2"
                       >
                         <div className="flex items-center justify-between text-xs">
                           <span className="font-mono-tabular font-semibold text-[#171717]/80">
@@ -1347,7 +1269,6 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
                               const { labItem, concurrentItems, continuousWindow, rowSpanCount } = labSpanInfo;
                               const pastel = getCoursePastel(labItem.code);
                               const isDragOver = dragOverCellKey === cellKey;
-                              const isSwapSource = swapSourceItem?.id === labItem.id;
                               const fullLabMinHeight = rowSpanCount * singleSlotHeightPx - 8;
 
                               return (
@@ -1388,9 +1309,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
                                     }}
                                     className={`w-full h-full ${
                                       isCompactCol ? 'p-2' : 'p-3'
-                                    } rounded-xl border text-[#171717] flex flex-col justify-between text-center transition-all hover:-translate-y-0.5 cursor-grab active:cursor-grabbing min-w-0 overflow-hidden ${
-                                      isSwapSource ? 'ring-2 ring-[#171717] ring-offset-2 shadow-md' : ''
-                                    }`}
+                                    } rounded-xl border text-[#171717] flex flex-col justify-between text-center transition-all hover:-translate-y-0.5 cursor-grab active:cursor-grabbing min-w-0 overflow-hidden`}
                                   >
                                     <div className="flex items-center justify-center gap-1 text-[9.5px] font-mono-tabular font-bold text-[#171717]/85 w-full truncate">
                                       <GripVertical className="w-2.5 h-2.5 text-[#77766F] shrink-0" />
@@ -1469,7 +1388,6 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
                                 {visibleItems.map(cls => {
                                   const pastel = getCoursePastel(cls.code);
                                   const isLab = cls.sessionType === 'Lab' || (cls.spanSlots && cls.spanSlots > 1);
-                                  const isSwapSource = swapSourceItem?.id === cls.id;
 
                                   return (
                                     <div
@@ -1490,9 +1408,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
                                       }}
                                       className={`w-full h-full min-h-[66px] ${
                                         isCompactCol ? 'px-1.5 py-1.5' : 'px-2 py-1.5'
-                                      } rounded-xl border text-[#171717] flex flex-col items-center justify-center text-center gap-0.5 transition-all hover:-translate-y-0.5 cursor-grab active:cursor-grabbing min-w-0 overflow-hidden ${
-                                        isSwapSource ? 'ring-2 ring-[#171717] ring-offset-2 shadow-md' : ''
-                                      }`}
+                                      } rounded-xl border text-[#171717] flex flex-col items-center justify-center text-center gap-0.5 transition-all hover:-translate-y-0.5 cursor-grab active:cursor-grabbing min-w-0 overflow-hidden`}
                                     >
                                       <div className="font-semibold text-[11px] leading-tight text-[#171717] w-full truncate">
                                         {cls.title}
