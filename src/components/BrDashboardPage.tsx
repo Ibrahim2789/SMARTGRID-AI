@@ -18,6 +18,7 @@ import {
   fetchVotingOverview,
   submitBrQuestion
 } from '../services/votingApi';
+import { showAppPopup } from './ToastPopupHost';
 
 export type BrWorkspaceTab = 'dashboard' | 'submit' | 'submissions' | 'results';
 
@@ -116,10 +117,9 @@ export const BrDashboardPage: React.FC<BrDashboardPageProps> = ({
 
     const trimmedOptions = options.map(o => o.trim()).filter(Boolean);
     if (trimmedOptions.length < 2) {
-      setSubmitBanner({
-        type: 'error',
-        text: 'Please provide at least two non-empty answer options.'
-      });
+      const msg = 'Please provide at least two non-empty answer options.';
+      setSubmitBanner({ type: 'error', text: msg });
+      showAppPopup({ title: 'Incomplete Poll', message: msg, variant: 'error' });
       return;
     }
 
@@ -137,15 +137,12 @@ export const BrDashboardPage: React.FC<BrDashboardPageProps> = ({
       setTitle('');
       setDescription('');
       setOptions(['Option A', 'Option B']);
-      setSubmitBanner({
-        type: 'success',
-        text: result.message
-      });
+      setSubmitBanner({ type: 'success', text: result.message });
+      showAppPopup({ title: 'Question Submitted', message: result.message, variant: 'success' });
     } catch (err) {
-      setSubmitBanner({
-        type: 'error',
-        text: err instanceof Error ? err.message : 'Failed to submit question.'
-      });
+      const msg = err instanceof Error ? err.message : 'Failed to submit question.';
+      setSubmitBanner({ type: 'error', text: msg });
+      showAppPopup({ title: 'Submission Failed', message: msg, variant: 'error' });
     } finally {
       setIsSubmitting(false);
     }

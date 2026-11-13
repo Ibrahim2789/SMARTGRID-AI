@@ -22,6 +22,7 @@ import {
   fetchVotingOverview
 } from '../services/votingApi';
 import { resolveUserCohort } from '../utils/userTimetableScope';
+import { showAppPopup } from './ToastPopupHost';
 
 interface StudentDashboardPageProps {
   currentUser: AuthenticatedVotingUser;
@@ -70,7 +71,6 @@ export const StudentDashboardPage: React.FC<StudentDashboardPageProps> = ({
       preferredSelfStudyWindow: 'afternoon'
     };
   });
-  const [prefsSavedNotice, setPrefsSavedNotice] = useState(false);
 
   const hasLoadedOnceRef = React.useRef(false);
   const currentUserRef = React.useRef(currentUser);
@@ -139,8 +139,11 @@ export const StudentDashboardPage: React.FC<StudentDashboardPageProps> = ({
     try {
       localStorage.setItem(PREFS_STORAGE_KEY, JSON.stringify(prefs));
     } catch {}
-    setPrefsSavedNotice(true);
-    setTimeout(() => setPrefsSavedNotice(false), 3000);
+    showAppPopup({
+      title: 'Preferences Saved',
+      message: 'Your personal schedule and voting preferences have been saved.',
+      variant: 'success'
+    });
   };
 
   // =========================================================
@@ -167,13 +170,6 @@ export const StudentDashboardPage: React.FC<StudentDashboardPageProps> = ({
             Back to Dashboard
           </button>
         </header>
-
-        {prefsSavedNotice && (
-          <div className="px-4 py-2.5 rounded-xl bg-[#E8F8E0] border border-[#A5E087] text-[#1B5E20] text-xs font-semibold flex items-center gap-2 max-w-3xl">
-            <Check className="w-4 h-4 shrink-0" />
-            <span>Your personal preferences have been saved.</span>
-          </div>
-        )}
 
         <form
           onSubmit={handleSavePreferences}

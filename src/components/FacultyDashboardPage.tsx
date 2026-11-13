@@ -14,6 +14,7 @@ import { AuthenticatedVotingUser } from '../services/votingApi';
 import { RouteType } from './SmartGridNav';
 import { DayOfWeek, computeAcademicScheduleConfig, getLabBlockByStartPeriod, getEffectiveSlotDisplayForDay } from '../types/institutional';
 import { resolveFacultyInstructor } from '../utils/userTimetableScope';
+import { showAppPopup } from './ToastPopupHost';
 
 interface FacultyDashboardPageProps {
   currentUser: AuthenticatedVotingUser;
@@ -61,7 +62,6 @@ export const FacultyDashboardPage: React.FC<FacultyDashboardPageProps> = ({
   const [newBlockDay, setNewBlockDay] = useState<DayOfWeek>('Fri');
   const [newBlockSlot, setNewBlockSlot] = useState<string>(computedTiming.periods[0] || '09:00 – 09:50');
   const [newBlockReason, setNewBlockReason] = useState<string>('Faculty Board Meeting');
-  const [saveSuccessNotice, setSaveSuccessNotice] = useState<string | null>(null);
 
   // Stats calculation
   const lectureCount = assignedSections.filter(s => s.sessionType === 'Lecture' || (!s.spanSlots || s.spanSlots === 1)).length;
@@ -103,8 +103,11 @@ export const FacultyDashboardPage: React.FC<FacultyDashboardPageProps> = ({
       maxConsecutiveHours,
       unavailableSlots
     });
-    setSaveSuccessNotice('Availability preferences submitted to Registrar and Timetable Solver successfully.');
-    setTimeout(() => setSaveSuccessNotice(null), 4500);
+    showAppPopup({
+      title: 'Preferences Saved',
+      message: 'Availability preferences submitted to Registrar and Timetable Solver successfully.',
+      variant: 'success'
+    });
   };
 
   const daysOrder: Record<DayOfWeek, number> = {
@@ -372,13 +375,6 @@ export const FacultyDashboardPage: React.FC<FacultyDashboardPageProps> = ({
       {/* 5. Tab Content: Teaching Availability & Preferences */}
       {activeTab === 'preferences' && (
         <div className="space-y-4">
-          {saveSuccessNotice && (
-            <div className="p-3.5 rounded-xl bg-[#B7F77C] text-xs text-[#171717] flex items-center gap-2 font-medium">
-              <Check className="w-4 h-4 text-[#171717] shrink-0" />
-              <span>{saveSuccessNotice}</span>
-            </div>
-          )}
-
           <div className="sf-card-white p-5 sm:p-6 space-y-6">
             <h2 className="font-serif-editorial text-xl text-[#171717] border-b border-[#E4E2DA] pb-3">
               Teaching Availability &amp; Preferences

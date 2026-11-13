@@ -32,6 +32,7 @@ import {
 } from 'lucide-react';
 import { DataImportWizard } from './DataImportWizard';
 import { UniversityOnboardingModal } from './UniversityOnboardingModal';
+import { showAppPopup } from './ToastPopupHost';
 
 interface AcademicConfigurationPageProps {
   onNavigate: (route: RouteType) => void;
@@ -199,7 +200,6 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
   );
 
   const [timingValidationErrors, setTimingValidationErrors] = useState<string[]>([]);
-  const [statusNotice, setStatusNotice] = useState<string | null>(null);
   const [showImportWizard, setShowImportWizard] = useState<boolean>(false);
   const [showOnboardingModal, setShowOnboardingModal] = useState<boolean>(false);
 
@@ -216,9 +216,26 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
     profile?.timetableManagementPolicy || 'whole_university';
   const activeTermsList = store.terms.filter(t => t.status === 'active');
 
-  const showToast = (msg: string) => {
-    setStatusNotice(msg);
-    setTimeout(() => setStatusNotice(null), 5500);
+  const showToast = (msg: string, withScheduleActions = false) => {
+    showAppPopup({
+      title: withScheduleActions ? 'Academic Configuration Saved' : 'Configuration Updated',
+      message: msg,
+      variant: 'success',
+      actions: withScheduleActions
+        ? [
+            {
+              label: 'Generate Schedule',
+              onClick: () => onNavigate('generate'),
+              variant: 'secondary'
+            },
+            {
+              label: 'Inspect Timetables',
+              onClick: () => onNavigate('timetables'),
+              variant: 'primary'
+            }
+          ]
+        : undefined
+    });
   };
 
   const handleAddSemester = (e: React.FormEvent) => {
@@ -344,12 +361,18 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
     const result = institutionalStore.saveAcademicTimingConfig(draftTimingConfig);
     if (!result.success) {
       setTimingValidationErrors(result.errors);
+      showAppPopup({
+        title: 'Configuration Conflict',
+        message: result.errors[0] || 'Please fix the highlighted timing conflict before saving.',
+        variant: 'error'
+      });
       return;
     }
 
     setTimingValidationErrors([]);
     showToast(
-      `Saved Academic Configuration (${result.summaryText}). Recalculated ${livePreview.slots.length} daily slots and re-synchronized ${result.placedCount} scheduled sessions across all class timetables.`
+      `Saved successfully (${result.summaryText}). Synced ${result.placedCount} sessions.`,
+      true
     );
   };
 
@@ -358,7 +381,8 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
     setTimingValidationErrors([]);
     const res = institutionalStore.resetAcademicTimingConfig();
     showToast(
-      `Reset Academic Configuration to defaults (${res.summaryText}) and re-synchronized ${res.placedCount} scheduled sessions.`
+      `Reset to defaults (${res.summaryText}). Synced ${res.placedCount} sessions.`,
+      true
     );
   };
 
@@ -496,33 +520,6 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
           </button>
         </div>
       </header>
-
-      {/* Toast Notification Banner */}
-      {statusNotice && (
-        <div className="p-4 sf-pastel-lime rounded-2xl text-xs font-medium flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-2.5">
-            <Check className="w-4 h-4 text-[#171717] shrink-0" />
-            <span className="text-[#171717] font-semibold">{statusNotice}</span>
-          </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <button
-              type="button"
-              onClick={() => onNavigate('generate')}
-              className="px-3 py-1.5 rounded-lg bg-white border border-[#171717]/20 text-[#171717] text-xs font-semibold cursor-pointer whitespace-nowrap"
-            >
-              Generate Schedule
-            </button>
-            <button
-              type="button"
-              onClick={() => onNavigate('timetables')}
-              className="px-3 py-1.5 rounded-lg bg-[#171717] text-white text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
-            >
-              <span>Inspect Timetables</span>
-              <ArrowRight className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* Validation Error Banner */}
       {(timingValidationErrors.length > 0 || !liveValidation.valid) && (

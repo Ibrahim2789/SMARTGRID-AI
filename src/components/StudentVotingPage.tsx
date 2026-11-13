@@ -19,6 +19,7 @@ import {
   fetchVotingOverview,
   castStudentVote
 } from '../services/votingApi';
+import { showAppPopup } from './ToastPopupHost';
 
 interface StudentVotingPageProps {
   currentUser: AuthenticatedVotingUser;
@@ -92,13 +93,15 @@ export const StudentVotingPage: React.FC<StudentVotingPageProps> = ({
   const handleCastVote = async (poll: PollDTO) => {
     const chosenOptionId = selectedOptions[poll.id];
     if (!chosenOptionId) {
+      const msg = 'Please select one of the answer options before casting your vote.';
       setVoteFeedback(prev => ({
         ...prev,
         [poll.id]: {
           type: 'error',
-          text: 'Please select one of the answer options before casting your vote.'
+          text: msg
         }
       }));
+      showAppPopup({ title: 'Select an Option', message: msg, variant: 'error' });
       return;
     }
 
@@ -119,14 +122,17 @@ export const StudentVotingPage: React.FC<StudentVotingPageProps> = ({
           text: result.message
         }
       }));
+      showAppPopup({ title: 'Vote Recorded', message: result.message, variant: 'success' });
     } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Could not submit your vote.';
       setVoteFeedback(prev => ({
         ...prev,
         [poll.id]: {
           type: 'error',
-          text: err instanceof Error ? err.message : 'Could not submit your vote.'
+          text: msg
         }
       }));
+      showAppPopup({ title: 'Vote Failed', message: msg, variant: 'error' });
     } finally {
       setSubmittingPollId(null);
     }

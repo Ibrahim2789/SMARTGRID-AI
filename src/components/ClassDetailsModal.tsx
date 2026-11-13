@@ -9,6 +9,7 @@ import {
   getLabBlockByStartPeriod,
   getEffectiveSlotDisplayForDay
 } from '../types/institutional';
+import { showAppPopup } from './ToastPopupHost';
 
 export interface ClassItem {
   id: string;
@@ -123,7 +124,9 @@ export const ClassDetailsModal: React.FC<ClassDetailsModalProps> = ({
     const labWindow = isLab
       ? (getLabBlockByStartPeriod(selectedPeriod, store.timeStructure, selectedDay)?.continuousLabel || selectedPeriod)
       : getEffectiveSlotDisplayForDay(selectedDay, selectedPeriod, computedTiming).period;
-    setSavedNotice(`Rescheduled to ${selectedDay} · ${labWindow} in ${newRoom?.code || 'selected room'}`);
+    const msg = `Rescheduled ${classItem.code} to ${selectedDay} · ${labWindow} in ${newRoom?.code || 'selected room'}.`;
+    setSavedNotice(msg);
+    showAppPopup({ title: 'Session Rescheduled', message: msg, variant: 'success' });
     setIsReassigning(false);
     setTimeout(() => {
       onClose();
@@ -140,6 +143,7 @@ export const ClassDetailsModal: React.FC<ClassDetailsModalProps> = ({
     if (!selectedSwapSectionId) return;
     const res = institutionalStore.swapSectionSlots(classItem.id, selectedSwapSectionId);
     setSavedNotice(res.message);
+    showAppPopup({ title: 'Sessions Swapped', message: res.message, variant: 'success' });
     setIsSwapping(false);
     setTimeout(() => {
       onClose();
@@ -149,7 +153,11 @@ export const ClassDetailsModal: React.FC<ClassDetailsModalProps> = ({
   const handleToggleLock = () => {
     if (!isStoreBacked) return;
     institutionalStore.toggleSectionLock(classItem.id);
-    setSavedNotice(isLocked ? 'Section unlocked for future solver runs.' : 'Section locked to current room and slot.');
+    const msg = isLocked
+      ? `${classItem.code} unlocked for future solver runs.`
+      : `${classItem.code} locked to current room and slot.`;
+    setSavedNotice(msg);
+    showAppPopup({ title: isLocked ? 'Session Unlocked' : 'Session Locked', message: msg, variant: 'info' });
   };
 
   const shortBreakSummary =

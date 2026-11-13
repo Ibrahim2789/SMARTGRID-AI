@@ -34,6 +34,7 @@ import {
   ChevronDown,
   ChevronUp
 } from 'lucide-react';
+import { showAppPopup } from './ToastPopupHost';
 
 interface SetupFlowProps {
   initialStep?: number;
@@ -65,7 +66,6 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
   const [sideDrawerOpen, setSideDrawerOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<any | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
-  const [statusBanner, setStatusBanner] = useState<string | null>(null);
   const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
 
   // Instructor modal availability state
@@ -167,8 +167,11 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
   });
 
   const showToast = (msg: string) => {
-    setStatusBanner(msg);
-    setTimeout(() => setStatusBanner(null), 4000);
+    showAppPopup({
+      title: 'Catalog Updated',
+      message: msg,
+      variant: 'success'
+    });
   };
 
   const handleLoadSample = () => {
@@ -954,13 +957,6 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
               </button>
             );
           })}
-        </div>
-      )}
-
-      {statusBanner && (
-        <div className="p-3.5 sf-pastel-lime text-xs font-medium flex items-center gap-2">
-          <Check className="w-4 h-4 text-[#171717]" />
-          <span>{statusBanner}</span>
         </div>
       )}
 

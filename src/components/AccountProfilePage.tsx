@@ -11,6 +11,7 @@ import {
   Users
 } from 'lucide-react';
 import { AuthenticatedVotingUser, updateOwnProfile } from '../services/votingApi';
+import { showAppPopup } from './ToastPopupHost';
 
 interface AccountProfilePageProps {
   currentUser: AuthenticatedVotingUser;
@@ -42,10 +43,9 @@ export const AccountProfilePage: React.FC<AccountProfilePageProps> = ({
     setFeedback(null);
 
     if (newPassword && newPassword !== confirmPassword) {
-      setFeedback({
-        type: 'error',
-        text: 'New password and confirmation password do not match.'
-      });
+      const msg = 'New password and confirmation password do not match.';
+      setFeedback({ type: 'error', text: msg });
+      showAppPopup({ title: 'Password Mismatch', message: msg, variant: 'error' });
       return;
     }
 
@@ -59,15 +59,16 @@ export const AccountProfilePage: React.FC<AccountProfilePageProps> = ({
       onUserUpdated(res.user);
       setNewPassword('');
       setConfirmPassword('');
-      setFeedback({
-        type: 'success',
-        text: res.message
+      setFeedback(null);
+      showAppPopup({
+        title: 'Profile Updated',
+        message: res.message,
+        variant: 'success'
       });
     } catch (err) {
-      setFeedback({
-        type: 'error',
-        text: err instanceof Error ? err.message : 'Could not update profile.'
-      });
+      const msg = err instanceof Error ? err.message : 'Could not update profile.';
+      setFeedback({ type: 'error', text: msg });
+      showAppPopup({ title: 'Update Failed', message: msg, variant: 'error' });
     } finally {
       setSaving(false);
     }

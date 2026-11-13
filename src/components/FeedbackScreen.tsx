@@ -28,6 +28,7 @@ import {
   Activity,
   History
 } from 'lucide-react';
+import { showAppPopup } from './ToastPopupHost';
 
 interface FeedbackScreenProps {
   onNavigate: (route: RouteType) => void;
@@ -103,11 +104,13 @@ export const FeedbackScreen: React.FC<FeedbackScreenProps> = ({ onNavigate }) =>
   const [targetSlot, setTargetSlot] = useState('12:00 - 13:00');
   const [submittedBy, setSubmittedBy] = useState('Academic Department Representative');
   const [description, setDescription] = useState('');
-  const [actionNotice, setActionNotice] = useState<string | null>(null);
 
   const triggerNotice = (msg: string) => {
-    setActionNotice(msg);
-    setTimeout(() => setActionNotice(null), 4000);
+    showAppPopup({
+      title: 'Schedule Updated',
+      message: msg,
+      variant: 'success'
+    });
   };
 
   const handleSubmitProposal = (e: React.FormEvent) => {
@@ -537,23 +540,6 @@ export const FeedbackScreen: React.FC<FeedbackScreenProps> = ({ onNavigate }) =>
           )}
         </div>
       </header>
-
-      {/* Action Notification Banner */}
-      {actionNotice && (
-        <div className="px-4 py-3 sf-pastel-lime rounded-xl text-xs font-semibold text-[#171717] flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <Check className="w-4 h-4 text-[#171717] shrink-0" />
-            <span>{actionNotice}</span>
-          </div>
-          <button
-            type="button"
-            onClick={() => setActionNotice(null)}
-            className="text-[#171717]/70 hover:text-[#171717] cursor-pointer"
-          >
-            <X className="w-3.5 h-3.5" />
-          </button>
-        </div>
-      )}
 
       {/* =====================================================================
           SCREEN 1: SCHEDULE ANALYTICS

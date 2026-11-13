@@ -16,6 +16,7 @@ import {
   Calendar,
   Lock
 } from 'lucide-react';
+import { showAppPopup } from './ToastPopupHost';
 
 interface SettingsScreenProps {
   onNavigate: (route: RouteType) => void;
@@ -58,7 +59,6 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   );
   const [autoConflictSweep, setAutoConflictSweep] = useState(profile?.autoConflictSweep ?? true);
 
-  const [statusNotice, setStatusNotice] = useState<string | null>(null);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
 
   // Audit Log filter
@@ -66,8 +66,11 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   const [logActionFilter, setLogActionFilter] = useState<string>('all');
 
   const showToast = (msg: string) => {
-    setStatusNotice(msg);
-    setTimeout(() => setStatusNotice(null), 5000);
+    showAppPopup({
+      title: 'Settings Updated',
+      message: msg,
+      variant: 'success'
+    });
   };
 
   const handleSaveProfile = (e: React.FormEvent) => {
@@ -185,16 +188,6 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
               <span>Switch to Registrar (Admin)</span>
             </button>
           )}
-        </div>
-      )}
-
-      {/* Toast Notification Banner */}
-      {statusNotice && (
-        <div className="p-4 sf-pastel-lime rounded-2xl text-xs font-medium flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2.5">
-            <Check className="w-4 h-4 text-[#171717] shrink-0" />
-            <span className="text-[#171717] font-semibold">{statusNotice}</span>
-          </div>
         </div>
       )}
 

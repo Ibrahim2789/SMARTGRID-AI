@@ -50,6 +50,7 @@ import {
   deletePollAdmin,
   loginWithBackend
 } from '../services/votingApi';
+import { showAppPopup } from './ToastPopupHost';
 
 interface AdminVotingManagementPageProps {
   currentUser: AuthenticatedVotingUser;
@@ -67,7 +68,13 @@ export const AdminVotingManagementPage: React.FC<AdminVotingManagementPageProps>
   const [batches, setBatches] = useState<BatchDTO[]>([]);
   const [brAccounts, setBrAccounts] = useState<BrAccountDTO[]>([]);
   const [loading, setLoading] = useState(true);
-  const [banner, setBanner] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const showAdminPopup = (type: 'success' | 'error', text: string, title?: string) => {
+    showAppPopup({
+      title: title || (type === 'error' ? 'Voting Action Failed' : 'Voting Updated'),
+      message: text,
+      variant: type
+    });
+  };
 
   // Question Moderation Filters (Section 4A)
   const [filterBatch, setFilterBatch] = useState<string>('ALL');
@@ -137,10 +144,10 @@ export const AdminVotingManagementPage: React.FC<AdminVotingManagementPageProps>
       setBrAccounts(data.brAccounts || []);
       setBrFormBatchId(prev => prev || (data.batches.length > 0 ? data.batches[0].id : ''));
     } catch (err) {
-      setBanner({
-        type: 'error',
-        text: err instanceof Error ? err.message : 'Failed to load voting administration data.'
-      });
+      showAdminPopup(
+        'error',
+        err instanceof Error ? err.message : 'Failed to load voting administration data.'
+      );
     } finally {
       setLoading(false);
     }
@@ -173,42 +180,39 @@ export const AdminVotingManagementPage: React.FC<AdminVotingManagementPageProps>
       targetScope?: 'all_batches' | 'submitting_batch';
     }
   ) => {
-    setBanner(null);
     try {
       const res = await updatePollStatusAdmin(currentUser, pollId, {
         status,
         ...extra
       });
       setPolls(prev => prev.map(p => (p.id === pollId ? res.poll : p)));
-      setBanner({ type: 'success', text: res.message });
+      showAdminPopup('success', res.message, 'Poll Status Updated');
       setPreviewPoll(null);
       setRejectingPoll(null);
       setRejectionReasonInput('');
     } catch (err) {
-      setBanner({
-        type: 'error',
-        text: err instanceof Error ? err.message : 'Failed to update status.'
-      });
+      showAdminPopup(
+        'error',
+        err instanceof Error ? err.message : 'Failed to update status.'
+      );
     }
   };
 
   const handleDeletePoll = async (pollId: string) => {
-    setBanner(null);
     try {
       const res = await deletePollAdmin(currentUser, pollId);
       setPolls(prev => prev.filter(p => p.id !== pollId));
-      setBanner({ type: 'success', text: res.message });
+      showAdminPopup('success', res.message, 'Question Removed');
     } catch (err) {
-      setBanner({
-        type: 'error',
-        text: err instanceof Error ? err.message : 'Failed to remove question.'
-      });
+      showAdminPopup(
+        'error',
+        err instanceof Error ? err.message : 'Failed to remove question.'
+      );
     }
   };
 
   const handleCreateBatch = async (e: React.FormEvent) => {
     e.preventDefault();
-    setBanner(null);
     try {
       const res = await createBatchAdmin(currentUser, {
         code: newBatchCode,
@@ -218,22 +222,21 @@ export const AdminVotingManagementPage: React.FC<AdminVotingManagementPageProps>
         semester: newBatchSemester,
         studentCount: newBatchStudents
       });
-      setBanner({ type: 'success', text: res.message });
+      showAdminPopup('success', res.message, 'Batch Created');
       setShowCreateBatchModal(false);
       setNewBatchCode('');
       setNewBatchName('');
       await loadAdminOverview();
     } catch (err) {
-      setBanner({
-        type: 'error',
-        text: err instanceof Error ? err.message : 'Failed to create batch.'
-      });
+      showAdminPopup(
+        'error',
+        err instanceof Error ? err.message : 'Failed to create batch.'
+      );
     }
   };
 
   const handleCreateBrAccount = async (e: React.FormEvent) => {
     e.preventDefault();
-    setBanner(null);
     try {
       const res = await createBrAccountAdmin(currentUser, {
         name: brFormName,
@@ -250,15 +253,15 @@ export const AdminVotingManagementPage: React.FC<AdminVotingManagementPageProps>
         batchCode: res.issuedCredentials.batchCode,
         genderRole: res.issuedCredentials.genderRole
       });
-      setBanner({ type: 'success', text: res.message });
+      showAdminPopup('success', res.message, 'BR Account Issued');
       setBrFormName('');
       setBrFormEmail('');
       await loadAdminOverview();
     } catch (err) {
-      setBanner({
-        type: 'error',
-        text: err instanceof Error ? err.message : 'Failed to create BR account.'
-      });
+      showAdminPopup(
+        'error',
+        err instanceof Error ? err.message : 'Failed to create BR account.'
+      );
     }
   };
 
@@ -267,7 +270,6 @@ export const AdminVotingManagementPage: React.FC<AdminVotingManagementPageProps>
     action: 'activate' | 'deactivate' | 'reset_password',
     newPassword?: string
   ) => {
-    setBanner(null);
     try {
       const res = await updateBrAccountAdmin(currentUser, userId, {
         action,
@@ -277,13 +279,10 @@ export const AdminVotingManagementPage: React.FC<AdminVotingManagementPageProps>
         setIssuedCredsCard(res.issuedCredentials);
       }
       setResettingBr(null);
-      setBanner({ type: 'success', text: res.message });
+      showAdminPopup('success', res.message, 'BR Account Updated');
       await loadAdminOverview();
     } catch (err) {
-      setBanner({
-        type: 'error',
-        text: err instanceof Error ? err.message : 'Action failed.'
-      });
+      showAdminPopup('error', err instanceof Error ? err.message : 'Action failed.');
     }
   };
 
@@ -296,10 +295,10 @@ export const AdminVotingManagementPage: React.FC<AdminVotingManagementPageProps>
       );
       onSwitchUser?.(loggedInBr);
     } catch (err) {
-      setBanner({
-        type: 'error',
-        text: err instanceof Error ? err.message : 'Could not switch to BR account.'
-      });
+      showAdminPopup(
+        'error',
+        err instanceof Error ? err.message : 'Could not switch to BR account.'
+      );
     }
   };
 
@@ -480,33 +479,6 @@ export const AdminVotingManagementPage: React.FC<AdminVotingManagementPageProps>
           </button>
         </div>
       </header>
-
-      {/* Feedback Banner */}
-      {banner && (
-        <div
-          className={`p-4 rounded-2xl border text-xs font-medium flex items-center justify-between gap-3 ${
-            banner.type === 'success'
-              ? 'bg-[#E8F8E0] border-[#A5E087] text-[#1B5E20]'
-              : 'bg-[#FDE8E8] border-[#F5B5B5] text-[#8B1E1E]'
-          }`}
-        >
-          <div className="flex items-center gap-2.5">
-            {banner.type === 'success' ? (
-              <CheckCircle2 className="w-4 h-4 shrink-0" />
-            ) : (
-              <AlertCircle className="w-4 h-4 shrink-0" />
-            )}
-            <span>{banner.text}</span>
-          </div>
-          <button
-            type="button"
-            onClick={() => setBanner(null)}
-            className="text-xs underline cursor-pointer"
-          >
-            Dismiss
-          </button>
-        </div>
-      )}
 
       {/* =========================================================
           SUB-VIEW: VOTING ANALYTICS TAB (Recharts Visualizations)

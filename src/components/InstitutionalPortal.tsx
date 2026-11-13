@@ -1,18 +1,18 @@
 import React, { useState } from 'react';
 import { SmartGridNav, RouteType } from './SmartGridNav';
-import { 
-  Building, 
-  Clock, 
-  CheckCircle2, 
-  RefreshCw, 
-  Sliders, 
-  ArrowRight, 
+import {
+  Building,
+  Clock,
+  CheckCircle2,
+  RefreshCw,
+  Sliders,
+  ArrowRight,
   ShieldCheck,
   Calendar,
   Layers,
   FileSpreadsheet
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { showAppPopup } from './ToastPopupHost';
 
 interface InstitutionalPortalProps {
   onNavigate?: (route: RouteType) => void;
@@ -31,7 +31,6 @@ export const InstitutionalPortal: React.FC<InstitutionalPortalProps> = ({
   hideNav = false
 }) => {
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'synced'>('idle');
-  const [exportNotice, setExportNotice] = useState<string | null>(null);
 
   const activeUser = currentUser || {
     name: 'Dr. Katherine Reynolds',
@@ -44,13 +43,21 @@ export const InstitutionalPortal: React.FC<InstitutionalPortalProps> = ({
     setSyncStatus('syncing');
     setTimeout(() => {
       setSyncStatus('synced');
+      showAppPopup({
+        title: 'SIS / LMS Synced',
+        message: 'Institutional schedule records synchronized with SIS & LMS endpoints.',
+        variant: 'success'
+      });
       setTimeout(() => setSyncStatus('idle'), 3000);
     }, 1000);
   };
 
   const handleExport = (format: string) => {
-    setExportNotice(`Exported ${format} snapshot for SIS/LMS distribution`);
-    setTimeout(() => setExportNotice(null), 3000);
+    showAppPopup({
+      title: 'Snapshot Exported',
+      message: `Exported ${format} snapshot for SIS/LMS distribution.`,
+      variant: 'success'
+    });
   };
 
   return (
@@ -97,24 +104,6 @@ export const InstitutionalPortal: React.FC<InstitutionalPortalProps> = ({
             </button>
           </div>
         </div>
-
-        {/* Export Notification Toast */}
-        <AnimatePresence>
-          {exportNotice && (
-            <motion.div 
-              initial={{ opacity: 0, y: -4 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -4 }}
-              className="p-3.5 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200 rounded-md text-[14px] flex items-center justify-between"
-            >
-              <div className="flex items-center gap-2.5">
-                <CheckCircle2 className="w-4 h-4 text-success" />
-                <span>{exportNotice}</span>
-              </div>
-              <span className="font-mono text-[13px] text-success font-medium">SUCCESS</span>
-            </motion.div>
-          )}
-        </AnimatePresence>
 
         {/* Unified Stat Strip with Dividers & Comparisons (vs last term) */}
         <section className="bg-surface border border-border rounded-lg grid grid-cols-2 lg:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x divide-border">

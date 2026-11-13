@@ -34,6 +34,7 @@ import {
 import { ClassDetailsModal, ClassItem } from './ClassDetailsModal';
 import { jsPDF } from 'jspdf';
 import { AuthenticatedVotingUser } from '../services/votingApi';
+import { showAppPopup } from './ToastPopupHost';
 import {
   getNormalizedUserRole,
   resolveUserCohort,
@@ -123,8 +124,6 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
   const [selectedClass, setSelectedClass] = useState<ClassItem | null>(null);
   const [isSweeping, setIsSweeping] = useState(false);
   const [isExportingSheets, setIsExportingSheets] = useState(false);
-  const [sweepNotice, setSweepNotice] = useState<string | null>(null);
-  const [exportNotice, setExportNotice] = useState<string | null>(null);
   const [showExportMenu, setShowExportMenu] = useState(false);
   const exportDropdownRef = useRef<HTMLDivElement>(null);
 
@@ -288,10 +287,11 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
     setTimeout(() => {
       const res = institutionalStore.runTimetableSolver();
       setIsSweeping(false);
-      setSweepNotice(
-        `${res.placedCount} sessions (${computedTiming.periodLengthMinutes}m lectures & ${computedTiming.labDurationHoursLabel} continuous labs) synchronized across ${computedTiming.operatingHoursLabel} with 0 hard overlaps.`
-      );
-      setTimeout(() => setSweepNotice(null), 5000);
+      showAppPopup({
+        title: 'Timetable Re-Optimized',
+        message: `${res.placedCount} sessions (${computedTiming.periodLengthMinutes}m lectures & ${computedTiming.labDurationHoursLabel} continuous labs) synchronized across ${computedTiming.operatingHoursLabel} with 0 hard overlaps.`,
+        variant: 'success'
+      });
     }, 450);
   };
 
@@ -357,8 +357,11 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
         timeSlot: targetPeriod,
         roomId: draggedClassItem.roomId || store.rooms[0]?.id || ''
       });
-      setSweepNotice(`Moved ${draggedClassItem.code} to ${targetDay} · ${targetPeriod} with zero conflicts.`);
-      setTimeout(() => setSweepNotice(null), 4000);
+      showAppPopup({
+        title: 'Session Moved',
+        message: `Moved ${draggedClassItem.code} to ${targetDay} · ${targetPeriod} with zero conflicts.`,
+        variant: 'success'
+      });
     }
     setDraggedClassItem(null);
   };
@@ -372,8 +375,11 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
     const { itemA, itemB } = swapDialogData;
     const res = institutionalStore.swapSectionSlots(itemA.id, itemB.id);
     setSwapDialogData(null);
-    setSweepNotice(res.message);
-    setTimeout(() => setSweepNotice(null), 4000);
+    showAppPopup({
+      title: 'Sessions Swapped',
+      message: res.message,
+      variant: 'success'
+    });
   };
 
   const handleConfirmOverrideMove = () => {
@@ -385,8 +391,11 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
       roomId: targetRoomId || store.rooms[0]?.id || ''
     });
     setConflictDialogData(null);
-    setSweepNotice(`Manually moved ${sourceItem.code} to ${targetDay} · ${targetPeriod} (Override applied).`);
-    setTimeout(() => setSweepNotice(null), 4000);
+    showAppPopup({
+      title: 'Session Moved (Override)',
+      message: `Manually moved ${sourceItem.code} to ${targetDay} · ${targetPeriod} (Override applied).`,
+      variant: 'info'
+    });
   };
 
   const handleSwapConflictingClass = () => {
@@ -394,8 +403,11 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
     const { sourceItem, conflictingItem } = conflictDialogData;
     institutionalStore.swapSectionSlots(sourceItem.id, conflictingItem.id);
     setConflictDialogData(null);
-    setSweepNotice(`Swapped ${sourceItem.code} and ${conflictingItem.code}.`);
-    setTimeout(() => setSweepNotice(null), 4000);
+    showAppPopup({
+      title: 'Sessions Swapped',
+      message: `Swapped ${sourceItem.code} and ${conflictingItem.code}.`,
+      variant: 'success'
+    });
   };
 
   const filterClass = (cls: ClassItem) => {
@@ -456,13 +468,18 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
         scopeLabel,
         studentOrUserName: currentUser?.name || 'Academic Schedule'
       });
-      setExportNotice(
-        `Exported compact landscape Google Sheets workbook "${result.fileName}" (1 Weekly Overview + ${result.classSheetCount} Class/Section tabs, configured to fit on 1 laptop screen and 1 landscape printed page).`
-      );
-      setTimeout(() => setExportNotice(null), 7000);
+      showAppPopup({
+        title: 'Workbook Exported',
+        message: `Exported "${result.fileName}" (1 Weekly Overview + ${result.classSheetCount} Class/Section tabs).`,
+        variant: 'success'
+      });
     } catch (err) {
       console.error('Google Sheets export error:', err);
-      setExportNotice('Failed to generate Google Sheets workbook. Please try again.');
+      showAppPopup({
+        title: 'Export Failed',
+        message: 'Failed to generate Google Sheets workbook. Please try again.',
+        variant: 'error'
+      });
     } finally {
       setIsExportingSheets(false);
       setShowExportMenu(false);
@@ -555,8 +572,11 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
 
-    setExportNotice(`Exported ${records.length} scheduled sessions to CSV (${scopeLabel.replace(/_/g, ' ')}).`);
-    setTimeout(() => setExportNotice(null), 4500);
+    showAppPopup({
+      title: 'CSV Exported',
+      message: `Exported ${records.length} scheduled sessions to CSV (${scopeLabel.replace(/_/g, ' ')}).`,
+      variant: 'success'
+    });
     setShowExportMenu(false);
   };
 
@@ -708,8 +728,11 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
     const fileLabel = safeScope === 'all' ? 'All_University_Classes' : getActiveScopeLabel();
     doc.save(`SmartGrid_Timetable_${fileLabel}_Fall2026.pdf`);
 
-    setExportNotice(`Exported timetable as landscape PDF (${fileLabel.replace(/_/g, ' ')}).`);
-    setTimeout(() => setExportNotice(null), 4500);
+    showAppPopup({
+      title: 'PDF Exported',
+      message: `Exported timetable as landscape PDF (${fileLabel.replace(/_/g, ' ')}).`,
+      variant: 'success'
+    });
     setShowExportMenu(false);
   };
 
@@ -927,21 +950,6 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
           )}
         </div>
       </header>
-
-      {/* Feedback Notices */}
-      {sweepNotice && (
-        <div className="px-4 py-2.5 sf-pastel-lime rounded-xl text-xs font-medium flex items-center gap-2">
-          <Check className="w-4 h-4 text-[#171717] shrink-0" />
-          <span>{sweepNotice}</span>
-        </div>
-      )}
-
-      {exportNotice && (
-        <div className="px-4 py-2.5 sf-pastel-cyan rounded-xl text-xs font-medium flex items-center gap-2">
-          <Check className="w-4 h-4 text-[#171717] shrink-0" />
-          <span className="font-semibold text-[#171717]">{exportNotice}</span>
-        </div>
-      )}
 
       {/* =========================================================
           2. FIXED-DIMENSION AGENDA & SCHEDULING SCOPE SELECTOR

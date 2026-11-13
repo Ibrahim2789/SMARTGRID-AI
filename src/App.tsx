@@ -17,6 +17,7 @@ import { AdminVotingManagementPage } from './components/AdminVotingManagementPag
 import { FacultyDashboardPage } from './components/FacultyDashboardPage';
 import { AccountProfilePage } from './components/AccountProfilePage';
 import { UniversityOnboardingModal } from './components/UniversityOnboardingModal';
+import { ToastPopupHost } from './components/ToastPopupHost';
 import {
   AuthenticatedVotingUser,
   verifyBackendSession,
@@ -349,16 +350,20 @@ export default function App() {
 
   // 1. If user is NOT logged in:
   if (!currentUser) {
-    if (showAuthPage) {
-      return (
-        <AuthPage
-          initialMode={authMode}
-          onLogin={handleLogin}
-          onCancel={() => setShowAuthPage(false)}
-        />
-      );
-    }
-    return <PublicLandingPage onOpenAuth={handleOpenAuth} />;
+    return (
+      <>
+        {showAuthPage ? (
+          <AuthPage
+            initialMode={authMode}
+            onLogin={handleLogin}
+            onCancel={() => setShowAuthPage(false)}
+          />
+        ) : (
+          <PublicLandingPage onOpenAuth={handleOpenAuth} />
+        )}
+        <ToastPopupHost />
+      </>
+    );
   }
 
   const normalizedRole = getNormalizedRole(currentUser);
@@ -372,6 +377,7 @@ export default function App() {
 
   // 2. Authenticated App Workspace with Role-Isolated Dashboards & Navigation
   return (
+    <>
     <AuthenticatedLayout
       activeRoute={effectiveRoute}
       setupStep={setupStep}
@@ -532,5 +538,7 @@ export default function App() {
         />
       )}
     </AuthenticatedLayout>
+    <ToastPopupHost />
+    </>
   );
 }

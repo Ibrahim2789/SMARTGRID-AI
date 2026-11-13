@@ -8,6 +8,7 @@ import {
 } from '../types/institutional';
 import { exportTimetableToGoogleSheetsWorkbook } from '../utils/googleSheetsExport';
 import { solveOptimizationApi } from '../services/votingApi';
+import { showAppPopup } from './ToastPopupHost';
 import {
   Play,
   Sliders,
@@ -305,6 +306,18 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
                     })`
                   : `Custom Scope (${scopedGroups.length} Sections)`
             });
+            showAppPopup({
+              title: 'Timetable Generated',
+              message: `Placed ${res.placedCount} sessions across ${selectedSemestersLabel} (${res.roomUtilization}% room utilization).`,
+              variant: 'success',
+              actions: [
+                {
+                  label: 'Inspect Timetables',
+                  onClick: () => onNavigate('timetables'),
+                  variant: 'primary'
+                }
+              ]
+            });
           }, 250);
         })
         .catch(() => {
@@ -332,6 +345,18 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
               scopeMode === 'whole_university'
                 ? 'Whole-University Integrated Policy'
                 : 'Department-Wise Policy'
+          });
+          showAppPopup({
+            title: 'Timetable Generated',
+            message: `Placed ${res.placedCount} sessions across ${selectedSemestersLabel}.`,
+            variant: 'success',
+            actions: [
+              {
+                label: 'Inspect Timetables',
+                onClick: () => onNavigate('timetables'),
+                variant: 'primary'
+              }
+            ]
           });
         });
       return;
@@ -384,6 +409,18 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
               })`
             : `Custom Scope (${scopedGroups.length} Sections)`
       });
+      showAppPopup({
+        title: 'Timetable Generated',
+        message: `Placed ${res.placedCount} sessions across ${selectedSemestersLabel} with ${res.conflictCount} conflicts.`,
+        variant: 'success',
+        actions: [
+          {
+            label: 'Inspect Timetables',
+            onClick: () => onNavigate('timetables'),
+            variant: 'primary'
+          }
+        ]
+      });
     }, 950);
   };
 
@@ -391,13 +428,18 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
     try {
       setIsExportingSheets(true);
       const { scheduleData } = buildMatrixSchedule(store);
-      await exportTimetableToGoogleSheetsWorkbook({
+      const result = await exportTimetableToGoogleSheetsWorkbook({
         store,
         scheduleData,
         filterClass: () => true,
         scope: 'all',
         scopeLabel: 'All_University_Classes',
         studentOrUserName: currentUser?.name || 'Academic Schedule'
+      });
+      showAppPopup({
+        title: 'Workbook Exported',
+        message: `Downloaded "${result.fileName}" with ${result.classSheetCount} class/section sheets.`,
+        variant: 'success'
       });
     } finally {
       setIsExportingSheets(false);
