@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useLayoutEffect, useCallback } from 'react';
 import {
   ArrowRight,
   Coffee,
@@ -115,6 +115,12 @@ const WHY_CHOOSE_BENEFITS = [
   }
 ] as const;
 
+const NAV_LINKS = [
+  { label: 'Timetable Preview', target: 'timetable-preview' },
+  { label: 'How It Works', target: 'how-it-works' },
+  { label: 'Why SmartGrid AI', target: 'why-choose-smartgrid' }
+] as const;
+
 export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({ onOpenAuth }) => {
   const store = useInstitutionalData();
   const { scheduleData } = buildMatrixSchedule(store);
@@ -123,21 +129,92 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({ onOpenAuth
   const [selectedClass, setSelectedClass] = useState<ClassItem | null>(null);
   const [isExportingSample, setIsExportingSample] = useState(false);
 
-  // Scroll-aware animated navbar state
+  // Scroll-aware animated navbar & active section tracking state
   const [isScrolled, setIsScrolled] = useState(false);
-  const [hoveredNavIndex, setHoveredNavIndex] = useState<number | null>(null);
+  const [activeSection, setActiveSection] = useState<string>('timetable-preview');
+  const navContainerRef = useRef<HTMLElement | null>(null);
+  const navItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const [activeIndicator, setActiveIndicator] = useState<{
+    left: number;
+    width: number;
+    ready: boolean;
+  }>({ left: 0, width: 0, ready: false });
+  const manualScrollLockRef = useRef<{ target: string; until: number } | null>(null);
 
   // Automatic display-only "How SmartGrid AI Works" step animation state
   const [activeProcessStep, setActiveProcessStep] = useState<number>(0);
   const [prefersReducedMotion, setPrefersReducedMotion] = useState<boolean>(false);
 
+  const updateActiveIndicator = useCallback(() => {
+    const activeIdx = NAV_LINKS.findIndex(item => item.target === activeSection);
+    const btn = activeIdx >= 0 ? navItemRefs.current[activeIdx] : null;
+    if (btn) {
+      setActiveIndicator({
+        left: btn.offsetLeft,
+        width: btn.offsetWidth,
+        ready: true
+      });
+    }
+  }, [activeSection]);
+
+  useLayoutEffect(() => {
+    updateActiveIndicator();
+  }, [updateActiveIndicator]);
+
   useEffect(() => {
-    const handleScroll = () => {
-      setIsScrolled(window.scrollY > 20);
+    const container = navContainerRef.current;
+    if (!container) return;
+    const observer = new ResizeObserver(() => {
+      updateActiveIndicator();
+    });
+    observer.observe(container);
+    window.addEventListener('resize', updateActiveIndicator);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', updateActiveIndicator);
     };
-    handleScroll();
-    window.addEventListener('scroll', handleScroll, { passive: true });
-    return () => window.removeEventListener('scroll', handleScroll);
+  }, [updateActiveIndicator]);
+
+  useEffect(() => {
+    const detectCurrentSection = () => {
+      setIsScrolled(window.scrollY > 20);
+
+      if (manualScrollLockRef.current) {
+        if (Date.now() < manualScrollLockRef.current.until) {
+          return;
+        }
+        manualScrollLockRef.current = null;
+      }
+
+      const nearBottom =
+        window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 80;
+      if (nearBottom) {
+        setActiveSection('why-choose-smartgrid');
+        return;
+      }
+
+      const threshold = Math.min(340, Math.max(160, window.innerHeight * 0.42));
+      let nextActive: string = NAV_LINKS[0].target;
+
+      for (const item of NAV_LINKS) {
+        const el = document.getElementById(item.target);
+        if (!el) continue;
+        const rect = el.getBoundingClientRect();
+        if (rect.top <= threshold) {
+          nextActive = item.target;
+        }
+      }
+
+      setActiveSection(prev => (prev === nextActive ? prev : nextActive));
+    };
+
+    detectCurrentSection();
+    window.addEventListener('scroll', detectCurrentSection, { passive: true });
+    window.addEventListener('resize', detectCurrentSection, { passive: true });
+    return () => {
+      window.removeEventListener('scroll', detectCurrentSection);
+      window.removeEventListener('resize', detectCurrentSection);
+    };
   }, []);
 
   useEffect(() => {
@@ -204,9 +281,14 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({ onOpenAuth
 
   const scrollToId = (id: string) => {
     setMobileMenuOpen(false);
+    setActiveSection(id);
+    manualScrollLockRef.current = {
+      target: id,
+      until: Date.now() + (prefersReducedMotion ? 100 : 800)
+    };
     const el = document.getElementById(id);
     if (el) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      el.scrollIntoView({ behavior: prefersReducedMotion ? 'auto' : 'smooth', block: 'start' });
     }
   };
 
@@ -273,11 +355,7 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({ onOpenAuth
     });
   });
 
-  const navLinks = [
-    { label: 'Timetable Preview', target: 'timetable-preview' },
-    { label: 'How It Works', target: 'how-it-works' },
-    { label: 'Why SmartGrid AI', target: 'why-choose-smartgrid' }
-  ];
+
 
   // Progress percentage for the connecting line in "How SmartGrid AI Works"
   const progressPercentage = prefersReducedMotion
@@ -314,7 +392,14 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({ onOpenAuth
           {/* Zone 1: Brand Wordmark */}
           <button
             type="button"
-            onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+            onClick={() => {
+              setActiveSection('timetable-preview');
+              manualScrollLockRef.current = {
+                target: 'timetable-preview',
+                until: Date.now() + (prefersReducedMotion ? 100 : 800)
+              };
+              window.scrollTo({ top: 0, behavior: prefersReducedMotion ? 'auto' : 'smooth' });
+            }}
             className="flex items-center gap-2 text-[#171717] whitespace-nowrap shrink-0 cursor-pointer group"
           >
             <div className="transition-transform duration-300 group-hover:scale-[1.02]">
@@ -322,24 +407,43 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({ onOpenAuth
             </div>
           </button>
 
-          {/* Zone 2: Animated Navigation Links with Hover Pill */}
+          {/* Zone 2: Animated Navigation Links with Active Current-Section Pill */}
           <nav
+            ref={navContainerRef}
             aria-label="Primary Navigation"
-            onMouseLeave={() => setHoveredNavIndex(null)}
-            className="hidden md:flex items-center gap-1 p-1 rounded-xl bg-[#EDEAE0]/70 border border-[#E4E2DA]/80"
+            className="relative hidden md:flex items-center gap-1 p-1 rounded-xl bg-[#EDEAE0]/75 border border-[#E4E2DA]/90"
           >
-            {navLinks.map((item, idx) => {
-              const isHovered = hoveredNavIndex === idx;
+            {/* Gliding Current Section Pill */}
+            {activeIndicator.ready && (
+              <span
+                aria-hidden="true"
+                style={{
+                  width: `${activeIndicator.width}px`,
+                  transform: `translateX(${activeIndicator.left - 4}px)`
+                }}
+                className={`pointer-events-none absolute top-1 bottom-1 left-1 rounded-lg bg-[#171717] shadow-xs ${
+                  prefersReducedMotion
+                    ? ''
+                    : 'transition-[transform,width] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]'
+                }`}
+              />
+            )}
+
+            {NAV_LINKS.map((item, idx) => {
+              const isActive = activeSection === item.target;
               return (
                 <button
                   key={item.target}
+                  ref={el => {
+                    navItemRefs.current[idx] = el;
+                  }}
                   type="button"
-                  onMouseEnter={() => setHoveredNavIndex(idx)}
+                  aria-current={isActive ? 'location' : undefined}
                   onClick={() => scrollToId(item.target)}
-                  className={`relative px-3.5 py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-all duration-200 whitespace-nowrap shrink-0 cursor-pointer ${
-                    isHovered
-                      ? 'bg-white text-[#171717] shadow-2xs'
-                      : 'text-[#57564F] hover:text-[#171717]'
+                  className={`relative z-10 px-3.5 py-1.5 rounded-lg text-xs sm:text-sm whitespace-nowrap shrink-0 cursor-pointer transition-colors duration-200 ${
+                    isActive
+                      ? 'text-white font-semibold'
+                      : 'text-[#57564F] font-medium hover:text-[#171717] hover:bg-white/60'
                   }`}
                 >
                   {item.label}
@@ -384,16 +488,24 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({ onOpenAuth
         {mobileMenuOpen && (
           <div className="md:hidden mt-2 mx-4 rounded-2xl bg-white border border-[#E4E2DA] px-5 py-4 space-y-3 shadow-lg">
             <div className="flex flex-col space-y-1.5 text-sm font-medium text-[#171717]">
-              {navLinks.map(item => (
-                <button
-                  key={item.target}
-                  type="button"
-                  onClick={() => scrollToId(item.target)}
-                  className="text-left py-1.5 px-2 rounded-lg hover:bg-[#F7F6EF] cursor-pointer"
-                >
-                  {item.label}
-                </button>
-              ))}
+              {NAV_LINKS.map(item => {
+                const isActive = activeSection === item.target;
+                return (
+                  <button
+                    key={item.target}
+                    type="button"
+                    aria-current={isActive ? 'location' : undefined}
+                    onClick={() => scrollToId(item.target)}
+                    className={`text-left py-2 px-3 rounded-lg transition-colors cursor-pointer ${
+                      isActive
+                        ? 'bg-[#171717] text-white font-semibold'
+                        : 'text-[#171717] hover:bg-[#F7F6EF]'
+                    }`}
+                  >
+                    {item.label}
+                  </button>
+                );
+              })}
             </div>
             <div className="pt-2 border-t border-[#E4E2DA] grid grid-cols-2 gap-2">
               <button
