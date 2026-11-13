@@ -21,6 +21,7 @@ import {
   BatchDTO,
   fetchVotingOverview
 } from '../services/votingApi';
+import { resolveUserCohort } from '../utils/userTimetableScope';
 
 interface StudentDashboardPageProps {
   currentUser: AuthenticatedVotingUser;
@@ -103,13 +104,8 @@ export const StudentDashboardPage: React.FC<StudentDashboardPageProps> = ({
 
   const studentBatch = batches.find(b => b.id === syncedUser.batchId) || null;
 
-  // Match student's cohort in institutionalStore to show their real scheduled classes
-  const matchedCohort =
-    store.studentGroups.find(
-      g =>
-        syncedUser.batchCode &&
-        g.name.toUpperCase().includes(syncedUser.batchCode.toUpperCase())
-    ) || store.studentGroups[0];
+  // Strictly match student's exact cohort/section (no unrelated fallback)
+  const matchedCohort = resolveUserCohort(syncedUser, store.studentGroups);
 
   const cohortSections = matchedCohort
     ? store.sections.filter(s => s.studentGroupId === matchedCohort.id && s.assignedSlot)
@@ -131,7 +127,7 @@ export const StudentDashboardPage: React.FC<StudentDashboardPageProps> = ({
     await exportTimetableToGoogleSheetsWorkbook({
       store,
       scheduleData,
-      filterClass: c => (matchedCohort ? c.studentGroupId === matchedCohort.id : true),
+      filterClass: c => (matchedCohort ? c.studentGroupId === matchedCohort.id : false),
       scope: 'filtered',
       scopeLabel: matchedCohort?.name || syncedUser.batchCode || 'Student_Schedule',
       studentOrUserName: syncedUser.name

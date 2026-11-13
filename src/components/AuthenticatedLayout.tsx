@@ -257,7 +257,10 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
           id: 'nav-student-timetable',
           label: 'My Timetable',
           icon: Calendar,
-          meta: currentUser.batchCode || 'Schedule',
+          meta:
+            currentUser.batchCode && currentUser.section
+              ? `${currentUser.batchCode} · ${currentUser.section.replace(/section\s*/i, '').trim()}`
+              : currentUser.batchCode || 'Schedule',
           metaAccent: true,
           isActive: activeRoute === 'timetables',
           onClick: () => {
@@ -565,9 +568,9 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
         },
         {
           id: 'nav-faculty-matrix',
-          label: 'Institutional Matrix',
+          label: 'My Weekly Timetable',
           icon: BookOpen,
-          meta: 'All Classes',
+          meta: 'Grid',
           isActive: activeRoute === 'timetables',
           onClick: () => {
             setActiveUtilityPanel(null);

@@ -41,12 +41,14 @@ interface ClassDetailsModalProps {
   classItem: ClassItem | null;
   onClose: () => void;
   onLocateInMatrix?: (code: string) => void;
+  canEdit?: boolean;
 }
 
 export const ClassDetailsModal: React.FC<ClassDetailsModalProps> = ({
   classItem,
   onClose,
-  onLocateInMatrix
+  onLocateInMatrix,
+  canEdit = true
 }) => {
   const store = useInstitutionalData();
   const computedTiming = computeAcademicScheduleConfig(store.timeStructure);
@@ -244,7 +246,7 @@ export const ClassDetailsModal: React.FC<ClassDetailsModalProps> = ({
 
           {/* Interactive Slot Reassignment Panel */}
           <AnimatePresence>
-            {isReassigning && isStoreBacked && (
+            {canEdit && isReassigning && isStoreBacked && (
               <motion.div
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: 'auto' }}
@@ -327,7 +329,7 @@ export const ClassDetailsModal: React.FC<ClassDetailsModalProps> = ({
               </motion.div>
             )}
 
-            {isSwapping && isStoreBacked && (
+            {canEdit && isSwapping && isStoreBacked && (
               <motion.div
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: 'auto' }}
@@ -392,7 +394,7 @@ export const ClassDetailsModal: React.FC<ClassDetailsModalProps> = ({
 
         {/* Footer */}
         <div className="px-6 py-4 bg-[#F7F6EF] border-t border-[#E4E2DA] flex flex-wrap items-center justify-between gap-2.5">
-          {isStoreBacked ? (
+          {canEdit && isStoreBacked ? (
             <div className="flex items-center gap-2">
               <button
                 type="button"

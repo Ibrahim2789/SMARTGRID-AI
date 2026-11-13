@@ -25,6 +25,7 @@ import {
   isCurrentlySignedOut
 } from './services/votingApi';
 import { institutionalStore } from './data/store';
+import { resolveUserCohort } from './utils/userTimetableScope';
 
 const VALID_ROUTES: RouteType[] = [
   'home',
@@ -215,11 +216,7 @@ export default function App() {
   const syncUserCohortInStore = useCallback((user: AuthenticatedVotingUser | null) => {
     if (!user?.batchCode) return;
     const state = institutionalStore.get();
-    const prefix = user.batchCode.trim().toUpperCase();
-    const sec = (user.section || 'A').replace(/section\s*/i, '').trim().toUpperCase();
-    const matchedGroup =
-      state.studentGroups.find(g => g.code.toUpperCase() === `${prefix}-${sec}`) ||
-      state.studentGroups.find(g => g.code.toUpperCase().startsWith(prefix));
+    const matchedGroup = resolveUserCohort(user, state.studentGroups);
     if (matchedGroup) {
       institutionalStore.setSelectedClassGroupId(matchedGroup.id);
     }

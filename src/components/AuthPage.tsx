@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Eye, EyeOff } from 'lucide-react';
+import { ArrowLeft, Eye, EyeOff } from 'lucide-react';
+import { SmartGridLogo } from './SmartGridLogo';
 import {
   AuthenticatedVotingUser,
   PublicBatchOption,
@@ -201,11 +202,12 @@ export const AuthPage: React.FC<AuthPageProps> = ({
   const roleOptions: Array<{
     id: AuthPortalType;
     label: string;
+    fullLabel: string;
   }> = [
-    { id: 'student', label: 'Student' },
-    { id: 'br', label: 'Batch Representative' },
-    { id: 'faculty', label: 'Faculty' },
-    { id: 'admin', label: 'Admin' }
+    { id: 'student', label: 'Student', fullLabel: 'Student' },
+    { id: 'br', label: 'Batch Rep', fullLabel: 'Batch Representative' },
+    { id: 'faculty', label: 'Faculty', fullLabel: 'Faculty' },
+    { id: 'admin', label: 'Admin', fullLabel: 'Admin' }
   ];
 
   // Sync institutions from backend on mount
@@ -693,43 +695,55 @@ export const AuthPage: React.FC<AuthPageProps> = ({
       (activePortal === 'faculty' && facultySubMode === 'activate') ||
       (activePortal === 'admin' && adminSubMode === 'register-university'));
 
+  const cardWidthClass = isMultiColumnForm ? 'max-w-[560px]' : 'max-w-[460px]';
+
+  const activeHeading = isForgotPasswordOpen
+    ? 'Reset your password'
+    : activePortal === 'student' && studentSubMode === 'signup'
+    ? 'Create student account'
+    : activePortal === 'faculty' && facultySubMode === 'activate'
+    ? 'Activate faculty profile'
+    : activePortal === 'admin' && adminSubMode === 'register-university'
+    ? 'Onboard university workspace'
+    : 'Sign in to SmartGrid AI';
+
   return (
     <div className="min-h-screen bg-[#F7F6EF] text-[#171717] flex flex-col justify-between px-4 py-6 sm:px-6 sm:py-8">
       {/* Top Bar */}
-      <header className="max-w-[560px] w-full mx-auto flex items-center justify-between gap-4">
+      <header className={`${cardWidthClass} w-full mx-auto flex items-center justify-between gap-4 transition-all`}>
         <button
           type="button"
           onClick={onCancel}
-          className="text-xs sm:text-sm font-medium text-[#4A4942] hover:text-[#171717] min-h-[40px] px-3 py-2 rounded-xl hover:bg-[#EDEAE0] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#171717] transition-colors cursor-pointer"
+          className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-medium text-[#57564F] hover:text-[#171717] min-h-[36px] px-2.5 py-1.5 -ml-2.5 rounded-xl hover:bg-[#EDEAE0]/70 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#171717] transition-colors cursor-pointer"
         >
-          Back to home
+          <ArrowLeft className="w-3.5 h-3.5" />
+          <span>Back to home</span>
         </button>
+
+        <SmartGridLogo variant="primary" theme="light" size="xs" />
       </header>
 
       {/* Main Authentication Surface */}
       <main className="w-full flex-1 flex items-center justify-center py-6">
         <div
-          className={`w-full ${
-            isMultiColumnForm ? 'max-w-[560px]' : 'max-w-[480px]'
-          } bg-white border border-[#E4E2DA] rounded-2xl p-6 sm:p-8 space-y-6 transition-all`}
+          className={`w-full ${cardWidthClass} bg-white border border-[#E4E2DA] rounded-2xl p-6 sm:p-8 shadow-[0_14px_40px_-24px_rgba(23,23,23,0.16)] space-y-5 transition-all`}
         >
-          {/* Single Heading with Brand Identity */}
-          <h1 className="font-serif-editorial text-2xl sm:text-[28px] font-semibold text-[#171717] tracking-tight text-center">
-            SmartGrid AI
-          </h1>
+          {/* Clean Editorial Heading */}
+          <div className="space-y-1">
+            <h1 className="font-serif-editorial text-2xl sm:text-[28px] font-medium text-[#171717] tracking-tight leading-tight">
+              {activeHeading}
+            </h1>
+          </div>
 
-          {/* Accessible 4-Role Selector (Labels Only, No Icons, No Descriptions) */}
-          <div className="space-y-2">
-            <label
-              id="role-selector-label"
-              className="block text-xs font-semibold text-[#171717]"
-            >
-              Role
-            </label>
+          {/* Sleek Single-Row 4-Role Selector */}
+          <div className="space-y-1.5">
+            <span id="role-selector-label" className="sr-only">
+              Select Account Role
+            </span>
             <div
               role="tablist"
               aria-labelledby="role-selector-label"
-              className="grid grid-cols-2 gap-2 p-1.5 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA]"
+              className="grid grid-cols-2 sm:grid-cols-4 gap-1 p-1 rounded-xl bg-[#EDEAE0]/75 border border-[#E4E2DA]"
             >
               {roleOptions.map((option, idx) => {
                 const isSelected = activePortal === option.id;
@@ -742,15 +756,17 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                     type="button"
                     role="tab"
                     id={`role-tab-${option.id}`}
+                    aria-label={option.fullLabel}
                     aria-selected={isSelected}
                     aria-controls={`role-panel-${option.id}`}
                     tabIndex={isSelected ? 0 : -1}
+                    title={option.fullLabel}
                     onClick={() => handleSelectPortal(option.id)}
                     onKeyDown={e => handleRoleKeyDown(e, idx)}
-                    className={`min-h-[42px] px-3 py-2 rounded-lg text-xs sm:text-sm font-semibold text-center transition-all cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#171717] ${
+                    className={`min-h-[36px] px-2.5 py-1.5 rounded-lg text-xs font-semibold text-center whitespace-nowrap transition-all cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#171717] ${
                       isSelected
-                        ? 'bg-[#171717] text-white'
-                        : 'bg-white text-[#4A4942] hover:text-[#171717] border border-[#E4E2DA]'
+                        ? 'bg-[#171717] text-white shadow-2xs'
+                        : 'text-[#57564F] hover:text-[#171717] hover:bg-white/60'
                     }`}
                   >
                     {option.label}
@@ -760,12 +776,12 @@ export const AuthPage: React.FC<AuthPageProps> = ({
             </div>
           </div>
 
-          {/* Mode Switcher (Scoped by Role Registration Rules) */}
+          {/* Clean Hairline Underline Mode Switcher (No Double-Stacked Gray Boxes) */}
           {!isForgotPasswordOpen && activePortal === 'student' && (
             <div
               role="group"
               aria-label="Student authentication mode"
-              className="grid grid-cols-2 gap-1.5 p-1 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA]"
+              className="flex items-center gap-6 border-b border-[#E4E2DA]"
             >
               <button
                 type="button"
@@ -773,10 +789,10 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                   setStudentSubMode('signin');
                   clearErrors();
                 }}
-                className={`min-h-[38px] rounded-lg text-xs font-semibold transition-all cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#171717] ${
+                className={`pb-2.5 -mb-px text-xs sm:text-[13px] font-semibold border-b-2 transition-colors cursor-pointer ${
                   studentSubMode === 'signin'
-                    ? 'bg-white text-[#171717] border border-[#E4E2DA]'
-                    : 'text-[#4A4942] hover:text-[#171717]'
+                    ? 'border-[#171717] text-[#171717]'
+                    : 'border-transparent text-[#77766F] hover:text-[#171717]'
                 }`}
               >
                 Sign In
@@ -787,13 +803,29 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                   setStudentSubMode('signup');
                   clearErrors();
                 }}
-                className={`min-h-[38px] rounded-lg text-xs font-semibold transition-all cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#171717] ${
+                className={`pb-2.5 -mb-px text-xs sm:text-[13px] font-semibold border-b-2 transition-colors cursor-pointer ${
                   studentSubMode === 'signup'
-                    ? 'bg-white text-[#171717] border border-[#E4E2DA]'
-                    : 'text-[#4A4942] hover:text-[#171717]'
+                    ? 'border-[#171717] text-[#171717]'
+                    : 'border-transparent text-[#77766F] hover:text-[#171717]'
                 }`}
               >
                 Sign Up
+              </button>
+            </div>
+          )}
+
+          {!isForgotPasswordOpen && activePortal === 'br' && (
+            <div
+              role="group"
+              aria-label="Batch Representative authentication mode"
+              className="flex items-center gap-6 border-b border-[#E4E2DA]"
+            >
+              <button
+                type="button"
+                onClick={clearErrors}
+                className="pb-2.5 -mb-px text-xs sm:text-[13px] font-semibold border-b-2 border-[#171717] text-[#171717] cursor-pointer"
+              >
+                Sign In
               </button>
             </div>
           )}
@@ -802,7 +834,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({
             <div
               role="group"
               aria-label="Faculty authentication mode"
-              className="grid grid-cols-2 gap-1.5 p-1 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA]"
+              className="flex items-center gap-6 border-b border-[#E4E2DA]"
             >
               <button
                 type="button"
@@ -810,10 +842,10 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                   setFacultySubMode('signin');
                   clearErrors();
                 }}
-                className={`min-h-[38px] rounded-lg text-xs font-semibold transition-all cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#171717] ${
+                className={`pb-2.5 -mb-px text-xs sm:text-[13px] font-semibold border-b-2 transition-colors cursor-pointer ${
                   facultySubMode === 'signin'
-                    ? 'bg-white text-[#171717] border border-[#E4E2DA]'
-                    : 'text-[#4A4942] hover:text-[#171717]'
+                    ? 'border-[#171717] text-[#171717]'
+                    : 'border-transparent text-[#77766F] hover:text-[#171717]'
                 }`}
               >
                 Sign In
@@ -824,13 +856,50 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                   setFacultySubMode('activate');
                   clearErrors();
                 }}
-                className={`min-h-[38px] rounded-lg text-xs font-semibold transition-all cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#171717] ${
+                className={`pb-2.5 -mb-px text-xs sm:text-[13px] font-semibold border-b-2 transition-colors cursor-pointer ${
                   facultySubMode === 'activate'
-                    ? 'bg-white text-[#171717] border border-[#E4E2DA]'
-                    : 'text-[#4A4942] hover:text-[#171717]'
+                    ? 'border-[#171717] text-[#171717]'
+                    : 'border-transparent text-[#77766F] hover:text-[#171717]'
                 }`}
               >
                 Activate Profile
+              </button>
+            </div>
+          )}
+
+          {!isForgotPasswordOpen && activePortal === 'admin' && (
+            <div
+              role="group"
+              aria-label="Admin authentication mode"
+              className="flex items-center gap-6 border-b border-[#E4E2DA]"
+            >
+              <button
+                type="button"
+                onClick={() => {
+                  setAdminSubMode('signin');
+                  clearErrors();
+                }}
+                className={`pb-2.5 -mb-px text-xs sm:text-[13px] font-semibold border-b-2 transition-colors cursor-pointer ${
+                  adminSubMode === 'signin'
+                    ? 'border-[#171717] text-[#171717]'
+                    : 'border-transparent text-[#77766F] hover:text-[#171717]'
+                }`}
+              >
+                Sign In
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setAdminSubMode('register-university');
+                  clearErrors();
+                }}
+                className={`pb-2.5 -mb-px text-xs sm:text-[13px] font-semibold border-b-2 transition-colors cursor-pointer ${
+                  adminSubMode === 'register-university'
+                    ? 'border-[#171717] text-[#171717]'
+                    : 'border-transparent text-[#77766F] hover:text-[#171717]'
+                }`}
+              >
+                Onboard University
               </button>
             </div>
           )}
@@ -961,8 +1030,8 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                   </select>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">
+                  <div className="min-w-0 space-y-1.5">
                     <label
                       htmlFor="student-signup-name"
                       className="block text-xs font-semibold text-[#171717]"
@@ -1001,7 +1070,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                     )}
                   </div>
 
-                  <div className="space-y-1.5">
+                  <div className="min-w-0 space-y-1.5">
                     <label
                       htmlFor="student-signup-roll"
                       className="block text-xs font-semibold text-[#171717]"
@@ -1077,8 +1146,8 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                   )}
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">
+                  <div className="min-w-0 space-y-1.5">
                     <label
                       htmlFor="student-signup-batch"
                       className="block text-xs font-semibold text-[#171717]"
@@ -1102,7 +1171,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                     </div>
                   </div>
 
-                  <div className="space-y-1.5">
+                  <div className="min-w-0 space-y-1.5">
                     <label
                       htmlFor="student-signup-section"
                       className="block text-xs font-semibold text-[#171717]"
@@ -1158,8 +1227,8 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                   </div>
                 )}
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">
+                  <div className="min-w-0 space-y-1.5">
                     <label
                       htmlFor="student-signup-password"
                       className="block text-xs font-semibold text-[#171717]"
@@ -1192,7 +1261,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                         onClick={() => setShowRegPassword(prev => !prev)}
                         aria-label={showRegPassword ? 'Hide password' : 'Show password'}
                         aria-pressed={showRegPassword}
-                        className="p-1.5 rounded-lg text-[#57564F] hover:text-[#171717] hover:bg-[#F7F6EF] cursor-pointer"
+                        className="p-1.5 rounded-lg text-[#57564F] hover:text-[#171717] hover:bg-[#F7F6EF] cursor-pointer shrink-0 flex items-center justify-center"
                       >
                         {showRegPassword ? (
                           <EyeOff className="w-4 h-4" />
@@ -1206,7 +1275,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                     )}
                   </div>
 
-                  <div className="space-y-1.5">
+                  <div className="min-w-0 space-y-1.5">
                     <label
                       htmlFor="student-signup-confirm-password"
                       className="block text-xs font-semibold text-[#171717]"
@@ -1243,7 +1312,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                             : 'Show confirmation password'
                         }
                         aria-pressed={showRegConfirmPassword}
-                        className="p-1.5 rounded-lg text-[#57564F] hover:text-[#171717] hover:bg-[#F7F6EF] cursor-pointer"
+                        className="p-1.5 rounded-lg text-[#57564F] hover:text-[#171717] hover:bg-[#F7F6EF] cursor-pointer shrink-0 flex items-center justify-center"
                       >
                         {showRegConfirmPassword ? (
                           <EyeOff className="w-4 h-4" />
@@ -1303,8 +1372,8 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                   </select>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">
+                  <div className="min-w-0 space-y-1.5">
                     <label
                       htmlFor="faculty-activate-name"
                       className="block text-xs font-semibold text-[#171717]"
@@ -1336,7 +1405,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                     )}
                   </div>
 
-                  <div className="space-y-1.5">
+                  <div className="min-w-0 space-y-1.5">
                     <label
                       htmlFor="faculty-activate-dept"
                       className="block text-xs font-semibold text-[#171717]"
@@ -1404,8 +1473,8 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                   )}
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">
+                  <div className="min-w-0 space-y-1.5">
                     <label
                       htmlFor="faculty-activate-password"
                       className="block text-xs font-semibold text-[#171717]"
@@ -1438,12 +1507,12 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                         onClick={() => setShowRegPassword(prev => !prev)}
                         aria-label={showRegPassword ? 'Hide password' : 'Show password'}
                         aria-pressed={showRegPassword}
-                        className="p-1.5 rounded-lg text-[#57564F] hover:text-[#171717] hover:bg-[#F7F6EF] cursor-pointer"
+                        className="p-1.5 rounded-lg text-[#57564F] hover:text-[#171717] hover:bg-[#F7F6EF] cursor-pointer shrink-0 flex items-center justify-center"
                       >
                         {showRegPassword ? (
-                          <EyeOff className="w-4 h-4" />
+                          <EyeOff className="w-4 h-4 shrink-0" />
                         ) : (
-                          <Eye className="w-4 h-4" />
+                          <Eye className="w-4 h-4 shrink-0" />
                         )}
                       </button>
                     </div>
@@ -1452,7 +1521,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                     )}
                   </div>
 
-                  <div className="space-y-1.5">
+                  <div className="min-w-0 space-y-1.5">
                     <label
                       htmlFor="faculty-activate-confirm"
                       className="block text-xs font-semibold text-[#171717]"
@@ -1492,12 +1561,12 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                             : 'Show confirmation password'
                         }
                         aria-pressed={showRegConfirmPassword}
-                        className="p-1.5 rounded-lg text-[#57564F] hover:text-[#171717] hover:bg-[#F7F6EF] cursor-pointer"
+                        className="p-1.5 rounded-lg text-[#57564F] hover:text-[#171717] hover:bg-[#F7F6EF] cursor-pointer shrink-0 flex items-center justify-center"
                       >
                         {showRegConfirmPassword ? (
-                          <EyeOff className="w-4 h-4" />
+                          <EyeOff className="w-4 h-4 shrink-0" />
                         ) : (
-                          <Eye className="w-4 h-4" />
+                          <Eye className="w-4 h-4 shrink-0" />
                         )}
                       </button>
                     </div>
@@ -1531,40 +1600,40 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                 className="space-y-4"
                 noValidate
               >
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <div className="sm:col-span-2 space-y-1.5">
-                    <label
-                      htmlFor="admin-univ-name"
-                      className="block text-xs font-semibold text-[#171717]"
-                    >
-                      University Name
-                    </label>
-                    <div
-                      className={`input-group-field h-11 px-3 ${
-                        fieldErrors.univName ? 'border-[#DC2626]' : ''
-                      }`}
-                    >
-                      <input
-                        id="admin-univ-name"
-                        type="text"
-                        required
-                        placeholder="e.g. National Institute of Technology"
-                        value={univName}
-                        onChange={e => {
-                          setUnivName(e.target.value);
-                          if (fieldErrors.univName) {
-                            setFieldErrors(prev => ({ ...prev, univName: '' }));
-                          }
-                        }}
-                        className="text-sm w-full"
-                      />
-                    </div>
-                    {fieldErrors.univName && (
-                      <p className="text-[11px] text-[#8B1E1E]">{fieldErrors.univName}</p>
-                    )}
+                <div className="space-y-1.5">
+                  <label
+                    htmlFor="admin-univ-name"
+                    className="block text-xs font-semibold text-[#171717]"
+                  >
+                    University Name
+                  </label>
+                  <div
+                    className={`input-group-field h-11 px-3.5 ${
+                      fieldErrors.univName ? 'border-[#DC2626]' : ''
+                    }`}
+                  >
+                    <input
+                      id="admin-univ-name"
+                      type="text"
+                      required
+                      placeholder="e.g. National Institute of Technology"
+                      value={univName}
+                      onChange={e => {
+                        setUnivName(e.target.value);
+                        if (fieldErrors.univName) {
+                          setFieldErrors(prev => ({ ...prev, univName: '' }));
+                        }
+                      }}
+                      className="text-sm w-full"
+                    />
                   </div>
+                  {fieldErrors.univName && (
+                    <p className="text-[11px] text-[#8B1E1E]">{fieldErrors.univName}</p>
+                  )}
+                </div>
 
-                  <div className="space-y-1.5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">
+                  <div className="min-w-0 space-y-1.5">
                     <label
                       htmlFor="admin-univ-code"
                       className="block text-xs font-semibold text-[#171717]"
@@ -1572,7 +1641,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                       Short Code
                     </label>
                     <div
-                      className={`input-group-field h-11 px-3 ${
+                      className={`input-group-field h-11 px-3.5 ${
                         fieldErrors.univCode ? 'border-[#DC2626]' : ''
                       }`}
                     >
@@ -1595,17 +1664,15 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                       <p className="text-[11px] text-[#8B1E1E]">{fieldErrors.univCode}</p>
                     )}
                   </div>
-                </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
+                  <div className="min-w-0 space-y-1.5">
                     <label
                       htmlFor="admin-univ-campus"
                       className="block text-xs font-semibold text-[#171717]"
                     >
                       Campus Name
                     </label>
-                    <div className="input-group-field h-11 px-3">
+                    <div className="input-group-field h-11 px-3.5">
                       <input
                         id="admin-univ-campus"
                         type="text"
@@ -1617,8 +1684,10 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                       />
                     </div>
                   </div>
+                </div>
 
-                  <div className="space-y-1.5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">
+                  <div className="min-w-0 space-y-1.5">
                     <label
                       htmlFor="admin-registrar-name"
                       className="block text-xs font-semibold text-[#171717]"
@@ -1626,7 +1695,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                       Administrator Name
                     </label>
                     <div
-                      className={`input-group-field h-11 px-3 ${
+                      className={`input-group-field h-11 px-3.5 ${
                         fieldErrors.adminFullName ? 'border-[#DC2626]' : ''
                       }`}
                     >
@@ -1651,45 +1720,45 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                       </p>
                     )}
                   </div>
-                </div>
 
-                <div className="space-y-1.5">
-                  <label
-                    htmlFor="admin-official-email"
-                    className="block text-xs font-semibold text-[#171717]"
-                  >
-                    Official Registrar Email
-                  </label>
-                  <div
-                    className={`input-group-field h-11 px-3 ${
-                      fieldErrors.adminOfficialEmail ? 'border-[#DC2626]' : ''
-                    }`}
-                  >
-                    <input
-                      id="admin-official-email"
-                      type="email"
-                      required
-                      autoComplete="email"
-                      placeholder="registrar@nit.edu"
-                      value={adminOfficialEmail}
-                      onChange={e => {
-                        setAdminOfficialEmail(e.target.value);
-                        if (fieldErrors.adminOfficialEmail) {
-                          setFieldErrors(prev => ({ ...prev, adminOfficialEmail: '' }));
-                        }
-                      }}
-                      className="text-sm w-full"
-                    />
+                  <div className="min-w-0 space-y-1.5">
+                    <label
+                      htmlFor="admin-official-email"
+                      className="block text-xs font-semibold text-[#171717]"
+                    >
+                      Official Registrar Email
+                    </label>
+                    <div
+                      className={`input-group-field h-11 px-3.5 ${
+                        fieldErrors.adminOfficialEmail ? 'border-[#DC2626]' : ''
+                      }`}
+                    >
+                      <input
+                        id="admin-official-email"
+                        type="email"
+                        required
+                        autoComplete="email"
+                        placeholder="registrar@nit.edu"
+                        value={adminOfficialEmail}
+                        onChange={e => {
+                          setAdminOfficialEmail(e.target.value);
+                          if (fieldErrors.adminOfficialEmail) {
+                            setFieldErrors(prev => ({ ...prev, adminOfficialEmail: '' }));
+                          }
+                        }}
+                        className="text-sm w-full"
+                      />
+                    </div>
+                    {fieldErrors.adminOfficialEmail && (
+                      <p className="text-[11px] text-[#8B1E1E]">
+                        {fieldErrors.adminOfficialEmail}
+                      </p>
+                    )}
                   </div>
-                  {fieldErrors.adminOfficialEmail && (
-                    <p className="text-[11px] text-[#8B1E1E]">
-                      {fieldErrors.adminOfficialEmail}
-                    </p>
-                  )}
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">
+                  <div className="min-w-0 space-y-1.5">
                     <label
                       htmlFor="admin-reg-password"
                       className="block text-xs font-semibold text-[#171717]"
@@ -1697,7 +1766,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                       Password
                     </label>
                     <div
-                      className={`input-group-field h-11 px-3 gap-2 ${
+                      className={`input-group-field h-11 px-3.5 gap-2 ${
                         fieldErrors.adminRegPassword ? 'border-[#DC2626]' : ''
                       }`}
                     >
@@ -1722,12 +1791,12 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                         onClick={() => setShowRegPassword(prev => !prev)}
                         aria-label={showRegPassword ? 'Hide password' : 'Show password'}
                         aria-pressed={showRegPassword}
-                        className="p-1.5 rounded-lg text-[#57564F] hover:text-[#171717] hover:bg-[#F7F6EF] cursor-pointer"
+                        className="p-1.5 rounded-lg text-[#57564F] hover:text-[#171717] hover:bg-[#F7F6EF] cursor-pointer shrink-0 flex items-center justify-center"
                       >
                         {showRegPassword ? (
-                          <EyeOff className="w-4 h-4" />
+                          <EyeOff className="w-4 h-4 shrink-0" />
                         ) : (
-                          <Eye className="w-4 h-4" />
+                          <Eye className="w-4 h-4 shrink-0" />
                         )}
                       </button>
                     </div>
@@ -1738,7 +1807,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                     )}
                   </div>
 
-                  <div className="space-y-1.5">
+                  <div className="min-w-0 space-y-1.5">
                     <label
                       htmlFor="admin-reg-confirm-password"
                       className="block text-xs font-semibold text-[#171717]"
@@ -1746,7 +1815,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                       Confirm Password
                     </label>
                     <div
-                      className={`input-group-field h-11 px-3 gap-2 ${
+                      className={`input-group-field h-11 px-3.5 gap-2 ${
                         fieldErrors.adminRegConfirmPassword ? 'border-[#DC2626]' : ''
                       }`}
                     >
@@ -1778,12 +1847,12 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                             : 'Show confirmation password'
                         }
                         aria-pressed={showRegConfirmPassword}
-                        className="p-1.5 rounded-lg text-[#57564F] hover:text-[#171717] hover:bg-[#F7F6EF] cursor-pointer"
+                        className="p-1.5 rounded-lg text-[#57564F] hover:text-[#171717] hover:bg-[#F7F6EF] cursor-pointer shrink-0 flex items-center justify-center"
                       >
                         {showRegConfirmPassword ? (
-                          <EyeOff className="w-4 h-4" />
+                          <EyeOff className="w-4 h-4 shrink-0" />
                         ) : (
-                          <Eye className="w-4 h-4" />
+                          <Eye className="w-4 h-4 shrink-0" />
                         )}
                       </button>
                     </div>
@@ -1869,31 +1938,36 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                   </p>
                 )}
 
-                {/* Real-Time University Detection Feedback (Text Only, No Icons) */}
+                {/* Real-Time University Detection Feedback (Quiet Unboxed Dot Status) */}
                 {universityDetection.status !== 'idle' && (
                   <div
                     id="signin-university-detection-feedback"
                     aria-live="polite"
-                    className="pt-0.5"
+                    className="pt-1"
                   >
                     {universityDetection.status === 'detecting' && (
-                      <div className="text-[11px] text-[#4A4942]">
-                        Detecting university workspace for{' '}
-                        <strong className="font-mono-tabular">
-                          @{universityDetection.domain}
-                        </strong>
-                        ...
+                      <div className="flex items-center gap-1.5 text-[11px] text-[#77766F]">
+                        <span className="w-1.5 h-1.5 rounded-full bg-[#9E9D96] animate-pulse shrink-0" />
+                        <span>
+                          Detecting workspace for{' '}
+                          <span className="font-mono-tabular font-medium text-[#171717]">
+                            @{universityDetection.domain}
+                          </span>
+                          ...
+                        </span>
                       </div>
                     )}
 
                     {universityDetection.status === 'detected' && (
-                      <div className="px-2.5 py-1.5 rounded-lg bg-[#DCFCE7] border border-[#86EFAC] text-[#14532D] text-[11px] flex items-center justify-between gap-2">
-                        <span className="font-medium truncate">
-                          University detected:{' '}
-                          <strong>{universityDetection.institutionName}</strong>
+                      <div className="flex items-center justify-between gap-2 text-[11px] text-[#1B5E20]">
+                        <span className="inline-flex items-center gap-1.5 min-w-0 truncate">
+                          <span className="w-1.5 h-1.5 rounded-full bg-[#2E7D32] shrink-0" />
+                          <span className="font-medium truncate">
+                            {universityDetection.institutionName}
+                          </span>
                         </span>
                         {universityDetection.institutionCode && (
-                          <span className="font-mono-tabular font-semibold shrink-0">
+                          <span className="font-mono-tabular font-semibold text-[#171717] shrink-0">
                             {universityDetection.institutionCode}
                           </span>
                         )}
@@ -1901,22 +1975,26 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                     )}
 
                     {universityDetection.status === 'unrecognized' && (
-                      <div className="px-2.5 py-1.5 rounded-lg bg-[#FEF3C7] border border-[#FDE68A] text-[#78350F] text-[11px]">
-                        University domain{' '}
-                        <strong className="font-mono-tabular">
-                          @{universityDetection.domain}
-                        </strong>{' '}
-                        was not recognized.
+                      <div className="flex items-center gap-1.5 text-[11px] text-[#8B6B00]">
+                        <span className="w-1.5 h-1.5 rounded-full bg-[#D97706] shrink-0" />
+                        <span>
+                          Unrecognized workspace domain{' '}
+                          <span className="font-mono-tabular font-semibold">
+                            @{universityDetection.domain}
+                          </span>
+                        </span>
                       </div>
                     )}
 
                     {universityDetection.status === 'unsupported' && (
-                      <div className="px-2.5 py-1.5 rounded-lg bg-[#FDE8E8] border border-[#F5B5B5] text-[#8B1E1E] text-[11px]">
-                        Personal email domain (
-                        <strong className="font-mono-tabular">
-                          @{universityDetection.domain}
-                        </strong>
-                        ) is not supported. Use your university email address.
+                      <div className="flex items-center gap-1.5 text-[11px] text-[#8B1E1E]">
+                        <span className="w-1.5 h-1.5 rounded-full bg-[#DC2626] shrink-0" />
+                        <span>
+                          Use your university email instead of{' '}
+                          <span className="font-mono-tabular font-semibold">
+                            @{universityDetection.domain}
+                          </span>
+                        </span>
                       </div>
                     )}
                   </div>
@@ -2011,83 +2089,56 @@ export const AuthPage: React.FC<AuthPageProps> = ({
             </form>
           )}
 
-          {/* Role-Scoped Footer Navigation & Secondary Actions */}
-          {!isForgotPasswordOpen && (
-            <div className="pt-4 border-t border-[#E4E2DA] space-y-3">
-              {activePortal === 'admin' && (
-                <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-                  <span className="text-[#4A4942]">
-                    {adminSubMode === 'signin'
-                      ? 'New university institution?'
-                      : 'Existing university workspace?'}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setAdminSubMode(
-                        adminSubMode === 'signin' ? 'register-university' : 'signin'
-                      );
-                      clearErrors();
-                    }}
-                    className="font-semibold text-[#171717] hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#171717] rounded px-1 py-0.5 cursor-pointer"
-                  >
-                    {adminSubMode === 'signin'
-                      ? 'Onboard New University'
-                      : 'Return to Sign In'}
-                  </button>
-                </div>
-              )}
+          {/* Visually Secondary Development/Demo Test Accounts Disclosure */}
+          {!isForgotPasswordOpen && isDemoModeAvailable && !isMultiColumnForm && (
+            <div className="pt-3 border-t border-[#E4E2DA]">
+              <button
+                type="button"
+                onClick={() => setShowDemoAccounts(prev => !prev)}
+                aria-expanded={showDemoAccounts}
+                className="w-full flex items-center justify-between text-[11px] font-medium text-[#77766F] hover:text-[#171717] py-1 transition-colors cursor-pointer"
+              >
+                <span>Demo Test Accounts</span>
+                <span>{showDemoAccounts ? 'Hide' : 'Show'}</span>
+              </button>
 
-              {/* Visually Secondary Development/Demo Test Accounts Disclosure */}
-              {isDemoModeAvailable && !isMultiColumnForm && (
-                <div className="pt-1">
-                  <button
-                    type="button"
-                    onClick={() => setShowDemoAccounts(prev => !prev)}
-                    aria-expanded={showDemoAccounts}
-                    className="w-full flex items-center justify-between text-[11px] font-medium text-[#57564F] hover:text-[#171717] py-1.5 px-2 rounded-lg hover:bg-[#F7F6EF] transition-colors cursor-pointer"
-                  >
-                    <span>Demo Test Accounts</span>
-                    <span>{showDemoAccounts ? 'Hide' : 'Show'}</span>
-                  </button>
+              {showDemoAccounts && (
+                <div className="mt-2.5 border border-[#E4E2DA] rounded-xl divide-y divide-[#E4E2DA] text-xs overflow-hidden">
+                  <div className="px-3 py-2 flex items-center justify-between gap-2 bg-[#F7F6EF]/60">
+                    <span className="text-[11px] font-medium text-[#57564F]">
+                      University
+                    </span>
+                    <div className="inline-flex rounded-lg bg-[#EDEAE0]/70 p-0.5">
+                      <button
+                        type="button"
+                        onClick={() => setDemoPresetInstId('inst-western-poly')}
+                        className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors cursor-pointer ${
+                          demoPresetInstId === 'inst-western-poly'
+                            ? 'bg-[#171717] text-white'
+                            : 'text-[#57564F] hover:text-[#171717]'
+                        }`}
+                      >
+                        Western Poly (WPU)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDemoPresetInstId('inst-apex-tech')}
+                        className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors cursor-pointer ${
+                          demoPresetInstId === 'inst-apex-tech'
+                            ? 'bg-[#171717] text-white'
+                            : 'text-[#57564F] hover:text-[#171717]'
+                        }`}
+                      >
+                        Apex Tech (AITS)
+                      </button>
+                    </div>
+                  </div>
 
-                  {showDemoAccounts && (
-                    <div className="mt-2 p-3 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] space-y-2.5 text-xs">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-[11px] font-medium text-[#4A4942]">
-                          University:
-                        </span>
-                        <div className="inline-flex rounded-lg bg-white border border-[#E4E2DA] p-0.5">
-                          <button
-                            type="button"
-                            onClick={() => setDemoPresetInstId('inst-western-poly')}
-                            className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors cursor-pointer ${
-                              demoPresetInstId === 'inst-western-poly'
-                                ? 'bg-[#171717] text-white'
-                                : 'text-[#4A4942] hover:text-[#171717]'
-                            }`}
-                          >
-                            Western Poly (WPU)
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setDemoPresetInstId('inst-apex-tech')}
-                            className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors cursor-pointer ${
-                              demoPresetInstId === 'inst-apex-tech'
-                                ? 'bg-[#171717] text-white'
-                                : 'text-[#4A4942] hover:text-[#171717]'
-                            }`}
-                          >
-                            Apex Tech (AITS)
-                          </button>
-                        </div>
-                      </div>
-
-                      <div className="flex flex-wrap items-center justify-between gap-2 pt-1.5 border-t border-[#E4E2DA]">
-                        <span className="text-[11px] text-[#57564F]">
-                          Quick-fill {roleOptions.find(r => r.id === activePortal)?.label}:
-                        </span>
-                        <div className="flex flex-wrap items-center gap-2">
+                  <div className="px-3 py-2.5 flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-[11px] text-[#77766F]">
+                      {roleOptions.find(r => r.id === activePortal)?.label}:
+                    </span>
+                    <div className="flex flex-wrap items-center gap-1.5">
                           {demoPresetInstId === 'inst-apex-tech' ? (
                             <>
                               {activePortal === 'student' && (
@@ -2249,9 +2300,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                             </>
                           )}
                         </div>
-                      </div>
-                    </div>
-                  )}
+                  </div>
                 </div>
               )}
             </div>

@@ -296,9 +296,9 @@ export const universityCourses: Course[] = [
 ];
 
 // Real University Instructors from the Prompt
-const RAW_INSTRUCTORS: Array<{ name: string; dept: string; title: string }> = [
+const RAW_INSTRUCTORS: Array<{ name: string; dept: string; title: string; email?: string }> = [
   // BEE Faculty & Lab Engineers
-  { name: 'Dr.Jehanzeb Ahmad', dept: 'dept-bee', title: 'Professor' },
+  { name: 'Dr.Jehanzeb Ahmad', dept: 'dept-bee', title: 'Professor', email: 'jehanzeb.ahmad@westernpoly.edu' },
   { name: 'Dr.Noman Mujeeb', dept: 'dept-bee', title: 'Associate Professor' },
   { name: 'Mr.Zia Ur Rehman', dept: 'dept-bee', title: 'Assistant Professor' },
   { name: 'Mr.M.Shujaat', dept: 'dept-bee', title: 'Lecturer' },
@@ -357,6 +357,7 @@ const RAW_INSTRUCTORS: Array<{ name: string; dept: string; title: string }> = [
   { name: 'Engr.Rabia', dept: 'dept-bese', title: 'Lab Engineer' },
 
   // BSCS Faculty & Lab Engineers
+  { name: 'Prof. Alan Turing', dept: 'dept-bscs', title: 'Professor', email: 'a.turing@westernpoly.edu' },
   { name: 'Dr.Kashif', dept: 'dept-bscs', title: 'Professor' },
   { name: 'Mr.Junaid', dept: 'dept-bscs', title: 'Assistant Professor' },
   { name: 'Dr.Samina', dept: 'dept-bscs', title: 'Associate Professor' },
@@ -384,7 +385,7 @@ export const universityInstructors: Instructor[] = RAW_INSTRUCTORS.map(inst => (
   id: `inst-${slugify(inst.name)}`,
   departmentId: inst.dept,
   name: inst.name,
-  email: `${slugify(inst.name)}@university.edu.pk`,
+  email: inst.email || `${slugify(inst.name)}@university.edu.pk`,
   title: inst.title,
   maxWeeklyHours: 16,
   maxConsecutiveHours: 3,
@@ -812,7 +813,7 @@ const EXACT_SCHEDULES: RawSchedEntry[] = [
   // =========================================================================
   { groupId: 'grp-2k25-bscs-a', courseId: 'crs-cs-dsa', day: 'Mon', slots: [1, 2], instName: 'Dr.Kashif', roomCode: 'CR-24-Acad' },
   { groupId: 'grp-2k25-bscs-a', courseId: 'crs-cs-coal', day: 'Mon', slots: [3, 4], instName: 'Mr.Junaid', roomCode: 'CR-24-Acad' },
-  { groupId: 'grp-2k25-bscs-a', courseId: 'crs-cs-AI', day: 'Tue', slots: [1, 2], instName: 'Dr.Samina', roomCode: 'CR-24-Acad' },
+  { groupId: 'grp-2k25-bscs-a', courseId: 'crs-cs-AI', day: 'Tue', slots: [1, 2], instName: 'Prof. Alan Turing', roomCode: 'CR-24-Acad' },
   { groupId: 'grp-2k25-bscs-a', courseId: 'crs-cs-dsa', day: 'Tue', slots: [5, 6, 7], isLab: true, instName: 'Engr.Haris', roomCode: 'CL-12-Acad', customWindow: '2:00 PM – 4:50 PM' },
   { groupId: 'grp-2k25-bscs-a', courseId: 'crs-cs-cn', day: 'Wed', slots: [1, 2], instName: 'Mr.Asif', roomCode: 'CR-24-Acad' },
   { groupId: 'grp-2k25-bscs-a', courseId: 'crs-cs-isec', day: 'Wed', slots: [3, 4], instName: 'Dr.Zubair', roomCode: 'CR-24-Acad' },
@@ -828,7 +829,7 @@ const EXACT_SCHEDULES: RawSchedEntry[] = [
   // 2K25-BSCS-B (3rd Sem, Home Room: CR-25-Acad) — Exact from Prompt
   // =========================================================================
   { groupId: 'grp-2k25-bscs-b', courseId: 'crs-cs-dsa', day: 'Mon', slots: [2, 3, 4], isLab: true, instName: 'Engr.Haris', roomCode: 'CL-12-Acad', customWindow: '10:00 AM – 12:50 PM' },
-  { groupId: 'grp-2k25-bscs-b', courseId: 'crs-cs-AI', day: 'Mon', slots: [5, 6], instName: 'Dr.Samina', roomCode: 'CR-25-Acad' },
+  { groupId: 'grp-2k25-bscs-b', courseId: 'crs-cs-AI', day: 'Mon', slots: [5, 6], instName: 'Prof. Alan Turing', roomCode: 'CR-25-Acad' },
   { groupId: 'grp-2k25-bscs-b', courseId: 'crs-cs-dsa', day: 'Tue', slots: [1, 2], instName: 'Dr.Kashif', roomCode: 'CR-25-Acad' },
   { groupId: 'grp-2k25-bscs-b', courseId: 'crs-cs-cn', day: 'Tue', slots: [3, 4], instName: 'Mr.Asif', roomCode: 'CR-25-Acad' },
   { groupId: 'grp-2k25-bscs-b', courseId: 'crs-cs-AI', day: 'Tue', slots: [5, 6, 7], isLab: true, instName: 'Engr.M.Saad', roomCode: 'CL-05-UG', customWindow: '2:00 PM – 4:50 PM' },
@@ -898,7 +899,7 @@ const EXACT_SCHEDULES: RawSchedEntry[] = [
   { groupId: 'grp-2k24-bscs-a', courseId: 'crs-cs-os', day: 'Mon', slots: [1, 2], instName: 'Dr.Kashif', roomCode: 'CR-01-UG' },
   { groupId: 'grp-2k24-bscs-a', courseId: 'crs-cs-db', day: 'Mon', slots: [3, 4], instName: 'Dr.Samina', roomCode: 'CR-01-UG' },
   { groupId: 'grp-2k24-bscs-a', courseId: 'crs-cs-os', day: 'Tue', slots: [1, 2, 3], isLab: true, instName: 'Engr.Haris', roomCode: 'CL-03-UG', customWindow: '9:00 AM – 11:50 AM' },
-  { groupId: 'grp-2k24-bscs-a', courseId: 'crs-cs-daa', day: 'Wed', slots: [1, 2], instName: 'Dr.Hassan', roomCode: 'CR-01-UG' },
+  { groupId: 'grp-2k24-bscs-a', courseId: 'crs-cs-daa', day: 'Wed', slots: [1, 2], instName: 'Prof. Alan Turing', roomCode: 'CR-01-UG' },
   { groupId: 'grp-2k24-bscs-a', courseId: 'crs-cs-automata', day: 'Wed', slots: [3, 4], instName: 'Mr.Junaid', roomCode: 'CR-01-UG' },
   { groupId: 'grp-2k24-bscs-a', courseId: 'crs-cs-db', day: 'Thu', slots: [2, 3, 4], isLab: true, instName: 'Engr.M.Saad', roomCode: 'CL-06-UG', customWindow: '10:00 AM – 12:50 PM' },
   { groupId: 'grp-2k24-bscs-a', courseId: 'crs-bee-ps', day: 'Fri', slots: [1, 2], instName: 'Dr.Amina', roomCode: 'CR-01-UG' },

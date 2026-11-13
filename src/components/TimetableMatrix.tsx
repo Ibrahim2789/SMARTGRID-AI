@@ -32,12 +32,19 @@ import {
 } from 'lucide-react';
 import { ClassDetailsModal, ClassItem } from './ClassDetailsModal';
 import { jsPDF } from 'jspdf';
+import { AuthenticatedVotingUser } from '../services/votingApi';
+import {
+  getNormalizedUserRole,
+  resolveUserCohort,
+  resolveBrBatchCohorts,
+  resolveFacultyInstructor
+} from '../utils/userTimetableScope';
 
 interface TimetableMatrixProps {
   onNavigate?: (route: RouteType) => void;
   onOpenAuth?: (mode?: 'signin' | 'signup') => void;
   onSignOut?: () => void;
-  currentUser?: { name: string; role: string; institution?: string } | null;
+  currentUser?: AuthenticatedVotingUser | null;
   hideNav?: boolean;
 }
 
@@ -65,20 +72,52 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
   hideNav = false
 }) => {
   const store = useInstitutionalData();
-  const { scheduleData, conflicts } = buildMatrixSchedule(store);
+  const { scheduleData } = buildMatrixSchedule(store);
+
+  const userRole = getNormalizedUserRole(currentUser);
+  const isAdmin = !currentUser || userRole === 'admin';
+  const isStudent = userRole === 'student';
+  const isBr = userRole === 'br';
+  const isFaculty = userRole === 'faculty';
+
+  const matchedStudentCohort = isStudent ? resolveUserCohort(currentUser, store.studentGroups) : null;
+  const brBatchCohorts = isBr ? resolveBrBatchCohorts(currentUser, store.studentGroups) : [];
+  const defaultBrCohort = isBr
+    ? resolveUserCohort(currentUser, brBatchCohorts) || brBatchCohorts[0] || null
+    : null;
+  const matchedFaculty = isFaculty ? resolveFacultyInstructor(currentUser, store.instructors) : null;
 
   const [calendarMode, setCalendarMode] = useState<'week' | 'day' | 'agenda'>('week');
   const [weekColumnSpan, setWeekColumnSpan] = useState<7 | 5>(7);
   const [focusedDay, setFocusedDay] = useState<string>('Mon');
   // Default to 'cohort' (Individual Class/Section Timetable) so each class/section timetable is displayed clearly
-  const [perspective, setPerspective] = useState<'cohort' | 'master' | 'instructor' | 'room'>('cohort');
-  const [selectedDeptId, setSelectedDeptId] = useState<string>('all');
-  const [selectedCohortId, setSelectedCohortId] = useState<string>(
-    store.selectedClassGroupId || store.studentGroups[0]?.id || ''
+  const [perspective, setPerspective] = useState<'cohort' | 'master' | 'instructor' | 'room'>(() =>
+    isFaculty ? 'instructor' : 'cohort'
   );
-  const [selectedInstructorId, setSelectedInstructorId] = useState<string>(store.instructors[0]?.id || '');
+  const [selectedDeptId, setSelectedDeptId] = useState<string>('all');
+  const [selectedCohortId, setSelectedCohortId] = useState<string>(() => {
+    if (isStudent) return matchedStudentCohort?.id || '';
+    if (isBr) return defaultBrCohort?.id || '';
+    return store.selectedClassGroupId || store.studentGroups[0]?.id || '';
+  });
+  const [selectedInstructorId, setSelectedInstructorId] = useState<string>(() =>
+    isFaculty ? matchedFaculty?.id || '' : store.instructors[0]?.id || ''
+  );
   const [selectedRoomId, setSelectedRoomId] = useState<string>(store.rooms[0]?.id || '');
   const [searchQuery, setSearchQuery] = useState<string>('');
+
+  const effectivePerspective: 'cohort' | 'master' | 'instructor' | 'room' =
+    isStudent || isBr ? 'cohort' : isFaculty ? 'instructor' : perspective;
+
+  const effectiveCohortId = isStudent
+    ? matchedStudentCohort?.id || ''
+    : isBr
+    ? brBatchCohorts.some(g => g.id === selectedCohortId)
+      ? selectedCohortId
+      : defaultBrCohort?.id || ''
+    : selectedCohortId;
+
+  const effectiveInstructorId = isFaculty ? matchedFaculty?.id || '' : selectedInstructorId;
 
   const [selectedClass, setSelectedClass] = useState<ClassItem | null>(null);
   const [isSweeping, setIsSweeping] = useState(false);
@@ -88,7 +127,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
   const [showExportMenu, setShowExportMenu] = useState(false);
   const exportDropdownRef = useRef<HTMLDivElement>(null);
 
-  // Interactive Drag-and-Drop and Slot Swap State
+  // Interactive Drag-and-Drop and Slot Swap State (Admin-only)
   const [draggedClassItem, setDraggedClassItem] = useState<ClassItem | null>(null);
   const [dragOverCellKey, setDragOverCellKey] = useState<string | null>(null);
 
@@ -141,45 +180,80 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
       observer.disconnect();
       window.removeEventListener('resize', updateWidth);
     };
-  }, [calendarMode, perspective]);
+  }, [calendarMode, effectivePerspective]);
 
-  // Keep selectedCohortId synchronized if store.selectedClassGroupId changes externally
+  // Synchronize perspective and cohort/instructor when role or store changes
   useEffect(() => {
+    if (isStudent) {
+      setPerspective('cohort');
+      setSelectedCohortId(matchedStudentCohort?.id || '');
+      return;
+    }
+    if (isBr) {
+      setPerspective('cohort');
+      setSelectedCohortId(prev =>
+        brBatchCohorts.some(g => g.id === prev) ? prev : defaultBrCohort?.id || ''
+      );
+      return;
+    }
+    if (isFaculty) {
+      setPerspective('instructor');
+      setSelectedInstructorId(matchedFaculty?.id || '');
+      return;
+    }
     if (store.selectedClassGroupId && store.studentGroups.some(g => g.id === store.selectedClassGroupId)) {
       setSelectedCohortId(store.selectedClassGroupId);
     } else if (!store.studentGroups.some(g => g.id === selectedCohortId) && store.studentGroups[0]) {
       setSelectedCohortId(store.studentGroups[0].id);
     }
-  }, [store.selectedClassGroupId, store.studentGroups]);
+  }, [
+    isStudent,
+    isBr,
+    isFaculty,
+    matchedStudentCohort?.id,
+    defaultBrCohort?.id,
+    matchedFaculty?.id,
+    store.selectedClassGroupId,
+    store.studentGroups
+  ]);
 
   const handleSelectCohort = (groupId: string) => {
+    if (isStudent || isFaculty) return;
+    if (isBr && !brBatchCohorts.some(g => g.id === groupId)) return;
     setPerspective('cohort');
     setSelectedCohortId(groupId);
     institutionalStore.setSelectedClassGroupId(groupId);
   };
 
-  // Filter classes/sections by selected department
-  const departmentFilteredGroups = store.studentGroups.filter(g => {
-    if (selectedDeptId === 'all') return true;
-    const prog = store.programs.find(p => p.id === g.programId);
-    return prog?.departmentId === selectedDeptId;
-  });
+  // Filter classes/sections strictly by role and selected department
+  const departmentFilteredGroups = isStudent
+    ? matchedStudentCohort
+      ? [matchedStudentCohort]
+      : []
+    : isBr
+    ? brBatchCohorts
+    : store.studentGroups.filter(g => {
+        if (selectedDeptId === 'all') return true;
+        const prog = store.programs.find(p => p.id === g.programId);
+        return prog?.departmentId === selectedDeptId;
+      });
 
-  const activeGroupIndex = departmentFilteredGroups.findIndex(g => g.id === selectedCohortId);
-  const activeGroupObj =
-    store.studentGroups.find(g => g.id === selectedCohortId) || store.studentGroups[0];
-  const activeGroupProgram = store.programs.find(p => p.id === activeGroupObj?.programId);
-  const activeGroupDept = store.departments.find(d => d.id === activeGroupProgram?.departmentId);
+  const activeGroupIndex = departmentFilteredGroups.findIndex(g => g.id === effectiveCohortId);
+  const activeGroupObj = isStudent
+    ? matchedStudentCohort
+    : isBr
+    ? brBatchCohorts.find(g => g.id === effectiveCohortId) || defaultBrCohort || null
+    : store.studentGroups.find(g => g.id === effectiveCohortId) || store.studentGroups[0] || null;
 
   const handlePrevCohort = () => {
-    if (departmentFilteredGroups.length === 0) return;
+    if (departmentFilteredGroups.length <= 1) return;
     const prevIdx =
       activeGroupIndex <= 0 ? departmentFilteredGroups.length - 1 : activeGroupIndex - 1;
     handleSelectCohort(departmentFilteredGroups[prevIdx].id);
   };
 
   const handleNextCohort = () => {
-    if (departmentFilteredGroups.length === 0) return;
+    if (departmentFilteredGroups.length <= 1) return;
     const nextIdx =
       activeGroupIndex < 0 || activeGroupIndex >= departmentFilteredGroups.length - 1
         ? 0
@@ -220,9 +294,9 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
     }, 450);
   };
 
-  // Interactive Drag-and-Drop and Slot Swap Logic
+  // Interactive Drag-and-Drop and Slot Swap Logic (Admin-only)
   const handleDropOnSlot = (targetDay: string, rawTargetPeriod: string) => {
-    if (!draggedClassItem) return;
+    if (!isAdmin || !draggedClassItem) return;
     setDragOverCellKey(null);
 
     const isDraggedLab =
@@ -324,17 +398,13 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
   };
 
   const filterClass = (cls: ClassItem) => {
-    // Strictly isolate the selected Class/Section when in 'cohort' mode
-    if (perspective === 'cohort' && selectedCohortId) {
-      if (cls.studentGroupId !== selectedCohortId) return false;
-    }
-    if (perspective === 'instructor' && selectedInstructorId) {
-      if (cls.instructorId !== selectedInstructorId) return false;
-    }
-    if (perspective === 'room' && selectedRoomId) {
-      if (cls.roomId !== selectedRoomId) return false;
-    }
-    if (perspective === 'master' && selectedDeptId !== 'all') {
+    if (effectivePerspective === 'cohort') {
+      if (!effectiveCohortId || cls.studentGroupId !== effectiveCohortId) return false;
+    } else if (effectivePerspective === 'instructor') {
+      if (!effectiveInstructorId || cls.instructorId !== effectiveInstructorId) return false;
+    } else if (effectivePerspective === 'room') {
+      if (selectedRoomId && cls.roomId !== selectedRoomId) return false;
+    } else if (effectivePerspective === 'master' && selectedDeptId !== 'all') {
       if (cls.departmentId && cls.departmentId !== selectedDeptId) return false;
     }
     if (searchQuery.trim()) {
@@ -351,15 +421,16 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
   };
 
   const getActiveScopeLabel = () => {
-    if (perspective === 'cohort') {
-      const g = store.studentGroups.find(x => x.id === selectedCohortId);
-      return g ? `Class_${g.code}` : 'Class_Section_View';
+    if (effectivePerspective === 'cohort') {
+      const g = store.studentGroups.find(x => x.id === effectiveCohortId);
+      return g ? `Class_${g.code}` : currentUser?.batchCode ? `Class_${currentUser.batchCode}` : 'My_Timetable';
     }
-    if (perspective === 'instructor') {
-      const i = store.instructors.find(x => x.id === selectedInstructorId);
-      return i ? `Faculty_${i.name.replace(/\s+/g, '_')}` : 'Faculty_View';
+    if (effectivePerspective === 'instructor') {
+      const i = store.instructors.find(x => x.id === effectiveInstructorId);
+      const labelName = i?.name || currentUser?.name || 'Faculty';
+      return `Faculty_${labelName.replace(/\s+/g, '_')}`;
     }
-    if (perspective === 'room') {
+    if (effectivePerspective === 'room') {
       const r = store.rooms.find(x => x.id === selectedRoomId);
       return r ? `Room_${r.code}` : 'Room_View';
     }
@@ -372,14 +443,15 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
 
   // Multi-Worksheet Google Sheets (.xlsx) Export — Compact Landscape Weekly Overview + 1 Tab per Class/Section
   const handleExportGoogleSheets = async (scope: 'filtered' | 'all') => {
+    const safeScope = isAdmin ? scope : 'filtered';
     try {
       setIsExportingSheets(true);
-      const scopeLabel = scope === 'all' ? 'All_University_Classes' : getActiveScopeLabel();
+      const scopeLabel = safeScope === 'all' ? 'All_University_Classes' : getActiveScopeLabel();
       const result = await exportTimetableToGoogleSheetsWorkbook({
         store,
         scheduleData,
         filterClass,
-        scope,
+        scope: safeScope,
         scopeLabel,
         studentOrUserName: currentUser?.name || 'Academic Schedule'
       });
@@ -398,6 +470,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
 
   // CSV Export Routine
   const handleExportCSV = (scope: 'filtered' | 'all') => {
+    const safeScope = isAdmin ? scope : 'filtered';
     const records: Array<{
       day: string;
       timeSlot: string;
@@ -415,7 +488,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
       timeSlots.forEach(time => {
         const classes = scheduleData[time]?.[day] || [];
         classes.forEach(cls => {
-          if (scope === 'all' || filterClass(cls)) {
+          if (safeScope === 'all' || filterClass(cls)) {
             const isLab = cls.sessionType === 'Lab' || (cls.spanSlots && cls.spanSlots > 1);
             const labMeta = isLab ? getLabBlockByStartPeriod(time, store.timeStructure) : undefined;
             const breakDesc =
@@ -470,7 +543,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
-    const scopeLabel = scope === 'all' ? 'All_University_Classes' : getActiveScopeLabel();
+    const scopeLabel = safeScope === 'all' ? 'All_University_Classes' : getActiveScopeLabel();
     link.href = url;
     link.download = `SmartGrid_Timetable_${scopeLabel}_Fall2026.csv`;
     document.body.appendChild(link);
@@ -485,6 +558,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
 
   // PDF Export Routine using jsPDF
   const handleExportPDF = (scope: 'filtered' | 'all') => {
+    const safeScope = isAdmin ? scope : 'filtered';
     const doc = new jsPDF({
       orientation: 'landscape',
       unit: 'mm',
@@ -516,7 +590,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
       23
     );
 
-    const scopeLabel = scope === 'all' ? 'All University Classes' : getActiveScopeLabel().replace(/_/g, ' ');
+    const scopeLabel = safeScope === 'all' ? 'All University Classes' : getActiveScopeLabel().replace(/_/g, ' ');
     const dateStr = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
     doc.text(`Scope: ${scopeLabel}   •   Generated: ${dateStr}`, pageWidth - margin, 18, { align: 'right' });
 
@@ -592,7 +666,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
         doc.rect(x, currentY, dayColWidth, slotRowHeight, 'S');
 
         const classes = (scheduleData[slotMeta.period]?.[day] || []).filter(
-          cls => scope === 'all' || filterClass(cls)
+          cls => safeScope === 'all' || filterClass(cls)
         );
 
         const cls = classes[0];
@@ -621,7 +695,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
       currentY += slotRowHeight;
     });
 
-    const fileLabel = scope === 'all' ? 'All_University_Classes' : getActiveScopeLabel();
+    const fileLabel = safeScope === 'all' ? 'All_University_Classes' : getActiveScopeLabel();
     doc.save(`SmartGrid_Timetable_${fileLabel}_Fall2026.pdf`);
 
     setExportNotice(`Exported timetable as landscape PDF (${fileLabel.replace(/_/g, ' ')}).`);
@@ -629,16 +703,16 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
     setShowExportMenu(false);
   };
 
-  const currentInstructorObj = store.instructors.find(i => i.id === selectedInstructorId);
+  const currentInstructorObj = store.instructors.find(i => i.id === effectiveInstructorId) || null;
   const currentRoomObj = store.rooms.find(r => r.id === selectedRoomId);
   const visibleDays = calendarMode === 'day' ? [focusedDay] : days;
 
   // Compute stats for the currently viewed Class/Section (or full view)
   const activeFilteredSections = store.sections.filter(s => {
     if (!s.assignedSlot) return false;
-    if (perspective === 'cohort') return s.studentGroupId === selectedCohortId;
-    if (perspective === 'instructor') return s.instructorId === selectedInstructorId;
-    if (perspective === 'room') return s.assignedSlot.roomId === selectedRoomId;
+    if (effectivePerspective === 'cohort') return Boolean(effectiveCohortId) && s.studentGroupId === effectiveCohortId;
+    if (effectivePerspective === 'instructor') return Boolean(effectiveInstructorId) && s.instructorId === effectiveInstructorId;
+    if (effectivePerspective === 'room') return s.assignedSlot.roomId === selectedRoomId;
     if (selectedDeptId !== 'all') {
       const grp = store.studentGroups.find(g => g.id === s.studentGroupId);
       const prog = store.programs.find(p => p.id === grp?.programId);
@@ -722,11 +796,17 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
       <header className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-3 border-b border-[#E4E2DA]">
         <div>
           <h1 className="font-serif-editorial text-2xl sm:text-3xl text-[#171717] tracking-tight">
-            {perspective === 'cohort' && activeGroupObj
+            {isStudent
+              ? `My Timetable: ${activeGroupObj?.code || currentUser?.batchCode || 'Student Schedule'}`
+              : isBr
+              ? `Batch Timetable: ${activeGroupObj?.code || currentUser?.batchCode || 'Batch Schedule'}`
+              : isFaculty
+              ? `My Teaching Timetable: ${currentInstructorObj?.name || currentUser?.name || 'Faculty'}`
+              : effectivePerspective === 'cohort' && activeGroupObj
               ? `Class Timetable: ${activeGroupObj.code}`
-              : perspective === 'instructor' && currentInstructorObj
+              : effectivePerspective === 'instructor' && currentInstructorObj
               ? `Faculty Timetable: ${currentInstructorObj.name}`
-              : perspective === 'room' && currentRoomObj
+              : effectivePerspective === 'room' && currentRoomObj
               ? `Facility Schedule: ${currentRoomObj.code}`
               : selectedDeptId !== 'all'
               ? `Department Timetable: ${
@@ -757,23 +837,27 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
                     Google Sheets Workbook (.xlsx)
                   </div>
                   <div className="text-xs text-[#171717] mt-0.5">
-                    Weekly Overview + 1 Worksheet per Class/Section
+                    {isAdmin
+                      ? 'Weekly Overview + 1 Worksheet per Class/Section'
+                      : 'Compact Personal Weekly Schedule'}
                   </div>
                 </div>
 
                 <div className="p-2 space-y-1">
-                  <button
-                    onClick={() => handleExportGoogleSheets('all')}
-                    className="w-full text-left px-3 py-2 rounded-xl text-xs flex items-start gap-2.5 hover:bg-[#F7F6EF] transition-colors cursor-pointer text-[#171717]"
-                  >
-                    <FileSpreadsheet className="w-4 h-4 text-[#171717] mt-0.5 shrink-0" />
-                    <div>
-                      <div className="font-semibold">All Classes Google Sheets (.xlsx)</div>
-                      <div className="text-[11px] text-[#77766F]">
-                        Weekly Overview + {store.studentGroups.length} Class/Section tabs
+                  {isAdmin && (
+                    <button
+                      onClick={() => handleExportGoogleSheets('all')}
+                      className="w-full text-left px-3 py-2 rounded-xl text-xs flex items-start gap-2.5 hover:bg-[#F7F6EF] transition-colors cursor-pointer text-[#171717]"
+                    >
+                      <FileSpreadsheet className="w-4 h-4 text-[#171717] mt-0.5 shrink-0" />
+                      <div>
+                        <div className="font-semibold">All Classes Google Sheets (.xlsx)</div>
+                        <div className="text-[11px] text-[#77766F]">
+                          Weekly Overview + {store.studentGroups.length} Class/Section tabs
+                        </div>
                       </div>
-                    </div>
-                  </button>
+                    </button>
+                  )}
 
                   <button
                     onClick={() => handleExportGoogleSheets('filtered')}
@@ -781,7 +865,9 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
                   >
                     <FileSpreadsheet className="w-4 h-4 text-[#171717] mt-0.5 shrink-0" />
                     <div>
-                      <div className="font-semibold">Active Class / Filter (.xlsx)</div>
+                      <div className="font-semibold">
+                        {isAdmin ? 'Active Class / Filter (.xlsx)' : 'My Timetable (.xlsx)'}
+                      </div>
                       <div className="text-[11px] text-[#77766F]">
                         Scope: {getActiveScopeLabel().replace(/_/g, ' ')}
                       </div>
@@ -798,7 +884,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
                   >
                     <span className="flex items-center gap-2 font-medium">
                       <FileText className="w-3.5 h-3.5" />
-                      <span>Export Active View (.pdf)</span>
+                      <span>{isAdmin ? 'Export Active View (.pdf)' : 'Export My Timetable (.pdf)'}</span>
                     </span>
                     <span className="text-[10px] font-mono-tabular text-[#77766F]">Landscape</span>
                   </button>
@@ -809,7 +895,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
                   >
                     <span className="flex items-center gap-2 font-medium">
                       <Layers className="w-3.5 h-3.5" />
-                      <span>Export Active View (.csv)</span>
+                      <span>{isAdmin ? 'Export Active View (.csv)' : 'Export My Timetable (.csv)'}</span>
                     </span>
                     <span className="text-[10px] font-mono-tabular text-[#77766F]">CSV</span>
                   </button>
@@ -818,7 +904,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
             )}
           </div>
 
-          {(currentUser?.role === 'Admin' || currentUser?.role === 'Registrar') && (
+          {isAdmin && Boolean(currentUser) && (
             <button
               onClick={handleRunSweep}
               disabled={isSweeping}
@@ -851,37 +937,56 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
           (Stable height & width across all perspectives and calendar modes — zero layout shift)
          ========================================================= */}
       <div className="sf-card-white p-3.5 space-y-2.5">
-        {/* ROW 1 (Fixed Height): Perspective Scope Tabs + Calendar Mode Tabs + Swap + Search */}
+        {/* ROW 1 (Fixed Height): Role-Scoped Context / Perspective Scope Tabs + Calendar Mode Tabs + Search */}
         <div className="min-h-[40px] flex flex-col xl:flex-row xl:items-center justify-between gap-2.5">
-          {/* Perspective Tabs — Uniform height (h-8), fixed padding, non-shifting font weight */}
-          <div className="inline-flex flex-wrap items-center p-1 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] shrink-0">
-            {[
-              { id: 'cohort' as const, label: 'By Class / Section', icon: Users },
-              { id: 'master' as const, label: 'University Overview', icon: Layers },
-              { id: 'instructor' as const, label: 'By Faculty', icon: User },
-              { id: 'room' as const, label: 'By Room / Lab', icon: Building }
-            ].map(tab => {
-              const Icon = tab.icon;
-              const active = perspective === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => setPerspective(tab.id)}
-                  className={`h-8 px-3 rounded-lg text-xs font-semibold inline-flex items-center justify-center gap-1.5 whitespace-nowrap transition-colors cursor-pointer ${
-                    active
-                      ? 'bg-[#171717] text-white'
-                      : 'text-[#77766F] hover:text-[#171717]'
-                  }`}
-                >
-                  <Icon className="w-3.5 h-3.5 shrink-0" />
-                  <span>{tab.label}</span>
-                </button>
-              );
-            })}
-          </div>
+          {isAdmin ? (
+            /* Perspective Tabs — Admin / Registrar Only */
+            <div className="inline-flex flex-wrap items-center p-1 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] shrink-0">
+              {[
+                { id: 'cohort' as const, label: 'By Class / Section', icon: Users },
+                { id: 'master' as const, label: 'University Overview', icon: Layers },
+                { id: 'instructor' as const, label: 'By Faculty', icon: User },
+                { id: 'room' as const, label: 'By Room / Lab', icon: Building }
+              ].map(tab => {
+                const Icon = tab.icon;
+                const active = effectivePerspective === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setPerspective(tab.id)}
+                    className={`h-8 px-3 rounded-lg text-xs font-semibold inline-flex items-center justify-center gap-1.5 whitespace-nowrap transition-colors cursor-pointer ${
+                      active
+                        ? 'bg-[#171717] text-white'
+                        : 'text-[#77766F] hover:text-[#171717]'
+                    }`}
+                  >
+                    <Icon className="w-3.5 h-3.5 shrink-0" />
+                    <span>{tab.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            /* Locked Personal Scope Pill — Student / BR / Faculty */
+            <div className="inline-flex items-center gap-2 px-3 h-10 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] text-xs shrink-0">
+              {isFaculty ? (
+                <User className="w-3.5 h-3.5 text-[#171717] shrink-0" />
+              ) : (
+                <Users className="w-3.5 h-3.5 text-[#171717] shrink-0" />
+              )}
+              <span className="font-semibold text-[#171717]">
+                {isStudent && (activeGroupObj ? `${activeGroupObj.code} · ${activeGroupObj.name}` : `${currentUser?.batchCode || 'Student'} · ${currentUser?.section || 'Section'}`)}
+                {isBr && `${currentUser?.batchCode || activeGroupObj?.code || 'Batch'} · Batch Representative View`}
+                {isFaculty && `${currentInstructorObj?.name || currentUser?.name} · ${currentInstructorObj?.title || 'Faculty Schedule'}`}
+              </span>
+              <span className="text-[#77766F] font-mono-tabular">
+                ({activeFilteredSections.length} sessions)
+              </span>
+            </div>
+          )}
 
-          {/* Right Controls: Week/Day/Agenda Mode + Swap Mode + Fixed-Width Search */}
+          {/* Right Controls: Week/Day/Agenda Mode + Fixed-Width Search */}
           <div className="flex flex-wrap items-center gap-2 shrink-0">
             {/* Fixed-width Calendar / Agenda Mode Switcher */}
             <div className="inline-flex items-center p-1 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] shrink-0">
@@ -905,7 +1010,6 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
               ))}
             </div>
 
-
             {/* Fixed-width Search Field */}
             <div className="input-group-field h-10 px-3 gap-2 w-[215px] shrink-0">
               <Search className="w-3.5 h-3.5 text-[#77766F] shrink-0" />
@@ -922,9 +1026,9 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
 
         {/* ROW 2 (Fixed Height `min-h-[44px]` across all perspectives and calendar modes so layout never shifts) */}
         <div className="min-h-[44px] pt-2.5 border-t border-[#E4E2DA] flex flex-col lg:flex-row lg:items-center justify-between gap-2.5">
-          {/* Left Context Control (Clean selectors only — no extra colored info boxes) */}
+          {/* Left Context Control */}
           <div className="flex flex-wrap items-center gap-2 min-w-0">
-            {(perspective === 'cohort' || perspective === 'master') && (
+            {isAdmin && (effectivePerspective === 'cohort' || effectivePerspective === 'master') && (
               <div className="inline-flex flex-wrap items-center p-1 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] shrink-0">
                 <button
                   type="button"
@@ -947,7 +1051,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
                         const p = store.programs.find(pr => pr.id === g.programId);
                         return p?.departmentId === dept.id;
                       });
-                      if (firstInDept && perspective === 'cohort') {
+                      if (firstInDept && effectivePerspective === 'cohort') {
                         handleSelectCohort(firstInDept.id);
                       }
                     }}
@@ -963,7 +1067,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
               </div>
             )}
 
-            {perspective === 'cohort' && (
+            {isAdmin && effectivePerspective === 'cohort' && (
               <div className="inline-flex items-center gap-1.5 min-w-0">
                 <button
                   type="button"
@@ -974,7 +1078,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
                   <ChevronLeft className="w-4 h-4" />
                 </button>
                 <select
-                  value={selectedCohortId}
+                  value={effectiveCohortId}
                   onChange={e => handleSelectCohort(e.target.value)}
                   className="input-field h-8 w-[240px] text-xs font-semibold bg-white border-[#E4E2DA] text-[#171717] py-1 px-2.5 truncate"
                 >
@@ -995,10 +1099,10 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
               </div>
             )}
 
-            {perspective === 'instructor' && (
+            {isAdmin && effectivePerspective === 'instructor' && (
               <div className="inline-flex flex-wrap items-center gap-2">
                 <select
-                  value={selectedInstructorId}
+                  value={effectiveInstructorId}
                   onChange={e => setSelectedInstructorId(e.target.value)}
                   className="input-field h-8 w-[280px] text-xs font-semibold py-1 px-2.5"
                 >
@@ -1011,7 +1115,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
               </div>
             )}
 
-            {perspective === 'room' && (
+            {isAdmin && effectivePerspective === 'room' && (
               <div className="inline-flex flex-wrap items-center gap-2">
                 <select
                   value={selectedRoomId}
@@ -1024,6 +1128,65 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
                     </option>
                   ))}
                 </select>
+              </div>
+            )}
+
+            {isBr && (
+              brBatchCohorts.length > 1 ? (
+                <div className="inline-flex items-center gap-1.5 min-w-0">
+                  <button
+                    type="button"
+                    onClick={handlePrevCohort}
+                    className="w-8 h-8 rounded-lg bg-[#F7F6EF] hover:bg-[#EDEAE0] border border-[#E4E2DA] flex items-center justify-center text-[#171717] cursor-pointer shrink-0"
+                    title="Previous Section in Batch"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                  <select
+                    value={effectiveCohortId}
+                    onChange={e => handleSelectCohort(e.target.value)}
+                    className="input-field h-8 w-[240px] text-xs font-semibold bg-white border-[#E4E2DA] text-[#171717] py-1 px-2.5 truncate"
+                  >
+                    {brBatchCohorts.map(g => (
+                      <option key={g.id} value={g.id}>
+                        {g.code} — {g.name}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={handleNextCohort}
+                    className="w-8 h-8 rounded-lg bg-[#F7F6EF] hover:bg-[#EDEAE0] border border-[#E4E2DA] flex items-center justify-center text-[#171717] cursor-pointer shrink-0"
+                    title="Next Section in Batch"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+              ) : (
+                <div className="text-xs text-[#57564F]">
+                  Assigned Batch Section:{' '}
+                  <strong className="text-[#171717] font-mono-tabular">
+                    {activeGroupObj ? `${activeGroupObj.code} (${activeGroupObj.homeRoom})` : currentUser?.batchCode}
+                  </strong>
+                </div>
+              )
+            )}
+
+            {isStudent && (
+              <div className="text-xs text-[#57564F]">
+                Personal Class Schedule ·{' '}
+                <strong className="text-[#171717] font-mono-tabular">
+                  {activeGroupObj ? `${activeGroupObj.code} · Home Room ${activeGroupObj.homeRoom}` : `${currentUser?.batchCode || ''} ${currentUser?.section || ''}`}
+                </strong>
+              </div>
+            )}
+
+            {isFaculty && (
+              <div className="text-xs text-[#57564F]">
+                Personal Teaching Load ·{' '}
+                <strong className="text-[#171717]">
+                  {currentInstructorObj ? `${currentInstructorObj.name} (${currentInstructorObj.email})` : currentUser?.email}
+                </strong>
               </div>
             )}
           </div>
@@ -1078,11 +1241,27 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
       {/* =========================================================
           3. ZERO-SCROLL WEEKLY TIMETABLE GRID OR AGENDA VIEW
          ========================================================= */}
-      {calendarMode === 'agenda' ? (
+      {!isAdmin && activeFilteredSections.length === 0 ? (
+        <div className="sf-card-white p-10 text-center space-y-2">
+          <div className="font-serif-editorial text-xl text-[#171717]">
+            No Scheduled Sessions Found
+          </div>
+          <p className="text-xs text-[#77766F] max-w-md mx-auto">
+            {isFaculty
+              ? `No teaching sessions are currently assigned to ${currentUser?.name || 'your account'} in this term.`
+              : `No timetable sessions are currently assigned to ${currentUser?.batchCode || 'your cohort'} ${currentUser?.section || ''} in this term.`}
+          </p>
+        </div>
+      ) : calendarMode === 'agenda' ? (
         <div className="sf-card-white p-5 space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="font-serif-editorial text-xl text-[#171717]">
-              Course Agenda — {perspective === 'cohort' && activeGroupObj ? activeGroupObj.code : 'All Scheduled Sessions'}
+              Course Agenda —{' '}
+              {isFaculty
+                ? currentInstructorObj?.name || currentUser?.name
+                : effectivePerspective === 'cohort' && activeGroupObj
+                ? activeGroupObj.code
+                : 'All Scheduled Sessions'}
             </h2>
             <span className="text-xs text-[#77766F] font-mono-tabular">
               {activeFilteredSections.length} scheduled blocks
@@ -1119,7 +1298,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
                         </div>
                         <div className="flex items-center justify-between text-xs text-[#171717]/75 pt-1.5 border-t border-black/10">
                           <span className="font-mono-tabular font-medium">{cls.room}</span>
-                          <span>{cls.prof}</span>
+                          <span>{isFaculty ? cls.cohort : cls.prof}</span>
                         </div>
                       </div>
                     );
@@ -1269,32 +1448,52 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
                                 <td
                                   key={day}
                                   rowSpan={rowSpanCount}
-                                  onDragOver={e => {
-                                    e.preventDefault();
-                                    e.dataTransfer.dropEffect = 'move';
-                                    if (dragOverCellKey !== cellKey) setDragOverCellKey(cellKey);
-                                  }}
-                                  onDragLeave={() => {
-                                    if (dragOverCellKey === cellKey) setDragOverCellKey(null);
-                                  }}
-                                  onDrop={e => {
-                                    e.preventDefault();
-                                    handleDropOnSlot(day, time);
-                                  }}
+                                  onDragOver={
+                                    isAdmin
+                                      ? e => {
+                                          e.preventDefault();
+                                          e.dataTransfer.dropEffect = 'move';
+                                          if (dragOverCellKey !== cellKey) setDragOverCellKey(cellKey);
+                                        }
+                                      : undefined
+                                  }
+                                  onDragLeave={
+                                    isAdmin
+                                      ? () => {
+                                          if (dragOverCellKey === cellKey) setDragOverCellKey(null);
+                                        }
+                                      : undefined
+                                  }
+                                  onDrop={
+                                    isAdmin
+                                      ? e => {
+                                          e.preventDefault();
+                                          handleDropOnSlot(day, time);
+                                        }
+                                      : undefined
+                                  }
                                   className={`h-[1px] p-1 border-l border-[#E4E2DA] align-top bg-white overflow-hidden transition-colors ${
                                     isDragOver ? 'bg-[#B8F2E6]/60 ring-2 ring-inset ring-[#93DEC9]' : ''
                                   }`}
                                 >
                                   <div
-                                    draggable={true}
-                                    onDragStart={e => {
-                                      e.dataTransfer.setData('text/plain', labItem.id);
-                                      setDraggedClassItem(labItem);
-                                    }}
-                                    onDragEnd={() => {
-                                      setDraggedClassItem(null);
-                                      setDragOverCellKey(null);
-                                    }}
+                                    draggable={isAdmin}
+                                    onDragStart={
+                                      isAdmin
+                                        ? e => {
+                                            e.dataTransfer.setData('text/plain', labItem.id);
+                                            setDraggedClassItem(labItem);
+                                          }
+                                        : undefined
+                                    }
+                                    onDragEnd={
+                                      isAdmin
+                                        ? () => {
+                                            setDraggedClassItem(null);
+                                            setDragOverCellKey(null);
+                                          }
+                                        : undefined
+                                    }
                                     onClick={() => handleClassClick(labItem)}
                                     style={{
                                       backgroundColor: pastel.bg,
@@ -1303,10 +1502,12 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
                                     }}
                                     className={`w-full h-full ${
                                       isCompactCol ? 'p-2' : 'p-3'
-                                    } rounded-xl border text-[#171717] flex flex-col justify-between text-center transition-all hover:-translate-y-0.5 cursor-grab active:cursor-grabbing min-w-0 overflow-hidden`}
+                                    } rounded-xl border text-[#171717] flex flex-col justify-between text-center transition-all hover:-translate-y-0.5 ${
+                                      isAdmin ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'
+                                    } min-w-0 overflow-hidden`}
                                   >
                                     <div className="flex items-center justify-center gap-1 text-[9.5px] font-mono-tabular font-bold text-[#171717]/85 w-full truncate">
-                                      <GripVertical className="w-2.5 h-2.5 text-[#77766F] shrink-0" />
+                                      {isAdmin && <GripVertical className="w-2.5 h-2.5 text-[#77766F] shrink-0" />}
                                       <span className="truncate">{labItem.code}</span>
                                       <span>·</span>
                                       <span className="shrink-0">
@@ -1320,15 +1521,17 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
                                     </div>
 
                                     <div className="w-full pt-1.5 border-t border-black/10 space-y-0.5 text-[9.5px] text-[#171717]/80 min-w-0">
-                                      <div className="font-medium truncate">{labItem.prof}</div>
+                                      <div className="font-medium truncate">
+                                        {effectivePerspective === 'instructor' ? labItem.cohort : labItem.prof}
+                                      </div>
                                       <div className="font-mono-tabular font-semibold text-[#171717] truncate">
                                         {labItem.room}
-                                        {perspective === 'master' ? ` · ${labItem.cohort}` : ''}
+                                        {effectivePerspective === 'master' ? ` · ${labItem.cohort}` : ''}
                                       </div>
                                       <div className="font-mono-tabular text-[9px] text-[#171717]/75 truncate">
                                         {continuousWindow}
                                       </div>
-                                      {perspective === 'master' && concurrentItems.length > 0 && (
+                                      {effectivePerspective === 'master' && concurrentItems.length > 0 && (
                                         <div className="text-[9px] font-mono-tabular font-semibold text-[#171717]/75 truncate">
                                           +{concurrentItems.length} more
                                         </div>
@@ -1342,7 +1545,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
                             // Standard 1-Slot Lecture Cell
                             const classes = (scheduleData[time]?.[day] || []).filter(filterClass);
                             const isInstructorBlackedOut =
-                              perspective === 'instructor' &&
+                              effectivePerspective === 'instructor' &&
                               currentInstructorObj?.unavailableSlots.some(
                                 u => u.day === day && u.timeSlot === time
                               );
@@ -1355,18 +1558,30 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
                             return (
                               <td
                                 key={day}
-                                onDragOver={e => {
-                                  e.preventDefault();
-                                  e.dataTransfer.dropEffect = 'move';
-                                  if (dragOverCellKey !== cellKey) setDragOverCellKey(cellKey);
-                                }}
-                                onDragLeave={() => {
-                                  if (dragOverCellKey === cellKey) setDragOverCellKey(null);
-                                }}
-                                onDrop={e => {
-                                  e.preventDefault();
-                                  handleDropOnSlot(day, time);
-                                }}
+                                onDragOver={
+                                  isAdmin
+                                    ? e => {
+                                        e.preventDefault();
+                                        e.dataTransfer.dropEffect = 'move';
+                                        if (dragOverCellKey !== cellKey) setDragOverCellKey(cellKey);
+                                      }
+                                    : undefined
+                                }
+                                onDragLeave={
+                                  isAdmin
+                                    ? () => {
+                                        if (dragOverCellKey === cellKey) setDragOverCellKey(null);
+                                      }
+                                    : undefined
+                                }
+                                onDrop={
+                                  isAdmin
+                                    ? e => {
+                                        e.preventDefault();
+                                        handleDropOnSlot(day, time);
+                                      }
+                                    : undefined
+                                }
                                 className={`h-[76px] p-1 border-l border-[#E4E2DA] align-middle overflow-hidden transition-colors ${
                                   isDragOver ? 'bg-[#B8F2E6]/60 ring-2 ring-inset ring-[#93DEC9]' : ''
                                 } ${
@@ -1386,15 +1601,23 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
                                   return (
                                     <div
                                       key={cls.id}
-                                      draggable={true}
-                                      onDragStart={e => {
-                                        e.dataTransfer.setData('text/plain', cls.id);
-                                        setDraggedClassItem(cls);
-                                      }}
-                                      onDragEnd={() => {
-                                        setDraggedClassItem(null);
-                                        setDragOverCellKey(null);
-                                      }}
+                                      draggable={isAdmin}
+                                      onDragStart={
+                                        isAdmin
+                                          ? e => {
+                                              e.dataTransfer.setData('text/plain', cls.id);
+                                              setDraggedClassItem(cls);
+                                            }
+                                          : undefined
+                                      }
+                                      onDragEnd={
+                                        isAdmin
+                                          ? () => {
+                                              setDraggedClassItem(null);
+                                              setDragOverCellKey(null);
+                                            }
+                                          : undefined
+                                      }
                                       onClick={() => handleClassClick(cls)}
                                       style={{
                                         backgroundColor: pastel.bg,
@@ -1402,26 +1625,30 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
                                       }}
                                       className={`w-full h-full min-h-[66px] ${
                                         isCompactCol ? 'px-1.5 py-1.5' : 'px-2 py-1.5'
-                                      } rounded-xl border text-[#171717] flex flex-col items-center justify-center text-center gap-0.5 transition-all hover:-translate-y-0.5 cursor-grab active:cursor-grabbing min-w-0 overflow-hidden`}
+                                      } rounded-xl border text-[#171717] flex flex-col items-center justify-center text-center gap-0.5 transition-all hover:-translate-y-0.5 ${
+                                        isAdmin ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'
+                                      } min-w-0 overflow-hidden`}
                                     >
                                       <div className="font-semibold text-[11px] leading-tight text-[#171717] w-full truncate">
                                         {cls.title}
                                       </div>
 
                                       <div className="text-[9.5px] font-mono-tabular font-bold text-[#171717]/80 w-full truncate flex items-center justify-center gap-1">
-                                        <GripVertical className="w-2.5 h-2.5 text-[#77766F] shrink-0" />
+                                        {isAdmin && <GripVertical className="w-2.5 h-2.5 text-[#77766F] shrink-0" />}
                                         <span className="truncate">{cls.code} {isLab ? `· Lab (${computedTiming.labDurationHoursLabel})` : ''}</span>
                                       </div>
 
                                       <div className="w-full pt-0.5 border-t border-black/10 text-[9.5px] text-[#171717]/80 leading-tight min-w-0">
-                                        <div className="truncate">{cls.prof}</div>
+                                        <div className="truncate">
+                                          {effectivePerspective === 'instructor' ? cls.cohort : cls.prof}
+                                        </div>
                                         <div className="font-mono-tabular font-semibold text-[#171717] truncate">
                                           {cls.room}
-                                          {perspective === 'master' ? ` · ${cls.cohort}` : ''}
+                                          {effectivePerspective === 'master' ? ` · ${cls.cohort}` : ''}
                                         </div>
                                       </div>
 
-                                      {perspective === 'master' && extraCount > 0 && (
+                                      {effectivePerspective === 'master' && extraCount > 0 && (
                                         <div className="text-[8.5px] font-mono-tabular font-semibold text-[#171717]/75 text-center truncate">
                                           +{extraCount} more
                                         </div>
@@ -1447,6 +1674,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
       <ClassDetailsModal
         classItem={selectedClass}
         onClose={() => setSelectedClass(null)}
+        canEdit={isAdmin}
       />
 
       {/* Conflict Inspector & Resolution Modal */}

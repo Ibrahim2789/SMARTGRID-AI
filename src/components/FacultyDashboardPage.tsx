@@ -13,6 +13,7 @@ import { useInstitutionalData, institutionalStore } from '../data/store';
 import { AuthenticatedVotingUser } from '../services/votingApi';
 import { RouteType } from './SmartGridNav';
 import { DayOfWeek, computeAcademicScheduleConfig, getLabBlockByStartPeriod } from '../types/institutional';
+import { resolveFacultyInstructor } from '../utils/userTimetableScope';
 
 interface FacultyDashboardPageProps {
   currentUser: AuthenticatedVotingUser;
@@ -33,16 +34,8 @@ export const FacultyDashboardPage: React.FC<FacultyDashboardPageProps> = ({
     subView === 'preferences' ? 'preferences' : 'schedule'
   );
 
-  // Match faculty record from master store
-  const matchedInstructor =
-    store.instructors.find(
-      i =>
-        i.email.toLowerCase() === (currentUser.email || '').toLowerCase() ||
-        i.name.toLowerCase().includes(currentUser.name.toLowerCase()) ||
-        currentUser.name.toLowerCase().includes(i.name.toLowerCase())
-    ) ||
-    store.instructors.find(i => i.name.toLowerCase().includes('jehanzeb')) ||
-    store.instructors[0];
+  // Strictly match faculty record from master store (never fall back to another instructor)
+  const matchedInstructor = resolveFacultyInstructor(currentUser, store.instructors);
 
   // Assigned sections in master schedule
   const assignedSections = store.sections.filter(s => s.instructorId === matchedInstructor?.id);
@@ -174,7 +167,7 @@ export const FacultyDashboardPage: React.FC<FacultyDashboardPageProps> = ({
           className="btn-secondary h-9 text-xs shrink-0"
         >
           <BookOpen className="w-3.5 h-3.5" />
-          <span>Open Institutional Matrix</span>
+          <span>My Weekly Timetable</span>
         </button>
       </header>
 
