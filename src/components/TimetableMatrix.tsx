@@ -90,7 +90,12 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
   const matchedFaculty = isFaculty ? resolveFacultyInstructor(currentUser, store.instructors) : null;
 
   const [calendarMode, setCalendarMode] = useState<'week' | 'day' | 'agenda'>('week');
-  const [weekColumnSpan, setWeekColumnSpan] = useState<7 | 5>(7);
+  const [weekColumnSpan, setWeekColumnSpan] = useState<7 | 5>(() => {
+    const hasWeekendClasses = store.sections.some(
+      s => s.assignedSlot && (s.assignedSlot.day === 'Sat' || s.assignedSlot.day === 'Sun')
+    );
+    return hasWeekendClasses ? 7 : 5;
+  });
   const [focusedDay, setFocusedDay] = useState<string>('Mon');
   // Default to 'cohort' (Individual Class/Section Timetable) so each class/section timetable is displayed clearly
   const [perspective, setPerspective] = useState<'cohort' | 'master' | 'instructor' | 'room'>(() =>
