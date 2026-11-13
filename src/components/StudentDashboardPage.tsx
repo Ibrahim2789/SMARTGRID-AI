@@ -4,12 +4,10 @@ import {
   Vote,
   Sliders,
   Clock,
-  BookOpen,
   GraduationCap,
   CheckCircle2,
   ArrowRight,
   Download,
-  UserCheck,
   Check
 } from 'lucide-react';
 import { RouteType } from './SmartGridNav';
@@ -154,44 +152,40 @@ export const StudentDashboardPage: React.FC<StudentDashboardPageProps> = ({
   // =========================================================
   if (subView === 'preferences') {
     return (
-      <div className="space-y-8 pb-14">
-        <header className="bg-white border border-[#E4E2DA] rounded-3xl p-6 sm:p-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="space-y-1.5">
+      <div className="space-y-6 pb-12">
+        <header className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 pb-4 border-b border-[#E4E2DA]">
+          <div className="space-y-1">
             <div className="text-xs font-medium text-[#77766F]">
-              Student Workspace · {syncedUser.batchCode || 'Academic Cohort'} ·{' '}
-              {syncedUser.section || 'Section A'}
+              {syncedUser.batchCode || 'Academic Cohort'} · {syncedUser.section || 'Section A'}
             </div>
-            <h1 className="font-serif-editorial text-3xl sm:text-4xl text-[#171717]">
-              My Schedule & Voting Preferences
+            <h1 className="font-serif-editorial text-3xl text-[#171717] tracking-tight">
+              Schedule &amp; Voting Preferences
             </h1>
-            <p className="text-xs sm:text-sm text-[#57564F]">
-              Customize how your weekly class timetable, laboratory blocks, and batch voting notifications are displayed.
-            </p>
           </div>
 
           <button
             type="button"
             onClick={() => onNavigate('student-dashboard')}
-            className="btn-secondary text-xs h-10 px-4 shrink-0"
+            className="btn-secondary text-xs h-9 px-3.5 shrink-0"
           >
-            Back to Student Dashboard
+            Back to Dashboard
           </button>
         </header>
 
         {prefsSavedNotice && (
-          <div className="p-4 rounded-2xl bg-[#E8F8E0] border border-[#A5E087] text-[#1B5E20] text-xs font-semibold flex items-center gap-2">
+          <div className="px-4 py-2.5 rounded-xl bg-[#E8F8E0] border border-[#A5E087] text-[#1B5E20] text-xs font-semibold flex items-center gap-2 max-w-3xl">
             <Check className="w-4 h-4 shrink-0" />
-            <span>Your personal student preferences have been saved.</span>
+            <span>Your personal preferences have been saved.</span>
           </div>
         )}
 
         <form
           onSubmit={handleSavePreferences}
-          className="bg-white border border-[#E4E2DA] rounded-3xl p-6 sm:p-8 space-y-6 max-w-3xl"
+          className="bg-white border border-[#E4E2DA] rounded-2xl p-6 space-y-6 max-w-3xl"
         >
-          <div className="space-y-4">
-            <h2 className="font-serif-editorial text-2xl text-[#171717] border-b border-[#E4E2DA] pb-3">
-              Timetable Display Preferences
+          <div className="space-y-5">
+            <h2 className="font-serif-editorial text-xl text-[#171717] border-b border-[#E4E2DA] pb-3">
+              Timetable Display
             </h2>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -238,7 +232,7 @@ export const StudentDashboardPage: React.FC<StudentDashboardPageProps> = ({
               </div>
             </div>
 
-            <div className="space-y-3 pt-2">
+            <div className="border border-[#E4E2DA] rounded-xl divide-y divide-[#E4E2DA]">
               {[
                 {
                   key: 'showInstructorNames' as const,
@@ -258,16 +252,16 @@ export const StudentDashboardPage: React.FC<StudentDashboardPageProps> = ({
                 {
                   key: 'votingDeadlineAlerts' as const,
                   title: 'Batch Representative Poll & Deadline Reminders',
-                  desc: 'Show reminders on your Student Dashboard when active batch questions are awaiting your vote.'
+                  desc: 'Show reminders on your dashboard when active batch questions are awaiting your vote.'
                 }
               ].map(item => (
                 <label
                   key={item.key}
-                  className="flex items-center justify-between gap-4 p-4 rounded-2xl bg-[#F7F6EF] border border-[#E4E2DA] cursor-pointer"
+                  className="flex items-center justify-between gap-4 px-4 py-3.5 cursor-pointer hover:bg-[#F7F6EF]/50 transition-colors"
                 >
                   <div>
-                    <div className="text-xs font-bold text-[#171717]">{item.title}</div>
-                    <div className="text-[11px] text-[#57564F] mt-0.5">{item.desc}</div>
+                    <div className="text-xs font-semibold text-[#171717]">{item.title}</div>
+                    <div className="text-[11px] text-[#77766F] mt-0.5">{item.desc}</div>
                   </div>
                   <input
                     type="checkbox"
@@ -275,7 +269,7 @@ export const StudentDashboardPage: React.FC<StudentDashboardPageProps> = ({
                     onChange={e =>
                       setPrefs(prev => ({ ...prev, [item.key]: e.target.checked }))
                     }
-                    className="w-4 h-4 rounded border-[#E4E2DA]"
+                    className="w-4 h-4 rounded border-[#E4E2DA] shrink-0"
                   />
                 </label>
               ))}
@@ -283,9 +277,9 @@ export const StudentDashboardPage: React.FC<StudentDashboardPageProps> = ({
           </div>
 
           <div className="flex justify-end pt-4 border-t border-[#E4E2DA]">
-            <button type="submit" className="btn-primary py-2.5 px-6 text-xs font-semibold">
+            <button type="submit" className="btn-primary py-2.5 px-5 text-xs font-semibold">
               <Sliders className="w-4 h-4" />
-              <span>Save My Preferences</span>
+              <span>Save Preferences</span>
             </button>
           </div>
         </form>
@@ -297,12 +291,12 @@ export const StudentDashboardPage: React.FC<StudentDashboardPageProps> = ({
   // DEFAULT SUB-VIEW: STUDENT DASHBOARD
   // =========================================================
   return (
-    <div className="space-y-8 pb-14">
-      {/* 1. Student Hero & Identity Banner */}
-      <section className="bg-white border border-[#E4E2DA] rounded-3xl p-6 sm:p-8 lg:p-10">
+    <div className="space-y-6 pb-12">
+      {/* 1. Student Hero & Enrollment Summary */}
+      <section className="bg-white border border-[#E4E2DA] rounded-2xl p-6 sm:p-8">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
           <div className="lg:col-span-7 space-y-4">
-            <div className="flex flex-wrap items-center gap-2 text-xs text-[#57564F]">
+            <div className="flex flex-wrap items-center gap-2 text-xs text-[#77766F]">
               <span className="font-semibold text-[#171717]">
                 {store.institutionProfile?.name || 'Western Polytechnic'}
               </span>
@@ -310,109 +304,96 @@ export const StudentDashboardPage: React.FC<StudentDashboardPageProps> = ({
               <span>{activeTerm?.name || 'Fall 2026'}</span>
               <span>·</span>
               <span className="font-mono-tabular font-semibold text-[#171717]">
-                Roll No: {syncedUser.registrationNumber || '2K25-BSCS-014'}
+                {syncedUser.registrationNumber || '2K25-BSCS-014'}
               </span>
             </div>
 
-            <h1 className="font-serif-editorial text-3xl sm:text-4xl lg:text-[42px] leading-[1.12] text-[#171717] tracking-tight">
+            <h1 className="font-serif-editorial text-3xl sm:text-4xl leading-[1.12] text-[#171717] tracking-tight">
               Welcome, {syncedUser.name}.
             </h1>
 
-            <p className="text-sm sm:text-base text-[#55544E] leading-relaxed max-w-2xl">
-              You are enrolled in{' '}
+            <p className="text-sm text-[#57564F]">
               <strong className="text-[#171717]">
                 {syncedUser.batchCode || '2K25-BSCS'} ({syncedUser.batchName || 'BS Computer Science'})
               </strong>{' '}
-              · <strong className="text-[#171717]">{syncedUser.section || 'Section A'}</strong>. View your conflict-free weekly class schedule, participate in official batch polls, and manage your study preferences.
+              · <strong className="text-[#171717]">{syncedUser.section || 'Section A'}</strong>
             </p>
 
-            <div className="flex flex-wrap items-center gap-3 pt-1">
+            <div className="flex flex-wrap items-center gap-2.5 pt-1">
               <button
                 type="button"
                 onClick={() => onNavigate('timetables')}
-                className="btn-primary h-10 px-5 text-xs sm:text-sm"
+                className="btn-primary h-9 px-4 text-xs"
               >
-                <Calendar className="w-4 h-4" />
+                <Calendar className="w-3.5 h-3.5" />
                 <span>Open My Timetable</span>
               </button>
 
               <button
                 type="button"
                 onClick={() => onNavigate('student-voting')}
-                className="btn-secondary h-10 px-5 text-xs sm:text-sm"
+                className="btn-secondary h-9 px-4 text-xs"
               >
-                <Vote className="w-4 h-4" />
-                <span>
-                  Student Voting ({activePolls.length} Active)
-                </span>
+                <Vote className="w-3.5 h-3.5" />
+                <span>Student Voting ({activePolls.length} Active)</span>
               </button>
 
               <button
                 type="button"
                 onClick={() => onNavigate('student-preferences')}
-                className="btn-secondary h-10 px-4 text-xs sm:text-sm"
+                className="btn-secondary h-9 px-3.5 text-xs"
               >
-                <Sliders className="w-4 h-4" />
+                <Sliders className="w-3.5 h-3.5" />
                 <span>My Preferences</span>
               </button>
 
               <button
                 type="button"
                 onClick={handleExportMyTimetable}
-                className="h-10 px-4 rounded-xl bg-[#B7F77C] hover:bg-[#a5eb68] border border-[#98DF58] text-[#171717] font-semibold text-xs sm:text-sm inline-flex items-center gap-2 transition-colors cursor-pointer"
+                className="h-9 px-3.5 rounded-xl bg-[#B7F77C] hover:bg-[#a5eb68] border border-[#98DF58] text-[#171717] font-semibold text-xs inline-flex items-center gap-1.5 transition-colors cursor-pointer"
               >
-                <Download className="w-4 h-4" />
+                <Download className="w-3.5 h-3.5" />
                 <span>Download Schedule (.xlsx)</span>
               </button>
             </div>
           </div>
 
-          {/* Right 5 Columns: Student Cohort & Representation Summary */}
-          <div className="lg:col-span-5 bg-[#F7F6EF] border border-[#E4E2DA] rounded-2xl p-5 space-y-4">
-            <div className="flex items-center justify-between border-b border-[#E4E2DA] pb-3">
-              <div>
-                <div className="text-xs font-bold text-[#171717]">
-                  Student Enrollment Summary
-                </div>
-                <div className="text-[11px] text-[#77766F]">
-                  {syncedUser.batchCode || '2K25-BSCS'} · {syncedUser.section || 'Section A'}
-                </div>
+          {/* Right 5 Columns: Crisp Hairline Enrollment Summary */}
+          <div className="lg:col-span-5 border border-[#E4E2DA] rounded-xl divide-y divide-[#E4E2DA] overflow-hidden">
+            <div className="px-4 py-3 bg-[#F7F6EF]/60 flex items-center justify-between">
+              <div className="text-xs font-semibold text-[#171717]">
+                Enrollment Summary · {syncedUser.batchCode || '2K25-BSCS'}
               </div>
-              <GraduationCap className="w-5 h-5 text-[#171717]" />
+              <GraduationCap className="w-4 h-4 text-[#77766F]" />
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div className="p-3.5 rounded-xl bg-white border border-[#E4E2DA]">
+            <div className="grid grid-cols-2 divide-x divide-[#E4E2DA]">
+              <div className="px-4 py-3">
                 <div className="text-[11px] text-[#77766F]">Weekly Sessions</div>
                 <div className="font-mono-tabular text-lg font-bold text-[#171717] mt-0.5">
                   {cohortLecturesCount}L · {cohortLabsCount}Lab
                 </div>
               </div>
-              <div className="p-3.5 rounded-xl bg-white border border-[#E4E2DA]">
+              <div className="px-4 py-3">
                 <div className="text-[11px] text-[#77766F]">Batch Polls Voted</div>
                 <div className="font-mono-tabular text-lg font-bold text-[#171717] mt-0.5">
-                  {participatedPolls.length} / {polls.length} Polls
+                  {participatedPolls.length} / {polls.length}
                 </div>
               </div>
             </div>
 
             {studentBatch && (
-              <div className="p-3.5 rounded-xl bg-white border border-[#E4E2DA] space-y-1.5 text-xs">
-                <div className="text-[11px] font-semibold text-[#77766F]">
-                  Batch Representatives ({studentBatch.code})
-                </div>
-                <div className="flex items-center justify-between text-[#171717]">
-                  <span>Male BR:</span>
-                  <span className="font-semibold">
-                    {studentBatch.maleRepresentative?.name.replace(/\s*\(.*\)$/, '') ||
-                      'Unassigned'}
+              <div className="px-4 py-3 space-y-1 text-xs">
+                <div className="flex items-center justify-between text-[#57564F]">
+                  <span>Male BR</span>
+                  <span className="font-semibold text-[#171717]">
+                    {studentBatch.maleRepresentative?.name.replace(/\s*\(.*\)$/, '') || 'Unassigned'}
                   </span>
                 </div>
-                <div className="flex items-center justify-between text-[#171717]">
-                  <span>Female BR:</span>
-                  <span className="font-semibold">
-                    {studentBatch.femaleRepresentative?.name.replace(/\s*\(.*\)$/, '') ||
-                      'Unassigned'}
+                <div className="flex items-center justify-between text-[#57564F]">
+                  <span>Female BR</span>
+                  <span className="font-semibold text-[#171717]">
+                    {studentBatch.femaleRepresentative?.name.replace(/\s*\(.*\)$/, '') || 'Unassigned'}
                   </span>
                 </div>
               </div>
@@ -421,20 +402,20 @@ export const StudentDashboardPage: React.FC<StudentDashboardPageProps> = ({
         </div>
       </section>
 
-      {/* 2. Active Batch Polls + Concise Academic Schedule Summary */}
+      {/* 2. Active Batch Polls + Schedule Timings */}
       <section className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Left 7 Columns: Active Batch Polls for Student */}
-        <div className="lg:col-span-7 bg-white border border-[#E4E2DA] rounded-3xl p-6 space-y-4">
+        {/* Left 7 Columns: Active Batch Questions */}
+        <div className="lg:col-span-7 bg-white border border-[#E4E2DA] rounded-2xl p-6 space-y-4">
           <div className="flex items-center justify-between border-b border-[#E4E2DA] pb-3.5">
             <div>
-              <h3 className="font-serif-editorial text-2xl text-[#171717]">
+              <h3 className="font-serif-editorial text-xl text-[#171717]">
                 Active Batch Questions
               </h3>
-              <p className="text-xs text-[#77766F]">
-                {pendingMyVotePolls.length > 0
-                  ? `${pendingMyVotePolls.length} active question(s) awaiting your vote`
-                  : 'Official questions published for student voting'}
-              </p>
+              {pendingMyVotePolls.length > 0 && (
+                <p className="text-xs text-[#77766F] mt-0.5">
+                  {pendingMyVotePolls.length} awaiting your vote
+                </p>
+              )}
             </div>
             <button
               type="button"
@@ -449,28 +430,30 @@ export const StudentDashboardPage: React.FC<StudentDashboardPageProps> = ({
           {loadingPolls ? (
             <div className="space-y-3">
               {[1, 2].map(n => (
-                <div key={n} className="h-20 rounded-2xl bg-[#F7F6EF] animate-pulse" />
+                <div key={n} className="h-16 rounded-xl bg-[#F7F6EF] animate-pulse" />
               ))}
             </div>
           ) : activePolls.length === 0 ? (
-            <div className="p-8 text-center text-xs text-[#77766F]">
+            <div className="py-8 text-center text-xs text-[#77766F]">
               No active voting questions are open right now.
             </div>
           ) : (
-            <div className="space-y-3">
+            <div className="divide-y divide-[#E4E2DA] border border-[#E4E2DA] rounded-xl">
               {activePolls.slice(0, 3).map(poll => (
                 <div
                   key={poll.id}
-                  className="p-4 rounded-2xl bg-[#F7F6EF] border border-[#E4E2DA] flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+                  className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4"
                 >
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2 text-xs text-[#57564F]">
-                      <span className="font-bold text-[#171717]">{poll.batchCode}</span>
-                      <span>·</span>
+                  <div className="space-y-0.5 min-w-0">
+                    <div className="text-[11px] text-[#77766F]">
+                      <span className="font-mono-tabular font-semibold text-[#171717]">{poll.batchCode}</span>
+                      {' · '}
                       <span>{poll.submittedByName}</span>
                     </div>
-                    <div className="text-sm font-bold text-[#171717]">{poll.title}</div>
-                    <div className="text-xs text-[#57564F] line-clamp-1">{poll.description}</div>
+                    <div className="text-sm font-semibold text-[#171717]">{poll.title}</div>
+                    {poll.description && (
+                      <div className="text-xs text-[#57564F] line-clamp-1">{poll.description}</div>
+                    )}
                   </div>
 
                   <div className="shrink-0">
@@ -483,7 +466,7 @@ export const StudentDashboardPage: React.FC<StudentDashboardPageProps> = ({
                       <button
                         type="button"
                         onClick={() => onNavigate('student-voting')}
-                        className="btn-primary py-2 px-4 text-xs font-semibold"
+                        className="btn-primary py-1.5 px-3.5 text-xs font-semibold"
                       >
                         Cast Vote
                       </button>
@@ -495,13 +478,13 @@ export const StudentDashboardPage: React.FC<StudentDashboardPageProps> = ({
           )}
         </div>
 
-        {/* Right 5 Columns: Concise Academic Schedule Summary */}
-        <div className="lg:col-span-5 bg-white border border-[#E4E2DA] rounded-3xl p-6 flex flex-col justify-between space-y-4">
+        {/* Right 5 Columns: University Schedule Timings */}
+        <div className="lg:col-span-5 bg-white border border-[#E4E2DA] rounded-2xl p-6 flex flex-col justify-between space-y-4">
           <div className="space-y-4">
             <div className="flex items-center justify-between border-b border-[#E4E2DA] pb-3.5">
               <div>
-                <h3 className="font-serif-editorial text-2xl text-[#171717]">
-                  University Schedule Timings
+                <h3 className="font-serif-editorial text-xl text-[#171717]">
+                  Schedule Timings
                 </h3>
                 <p className="text-xs text-[#77766F]">
                   {activeTerm?.name || 'Fall 2026'} · {activeTiming.workingDays.join('–')}
@@ -510,34 +493,34 @@ export const StudentDashboardPage: React.FC<StudentDashboardPageProps> = ({
               <Clock className="w-4 h-4 text-[#77766F]" />
             </div>
 
-            <div className="space-y-2.5 text-xs">
-              <div className="flex items-center justify-between p-3 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA]">
+            <div className="border border-[#E4E2DA] rounded-xl divide-y divide-[#E4E2DA] text-xs">
+              <div className="flex items-center justify-between px-3.5 py-2.5">
                 <span className="text-[#57564F]">Operating Hours</span>
-                <span className="font-mono-tabular font-bold text-[#171717]">
+                <span className="font-mono-tabular font-semibold text-[#171717]">
                   {activeTiming.operatingHoursLabel}
                 </span>
               </div>
-              <div className="flex items-center justify-between p-3 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA]">
-                <span className="text-[#57564F]">Lecture & Transition Break</span>
-                <span className="font-mono-tabular font-bold text-[#171717]">
-                  {activeTiming.periodLengthMinutes}m lecture
+              <div className="flex items-center justify-between px-3.5 py-2.5">
+                <span className="text-[#57564F]">Lecture &amp; Break</span>
+                <span className="font-mono-tabular font-semibold text-[#171717]">
+                  {activeTiming.periodLengthMinutes}m
                   {activeTiming.shortBreakEnabled && activeTiming.shortBreakMinutes > 0
                     ? ` + ${activeTiming.shortBreakMinutes}m break`
                     : ''}
                 </span>
               </div>
-              <div className="flex items-center justify-between p-3 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA]">
+              <div className="flex items-center justify-between px-3.5 py-2.5">
                 <span className="text-[#57564F]">Midday Break</span>
-                <span className="font-mono-tabular font-bold text-[#171717]">
+                <span className="font-mono-tabular font-semibold text-[#171717]">
                   {activeTiming.middayBreak.enabled
                     ? activeTiming.middayBreak.timeRangeLabel
                     : 'Disabled'}
                 </span>
               </div>
-              <div className="flex items-center justify-between p-3 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA]">
+              <div className="flex items-center justify-between px-3.5 py-2.5">
                 <span className="text-[#57564F]">Laboratory Block</span>
-                <span className="font-mono-tabular font-bold text-[#171717]">
-                  {labHoursLabel} Hours ({activeTiming.labDurationMinutes}m continuous)
+                <span className="font-mono-tabular font-semibold text-[#171717]">
+                  {labHoursLabel}h ({activeTiming.labDurationMinutes}m)
                 </span>
               </div>
             </div>

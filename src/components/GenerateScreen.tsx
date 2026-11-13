@@ -416,17 +416,14 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
 
   return (
     <div className="space-y-6">
-
-      {/* =========================================================
-          PAGE HEADER
-         ========================================================= */}
+      {/* PAGE HEADER */}
       <header className="flex flex-col lg:flex-row lg:items-end justify-between gap-4 pb-5 border-b border-[#E4E2DA]">
-        <div className="space-y-1.5">
+        <div>
           <h1 className="font-serif-editorial text-3xl sm:text-4xl text-[#171717] tracking-tight">
-            Timetable Generation Workspace
+            Generate Timetable
           </h1>
-          <p className="text-xs sm:text-sm text-[#77766F] max-w-3xl">
-            Configure active semesters, confirm scheduling policy scope across departments, batches, and sections, and synthesize conflict-free university timetables.
+          <p className="text-xs sm:text-sm text-[#77766F] mt-1">
+            {scopedDepartments.length} departments · {scopedGroups.length} sections · {activeTimingSummary(computedTiming)}
           </p>
         </div>
 
@@ -434,15 +431,15 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
           <button
             type="button"
             onClick={() => onNavigate('academic-config')}
-            className="btn-secondary text-xs h-10 px-4"
+            className="btn-secondary text-xs h-9 px-3.5"
           >
             <Clock className="w-3.5 h-3.5" />
-            <span>Academic Calendar &amp; Policy</span>
+            <span>Calendar &amp; Policy</span>
           </button>
           <button
             type="button"
             onClick={() => onNavigate('timetables')}
-            className="btn-secondary text-xs h-10 px-4"
+            className="btn-secondary text-xs h-9 px-3.5"
           >
             <Calendar className="w-3.5 h-3.5" />
             <span>Inspect Timetables ({totalScheduled}/{store.sections.length})</span>
@@ -450,35 +447,28 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
         </div>
       </header>
 
-      {/* =========================================================
-          STEP 01: UNIVERSITY ACADEMIC CALENDAR & ACTIVE SEMESTERS
-         ========================================================= */}
-      <section className="sf-card-white p-6 space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3.5 border-b border-[#E4E2DA]">
-          <div>
-            <div className="text-[11px] font-mono-tabular font-semibold uppercase tracking-wider text-[#77766F]">
-              Step 01 · University Academic Calendar
-            </div>
-            <h2 className="font-serif-editorial text-xl text-[#171717] mt-0.5">
-              Select Academic Semesters to Schedule
+      {/* 1. ACADEMIC SEMESTERS */}
+      <section className="sf-card-white p-5 sm:p-6 space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-[#E4E2DA]">
+          <div className="flex items-baseline gap-3">
+            <h2 className="font-serif-editorial text-xl text-[#171717]">
+              Academic Semesters
             </h2>
+            <span className="text-xs font-mono-tabular text-[#77766F]">
+              {selectedTermIds.length} of {store.terms.length} selected
+            </span>
           </div>
 
-          <div className="flex items-center gap-2 shrink-0">
-            <span className="px-2.5 py-1 rounded-lg bg-[#F7F6EF] border border-[#E4E2DA] text-xs font-mono-tabular font-semibold text-[#171717]">
-              {selectedTermIds.length} of {store.terms.length} Selected
-            </span>
-            <button
-              type="button"
-              onClick={() => setSelectedTermIds(store.terms.map(t => t.id))}
-              className="h-8 px-3 rounded-lg bg-[#F7F6EF] hover:bg-[#EDEAE0] border border-[#E4E2DA] text-xs font-medium text-[#171717] cursor-pointer"
-            >
-              Select All Configured
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={() => setSelectedTermIds(store.terms.map(t => t.id))}
+            className="text-xs font-semibold text-[#171717] hover:underline cursor-pointer shrink-0"
+          >
+            Select All Configured
+          </button>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5 items-stretch">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 items-stretch">
           {store.terms.map(term => {
             const isSelected = selectedTermIds.includes(term.id);
             const isActiveStatus = term.status === 'active';
@@ -486,35 +476,21 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
               <div
                 key={term.id}
                 onClick={() => toggleTermSelection(term.id)}
-                className={`p-4 rounded-xl border transition-colors cursor-pointer flex flex-col justify-between min-h-[104px] ${
+                className={`p-4 rounded-xl border transition-colors cursor-pointer flex flex-col justify-between ${
                   isSelected
                     ? 'bg-[#171717] text-white border-[#171717]'
-                    : 'bg-[#F7F6EF]/70 text-[#171717] border-[#E4E2DA] hover:bg-[#EDEAE0]/60'
+                    : 'bg-white text-[#171717] border-[#E4E2DA] hover:bg-[#F7F6EF]'
                 }`}
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="space-y-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span
-                        className={`px-2 py-0.5 rounded text-[10px] font-mono-tabular font-bold ${
-                          isSelected
-                            ? 'bg-white/15 text-[#B8EEEE]'
-                            : 'bg-[#171717] text-white'
-                        }`}
-                      >
-                        {term.code}
-                      </span>
-                      {isActiveStatus && (
-                        <span
-                          className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
-                            isSelected
-                              ? 'bg-[#B7F77C] text-[#171717]'
-                              : 'bg-[#B7F77C] text-[#171717]'
-                          }`}
-                        >
-                          Active
-                        </span>
-                      )}
+                    <div
+                      className={`text-[11px] font-mono-tabular ${
+                        isSelected ? 'text-[#B8EEEE]' : 'text-[#77766F]'
+                      }`}
+                    >
+                      {term.code}
+                      {isActiveStatus ? ' · Active' : ''}
                     </div>
                     <h3
                       className={`font-serif-editorial text-base leading-snug truncate ${
@@ -526,27 +502,24 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
                   </div>
 
                   <div
-                    className={`w-5 h-5 rounded-md flex items-center justify-center border shrink-0 mt-0.5 ${
+                    className={`w-4.5 h-4.5 rounded flex items-center justify-center border shrink-0 mt-0.5 ${
                       isSelected
                         ? 'bg-[#B7F77C] border-[#B7F77C] text-[#171717]'
                         : 'bg-white border-[#D5D3CB]'
                     }`}
                   >
-                    {isSelected && <Check className="w-3.5 h-3.5 stroke-[2.5]" />}
+                    {isSelected && <Check className="w-3 h-3 stroke-[2.5]" />}
                   </div>
                 </div>
 
                 <div
-                  className={`pt-2 mt-2 border-t text-[11px] font-mono-tabular ${
+                  className={`pt-2.5 mt-2.5 border-t text-[11px] font-mono-tabular ${
                     isSelected
-                      ? 'border-white/15 text-white/80'
+                      ? 'border-white/15 text-white/75'
                       : 'border-[#E4E2DA] text-[#77766F]'
                   }`}
                 >
-                  <span>
-                    {term.academicYear || store.institutionProfile?.academicYear || '2026–2027'} ·{' '}
-                    {term.startDate} → {term.endDate}
-                  </span>
+                  {term.startDate} → {term.endDate}
                 </div>
               </div>
             );
@@ -554,36 +527,30 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
         </div>
       </section>
 
-      {/* =========================================================
-          STEP 02: SCHEDULING POLICY & AGENDA SCOPE SELECTOR
-         ========================================================= */}
-      <section className="sf-card-white p-6 space-y-4">
-        <div className="pb-3.5 border-b border-[#E4E2DA]">
-          <div className="text-[11px] font-mono-tabular font-semibold uppercase tracking-wider text-[#77766F]">
-            Step 02 · Timetable Management Policy &amp; Scheduling Scope
-          </div>
-          <h2 className="font-serif-editorial text-xl text-[#171717] mt-0.5">
-            Select Scheduling Scope
+      {/* 2. SCHEDULING SCOPE */}
+      <section className="sf-card-white p-5 sm:p-6 space-y-4">
+        <div className="pb-3 border-b border-[#E4E2DA]">
+          <h2 className="font-serif-editorial text-xl text-[#171717]">
+            Scheduling Scope
           </h2>
         </div>
 
-        {/* 3-option scope selector grid */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           {[
             {
               id: 'whole_university' as const,
-              title: 'Whole-University Timetable',
-              desc: 'Schedules all configured departments, semesters, batches, and sections in one integrated run with cross-department conflict prevention.'
+              title: 'Whole-University',
+              desc: 'All departments and sections in one conflict-free run'
             },
             {
               id: 'department_wise' as const,
-              title: 'Department-Wise Timetable',
-              desc: 'Generates a timetable for a single department using its faculty, classrooms, laboratories, courses, batches, and sections.'
+              title: 'Department-Wise',
+              desc: 'Single department faculty, rooms, courses, and batches'
             },
             {
               id: 'custom_cohorts' as const,
-              title: 'Custom Batch / Section Scope',
-              desc: 'Select specific student batches or sections to schedule while keeping all other university sessions fixed.'
+              title: 'Custom Cohort Scope',
+              desc: 'Selected sections while keeping other classes fixed'
             }
           ].map(opt => {
             const active = scopeMode === opt.id;
@@ -592,41 +559,39 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
                 key={opt.id}
                 type="button"
                 onClick={() => setScopeMode(opt.id)}
-                className={`p-4 rounded-xl border text-left transition-colors cursor-pointer flex flex-col justify-between min-h-[112px] ${
+                className={`p-4 rounded-xl border text-left transition-colors cursor-pointer flex flex-col justify-between ${
                   active
                     ? 'bg-[#171717] text-white border-[#171717]'
-                    : 'bg-[#F7F6EF]/70 text-[#171717] border-[#E4E2DA] hover:bg-[#EDEAE0]/70'
+                    : 'bg-white text-[#171717] border-[#E4E2DA] hover:bg-[#F7F6EF]'
                 }`}
               >
-                <div className="w-full">
-                  <span className="font-serif-editorial text-base font-medium truncate block">
-                    {opt.title}
-                  </span>
-                  <p
-                    className={`text-xs leading-relaxed mt-1 line-clamp-2 ${
-                      active ? 'text-white/80' : 'text-[#77766F]'
-                    }`}
-                  >
-                    {opt.desc}
-                  </p>
-                </div>
+                <span className="font-serif-editorial text-base font-medium block">
+                  {opt.title}
+                </span>
+                <p
+                  className={`text-xs mt-1 ${
+                    active ? 'text-white/75' : 'text-[#77766F]'
+                  }`}
+                >
+                  {opt.desc}
+                </p>
               </button>
             );
           })}
         </div>
 
-        {/* Stable-height Context Bar for Selected Scope */}
-        <div className="min-h-[52px] p-3.5 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        {/* Context Selector Bar */}
+        <div className="pt-3 border-t border-[#E4E2DA] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           {scopeMode === 'whole_university' && (
             <>
-              <div className="flex items-center gap-2.5 text-xs text-[#171717] min-w-0">
+              <div className="flex items-center gap-2 text-xs text-[#57564F] min-w-0">
                 <Building2 className="w-4 h-4 text-[#171717] shrink-0" />
                 <span className="truncate">
-                  <strong>All {store.departments.length} Departments Included:</strong>{' '}
-                  {store.departments.map(d => d.code).join(', ')} — Cross-department shared faculty, classrooms, and labs are automatically synchronized.
+                  <strong className="text-[#171717]">{store.departments.length} Departments:</strong>{' '}
+                  {store.departments.map(d => d.code).join(', ')}
                 </span>
               </div>
-              <span className="text-[11px] font-mono-tabular font-semibold text-[#57564F] shrink-0">
+              <span className="text-xs font-mono-tabular font-semibold text-[#171717] shrink-0">
                 {store.studentGroups.length} Sections · {store.sections.length} Sessions
               </span>
             </>
@@ -636,7 +601,7 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
             <>
               <div className="flex flex-wrap items-center gap-2 min-w-0">
                 <span className="text-xs font-semibold text-[#171717] shrink-0">
-                  Target Department:
+                  Department:
                 </span>
                 <div className="inline-flex flex-wrap items-center gap-1.5">
                   {store.departments.map(dept => {
@@ -656,14 +621,14 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
                             : 'bg-white text-[#57564F] border-[#E4E2DA] hover:text-[#171717]'
                         }`}
                       >
-                        {dept.code} — {dept.name} ({count} Sections)
+                        {dept.code} ({count})
                       </button>
                     );
                   })}
                 </div>
               </div>
-              <span className="text-[11px] font-mono-tabular font-semibold text-[#57564F] shrink-0">
-                {scopedGroups.length} Dept Sections · {scopedSections.length} Sessions
+              <span className="text-xs font-mono-tabular font-semibold text-[#171717] shrink-0">
+                {scopedGroups.length} Sections · {scopedSections.length} Sessions
               </span>
             </>
           )}
@@ -672,17 +637,15 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
             <div className="w-full space-y-2.5">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-semibold text-[#171717]">
-                  Select Individual Batches / Sections ({selectedGroupIds.length} of {store.studentGroups.length})
+                  Sections ({selectedGroupIds.length} of {store.studentGroups.length})
                 </span>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setSelectedGroupIds(store.studentGroups.map(g => g.id))}
-                    className="text-xs font-semibold text-[#171717] underline cursor-pointer"
-                  >
-                    Select All
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedGroupIds(store.studentGroups.map(g => g.id))}
+                  className="text-xs font-semibold text-[#171717] underline cursor-pointer"
+                >
+                  Select All
+                </button>
               </div>
               <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto pr-1">
                 {store.studentGroups.map(group => {
@@ -709,29 +672,20 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
         </div>
       </section>
 
-      {/* =========================================================
-          STEP 03: ACADEMIC HIERARCHY & RESOURCES SUMMARY
-         ========================================================= */}
-      <section className="sf-card-white p-6 space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3.5 border-b border-[#E4E2DA]">
-          <div>
-            <div className="text-[11px] font-mono-tabular font-semibold uppercase tracking-wider text-[#77766F]">
-              Step 03 · Academic Structure &amp; Resource Inventory
-            </div>
-            <h2 className="font-serif-editorial text-xl text-[#171717] mt-0.5">
-              Included Departments, Batches, Sections &amp; Facilities
-            </h2>
-          </div>
+      {/* 3. RESOURCE SUMMARY STRIP */}
+      <section className="sf-card-white p-5 sm:p-6 space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-[#E4E2DA]">
+          <h2 className="font-serif-editorial text-xl text-[#171717]">
+            Resource Scope
+          </h2>
 
           <button
             type="button"
             onClick={() => setShowHierarchyDrawer(prev => !prev)}
-            className="btn-secondary text-xs h-9 px-3.5 shrink-0"
+            className="btn-secondary text-xs h-8 px-3 shrink-0"
           >
             <Layers className="w-3.5 h-3.5" />
-            <span>
-              {showHierarchyDrawer ? 'Hide Hierarchy Breakdown' : 'Inspect Hierarchy & Resources'}
-            </span>
+            <span>{showHierarchyDrawer ? 'Hide Breakdown' : 'Inspect Breakdown'}</span>
             {showHierarchyDrawer ? (
               <ChevronUp className="w-3.5 h-3.5" />
             ) : (
@@ -740,84 +694,64 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
           </button>
         </div>
 
-        {/* 4 Summary Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 items-stretch">
-          <div className="p-4 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] flex flex-col justify-between min-h-[96px]">
-            <div className="flex items-center justify-between text-xs text-[#77766F]">
-              <span className="font-semibold text-[#171717]">Departments &amp; Programs</span>
-              <Building2 className="w-4 h-4 text-[#171717]" />
+        {/* Flat Hairline-Divided Metric Strip */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x divide-[#E4E2DA] border border-[#E4E2DA] rounded-xl bg-[#F7F6EF]/40">
+          <div className="p-4">
+            <div className="text-[11px] font-medium text-[#77766F]">Departments</div>
+            <div className="font-serif-editorial text-2xl text-[#171717] mt-0.5 font-mono-tabular">
+              {scopedDepartments.length}
             </div>
-            <div>
-              <div className="font-serif-editorial text-2xl text-[#171717]">
-                {scopedDepartments.length} Depts
-              </div>
-              <div className="text-[11px] text-[#77766F] truncate mt-0.5">
-                {scopedDepartments.map(d => d.code).join(', ') || 'All Departments'}
-              </div>
+            <div className="text-[11px] text-[#77766F] truncate mt-0.5">
+              {scopedDepartments.map(d => d.code).join(', ') || 'All'}
             </div>
           </div>
 
-          <div className="p-4 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] flex flex-col justify-between min-h-[96px]">
-            <div className="flex items-center justify-between text-xs text-[#77766F]">
-              <span className="font-semibold text-[#171717]">Semesters &amp; Student Batches</span>
-              <Calendar className="w-4 h-4 text-[#171717]" />
+          <div className="p-4">
+            <div className="text-[11px] font-medium text-[#77766F]">Batches</div>
+            <div className="font-serif-editorial text-2xl text-[#171717] mt-0.5 font-mono-tabular">
+              {distinctBatches.length}
             </div>
-            <div>
-              <div className="font-serif-editorial text-2xl text-[#171717]">
-                {distinctBatches.length} Batches
-              </div>
-              <div className="text-[11px] text-[#77766F] truncate mt-0.5">
-                {distinctAcademicSemesters.length > 0
-                  ? distinctAcademicSemesters.join(', ')
-                  : `Cohorts: ${distinctBatches.join(', ')}`}
-              </div>
+            <div className="text-[11px] text-[#77766F] truncate mt-0.5">
+              {distinctAcademicSemesters.length > 0
+                ? distinctAcademicSemesters.join(', ')
+                : distinctBatches.join(', ')}
             </div>
           </div>
 
-          <div className="p-4 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] flex flex-col justify-between min-h-[96px]">
-            <div className="flex items-center justify-between text-xs text-[#77766F]">
-              <span className="font-semibold text-[#171717]">Sections &amp; Curriculum</span>
-              <BookOpen className="w-4 h-4 text-[#171717]" />
+          <div className="p-4">
+            <div className="text-[11px] font-medium text-[#77766F]">Sections &amp; Courses</div>
+            <div className="font-serif-editorial text-2xl text-[#171717] mt-0.5 font-mono-tabular">
+              {scopedGroups.length}
             </div>
-            <div>
-              <div className="font-serif-editorial text-2xl text-[#171717]">
-                {scopedGroups.length} Sections
-              </div>
-              <div className="text-[11px] text-[#77766F] truncate mt-0.5">
-                {scopedCourses.length} Courses · {scopedSections.length} Sessions
-              </div>
+            <div className="text-[11px] text-[#77766F] truncate mt-0.5">
+              {scopedCourses.length} Courses · {scopedSections.length} Sessions
             </div>
           </div>
 
-          <div className="p-4 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] flex flex-col justify-between min-h-[96px]">
-            <div className="flex items-center justify-between text-xs text-[#77766F]">
-              <span className="font-semibold text-[#171717]">Faculty &amp; Facilities</span>
-              <DoorOpen className="w-4 h-4 text-[#171717]" />
+          <div className="p-4">
+            <div className="text-[11px] font-medium text-[#77766F]">Faculty &amp; Rooms</div>
+            <div className="font-serif-editorial text-2xl text-[#171717] mt-0.5 font-mono-tabular">
+              {scopedInstructors.length} · {store.rooms.length}
             </div>
-            <div>
-              <div className="font-serif-editorial text-2xl text-[#171717]">
-                {scopedInstructors.length} Faculty · {store.rooms.length} Rooms
-              </div>
-              <div className="text-[11px] text-[#77766F] truncate mt-0.5">
-                {store.rooms.filter(r => r.type === 'lecture').length} Lecture · {store.rooms.filter(r => r.type === 'lab').length} Labs
-              </div>
+            <div className="text-[11px] text-[#77766F] truncate mt-0.5">
+              {store.rooms.filter(r => r.type === 'lecture').length} Lecture · {store.rooms.filter(r => r.type === 'lab').length} Labs
             </div>
           </div>
         </div>
 
         {/* Progressive Disclosure: Full Department -> Semester -> Batch -> Section Tree */}
         {showHierarchyDrawer && (
-          <div className="pt-3 border-t border-[#E4E2DA] space-y-3">
+          <div className="pt-2 space-y-3">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold uppercase tracking-wider text-[#77766F]">
-                Academic Hierarchy Breakdown (Department → Semesters → Batches → Sections)
+              <span className="text-xs font-semibold text-[#171717]">
+                Department Hierarchy
               </span>
               <button
                 type="button"
                 onClick={() => onNavigate('setup')}
                 className="text-xs font-semibold text-[#171717] underline cursor-pointer"
               >
-                Edit Academic Entities in Catalog →
+                Edit Entities →
               </button>
             </div>
 
@@ -845,10 +779,10 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
                     return (
                       <tr key={dept.id} className="hover:bg-[#F7F6EF]/60 transition-colors">
                         <td className="py-3 px-4 whitespace-nowrap">
-                          <span className="px-2 py-0.5 rounded bg-[#171717] text-white text-[10px] font-mono-tabular font-bold mr-2">
+                          <span className="font-mono-tabular font-bold text-[#171717] mr-2">
                             {dept.code}
                           </span>
-                          <span className="font-semibold text-[#171717]">{dept.name}</span>
+                          <span className="font-medium text-[#57564F]">{dept.name}</span>
                         </td>
                         <td className="py-3 px-4 font-mono-tabular text-[#57564F]">
                           {deptPrograms.length}
@@ -859,19 +793,8 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
                         <td className="py-3 px-4 font-mono-tabular text-[#57564F]">
                           {deptFaculty.length}
                         </td>
-                        <td className="py-3 px-4">
-                          <div className="flex flex-wrap gap-1.5">
-                            {deptGroups.map(g => (
-                              <span
-                                key={g.id}
-                                className="px-2 py-0.5 rounded bg-[#F7F6EF] border border-[#E4E2DA] text-[10.5px] font-mono-tabular text-[#171717]"
-                              >
-                                {g.code}
-                                {g.semester ? ` (Sem ${g.semester})` : ''}
-                                {g.homeRoom ? ` · ${g.homeRoom}` : ''}
-                              </span>
-                            ))}
-                          </div>
+                        <td className="py-3 px-4 font-mono-tabular text-[11px] text-[#57564F]">
+                          {deptGroups.map(g => g.code).join(' · ') || '—'}
                         </td>
                       </tr>
                     );
@@ -883,29 +806,22 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
         )}
       </section>
 
-      {/* =========================================================
-          STEP 04 & STEP 05: CONSTRAINTS, EXECUTION & CONFLICT ANALYSIS
-         ========================================================= */}
+      {/* 4. CONSTRAINTS & EXECUTION */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* Left 7 Cols: Step 04 — Scheduling Constraints & Progressive Disclosure Preferences */}
-        <section className="lg:col-span-7 sf-card-white p-6 space-y-5">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3.5 border-b border-[#E4E2DA]">
-            <div>
-              <div className="text-[11px] font-mono-tabular font-semibold uppercase tracking-wider text-[#77766F]">
-                Step 04 · Scheduling Constraints &amp; Preferences
-              </div>
-              <h2 className="font-serif-editorial text-xl text-[#171717] mt-0.5">
-                Active Rules &amp; Timing Invariants
-              </h2>
-            </div>
+        {/* Left 7 Cols: Rules & Preferences */}
+        <section className="lg:col-span-7 sf-card-white p-5 sm:p-6 space-y-5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-[#E4E2DA]">
+            <h2 className="font-serif-editorial text-xl text-[#171717]">
+              Constraints &amp; Preferences
+            </h2>
 
             <button
               type="button"
               onClick={() => setShowAdvancedDrawer(prev => !prev)}
-              className="btn-secondary text-xs h-9 px-3.5 shrink-0"
+              className="btn-secondary text-xs h-8 px-3 shrink-0"
             >
               <Sliders className="w-3.5 h-3.5" />
-              <span>{showAdvancedDrawer ? 'Hide Advanced Settings' : 'Advanced Preferences'}</span>
+              <span>{showAdvancedDrawer ? 'Hide Advanced' : 'Advanced Weights'}</span>
               {showAdvancedDrawer ? (
                 <ChevronUp className="w-3.5 h-3.5" />
               ) : (
@@ -914,34 +830,32 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
             </button>
           </div>
 
-          {/* Core Protected Invariants Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="p-3.5 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] flex items-center gap-2.5">
-              <CheckCircle2 className="w-4 h-4 text-[#171717] shrink-0" />
-              <div className="text-xs font-semibold text-[#171717]">
-                Zero Cross-Entity Overlaps
-              </div>
+          {/* Core Invariants — Clean Hairline Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 divide-y sm:divide-y-0 border border-[#E4E2DA] rounded-xl overflow-hidden text-xs">
+            <div className="p-3.5 flex items-center gap-2.5 sm:border-r sm:border-b border-[#E4E2DA]">
+              <CheckCircle2 className="w-4 h-4 text-[#1B5E20] shrink-0" />
+              <span className="font-medium text-[#171717]">Zero Entity Overlaps</span>
             </div>
 
-            <div className="p-3.5 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] flex items-center gap-2.5">
+            <div className="p-3.5 flex items-center gap-2.5 sm:border-b border-[#E4E2DA]">
               <FlaskConical className="w-4 h-4 text-[#171717] shrink-0" />
-              <div className="text-xs font-semibold text-[#171717]">
-                Continuous Labs ({computedTiming.labDurationHoursLabel} Unbroken)
-              </div>
+              <span className="font-medium text-[#171717]">
+                Continuous {computedTiming.labDurationHoursLabel} Labs
+              </span>
             </div>
 
-            <div className="p-3.5 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] flex items-center gap-2.5">
+            <div className="p-3.5 flex items-center gap-2.5 sm:border-r border-[#E4E2DA]">
               <Coffee className="w-4 h-4 text-[#171717] shrink-0" />
-              <div className="text-xs font-semibold text-[#171717]">
+              <span className="font-medium text-[#171717]">
                 Midday Break ({computedTiming.middayBreak.timeRangeLabel})
-              </div>
+              </span>
             </div>
 
-            <div className="p-3.5 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] flex items-center gap-2.5">
+            <div className="p-3.5 flex items-center gap-2.5">
               <Clock className="w-4 h-4 text-[#171717] shrink-0" />
-              <div className="text-xs font-semibold text-[#171717]">
+              <span className="font-medium text-[#171717]">
                 {computedTiming.periodLengthMinutes}m Lecture Blocks
-              </div>
+              </span>
             </div>
           </div>
 
@@ -955,10 +869,10 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
                   </label>
                   <input
                     type="text"
-                    placeholder={`${selectedSemestersLabel} Master Run`}
+                    placeholder={`${selectedSemestersLabel} Run`}
                     value={scenarioName}
                     onChange={e => setScenarioName(e.target.value)}
-                    className="input-field h-10 text-xs"
+                    className="input-field h-9 text-xs"
                   />
                 </div>
 
@@ -969,11 +883,11 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
                   <button
                     type="button"
                     onClick={() => setForceRescheduleAll(!forceRescheduleAll)}
-                    className="w-full h-10 px-3.5 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] flex items-center justify-between text-xs font-medium text-[#171717] cursor-pointer"
+                    className="w-full h-9 px-3 rounded-xl bg-white border border-[#E4E2DA] flex items-center justify-between text-xs font-medium text-[#171717] cursor-pointer hover:bg-[#F7F6EF]"
                   >
                     <span className="truncate">
                       {forceRescheduleAll
-                        ? 'Re-optimize all sections globally'
+                        ? 'Re-optimize all sections'
                         : 'Preserve manually locked slots'}
                     </span>
                     <Lock className="w-3.5 h-3.5 text-[#77766F] shrink-0" />
@@ -982,16 +896,16 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
               </div>
 
               {/* Solver Engine Mode */}
-              <div className="p-3.5 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] space-y-2.5">
+              <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-semibold text-[#171717] flex items-center gap-1.5">
                     <Cpu className="w-3.5 h-3.5" />
                     <span>Optimization Engine</span>
                   </span>
-                  <span className="text-[10.5px] font-mono-tabular text-[#77766F]">
+                  <span className="text-[11px] font-mono-tabular text-[#77766F]">
                     {solverEngineMode === 'backend_cpsat'
                       ? `Python ${backendStrategy.toUpperCase()}`
-                      : 'Instant Browser Solver'}
+                      : 'Instant Local Solver'}
                   </span>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -1021,17 +935,11 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
               </div>
 
               {/* Soft Constraint Sliders */}
-              <div className="space-y-2.5">
-                <div className="text-xs font-semibold text-[#171717]">
-                  Soft Constraint Priority Weights
-                </div>
+              <div className="divide-y divide-[#E4E2DA] border-t border-[#E4E2DA]">
                 {softConstraints.map(rule => (
-                  <div
-                    key={rule.id}
-                    className="p-3 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] space-y-1.5"
-                  >
+                  <div key={rule.id} className="py-3 space-y-1.5">
                     <div className="flex items-center justify-between text-xs">
-                      <label className="font-semibold text-[#171717] flex items-center gap-2 cursor-pointer">
+                      <label className="font-medium text-[#171717] flex items-center gap-2 cursor-pointer">
                         <input
                           type="checkbox"
                           checked={rule.enabled}
@@ -1069,31 +977,24 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
           )}
         </section>
 
-        {/* Right 5 Cols: Step 05 — Timetable Generation & Conflict Analysis Results */}
-        <section className="lg:col-span-5 sf-card-white p-6 space-y-5">
-          <div className="space-y-1 pb-3.5 border-b border-[#E4E2DA]">
-            <div className="text-[11px] font-mono-tabular font-semibold uppercase tracking-wider text-[#77766F]">
-              Step 05 · Synthesis &amp; Conflict Analysis
-            </div>
+        {/* Right 5 Cols: Execution & Conflict Analysis */}
+        <section className="lg:col-span-5 sf-card-white p-5 sm:p-6 space-y-5">
+          <div className="pb-3 border-b border-[#E4E2DA]">
             <h2 className="font-serif-editorial text-xl text-[#171717]">
-              Execute Timetable Generator
+              Run Solver
             </h2>
-            <p className="text-xs text-[#77766F]">
-              Synthesize conflict-free schedules for{' '}
-              <strong className="text-[#171717]">{selectedSemestersLabel}</strong>.
-            </p>
           </div>
 
-          {/* Pre-Run Summary */}
-          <div className="p-4 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] space-y-2 text-xs">
-            <div className="flex items-center justify-between">
-              <span className="text-[#77766F]">Active Semesters:</span>
+          {/* Pre-Run Summary — Hairline Key-Value List */}
+          <div className="divide-y divide-[#E4E2DA] border-y border-[#E4E2DA] text-xs">
+            <div className="py-2.5 flex items-center justify-between gap-2">
+              <span className="text-[#77766F]">Semesters</span>
               <span className="font-semibold text-[#171717] text-right truncate max-w-[220px]">
                 {selectedSemestersLabel}
               </span>
             </div>
-            <div className="flex items-center justify-between">
-              <span className="text-[#77766F]">Scheduling Policy Scope:</span>
+            <div className="py-2.5 flex items-center justify-between gap-2">
+              <span className="text-[#77766F]">Scope</span>
               <span className="font-semibold text-[#171717]">
                 {scopeMode === 'whole_university'
                   ? `Whole University (${store.departments.length} Depts)`
@@ -1104,14 +1005,14 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
                   : `Custom (${scopedGroups.length} Sections)`}
               </span>
             </div>
-            <div className="flex items-center justify-between">
-              <span className="text-[#77766F]">Target Sections &amp; Sessions:</span>
-              <span className="font-mono-tabular font-bold text-[#171717]">
+            <div className="py-2.5 flex items-center justify-between gap-2">
+              <span className="text-[#77766F]">Workload</span>
+              <span className="font-mono-tabular font-semibold text-[#171717]">
                 {scopedGroups.length} Sections · {scopedSections.length} Sessions
               </span>
             </div>
-            <div className="flex items-center justify-between">
-              <span className="text-[#77766F]">Daily Operating Window:</span>
+            <div className="py-2.5 flex items-center justify-between gap-2">
+              <span className="text-[#77766F]">Hours</span>
               <span className="font-mono-tabular text-[#171717]">
                 {computedTiming.operatingHoursLabel}
               </span>
@@ -1119,13 +1020,13 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
           </div>
 
           {isGenerating ? (
-            <div className="p-4 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] space-y-3">
+            <div className="space-y-2.5 py-2">
               <div className="flex items-center justify-between text-xs font-semibold text-[#171717]">
-                <span className="flex items-center gap-2">
-                  <Sparkles className="w-4 h-4 animate-spin" />
-                  <span>{solverStepText}</span>
+                <span className="flex items-center gap-2 truncate">
+                  <Sparkles className="w-4 h-4 animate-spin shrink-0" />
+                  <span className="truncate">{solverStepText}</span>
                 </span>
-                <span className="font-mono-tabular">{progress}%</span>
+                <span className="font-mono-tabular shrink-0 ml-2">{progress}%</span>
               </div>
               <div className="w-full h-2 bg-[#E4E2DA] rounded-full overflow-hidden">
                 <div
@@ -1143,65 +1044,65 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
               <Play className="w-4 h-4 fill-current" />
               <span>
                 {scopeMode === 'whole_university'
-                  ? `Generate Whole-University Timetable (${scopedGroups.length} Sections)`
+                  ? `Generate Whole-University (${scopedGroups.length} Sections)`
                   : scopeMode === 'department_wise'
                   ? `Generate ${
                       store.departments.find(d => d.id === selectedDeptId)?.code || 'Department'
-                    } Timetable (${scopedGroups.length} Sections)`
-                  : `Generate Selected Timetable (${scopedGroups.length} Sections)`}
+                    } (${scopedGroups.length} Sections)`
+                  : `Generate Selected (${scopedGroups.length} Sections)`}
               </span>
             </button>
           )}
 
-          {/* Conflict Analysis & Timetable Results */}
+          {/* Conflict Analysis & Results */}
           {solverCompleted && lastSolverStats && (
             <div className="p-4 rounded-xl sf-pastel-lime space-y-3.5">
-              <div className="flex items-start gap-2.5">
-                <div className="w-6 h-6 rounded-full bg-[#171717] text-white flex items-center justify-center shrink-0 mt-0.5">
+              <div className="flex items-center gap-2.5">
+                <div className="w-6 h-6 rounded-full bg-[#171717] text-white flex items-center justify-center shrink-0">
                   <Check className="w-3.5 h-3.5" />
                 </div>
                 <div className="min-w-0">
                   <div className="text-xs font-bold text-[#171717]">
-                    Timetable Synthesis &amp; Conflict Analysis Complete
+                    Timetable Synthesized
                   </div>
-                  <p className="text-[11px] text-[#171717]/80 mt-0.5">
-                    {lastSolverStats.scheduledSemestersLabel} · {lastSolverStats.policyLabel}
-                  </p>
+                  <div className="text-[11px] text-[#171717]/75 truncate">
+                    {lastSolverStats.scheduledSemestersLabel}
+                  </div>
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-2 pt-2 border-t border-black/10 text-center">
-                <div className="p-2 rounded-lg bg-white/70">
+              <div className="grid grid-cols-3 divide-x divide-black/10 border border-black/10 rounded-lg bg-white/60 text-center">
+                <div className="py-2 px-1">
                   <div className="text-[10px] uppercase font-semibold text-[#57564F]">
-                    Sessions Placed
+                    Placed
                   </div>
-                  <div className="font-serif-editorial text-lg font-bold text-[#171717]">
+                  <div className="font-serif-editorial text-lg font-bold text-[#171717] font-mono-tabular">
                     {lastSolverStats.placedCount}
                   </div>
                 </div>
-                <div className="p-2 rounded-lg bg-white/70">
+                <div className="py-2 px-1">
                   <div className="text-[10px] uppercase font-semibold text-[#57564F]">
-                    Hard Clashes
+                    Clashes
                   </div>
-                  <div className="font-serif-editorial text-lg font-bold text-[#171717]">
+                  <div className="font-serif-editorial text-lg font-bold text-[#171717] font-mono-tabular">
                     {lastSolverStats.conflictCount}
                   </div>
                 </div>
-                <div className="p-2 rounded-lg bg-white/70">
+                <div className="py-2 px-1">
                   <div className="text-[10px] uppercase font-semibold text-[#57564F]">
-                    Room Utilization
+                    Utilization
                   </div>
-                  <div className="font-serif-editorial text-lg font-bold text-[#171717]">
+                  <div className="font-serif-editorial text-lg font-bold text-[#171717] font-mono-tabular">
                     {lastSolverStats.roomUtilization}%
                   </div>
                 </div>
               </div>
 
-              <div className="space-y-2 pt-1">
+              <div className="space-y-2">
                 <button
                   type="button"
                   onClick={() => onNavigate('timetables')}
-                  className="w-full h-10 rounded-xl bg-[#171717] text-white text-xs font-semibold flex items-center justify-center gap-1.5 hover:bg-black transition-colors cursor-pointer"
+                  className="w-full h-9 rounded-xl bg-[#171717] text-white text-xs font-semibold flex items-center justify-center gap-1.5 hover:bg-black transition-colors cursor-pointer"
                 >
                   <span>Inspect Generated Timetables</span>
                   <ArrowRight className="w-3.5 h-3.5" />
@@ -1211,13 +1112,13 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
                   type="button"
                   onClick={handleQuickExportGoogleSheets}
                   disabled={isExportingSheets}
-                  className="w-full h-10 rounded-xl bg-white hover:bg-[#F7F6EF] text-[#171717] border border-[#171717]/20 text-xs font-semibold flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                  className="w-full h-9 rounded-xl bg-white hover:bg-[#F7F6EF] text-[#171717] border border-[#171717]/20 text-xs font-semibold flex items-center justify-center gap-2 transition-colors cursor-pointer"
                 >
                   <FileSpreadsheet className="w-4 h-4 text-[#171717]" />
                   <span>
                     {isExportingSheets
-                      ? 'Generating Google Sheets (.xlsx)...'
-                      : 'Download All Classes Google Sheets (.xlsx)'}
+                      ? 'Exporting (.xlsx)...'
+                      : 'Download Google Sheets (.xlsx)'}
                   </span>
                 </button>
               </div>
@@ -1228,6 +1129,10 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
     </div>
   );
 };
+
+function activeTimingSummary(computedTiming: ReturnType<typeof computeAcademicScheduleConfig>) {
+  return `${computedTiming.operatingHoursLabel} · ${computedTiming.periodLengthMinutes}m lectures · ${computedTiming.labDurationHoursLabel} labs`;
+}
 
 function semmsSort(sems: Set<string>): string[] {
   return Array.from(sems).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));

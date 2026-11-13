@@ -6,11 +6,9 @@ import {
   Vote,
   Filter,
   Calendar,
-  Users,
   AlertCircle,
   Sparkles,
   BarChart3,
-  ShieldCheck,
   RefreshCw,
   EyeOff
 } from 'lucide-react';
@@ -158,59 +156,36 @@ export const StudentVotingPage: React.FC<StudentVotingPageProps> = ({
   return (
     <div className="space-y-8 pb-14">
       {/* Page Header */}
-      <div className="bg-white border border-[#E4E2DA] rounded-3xl p-6 sm:p-7 shadow-xs">
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-5">
-          <div className="space-y-2 max-w-2xl">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#B8EEEE]/50 text-[#171717] text-xs font-semibold">
-              <Vote className="w-3.5 h-3.5 shrink-0" />
-              <span>University Cohort Referendums & Batch Polls</span>
-            </div>
-            <h1 className="font-serif-editorial text-3xl sm:text-4xl text-[#171717] tracking-tight">
-              Student Voting Portal
-            </h1>
-            <p className="text-xs sm:text-sm text-[#57564F] leading-relaxed">
-              Review questions proposed by your Batch Representatives and cast a single verified vote per active question before the deadline.
-            </p>
+      <header className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 pb-4 border-b border-[#E4E2DA]">
+        <div className="space-y-1">
+          <div className="text-xs text-[#77766F]">
+            <span className="font-semibold text-[#171717]">{syncedUser.name}</span>
+            {' · '}
+            <span>
+              {syncedUser.batchCode
+                ? `${syncedUser.batchCode} (${syncedUser.batchName})`
+                : syncedUser.role}
+            </span>
           </div>
-
-          {/* Compact Student Identity Pill & Refresh */}
-          <div className="flex flex-wrap items-center gap-3 shrink-0">
-            <div className="px-4 py-2.5 rounded-2xl bg-[#F7F6EF] border border-[#E4E2DA] flex items-center gap-3">
-              <div className="space-y-0.5">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold text-[#171717]">{syncedUser.name}</span>
-                  <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-[#171717] bg-[#B7F77C] px-1.5 py-0.5 rounded">
-                    <ShieldCheck className="w-3 h-3 shrink-0" />
-                    <span>Verified</span>
-                  </span>
-                </div>
-                <div className="text-[11px] text-[#57564F] flex items-center gap-1.5">
-                  <Users className="w-3 h-3 text-[#77766F] shrink-0" />
-                  <span>
-                    {syncedUser.batchCode
-                      ? `Batch ${syncedUser.batchCode} (${syncedUser.batchName})`
-                      : `${syncedUser.role} Account`}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <button
-              type="button"
-              onClick={loadVotingData}
-              className="btn-secondary h-10 px-3.5 text-xs font-semibold shrink-0"
-              title="Refresh polls"
-            >
-              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-              <span>Refresh</span>
-            </button>
-          </div>
+          <h1 className="font-serif-editorial text-3xl text-[#171717] tracking-tight">
+            Student Voting Portal
+          </h1>
         </div>
-      </div>
 
-      {/* Filter Bar: 4 Required Poll Views + Batch Filter */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white border border-[#E4E2DA] rounded-2xl p-3">
-        <div className="flex flex-wrap items-center gap-1.5" role="tablist" aria-label="Poll categories">
+        <button
+          type="button"
+          onClick={loadVotingData}
+          className="btn-secondary h-9 px-3.5 text-xs font-semibold shrink-0"
+          title="Refresh polls"
+        >
+          <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+          <span>Refresh</span>
+        </button>
+      </header>
+
+      {/* Filter Bar */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 bg-white border border-[#E4E2DA] rounded-2xl p-2.5">
+        <div className="flex flex-wrap items-center gap-1" role="tablist" aria-label="Poll categories">
           {(
             [
               { id: 'active', label: 'Active Polls', count: activePollsCount },
@@ -218,7 +193,7 @@ export const StudentVotingPage: React.FC<StudentVotingPageProps> = ({
               { id: 'closed', label: 'Closed Polls', count: closedPollsCount },
               {
                 id: 'participated',
-                label: 'Previously Participated Polls',
+                label: 'Previously Participated',
                 count: participatedPollsCount
               }
             ] as const
@@ -231,19 +206,19 @@ export const StudentVotingPage: React.FC<StudentVotingPageProps> = ({
                 role="tab"
                 aria-selected={active}
                 onClick={() => setActiveTab(tab.id)}
-                className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors cursor-pointer ${
                   active
-                    ? 'bg-[#171717] text-white shadow-xs'
+                    ? 'bg-[#171717] text-white'
                     : 'text-[#57564F] hover:text-[#171717] hover:bg-[#F7F6EF]'
                 }`}
               >
                 <span>{tab.label}</span>
                 <span
-                  className={`px-1.5 py-0.5 rounded-md text-[10px] font-mono-tabular ${
-                    active ? 'bg-white/20 text-white' : 'bg-[#EDEAE0] text-[#171717]'
+                  className={`font-mono-tabular text-[11px] ${
+                    active ? 'text-white/75' : 'text-[#77766F]'
                   }`}
                 >
-                  {tab.count}
+                  ({tab.count})
                 </span>
               </button>
             );
@@ -251,18 +226,16 @@ export const StudentVotingPage: React.FC<StudentVotingPageProps> = ({
         </div>
 
         {/* Batch Filter */}
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-2 shrink-0 px-1">
           <Filter className="w-3.5 h-3.5 text-[#77766F] shrink-0" />
-          <label htmlFor="student-batch-filter" className="text-xs font-medium text-[#57564F]">
-            Submitting Batch:
-          </label>
           <select
             id="student-batch-filter"
+            aria-label="Filter by submitting batch"
             value={selectedBatchFilter}
             onChange={e => setSelectedBatchFilter(e.target.value)}
-            className="h-9 px-3 rounded-xl border border-[#E4E2DA] bg-[#F7F6EF] text-xs font-semibold text-[#171717] focus:outline-none"
+            className="h-8 px-2.5 rounded-xl border border-[#E4E2DA] bg-[#F7F6EF] text-xs font-semibold text-[#171717] focus:outline-none"
           >
-            <option value="ALL">All University Batches</option>
+            <option value="ALL">All Batches</option>
             {batches.map(b => (
               <option key={b.id} value={b.id}>
                 {b.code} — {b.name}
@@ -341,56 +314,46 @@ export const StudentVotingPage: React.FC<StudentVotingPageProps> = ({
             return (
               <article
                 key={poll.id}
-                className="bg-white border border-[#E4E2DA] rounded-3xl p-6 sm:p-8 shadow-xs transition-all space-y-6"
+                className="bg-white border border-[#E4E2DA] rounded-2xl p-5 sm:p-6 transition-all space-y-5"
               >
-                {/* Top Metadata Row: Batch, BR Gender Role, Status Badge, Deadline */}
-                <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-[#E4E2DA]">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#171717] text-white text-xs font-semibold">
-                      <span>{poll.batchCode}</span>
+                {/* Top Metadata Row */}
+                <div className="flex flex-wrap items-center justify-between gap-3 pb-3.5 border-b border-[#E4E2DA]">
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-[#57564F]">
+                    <span className="font-mono-tabular font-bold text-[#171717]">
+                      {poll.batchCode}
                     </span>
-
-                    <span
-                      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold ${
-                        poll.brGenderRole === 'female'
-                          ? 'bg-[#F2D8FA] text-[#171717]'
-                          : 'bg-[#B8EEEE] text-[#171717]'
-                      }`}
-                    >
-                      <span>
-                        {poll.brGenderRole === 'female'
-                          ? 'Female Batch Representative'
-                          : 'Male Batch Representative'}
-                      </span>
+                    <span>·</span>
+                    <span>
+                      {poll.brGenderRole === 'female'
+                        ? 'Female Batch Representative'
+                        : 'Male Batch Representative'}
                     </span>
-
-                    <span className="text-xs text-[#57564F]">
-                      Proposed by <strong className="text-[#171717]">{poll.submittedByName}</strong>
-                    </span>
+                    <span>·</span>
+                    <span>{poll.submittedByName}</span>
                   </div>
 
-                  <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-3 text-xs font-semibold">
                     {poll.hasVoted && (
-                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#B7F77C] text-[#171717] text-xs font-bold">
+                      <span className="inline-flex items-center gap-1 text-[#1B5E20]">
                         <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
-                        <span>You have already voted</span>
+                        <span>Voted</span>
                       </span>
                     )}
 
                     {poll.isActiveVotingWindow ? (
-                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#E8F8E0] border border-[#A5E087] text-[#1B5E20] text-xs font-semibold">
+                      <span className="inline-flex items-center gap-1.5 text-[#1B5E20]">
                         <span className="w-2 h-2 rounded-full bg-[#2E7D32]" />
                         <span>Active Poll</span>
                       </span>
                     ) : poll.isUpcoming ? (
-                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#FFF6D6] border border-[#F0D98C] text-[#6E5100] text-xs font-semibold">
+                      <span className="inline-flex items-center gap-1.5 text-[#6E5100]">
                         <Clock className="w-3.5 h-3.5 shrink-0" />
-                        <span>Upcoming Poll</span>
+                        <span>Upcoming</span>
                       </span>
                     ) : (
-                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#EDEAE0] text-[#57564F] text-xs font-semibold">
+                      <span className="inline-flex items-center gap-1.5 text-[#77766F]">
                         <Lock className="w-3.5 h-3.5 shrink-0" />
-                        <span>Voting Closed</span>
+                        <span>Closed</span>
                       </span>
                     )}
                   </div>
@@ -487,8 +450,8 @@ export const StudentVotingPage: React.FC<StudentVotingPageProps> = ({
                               </span>
 
                               {isMyVotedOption && (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-[#171717] text-white text-[10px] font-semibold shrink-0">
-                                  Your Vote
+                                <span className="text-[11px] font-semibold text-[#1B5E20] shrink-0">
+                                  · Your Vote
                                 </span>
                               )}
                             </div>

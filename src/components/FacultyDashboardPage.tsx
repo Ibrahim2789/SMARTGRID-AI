@@ -1,19 +1,13 @@
 import React, { useState } from 'react';
 import {
-  Calendar,
   Clock,
   BookOpen,
-  MapPin,
-  Users,
   CheckCircle2,
-  AlertCircle,
   Plus,
   Trash2,
   Sliders,
   Check,
-  Send,
-  Sparkles,
-  ExternalLink
+  Send
 } from 'lucide-react';
 import { useInstitutionalData, institutionalStore } from '../data/store';
 import { AuthenticatedVotingUser } from '../services/votingApi';
@@ -161,87 +155,68 @@ export const FacultyDashboardPage: React.FC<FacultyDashboardPageProps> = ({
 
   return (
     <div className="max-w-[1200px] mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
-      {/* 1. Header & Professor Identity Banner */}
-      <div className="sf-card-white p-5 sm:p-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
+      {/* 1. Header */}
+      <header className="flex flex-col md:flex-row md:items-end justify-between gap-4 pb-4 border-b border-[#E4E2DA]">
         <div className="space-y-1">
           <div className="flex items-center gap-2 text-xs text-[#77766F]">
-            <span className="font-semibold text-[#171717]">Faculty Academic Portal</span>
-            <span>·</span>
             <span>{matchedInstructor?.title || 'Professor'}</span>
             <span>·</span>
-            <span className="text-[#57564F] font-medium">{currentUser.email}</span>
+            <span>{currentUser.email}</span>
           </div>
           <h1 className="font-serif-editorial text-2xl sm:text-3xl text-[#171717] tracking-tight">
             Welcome, {matchedInstructor?.name || currentUser.name}
           </h1>
-          <p className="text-xs text-[#57564F]">
-            Review your weekly teaching sessions, laboratory allocations, and submit constraint preferences to the academic scheduler.
-          </p>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
-          <button
-            type="button"
-            onClick={() => onNavigate('timetables')}
-            className="btn-secondary h-9 text-xs"
-          >
-            <BookOpen className="w-3.5 h-3.5" />
-            <span>Open Institutional Matrix</span>
-          </button>
-        </div>
-      </div>
+        <button
+          type="button"
+          onClick={() => onNavigate('timetables')}
+          className="btn-secondary h-9 text-xs shrink-0"
+        >
+          <BookOpen className="w-3.5 h-3.5" />
+          <span>Open Institutional Matrix</span>
+        </button>
+      </header>
 
-      {/* 2. Key Metrics Bar */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div className="sf-card-white p-4 space-y-1">
+      {/* 2. Compact Hairline Key Metrics Strip */}
+      <div className="sf-card-white overflow-hidden grid grid-cols-2 sm:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x divide-[#E4E2DA]">
+        <div className="px-4 py-3.5 space-y-0.5">
           <div className="text-[11px] font-medium text-[#77766F] flex items-center justify-between">
             <span>Weekly Workload</span>
-            <Clock className="w-3.5 h-3.5 text-[#171717]" />
+            <Clock className="w-3.5 h-3.5 text-[#77766F]" />
           </div>
           <div className="font-serif-editorial text-2xl text-[#171717] font-mono-tabular">
-            {totalWeeklyTeachingHours} <span className="text-sm font-sans text-[#77766F] font-normal">hrs/week</span>
-          </div>
-          <div className="text-[10.5px] text-[#77766F]">
-            Target limit: {maxWeeklyHours} hrs max
+            {totalWeeklyTeachingHours} <span className="text-xs font-sans text-[#77766F] font-normal">/ {maxWeeklyHours} hrs</span>
           </div>
         </div>
 
-        <div className="sf-card-white p-4 space-y-1">
+        <div className="px-4 py-3.5 space-y-0.5">
           <div className="text-[11px] font-medium text-[#77766F] flex items-center justify-between">
-            <span>Scheduled Lectures</span>
-            <BookOpen className="w-3.5 h-3.5 text-[#171717]" />
+            <span>Lectures</span>
+            <BookOpen className="w-3.5 h-3.5 text-[#77766F]" />
           </div>
           <div className="font-serif-editorial text-2xl text-[#171717] font-mono-tabular">
             {lectureCount}
           </div>
-          <div className="text-[10.5px] text-[#77766F]">
-            50-minute teaching slots
-          </div>
         </div>
 
-        <div className="sf-card-white p-4 space-y-1">
+        <div className="px-4 py-3.5 space-y-0.5">
           <div className="text-[11px] font-medium text-[#77766F] flex items-center justify-between">
             <span>Continuous Labs</span>
-            <Sliders className="w-3.5 h-3.5 text-[#171717]" />
+            <Sliders className="w-3.5 h-3.5 text-[#77766F]" />
           </div>
           <div className="font-serif-editorial text-2xl text-[#171717] font-mono-tabular">
-            {labCount}
-          </div>
-          <div className="text-[10.5px] text-[#77766F]">
-            {computedTiming.labDurationHoursLabel} lab sessions
+            {labCount} <span className="text-xs font-sans text-[#77766F] font-normal">({computedTiming.labDurationHoursLabel})</span>
           </div>
         </div>
 
-        <div className="sf-card-white p-4 space-y-1">
+        <div className="px-4 py-3.5 space-y-0.5">
           <div className="text-[11px] font-medium text-[#77766F] flex items-center justify-between">
-            <span>Conflict Clearance</span>
-            <CheckCircle2 className="w-3.5 h-3.5 text-[#171717]" />
+            <span>Conflicts</span>
+            <CheckCircle2 className="w-3.5 h-3.5 text-[#1B5E20]" />
           </div>
           <div className="font-serif-editorial text-2xl text-[#171717]">
-            100%
-          </div>
-          <div className="text-[10.5px] text-[#77766F]">
-            Zero overlapping assignments
+            0
           </div>
         </div>
       </div>
@@ -268,7 +243,7 @@ export const FacultyDashboardPage: React.FC<FacultyDashboardPageProps> = ({
               : 'text-[#57564F] hover:text-[#171717]'
           }`}
         >
-          Availability & Preferences
+          Availability &amp; Preferences
         </button>
       </div>
 
@@ -277,14 +252,9 @@ export const FacultyDashboardPage: React.FC<FacultyDashboardPageProps> = ({
         <div className="space-y-4">
           <div className="sf-card-white overflow-hidden">
             <div className="p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#E4E2DA]">
-              <div>
-                <h2 className="font-serif-editorial text-xl text-[#171717]">
-                  Assigned Teaching Schedule
-                </h2>
-                <p className="text-xs text-[#77766F]">
-                  All current lecture sessions and continuous laboratory slots assigned to your institutional profile.
-                </p>
-              </div>
+              <h2 className="font-serif-editorial text-xl text-[#171717]">
+                Assigned Teaching Schedule
+              </h2>
               <div className="flex flex-wrap items-center gap-2">
                 <input
                   type="text"
@@ -351,20 +321,17 @@ export const FacultyDashboardPage: React.FC<FacultyDashboardPageProps> = ({
                         >
                           <td className="py-3 px-4">
                             <div className="flex items-center gap-2">
-                              <span className="font-mono-tabular font-bold text-[#171717] bg-[#F7F6EF] px-2 py-0.5 rounded border border-[#E4E2DA]">
+                              <span className="font-mono-tabular font-semibold text-[#171717]">
                                 {course?.code || sec.courseId}
                               </span>
-                              <span className="font-medium text-[#171717]">
+                              <span className="text-[#57564F]">
                                 {course?.title || 'Academic Course'}
                               </span>
                             </div>
                           </td>
-                          <td className="py-3 px-4">
-                            <span
-                              className={`inline-flex px-2 py-0.5 rounded text-[11px] font-semibold ${
-                                isLab ? 'bg-[#F2D8FA] text-[#171717]' : 'bg-[#B8EEEE] text-[#171717]'
-                              }`}
-                            >
+                          <td className="py-3 px-4 text-[#57564F]">
+                            <span className="inline-flex items-center gap-1.5 font-medium text-[#171717]">
+                              <span className={`w-1.5 h-1.5 rounded-full ${isLab ? 'bg-[#9C52B5]' : 'bg-[#2C7A7B]'}`} />
                               {isLab
                                 ? `Lab (${computedTiming.labDurationHoursLabel})`
                                 : `Lecture (${computedTiming.periodLengthMinutes}m)`}
@@ -413,14 +380,9 @@ export const FacultyDashboardPage: React.FC<FacultyDashboardPageProps> = ({
           )}
 
           <div className="sf-card-white p-5 sm:p-6 space-y-6">
-            <div>
-              <h2 className="font-serif-editorial text-xl text-[#171717]">
-                Teaching Availability & Operating Preferences
-              </h2>
-              <p className="text-xs text-[#77766F] mt-0.5">
-                Configure your preferred teaching days, workload thresholds, and reserved research or administrative meeting windows.
-              </p>
-            </div>
+            <h2 className="font-serif-editorial text-xl text-[#171717] border-b border-[#E4E2DA] pb-3">
+              Teaching Availability &amp; Preferences
+            </h2>
 
             {/* Preferred Teaching Days */}
             <div className="space-y-2">
@@ -435,7 +397,7 @@ export const FacultyDashboardPage: React.FC<FacultyDashboardPageProps> = ({
                       key={day}
                       type="button"
                       onClick={() => handleToggleDay(day)}
-                      className={`px-3 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer border ${
+                      className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer border ${
                         isSelected
                           ? 'bg-[#171717] text-white border-[#171717]'
                           : 'bg-[#F7F6EF] text-[#57564F] border-[#E4E2DA] hover:border-[#171717]'
@@ -446,37 +408,27 @@ export const FacultyDashboardPage: React.FC<FacultyDashboardPageProps> = ({
                   );
                 })}
               </div>
-              <p className="text-[11px] text-[#77766F]">
-                The solver algorithm prioritizes placing your teaching workload on your preferred days.
-              </p>
             </div>
 
             {/* Teaching Hours Limits */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-[#E4E2DA]">
-              <div className="space-y-1.5">
-                <label className="block text-xs font-semibold text-[#171717]">
-                  Maximum Weekly Teaching Load
-                </label>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="range"
-                    min="6"
-                    max="24"
-                    step="1"
-                    value={maxWeeklyHours}
-                    onChange={e => setMaxWeeklyHours(Number(e.target.value))}
-                    className="w-full accent-[#171717]"
-                  />
-                  <span className="font-mono-tabular font-bold text-xs px-2.5 py-1 rounded bg-[#F7F6EF] border border-[#E4E2DA] shrink-0">
-                    {maxWeeklyHours} hrs
-                  </span>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 pt-4 border-t border-[#E4E2DA]">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-xs font-semibold text-[#171717]">
+                  <span>Maximum Weekly Teaching Load</span>
+                  <span className="font-mono-tabular">{maxWeeklyHours} hrs</span>
                 </div>
-                <p className="text-[11px] text-[#77766F]">
-                  Weekly cap for lectures and laboratory oversight.
-                </p>
+                <input
+                  type="range"
+                  min="6"
+                  max="24"
+                  step="1"
+                  value={maxWeeklyHours}
+                  onChange={e => setMaxWeeklyHours(Number(e.target.value))}
+                  className="w-full accent-[#171717]"
+                />
               </div>
 
-              <div className="space-y-1.5">
+              <div className="space-y-2">
                 <label className="block text-xs font-semibold text-[#171717]">
                   Maximum Consecutive Hours
                 </label>
@@ -496,39 +448,30 @@ export const FacultyDashboardPage: React.FC<FacultyDashboardPageProps> = ({
                     </button>
                   ))}
                 </div>
-                <p className="text-[11px] text-[#77766F]">
-                  Guarantees breaks between long teaching stretches.
-                </p>
               </div>
             </div>
 
             {/* Blocked Unavailability / Research Windows */}
-            <div className="space-y-3 pt-2 border-t border-[#E4E2DA]">
-              <div>
-                <label className="block text-xs font-semibold text-[#171717]">
-                  Blocked Unavailability & Research Windows
-                </label>
-                <p className="text-[11px] text-[#77766F]">
-                  Prevent the solver from placing lectures or labs during your protected research hours, faculty meetings, or thesis defenses.
-                </p>
-              </div>
+            <div className="space-y-3 pt-4 border-t border-[#E4E2DA]">
+              <label className="block text-xs font-semibold text-[#171717]">
+                Blocked Unavailability &amp; Research Windows
+              </label>
 
               {/* Current Blocked Slots */}
               {unavailableSlots.length === 0 ? (
-                <div className="p-3 text-xs text-[#77766F] bg-[#F7F6EF] rounded-xl border border-[#E4E2DA]">
-                  No unavailable slots configured. You are fully available during university operational hours.
+                <div className="py-3 text-xs text-[#77766F]">
+                  No unavailable slots configured.
                 </div>
               ) : (
-                <div className="space-y-2">
+                <div className="border border-[#E4E2DA] rounded-xl divide-y divide-[#E4E2DA]">
                   {unavailableSlots.map((slot, idx) => (
                     <div
                       key={`${slot.day}-${slot.timeSlot}-${idx}`}
-                      className="p-3 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] flex items-center justify-between gap-3 text-xs"
+                      className="px-3.5 py-2.5 flex items-center justify-between gap-3 text-xs"
                     >
                       <div className="flex items-center gap-2 font-mono-tabular">
-                        <span className="font-semibold text-[#171717] px-2 py-0.5 rounded bg-white border border-[#E4E2DA]">
-                          {slot.day}
-                        </span>
+                        <span className="font-semibold text-[#171717]">{slot.day}</span>
+                        <span>·</span>
                         <span className="text-[#171717] font-medium">{slot.timeSlot}</span>
                         {slot.reason && (
                           <span className="text-[#77766F] font-sans">· {slot.reason}</span>
@@ -537,7 +480,7 @@ export const FacultyDashboardPage: React.FC<FacultyDashboardPageProps> = ({
                       <button
                         type="button"
                         onClick={() => handleRemoveUnavailableSlot(idx)}
-                        className="text-[#77766F] hover:text-[#8B1E1E] p-1 rounded hover:bg-white transition-colors cursor-pointer"
+                        className="text-[#77766F] hover:text-[#8B1E1E] p-1 rounded hover:bg-[#F7F6EF] transition-colors cursor-pointer"
                         title="Remove unavailable window"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
@@ -548,11 +491,7 @@ export const FacultyDashboardPage: React.FC<FacultyDashboardPageProps> = ({
               )}
 
               {/* Add New Block Form */}
-              <div className="p-3.5 rounded-xl bg-[#EDEAE0] border border-[#E4E2DA] space-y-2.5">
-                <div className="text-xs font-semibold text-[#171717] flex items-center gap-1.5">
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>Add Blocked Window</span>
-                </div>
+              <div className="pt-3 border-t border-[#E4E2DA] space-y-2.5">
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                   <div>
                     <label className="block text-[10.5px] text-[#77766F] mb-1">Day</label>
@@ -599,7 +538,7 @@ export const FacultyDashboardPage: React.FC<FacultyDashboardPageProps> = ({
                     className="btn-secondary h-8 text-xs"
                   >
                     <Plus className="w-3.5 h-3.5" />
-                    <span>Add to Unavailable Windows</span>
+                    <span>Add Blocked Window</span>
                   </button>
                 </div>
               </div>
@@ -613,7 +552,7 @@ export const FacultyDashboardPage: React.FC<FacultyDashboardPageProps> = ({
                 className="btn-primary h-10 px-5 text-xs font-semibold"
               >
                 <Send className="w-3.5 h-3.5" />
-                <span>Save & Submit Preferences to Scheduler</span>
+                <span>Save &amp; Submit Preferences</span>
               </button>
             </div>
           </div>

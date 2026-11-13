@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { SmartGridNav, RouteType } from './SmartGridNav';
+import type { RouteType } from './SmartGridNav';
 import { useInstitutionalData, institutionalStore } from '../data/store';
 import { buildMatrixSchedule } from '../data/solverAdapter';
 import {
@@ -24,7 +24,6 @@ import {
   User,
   Lock,
   Coffee,
-  MapPin,
   ArrowRightLeft,
   AlertCircle,
   AlertTriangle,
@@ -841,14 +840,9 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
       )}
 
       {exportNotice && (
-        <div className="px-4 py-3 sf-pastel-cyan rounded-xl text-xs font-medium flex items-start gap-2.5">
-          <Check className="w-4 h-4 text-[#171717] shrink-0 mt-0.5" />
-          <div>
-            <div className="font-semibold text-[#171717]">{exportNotice}</div>
-            <div className="text-[11px] text-[#171717]/80">
-              Open the downloaded .xlsx file in Google Drive / Google Sheets to inspect the Weekly Overview and every individual Class/Section worksheet.
-            </div>
-          </div>
+        <div className="px-4 py-2.5 sf-pastel-cyan rounded-xl text-xs font-medium flex items-center gap-2">
+          <Check className="w-4 h-4 text-[#171717] shrink-0" />
+          <span className="font-semibold text-[#171717]">{exportNotice}</span>
         </div>
       )}
 
@@ -1459,37 +1453,30 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
       {conflictDialogData && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs">
           <div className="bg-white border border-[#E4E2DA] rounded-2xl shadow-xl max-w-lg w-full overflow-hidden p-6 space-y-4">
-            <div className="flex items-start justify-between">
+            <div className="flex items-start justify-between border-b border-[#E4E2DA] pb-3">
               <div className="flex items-center gap-2">
-                <div className="p-2 rounded-xl bg-[#E8D36B]/40 text-[#171717]">
-                  <AlertTriangle className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="font-serif-editorial text-xl text-[#171717]">
-                    Timetable Conflict Inspector
-                  </h3>
-                  <p className="text-xs text-[#77766F]">
-                    Constraint check detected collisions at target slot.
-                  </p>
-                </div>
+                <AlertTriangle className="w-4 h-4 text-[#8B6B00] shrink-0" />
+                <h3 className="font-serif-editorial text-xl text-[#171717]">
+                  Timetable Conflict Inspector
+                </h3>
               </div>
               <button
                 onClick={() => setConflictDialogData(null)}
-                className="text-[#77766F] hover:text-[#171717] p-1.5 rounded-lg hover:bg-[#EDEAE0] cursor-pointer"
+                className="text-[#77766F] hover:text-[#171717] p-1.5 rounded-lg hover:bg-[#F7F6EF] cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="p-3.5 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] space-y-2 text-xs">
-              <div className="flex items-center justify-between">
-                <span className="text-[#77766F]">Dragged Session:</span>
-                <span className="font-mono-tabular font-bold text-[#171717]">
+            <div className="border border-[#E4E2DA] rounded-xl divide-y divide-[#E4E2DA] text-xs">
+              <div className="px-3.5 py-2.5 flex items-center justify-between gap-2">
+                <span className="text-[#77766F]">Dragged Session</span>
+                <span className="font-mono-tabular font-semibold text-[#171717] text-right">
                   {conflictDialogData.sourceItem.code} · {conflictDialogData.sourceItem.title}
                 </span>
               </div>
-              <div className="flex items-center justify-between">
-                <span className="text-[#77766F]">Target Destination:</span>
+              <div className="px-3.5 py-2.5 flex items-center justify-between gap-2">
+                <span className="text-[#77766F]">Target Slot</span>
                 <span className="font-mono-tabular font-semibold text-[#171717]">
                   {conflictDialogData.targetDay} · {conflictDialogData.targetPeriod}
                 </span>
@@ -1499,7 +1486,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
             {/* Identified Conflicts List */}
             <div className="space-y-2">
               <div className="text-[11px] font-semibold uppercase tracking-wider text-[#77766F]">
-                Identified Constraints & Collisions ({conflictDialogData.conflicts.length})
+                Constraints &amp; Collisions ({conflictDialogData.conflicts.length})
               </div>
               <div className="space-y-1.5 max-h-48 overflow-y-auto">
                 {conflictDialogData.conflicts.map((c, idx) => (
@@ -1508,7 +1495,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
                     className={`p-2.5 rounded-xl text-xs flex items-start gap-2 border ${
                       c.severity === 'hard'
                         ? 'bg-[#FDE8E8] border-[#F5B5B5] text-[#8B1E1E]'
-                        : 'bg-[#E8D36B]/25 border-[#D4BC4C] text-[#171717]'
+                        : 'bg-[#FFF6D6] border-[#F0D98C] text-[#171717]'
                     }`}
                   >
                     <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
@@ -1518,10 +1505,10 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
                   </div>
                 ))}
                 {conflictDialogData.conflictingItem && (
-                  <div className="p-2.5 rounded-xl text-xs flex items-start gap-2 border bg-[#B8EEEE]/35 border-[#95DFDF] text-[#171717]">
-                    <ArrowRightLeft className="w-4 h-4 shrink-0 mt-0.5" />
+                  <div className="p-2.5 rounded-xl text-xs flex items-start gap-2 border border-[#E4E2DA] bg-[#F7F6EF] text-[#171717]">
+                    <ArrowRightLeft className="w-4 h-4 shrink-0 mt-0.5 text-[#77766F]" />
                     <div className="leading-snug">
-                      Slot currently reserved for: <strong>{conflictDialogData.conflictingItem.code} · {conflictDialogData.conflictingItem.title}</strong> ({conflictDialogData.conflictingItem.prof}).
+                      Occupied by <strong>{conflictDialogData.conflictingItem.code} · {conflictDialogData.conflictingItem.title}</strong> ({conflictDialogData.conflictingItem.prof}).
                     </div>
                   </div>
                 )}
@@ -1529,13 +1516,13 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
             </div>
 
             {/* Action Buttons */}
-            <div className="flex flex-wrap items-center justify-end gap-2 pt-2 border-t border-[#E4E2DA]">
+            <div className="flex flex-wrap items-center justify-end gap-2 pt-3 border-t border-[#E4E2DA]">
               <button
                 type="button"
                 onClick={() => setConflictDialogData(null)}
                 className="btn-secondary h-9 text-xs"
               >
-                Cancel Move
+                Cancel
               </button>
               {conflictDialogData.conflictingItem && (
                 <button
@@ -1544,7 +1531,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
                   className="btn-primary h-9 text-xs bg-[#171717]"
                 >
                   <ArrowRightLeft className="w-3.5 h-3.5" />
-                  <span>Swap Positions With Existing Class</span>
+                  <span>Swap With Existing</span>
                 </button>
               )}
               <button
@@ -1552,7 +1539,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
                 onClick={handleConfirmOverrideMove}
                 className="px-3 py-2 rounded-xl text-xs font-semibold bg-[#8B1E1E] text-white hover:bg-[#6D1717] cursor-pointer"
               >
-                Override & Move Anyway
+                Override &amp; Move
               </button>
             </div>
           </div>
@@ -1563,59 +1550,52 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
       {swapDialogData && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs">
           <div className="bg-white border border-[#E4E2DA] rounded-2xl shadow-xl max-w-lg w-full overflow-hidden p-6 space-y-4">
-            <div className="flex items-start justify-between">
+            <div className="flex items-start justify-between border-b border-[#E4E2DA] pb-3">
               <div className="flex items-center gap-2">
-                <div className="p-2 rounded-xl bg-[#B8EEEE]/60 text-[#171717]">
-                  <ArrowRightLeft className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="font-serif-editorial text-xl text-[#171717]">
-                    Confirm Timetable Position Swap
-                  </h3>
-                  <p className="text-xs text-[#77766F]">
-                    Exchange scheduled slots between the two chosen sessions.
-                  </p>
-                </div>
+                <ArrowRightLeft className="w-4 h-4 text-[#171717] shrink-0" />
+                <h3 className="font-serif-editorial text-xl text-[#171717]">
+                  Confirm Position Swap
+                </h3>
               </div>
               <button
                 onClick={() => setSwapDialogData(null)}
-                className="text-[#77766F] hover:text-[#171717] p-1.5 rounded-lg hover:bg-[#EDEAE0] cursor-pointer"
+                className="text-[#77766F] hover:text-[#171717] p-1.5 rounded-lg hover:bg-[#F7F6EF] cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-              <div className="p-3.5 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] space-y-1.5">
+            <div className="border border-[#E4E2DA] rounded-xl grid grid-cols-1 sm:grid-cols-2 divide-y sm:divide-y-0 sm:divide-x divide-[#E4E2DA] text-xs">
+              <div className="p-3.5 space-y-1">
                 <div className="text-[10px] uppercase font-semibold text-[#77766F]">Session A</div>
                 <div className="font-mono-tabular font-bold text-[#171717]">{swapDialogData.itemA.code}</div>
                 <div className="font-medium text-[#171717]">{swapDialogData.itemA.title}</div>
-                <div className="text-[11px] text-[#57564F]">
-                  Current: {swapDialogData.itemA.day} · {swapDialogData.itemA.time}
+                <div className="text-[11px] text-[#77766F]">
+                  From: {swapDialogData.itemA.day} · {swapDialogData.itemA.time}
                 </div>
-                <div className="text-[11px] font-semibold text-[#171717] pt-1 border-t border-[#E4E2DA]">
-                  New Slot: {swapDialogData.itemB.day} · {swapDialogData.itemB.time}
+                <div className="text-[11px] font-semibold text-[#171717]">
+                  To: {swapDialogData.itemB.day} · {swapDialogData.itemB.time}
                 </div>
               </div>
 
-              <div className="p-3.5 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] space-y-1.5">
+              <div className="p-3.5 space-y-1">
                 <div className="text-[10px] uppercase font-semibold text-[#77766F]">Session B</div>
                 <div className="font-mono-tabular font-bold text-[#171717]">{swapDialogData.itemB.code}</div>
                 <div className="font-medium text-[#171717]">{swapDialogData.itemB.title}</div>
-                <div className="text-[11px] text-[#57564F]">
-                  Current: {swapDialogData.itemB.day} · {swapDialogData.itemB.time}
+                <div className="text-[11px] text-[#77766F]">
+                  From: {swapDialogData.itemB.day} · {swapDialogData.itemB.time}
                 </div>
-                <div className="text-[11px] font-semibold text-[#171717] pt-1 border-t border-[#E4E2DA]">
-                  New Slot: {swapDialogData.itemA.day} · {swapDialogData.itemA.time}
+                <div className="text-[11px] font-semibold text-[#171717]">
+                  To: {swapDialogData.itemA.day} · {swapDialogData.itemA.time}
                 </div>
               </div>
             </div>
 
             {(swapDialogData.conflictsA.length > 0 || swapDialogData.conflictsB.length > 0) && (
-              <div className="p-3 rounded-xl bg-[#E8D36B]/25 border border-[#D4BC4C] text-xs text-[#171717] space-y-1">
+              <div className="p-3 rounded-xl bg-[#FFF6D6] border border-[#F0D98C] text-xs text-[#171717] space-y-1">
                 <div className="font-semibold flex items-center gap-1.5">
                   <AlertTriangle className="w-3.5 h-3.5 text-[#171717]" />
-                  <span>Validation Invariants:</span>
+                  <span>Validation Warnings</span>
                 </div>
                 <ul className="list-disc list-inside text-[11px] text-[#57564F] space-y-0.5">
                   {swapDialogData.conflictsA.map((c, i) => (
@@ -1628,7 +1608,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
               </div>
             )}
 
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#E4E2DA]">
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-[#E4E2DA]">
               <button
                 type="button"
                 onClick={() => setSwapDialogData(null)}
@@ -1642,7 +1622,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
                 className="btn-primary h-9 text-xs"
               >
                 <ArrowRightLeft className="w-3.5 h-3.5" />
-                <span>Confirm & Execute Swap</span>
+                <span>Confirm Swap</span>
               </button>
             </div>
           </div>

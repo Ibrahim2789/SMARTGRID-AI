@@ -812,15 +812,12 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
           1. CONTEXTUAL PAGE HEADING & INTERNAL SUB-VIEW TABS
          ========================================================= */}
       <header className="flex flex-col lg:flex-row lg:items-end justify-between gap-4 pb-5 border-b border-[#E4E2DA]">
-        <div className="space-y-1.5">
-          <div className="text-xs font-medium text-[#77766F]">
-            Academic Data Management · {activeTerm?.name || 'Fall 2026'}
-          </div>
+        <div className="space-y-1">
           <h1 className="font-serif-editorial text-3xl sm:text-4xl text-[#171717] tracking-tight">
             {currentSectionTitle}
           </h1>
-          <p className="text-xs sm:text-sm text-[#77766F] max-w-2xl">
-            {currentSectionSubtitle}
+          <p className="text-xs sm:text-sm text-[#77766F]">
+            Active Term · {activeTerm?.name || 'Fall 2026'}
           </p>
         </div>
 
@@ -856,7 +853,7 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
       {/* Internal Sub-Tabs for Classes/Sections/Departments or Instructors */}
       {isClassesAndSectionsGroup && (
         <div
-          className="inline-flex flex-wrap items-center gap-1.5 p-1.5 rounded-2xl bg-white border border-[#E4E2DA]"
+          className="inline-flex flex-wrap items-center gap-1 p-1 rounded-xl bg-[#EDEAE0]/70 border border-[#E4E2DA]"
           role="tablist"
           aria-label="Batches and sections views"
         >
@@ -889,17 +886,17 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
                 role="tab"
                 aria-selected={active}
                 onClick={() => selectStep(tab.stepIdx)}
-                className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
+                className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
                   active
                     ? 'bg-[#171717] text-white'
-                    : 'text-[#57564F] hover:text-[#171717] hover:bg-[#F7F6EF]'
+                    : 'text-[#57564F] hover:text-[#171717]'
                 }`}
               >
                 <Icon className="w-3.5 h-3.5" />
                 <span>{tab.label}</span>
                 <span
-                  className={`px-1.5 py-0.5 rounded-md text-[10px] font-mono-tabular ${
-                    active ? 'bg-white/20 text-white' : 'bg-[#EDEAE0] text-[#171717]'
+                  className={`text-[11px] font-mono-tabular ${
+                    active ? 'text-white/75' : 'text-[#77766F]'
                   }`}
                 >
                   {tab.count}
@@ -912,7 +909,7 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
 
       {isInstructorsGroup && (
         <div
-          className="inline-flex flex-wrap items-center gap-1.5 p-1.5 rounded-2xl bg-white border border-[#E4E2DA]"
+          className="inline-flex flex-wrap items-center gap-1 p-1 rounded-xl bg-[#EDEAE0]/70 border border-[#E4E2DA]"
           role="tablist"
           aria-label="Instructor management views"
         >
@@ -939,17 +936,17 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
                 role="tab"
                 aria-selected={active}
                 onClick={() => selectStep(tab.stepIdx)}
-                className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
+                className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
                   active
                     ? 'bg-[#171717] text-white'
-                    : 'text-[#57564F] hover:text-[#171717] hover:bg-[#F7F6EF]'
+                    : 'text-[#57564F] hover:text-[#171717]'
                 }`}
               >
                 <Icon className="w-3.5 h-3.5" />
                 <span>{tab.label}</span>
                 <span
-                  className={`px-1.5 py-0.5 rounded-md text-[10px] font-mono-tabular ${
-                    active ? 'bg-white/20 text-white' : 'bg-[#EDEAE0] text-[#171717]'
+                  className={`text-[11px] font-mono-tabular ${
+                    active ? 'text-white/75' : 'text-[#77766F]'
                   }`}
                 >
                   {tab.count}
@@ -1011,14 +1008,9 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
         {activeStep === 0 && (
           <div className="sf-card-white p-6 space-y-6">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#E4E2DA] pb-4">
-              <div>
-                <h2 className="font-serif-editorial text-2xl text-[#171717]">
-                  University Departments
-                </h2>
-                <p className="text-xs text-[#77766F]">
-                  Compact horizontal directory of academic departments, schools, courses, and cohorts.
-                </p>
-              </div>
+              <h2 className="font-serif-editorial text-2xl text-[#171717]">
+                University Departments ({filteredDepartments.length})
+              </h2>
               <div className="flex flex-wrap items-center gap-2.5">
                 <div className="input-group-field h-9 px-3 gap-2 w-56">
                   <Search className="w-3.5 h-3.5 text-[#77766F] shrink-0" />
@@ -1179,14 +1171,9 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
         {activeStep === 1 && (
           <div className="sf-card-white p-6 space-y-5">
             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-[#E4E2DA] pb-4">
-              <div>
-                <h2 className="font-serif-editorial text-2xl text-[#171717]">
-                  Classrooms and Laboratories ({filteredRooms.length})
-                </h2>
-                <p className="text-xs text-[#77766F]">
-                  Scan room names, buildings, capacities, space types, and real-time slot availability.
-                </p>
-              </div>
+              <h2 className="font-serif-editorial text-2xl text-[#171717]">
+                Classrooms and Laboratories ({filteredRooms.length})
+              </h2>
               <div className="flex flex-wrap items-center gap-2">
                 <button onClick={() => handleDownloadTemplate('rooms')} className="btn-secondary text-xs h-9">
                   <Download className="w-3.5 h-3.5" />
@@ -1442,14 +1429,9 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
         {activeStep === 2 && (
           <div className="sf-card-white p-6 space-y-5">
             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-[#E4E2DA] pb-4">
-              <div>
-                <h2 className="font-serif-editorial text-2xl text-[#171717]">
-                  Courses ({filteredCourses.length})
-                </h2>
-                <p className="text-xs text-[#77766F]">
-                  Compact horizontal directory showing course code, name, assigned instructor, semester/section, and course type.
-                </p>
-              </div>
+              <h2 className="font-serif-editorial text-2xl text-[#171717]">
+                Courses ({filteredCourses.length})
+              </h2>
               <div className="flex flex-wrap items-center gap-2">
                 <button onClick={() => handleDownloadTemplate('courses')} className="btn-secondary text-xs h-9">
                   <Download className="w-3.5 h-3.5" />
@@ -1702,14 +1684,9 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
         {activeStep === 3 && (
           <div className="sf-card-white p-6 space-y-5">
             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-[#E4E2DA] pb-4">
-              <div>
-                <h2 className="font-serif-editorial text-2xl text-[#171717]">
-                  Instructors ({filteredInstructors.length})
-                </h2>
-                <p className="text-xs text-[#77766F]">
-                  Horizontal faculty roster displaying instructor name, department, availability status, and current assigned teaching load.
-                </p>
-              </div>
+              <h2 className="font-serif-editorial text-2xl text-[#171717]">
+                Instructors ({filteredInstructors.length})
+              </h2>
               <button onClick={() => handleOpenAddInstructor()} className="btn-primary text-xs h-9 self-start lg:self-auto">
                 <Plus className="w-3.5 h-3.5" />
                 <span>Add Instructor</span>
@@ -1950,14 +1927,9 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
         {activeStep === 4 && (
           <div className="sf-card-white p-6 space-y-5">
             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-[#E4E2DA] pb-4">
-              <div>
-                <h2 className="font-serif-editorial text-2xl text-[#171717]">
-                  Batches and Sections ({filteredGroups.length})
-                </h2>
-                <p className="text-xs text-[#77766F]">
-                  Compact horizontal table showing batch name/year, department, semester, section identifier, and student count.
-                </p>
-              </div>
+              <h2 className="font-serif-editorial text-2xl text-[#171717]">
+                Batches and Sections ({filteredGroups.length})
+              </h2>
               <div className="flex flex-wrap items-center gap-2">
                 <button onClick={() => handleOpenAddGroup()} className="btn-primary text-xs h-9">
                   <Plus className="w-3.5 h-3.5" />
@@ -2206,14 +2178,9 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
         {activeStep === 5 && (
           <div className="sf-card-white p-6 space-y-5">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#E4E2DA] pb-4">
-              <div>
-                <h2 className="font-serif-editorial text-2xl text-[#171717]">
-                  Course Section Mappings ({filteredSections.length})
-                </h2>
-                <p className="text-xs text-[#77766F]">
-                  Link courses, faculty instructors, and student batch sections into schedulable timetable sessions.
-                </p>
-              </div>
+              <h2 className="font-serif-editorial text-2xl text-[#171717]">
+                Course Section Mappings ({filteredSections.length})
+              </h2>
               <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
@@ -2236,14 +2203,11 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
             {/* Quick Section Creator */}
             <form
               onSubmit={handleAddSectionInline}
-              className="p-4 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] space-y-3"
+              className="pb-4 border-b border-[#E4E2DA]"
             >
-              <div className="text-xs font-semibold text-[#171717]">
-                Create New Course Section ({store.sections.length} total sections in registry)
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 items-end">
                 <div>
-                  <label className="block text-[11px] text-[#77766F] mb-1">Course</label>
+                  <label className="block text-[11px] font-medium text-[#77766F] mb-1">Course</label>
                   <select
                     value={sectionForm.courseId || store.courses[0]?.id || ''}
                     onChange={e => setSectionForm({ ...sectionForm, courseId: e.target.value })}
@@ -2257,7 +2221,7 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
                   </select>
                 </div>
                 <div>
-                  <label className="block text-[11px] text-[#77766F] mb-1">Instructor</label>
+                  <label className="block text-[11px] font-medium text-[#77766F] mb-1">Instructor</label>
                   <select
                     value={sectionForm.instructorId || store.instructors[0]?.id || ''}
                     onChange={e => setSectionForm({ ...sectionForm, instructorId: e.target.value })}
@@ -2271,7 +2235,7 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
                   </select>
                 </div>
                 <div>
-                  <label className="block text-[11px] text-[#77766F] mb-1">Batch Section</label>
+                  <label className="block text-[11px] font-medium text-[#77766F] mb-1">Batch Section</label>
                   <select
                     value={sectionForm.studentGroupId || store.studentGroups[0]?.id || ''}
                     onChange={e => setSectionForm({ ...sectionForm, studentGroupId: e.target.value })}
@@ -2284,7 +2248,7 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
                     ))}
                   </select>
                 </div>
-                <div className="flex items-end">
+                <div>
                   <button type="submit" className="w-full btn-primary h-9 text-xs">
                     + Add Section
                   </button>
@@ -2413,14 +2377,9 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
           <div className="space-y-6">
             <div className="sf-card-white p-6 space-y-6">
               <div className="border-b border-[#E4E2DA] pb-4 flex items-center justify-between">
-                <div>
-                  <h2 className="font-serif-editorial text-2xl text-[#171717]">
-                    Personal Schedule Preferences
-                  </h2>
-                  <p className="text-xs text-[#77766F]">
-                    Configure preferred timings, unavailable days, break durations, consecutive-class limits, and daily workload caps.
-                  </p>
-                </div>
+                <h2 className="font-serif-editorial text-2xl text-[#171717]">
+                  Personal Schedule Preferences
+                </h2>
                 <button
                   type="button"
                   onClick={() => showToast('Personal scheduling preferences saved and synced with solver.')}
@@ -2431,67 +2390,57 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
                 </button>
               </div>
 
-              {/* 1. Preferred Timings */}
-              <div className="space-y-2">
+              {/* Preferred Timings */}
+              <div className="space-y-2.5">
                 <label className="block text-xs font-semibold text-[#171717]">
-                  1. Preferred Daily Class Timings
+                  Preferred Daily Class Window
                 </label>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   {[
                     {
                       id: 'morning' as const,
-                      title: 'Morning Session (Slots 1–4)',
-                      window: '9:00 AM – 1:00 PM',
-                      desc: 'Prioritize 50m lectures & 3h labs before 1:00 PM lunch'
+                      title: 'Morning Session',
+                      window: '9:00 AM – 1:00 PM'
                     },
                     {
                       id: 'midday' as const,
-                      title: 'Balanced Day (9 AM – 5 PM)',
-                      window: '10:00 AM – 4:00 PM',
-                      desc: 'Evenly distribute sessions across morning & afternoon'
+                      title: 'Balanced Day',
+                      window: '10:00 AM – 4:00 PM'
                     },
                     {
                       id: 'afternoon' as const,
-                      title: 'Afternoon Session (Slots 5–7)',
-                      window: '2:00 PM – 5:00 PM',
-                      desc: 'Concentrate 3-hour labs and seminars after 2:00 PM'
+                      title: 'Afternoon Session',
+                      window: '2:00 PM – 5:00 PM'
                     }
                   ].map(opt => (
                     <button
                       key={opt.id}
                       type="button"
                       onClick={() => setPreferredTiming(opt.id)}
-                      className={`p-4 rounded-xl text-left transition-all cursor-pointer border ${
+                      className={`p-3.5 rounded-xl text-left transition-all cursor-pointer border ${
                         preferredTiming === opt.id
                           ? 'bg-[#171717] text-white border-[#171717]'
-                          : 'bg-[#F7F6EF] text-[#171717] border-[#E4E2DA] hover:border-[#171717]'
+                          : 'bg-white text-[#171717] border-[#E4E2DA] hover:border-[#171717]'
                       }`}
                     >
                       <div className="flex items-center justify-between">
-                        <span className="font-serif-editorial text-lg">{opt.title}</span>
+                        <span className="font-serif-editorial text-base">{opt.title}</span>
                         {preferredTiming === opt.id && <Check className="w-4 h-4 text-[#B7F77C]" />}
                       </div>
-                      <div className="text-xs font-mono-tabular font-semibold mt-1">
+                      <div className={`text-xs font-mono-tabular mt-0.5 ${preferredTiming === opt.id ? 'text-white/75' : 'text-[#77766F]'}`}>
                         {opt.window}
                       </div>
-                      <p
-                        className={`text-[11px] mt-1 ${
-                          preferredTiming === opt.id ? 'text-white/75' : 'text-[#77766F]'
-                        }`}
-                      >
-                        {opt.desc}
-                      </p>
                     </button>
                   ))}
                 </div>
               </div>
 
-              {/* 2. Unavailable Days */}
-              <div className="space-y-2 pt-2 border-t border-[#E4E2DA]">
+              {/* Unavailable Days */}
+              <div className="space-y-2.5 pt-4 border-t border-[#E4E2DA]">
                 <label className="block text-xs font-semibold text-[#171717]">
-                  2. Unavailable / Study-Only Days
+                  Unavailable / Study-Only Days
                 </label>
-                <div className="flex flex-wrap gap-2.5 pt-1">
+                <div className="flex flex-wrap gap-2">
                   {(['Mon', 'Tue', 'Wed', 'Thu', 'Fri'] as DayOfWeek[]).map(day => {
                     const isBlocked = unavailableDays.includes(day);
                     return (
@@ -2503,22 +2452,22 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
                             prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day]
                           );
                         }}
-                        className={`px-4 py-2 rounded-xl text-xs font-semibold border transition-colors cursor-pointer ${
+                        className={`px-3.5 py-2 rounded-lg text-xs font-semibold border transition-colors cursor-pointer ${
                           isBlocked
                             ? 'bg-[#E8D36B] text-[#171717] border-[#171717]'
-                            : 'bg-white text-[#171717] border-[#E4E2DA] hover:bg-[#F7F6EF]'
+                            : 'bg-white text-[#57564F] border-[#E4E2DA] hover:border-[#171717] hover:text-[#171717]'
                         }`}
                       >
-                        {day} {isBlocked ? '(Unavailable)' : '(Available)'}
+                        {day}{isBlocked ? ' · Blocked' : ''}
                       </button>
                     );
                   })}
                 </div>
               </div>
 
-              {/* 3. Break Preferences, Consecutive Classes & Max Daily Workload */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2 border-t border-[#E4E2DA]">
-                <div className="p-4 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] space-y-2">
+              {/* Break Preferences, Consecutive Classes & Max Daily Workload */}
+              <div className="border border-[#E4E2DA] rounded-xl grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-[#E4E2DA]">
+                <div className="p-4 space-y-2">
                   <div className="flex items-center justify-between text-xs">
                     <span className="font-semibold text-[#171717]">Midday Break Buffer</span>
                     <span className="font-mono-tabular font-bold text-[#171717]">
@@ -2536,7 +2485,7 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
                   />
                 </div>
 
-                <div className="p-4 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] space-y-2">
+                <div className="p-4 space-y-2">
                   <div className="flex items-center justify-between text-xs">
                     <span className="font-semibold text-[#171717]">Max Consecutive Classes</span>
                     <span className="font-mono-tabular font-bold text-[#171717]">
@@ -2554,7 +2503,7 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
                   />
                 </div>
 
-                <div className="p-4 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] space-y-2">
+                <div className="p-4 space-y-2">
                   <div className="flex items-center justify-between text-xs">
                     <span className="font-semibold text-[#171717]">Maximum Daily Workload</span>
                     <span className="font-mono-tabular font-bold text-[#171717]">
@@ -2576,14 +2525,9 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
 
             {/* Hard & Soft Solver Rules — Compact Horizontal Table */}
             <div className="sf-card-white p-6 space-y-4">
-              <div>
-                <h2 className="font-serif-editorial text-2xl text-[#171717]">
-                  Institutional Feasibility &amp; Optimization Rules
-                </h2>
-                <p className="text-xs text-[#77766F]">
-                  Configure hard and soft scheduling constraints in a compact horizontal table.
-                </p>
-              </div>
+              <h2 className="font-serif-editorial text-2xl text-[#171717]">
+                Institutional Feasibility &amp; Optimization Rules
+              </h2>
 
               <div className="border border-[#E4E2DA] rounded-xl overflow-hidden bg-white">
                 <div className="overflow-x-auto">

@@ -438,19 +438,7 @@ export const FeedbackScreen: React.FC<FeedbackScreenProps> = ({ onNavigate }) =>
           SHARED PAGE HEADER WITH SCREEN-SPECIFIC TITLE, PURPOSE & ACTIONS
          ===================================================================== */}
       <header className="flex flex-col lg:flex-row lg:items-end justify-between gap-4 pb-5 border-b border-[#E4E2DA]">
-        <div className="space-y-1.5">
-          <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-[#77766F]">
-            <span>Analytics &amp; Optimization</span>
-            <span>·</span>
-            <span className="font-mono-tabular text-[#171717] font-semibold">
-              {activeTab === 'analytics'
-                ? '01 / Schedule Performance'
-                : activeTab === 'optimization'
-                ? '02 / Constraint & Solver Audit'
-                : '03 / Version Baselines & Proposals'}
-            </span>
-          </div>
-
+        <div className="space-y-1">
           <h1 className="font-serif-editorial text-3xl sm:text-4xl text-[#171717] tracking-tight">
             {activeTab === 'analytics'
               ? 'Schedule Analytics'
@@ -459,12 +447,12 @@ export const FeedbackScreen: React.FC<FeedbackScreenProps> = ({ onNavigate }) =>
               : 'Schedule History'}
           </h1>
 
-          <p className="text-xs sm:text-sm text-[#57564F] max-w-2xl">
+          <p className="text-xs sm:text-sm text-[#77766F]">
             {activeTab === 'analytics'
-              ? 'Inspect university-wide timetable coverage, daily session vs. study window balance, and classroom or laboratory occupancy.'
+              ? 'University-wide timetable coverage, daily workload, and facility occupancy.'
               : activeTab === 'optimization'
-              ? 'Verify hard scheduling constraints, tune soft preference weights, and inspect before-and-after solver optimization metrics.'
-              : 'Manage saved timetable snapshots, compare or restore published baselines, and review logged schedule adjustment proposals.'}
+              ? 'Hard constraint verification, soft preference weights, and solver metrics.'
+              : 'Saved timetable baselines and stakeholder adjustment proposals.'}
           </p>
         </div>
 
@@ -575,10 +563,7 @@ export const FeedbackScreen: React.FC<FeedbackScreenProps> = ({ onNavigate }) =>
         <div className="space-y-6">
           {/* Context Filter Bar (Semester & Department Scope) */}
           <div className="sf-card-white p-3.5 px-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="flex items-center gap-2 text-xs text-[#57564F]">
-              <span className="font-semibold text-[#171717]">Analytics Scope:</span>
-              <span>Filter performance metrics by active semester or academic department</span>
-            </div>
+            <span className="text-xs font-semibold text-[#171717]">Scope</span>
 
             <div className="flex flex-wrap items-center gap-2.5">
               <select
@@ -689,26 +674,18 @@ export const FeedbackScreen: React.FC<FeedbackScreenProps> = ({ onNavigate }) =>
 
           {/* 2. Daily Workload & Study Window Distribution (Compact Horizontal Table) */}
           <section className="sf-card-white overflow-hidden">
-            <div className="p-5 border-b border-[#E4E2DA] flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-              <div>
-                <h2 className="font-serif-editorial text-xl text-[#171717]">
-                  Daily Workload &amp; Open Study Window Distribution
-                </h2>
-                <p className="text-xs text-[#77766F]">
-                  Scheduled teaching sessions, active student sections, and open study intervals across working days.
-                </p>
-              </div>
+            <div className="px-5 py-4 border-b border-[#E4E2DA] flex items-center justify-between gap-3">
+              <h2 className="font-serif-editorial text-xl text-[#171717]">
+                Daily Workload &amp; Study Windows
+              </h2>
 
-              {/* Action Control */}
-              <div className="flex flex-wrap items-center gap-2.5 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => onNavigate('setup')}
-                  className="btn-secondary h-8 px-3 text-xs"
-                >
-                  Adjust Caps
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={() => onNavigate('setup')}
+                className="btn-secondary h-8 px-3 text-xs shrink-0"
+              >
+                Adjust Caps
+              </button>
             </div>
 
             <div className="overflow-x-auto">
@@ -768,15 +745,10 @@ export const FeedbackScreen: React.FC<FeedbackScreenProps> = ({ onNavigate }) =>
 
           {/* 3. Classroom & Laboratory Utilization (All Relevant Rooms, Searchable & Filterable) */}
           <section className="sf-card-white overflow-hidden">
-            <div className="p-5 border-b border-[#E4E2DA] flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-              <div>
-                <h2 className="font-serif-editorial text-xl text-[#171717]">
-                  Classroom &amp; Laboratory Utilization ({filteredRoomStats.length} of {store.rooms.length})
-                </h2>
-                <p className="text-xs text-[#77766F]">
-                  Inspect weekly slot occupancy, seat capacity, and scheduled sessions across all university facilities.
-                </p>
-              </div>
+            <div className="px-5 py-4 border-b border-[#E4E2DA] flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+              <h2 className="font-serif-editorial text-xl text-[#171717]">
+                Classroom &amp; Laboratory Utilization ({filteredRoomStats.length} of {store.rooms.length})
+              </h2>
 
               <div className="flex flex-wrap items-center gap-2">
                 <div className="input-group-field h-8 w-52">
@@ -968,18 +940,16 @@ export const FeedbackScreen: React.FC<FeedbackScreenProps> = ({ onNavigate }) =>
                 <div className="text-[11px] font-semibold uppercase tracking-wider text-[#77766F]">
                   Optimization Status
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-baseline gap-2">
                   <span className="font-serif-editorial text-2xl font-bold text-[#171717]">
                     {conflicts.length === 0 ? 'Optimal' : `${conflicts.length} Issues`}
                   </span>
                   <span
-                    className={`px-2 py-0.5 rounded text-[10.5px] font-semibold ${
-                      conflicts.length === 0
-                        ? 'bg-[#E8F8E0] text-[#1B5E20]'
-                        : 'bg-[#FDE8E8] text-[#8B1E1E]'
+                    className={`text-xs font-semibold ${
+                      conflicts.length === 0 ? 'text-[#1B5E20]' : 'text-[#8B1E1E]'
                     }`}
                   >
-                    {conflicts.length === 0 ? '0 Hard Clashes' : 'Needs Review'}
+                    {conflicts.length === 0 ? '· 0 clashes' : '· Needs review'}
                   </span>
                 </div>
               </div>
@@ -1029,17 +999,12 @@ export const FeedbackScreen: React.FC<FeedbackScreenProps> = ({ onNavigate }) =>
           {/* 2. Unassigned or Unresolved Scheduling Issues (Prominent when present, compact when clear) */}
           {unassignedSections.length > 0 || conflicts.length > 0 ? (
             <section className="sf-card-white border-[#8B1E1E]/40 overflow-hidden">
-              <div className="p-4 sm:px-5 bg-[#FDE8E8]/60 border-b border-[#E4E2DA] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="px-5 py-3.5 bg-[#FDE8E8]/50 border-b border-[#E4E2DA] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div className="flex items-center gap-2.5">
                   <AlertCircle className="w-4 h-4 text-[#8B1E1E] shrink-0" />
-                  <div>
-                    <h2 className="text-sm font-bold text-[#8B1E1E]">
-                      Unresolved Scheduling Issues ({unassignedSections.length} Unassigned · {conflicts.length} Clashes)
-                    </h2>
-                    <p className="text-xs text-[#57564F]">
-                      The following sections require solver re-optimization or manual slot assignment.
-                    </p>
-                  </div>
+                  <h2 className="text-sm font-bold text-[#8B1E1E]">
+                    Unresolved Issues ({unassignedSections.length} Unassigned · {conflicts.length} Clashes)
+                  </h2>
                 </div>
                 <button
                   type="button"
@@ -1066,7 +1031,8 @@ export const FeedbackScreen: React.FC<FeedbackScreenProps> = ({ onNavigate }) =>
                     {conflicts.map(conf => (
                       <tr key={conf.id} className="hover:bg-[#F7F6EF]/60">
                         <td className="py-2.5 px-5">
-                          <span className="px-2 py-0.5 rounded bg-[#FDE8E8] text-[#8B1E1E] font-semibold text-[11px]">
+                          <span className="inline-flex items-center gap-1.5 text-[#8B1E1E] font-semibold text-xs">
+                            <span className="w-1.5 h-1.5 rounded-full bg-[#8B1E1E]" />
                             Hard Clash
                           </span>
                         </td>
@@ -1092,7 +1058,8 @@ export const FeedbackScreen: React.FC<FeedbackScreenProps> = ({ onNavigate }) =>
                       return (
                         <tr key={sec.id} className="hover:bg-[#F7F6EF]/60">
                           <td className="py-2.5 px-5">
-                            <span className="px-2 py-0.5 rounded bg-[#FFF4E5] text-[#6E5100] font-semibold text-[11px]">
+                            <span className="inline-flex items-center gap-1.5 text-[#8B5E00] font-semibold text-xs">
+                              <span className="w-1.5 h-1.5 rounded-full bg-[#8B5E00]" />
                               Unassigned
                             </span>
                           </td>
@@ -1142,17 +1109,13 @@ export const FeedbackScreen: React.FC<FeedbackScreenProps> = ({ onNavigate }) =>
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
             {/* Hard Constraints Table (7 Cols) */}
             <section className="lg:col-span-7 sf-card-white overflow-hidden">
-              <div className="p-5 border-b border-[#E4E2DA] flex items-center justify-between gap-3">
-                <div>
-                  <div className="text-[10.5px] font-mono-tabular font-bold uppercase tracking-wider text-[#77766F]">
-                    Strict Invariants · Zero Violations Permitted
-                  </div>
-                  <h2 className="font-serif-editorial text-xl text-[#171717] mt-0.5">
-                    Hard Constraint Verification
-                  </h2>
-                </div>
-                <span className="px-2.5 py-1 rounded-lg bg-[#E8F8E0] text-[#1B5E20] text-xs font-semibold">
-                  All Hard Rules Passed
+              <div className="px-5 py-4 border-b border-[#E4E2DA] flex items-center justify-between gap-3">
+                <h2 className="font-serif-editorial text-xl text-[#171717]">
+                  Hard Constraint Verification
+                </h2>
+                <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#1B5E20]">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#1B5E20]" />
+                  All Rules Passed
                 </span>
               </div>
 
@@ -1183,13 +1146,11 @@ export const FeedbackScreen: React.FC<FeedbackScreenProps> = ({ onNavigate }) =>
                             </td>
                             <td className="py-3 px-4">
                               <span
-                                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold ${
-                                  hc.passed
-                                    ? 'bg-[#E8F8E0] text-[#1B5E20]'
-                                    : 'bg-[#FDE8E8] text-[#8B1E1E]'
+                                className={`inline-flex items-center gap-1 font-mono-tabular text-xs font-semibold ${
+                                  hc.passed ? 'text-[#1B5E20]' : 'text-[#8B1E1E]'
                                 }`}
                               >
-                                <Check className="w-3 h-3" />
+                                <Check className="w-3.5 h-3.5" />
                                 <span>{hc.metricLabel}</span>
                               </span>
                             </td>
@@ -1227,16 +1188,11 @@ export const FeedbackScreen: React.FC<FeedbackScreenProps> = ({ onNavigate }) =>
 
             {/* Soft Constraints & Preference Weights Table (5 Cols) */}
             <section className="lg:col-span-5 sf-card-white overflow-hidden">
-              <div className="p-5 border-b border-[#E4E2DA] flex items-center justify-between gap-3">
-                <div>
-                  <div className="text-[10.5px] font-mono-tabular font-bold uppercase tracking-wider text-[#77766F]">
-                    Weighted Objectives · Tunable Penalties
-                  </div>
-                  <h2 className="font-serif-editorial text-xl text-[#171717] mt-0.5">
-                    Soft Preference Satisfaction
-                  </h2>
-                </div>
-                <span className="font-mono-tabular text-xs font-bold text-[#171717] bg-[#F7F6EF] px-2.5 py-1 rounded-lg border border-[#E4E2DA]">
+              <div className="px-5 py-4 border-b border-[#E4E2DA] flex items-center justify-between gap-3">
+                <h2 className="font-serif-editorial text-xl text-[#171717]">
+                  Soft Preference Satisfaction
+                </h2>
+                <span className="font-mono-tabular text-xs font-bold text-[#171717]">
                   {avgSoftSatisfaction}% Match
                 </span>
               </div>
@@ -1260,17 +1216,12 @@ export const FeedbackScreen: React.FC<FeedbackScreenProps> = ({ onNavigate }) =>
                         <span>{rule.name}</span>
                       </label>
 
-                      <div className="flex items-center gap-2">
-                        <span className="text-[11px] font-mono-tabular text-[#57564F]">
-                          Weight: <strong className="text-[#171717]">{rule.weight}%</strong>
+                      <div className="flex items-center gap-2.5 text-[11px] font-mono-tabular">
+                        <span className="text-[#57564F]">
+                          {rule.weight}%
                         </span>
-                        <span
-                          className={`px-2 py-0.5 rounded text-[10.5px] font-semibold ${
-                            rule.enabled
-                              ? 'bg-[#B8EEEE]/70 text-[#171717]'
-                              : 'bg-[#EDEAE0] text-[#77766F]'
-                          }`}
-                        >
+                        <span className="text-[#E4E2DA]">·</span>
+                        <span className={rule.enabled ? 'font-semibold text-[#171717]' : 'text-[#77766F]'}>
                           {rule.enabled ? `${Math.min(99, 86 + Math.round(rule.weight / 8))}% Met` : 'Paused'}
                         </span>
                       </div>
@@ -1308,15 +1259,10 @@ export const FeedbackScreen: React.FC<FeedbackScreenProps> = ({ onNavigate }) =>
 
           {/* 4. Compact Before-and-After Optimization Comparison + Expandable Solver Details */}
           <section className="sf-card-white overflow-hidden">
-            <div className="p-5 border-b border-[#E4E2DA] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div>
-                <h2 className="font-serif-editorial text-xl text-[#171717]">
-                  Before &amp; After Optimization Comparison
-                </h2>
-                <p className="text-xs text-[#77766F]">
-                  Measured improvements between unoptimized manual allocation and the active solver solution.
-                </p>
-              </div>
+            <div className="px-5 py-4 border-b border-[#E4E2DA] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <h2 className="font-serif-editorial text-xl text-[#171717]">
+                Before &amp; After Optimization Comparison
+              </h2>
 
               <button
                 type="button"
@@ -1354,10 +1300,8 @@ export const FeedbackScreen: React.FC<FeedbackScreenProps> = ({ onNavigate }) =>
                     <td className="py-3 px-4 font-mono-tabular font-bold text-[#171717]">
                       {conflicts.length} clashes
                     </td>
-                    <td className="py-3 px-5 text-right">
-                      <span className="px-2 py-0.5 rounded bg-[#E8F8E0] text-[#1B5E20] font-mono-tabular font-semibold text-[11px]">
-                        -100% Clashes Resolved
-                      </span>
+                    <td className="py-3 px-5 text-right font-mono-tabular font-semibold text-[#1B5E20]">
+                      -100% Resolved
                     </td>
                   </tr>
 
@@ -1371,10 +1315,8 @@ export const FeedbackScreen: React.FC<FeedbackScreenProps> = ({ onNavigate }) =>
                     <td className="py-3 px-4 font-mono-tabular font-bold text-[#171717]">
                       {placedLabs} / {totalLabs} continuous 3-slot blocks
                     </td>
-                    <td className="py-3 px-5 text-right">
-                      <span className="px-2 py-0.5 rounded bg-[#E8F8E0] text-[#1B5E20] font-mono-tabular font-semibold text-[11px]">
-                        100% Contiguous Placement
-                      </span>
+                    <td className="py-3 px-5 text-right font-mono-tabular font-semibold text-[#1B5E20]">
+                      100% Contiguous
                     </td>
                   </tr>
 
@@ -1386,10 +1328,8 @@ export const FeedbackScreen: React.FC<FeedbackScreenProps> = ({ onNavigate }) =>
                     <td className="py-3 px-4 font-mono-tabular font-bold text-[#171717]">
                       {publishedScenario?.metrics.instructorSatisfaction || 98.8}% match
                     </td>
-                    <td className="py-3 px-5 text-right">
-                      <span className="px-2 py-0.5 rounded bg-[#B8EEEE] text-[#171717] font-mono-tabular font-semibold text-[11px]">
-                        +27.3% Faculty Alignment
-                      </span>
+                    <td className="py-3 px-5 text-right font-mono-tabular font-semibold text-[#171717]">
+                      +27.3% Alignment
                     </td>
                   </tr>
 
@@ -1401,10 +1341,8 @@ export const FeedbackScreen: React.FC<FeedbackScreenProps> = ({ onNavigate }) =>
                     <td className="py-3 px-4 font-mono-tabular font-bold text-[#171717]">
                       {publishedScenario?.metrics.studentTransitScore || 96.5}% compactness
                     </td>
-                    <td className="py-3 px-5 text-right">
-                      <span className="px-2 py-0.5 rounded bg-[#B8EEEE] text-[#171717] font-mono-tabular font-semibold text-[11px]">
-                        +22.5% Gap Reduction
-                      </span>
+                    <td className="py-3 px-5 text-right font-mono-tabular font-semibold text-[#171717]">
+                      +22.5% Gap Reduction
                     </td>
                   </tr>
                 </tbody>
@@ -1516,15 +1454,10 @@ export const FeedbackScreen: React.FC<FeedbackScreenProps> = ({ onNavigate }) =>
 
           {/* 2. Saved Timetable Versions & Optimization Snapshots Table */}
           <section className="sf-card-white overflow-hidden">
-            <div className="p-5 border-b border-[#E4E2DA] flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-              <div>
-                <h2 className="font-serif-editorial text-xl text-[#171717]">
-                  Saved Timetable Versions &amp; Optimization Snapshots
-                </h2>
-                <p className="text-xs text-[#77766F]">
-                  Inspect, compare against the current published baseline, or restore previous timetable versions.
-                </p>
-              </div>
+            <div className="px-5 py-4 border-b border-[#E4E2DA] flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+              <h2 className="font-serif-editorial text-xl text-[#171717]">
+                Saved Timetable Versions &amp; Snapshots
+              </h2>
 
               <div className="flex flex-wrap items-center gap-2">
                 <div className="input-group-field h-8 w-56">
@@ -1592,15 +1525,11 @@ export const FeedbackScreen: React.FC<FeedbackScreenProps> = ({ onNavigate }) =>
                         >
                           <td className="py-3.5 px-5">
                             <div className="flex flex-wrap items-center gap-2">
-                              <span className="font-mono-tabular font-bold px-2 py-0.5 rounded bg-[#F7F6EF] border border-[#E4E2DA] text-[#171717]">
+                              <span className="font-mono-tabular font-bold text-[#171717]">
                                 {sc.version}
                               </span>
+                              <span className="text-[#77766F]">·</span>
                               <span className="font-semibold text-[#171717]">{sc.name}</span>
-                              {isPublished && (
-                                <span className="px-2 py-0.5 rounded bg-[#B7F77C] text-[#171717] text-[10px] font-bold uppercase">
-                                  Current Published
-                                </span>
-                              )}
                             </div>
                           </td>
                           <td className="py-3.5 px-4 text-[#57564F]">
@@ -1615,13 +1544,16 @@ export const FeedbackScreen: React.FC<FeedbackScreenProps> = ({ onNavigate }) =>
                           </td>
                           <td className="py-3.5 px-4">
                             <span
-                              className={`text-[10.5px] font-semibold uppercase px-2 py-0.5 rounded ${
-                                isPublished
-                                  ? 'bg-[#E8F8E0] text-[#1B5E20]'
-                                  : 'bg-[#EDEAE0] text-[#57564F]'
+                              className={`inline-flex items-center gap-1.5 text-xs font-semibold capitalize ${
+                                isPublished ? 'text-[#1B5E20]' : 'text-[#57564F]'
                               }`}
                             >
-                              {sc.status}
+                              <span
+                                className={`w-1.5 h-1.5 rounded-full ${
+                                  isPublished ? 'bg-[#1B5E20]' : 'bg-[#77766F]'
+                                }`}
+                              />
+                              {isPublished ? 'Published Baseline' : sc.status}
                             </span>
                           </td>
                           <td className="py-3.5 px-4 font-mono-tabular">
@@ -1723,15 +1655,10 @@ export const FeedbackScreen: React.FC<FeedbackScreenProps> = ({ onNavigate }) =>
 
           {/* 3. Schedule Change Proposals & Adjustment Log (Compact Horizontal Table + Expandable Details) */}
           <section className="sf-card-white overflow-hidden">
-            <div className="p-5 border-b border-[#E4E2DA] flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-              <div>
-                <h2 className="font-serif-editorial text-xl text-[#171717]">
-                  Schedule Change Proposals &amp; Adjustment Log ({filteredPolls.length})
-                </h2>
-                <p className="text-xs text-[#77766F]">
-                  Compact log of stakeholder schedule adjustment requests for upcoming solver runs. Expand any row to inspect rationale or endorse.
-                </p>
-              </div>
+            <div className="px-5 py-4 border-b border-[#E4E2DA] flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+              <h2 className="font-serif-editorial text-xl text-[#171717]">
+                Schedule Change Proposals ({filteredPolls.length})
+              </h2>
 
               <div className="flex flex-wrap items-center gap-2">
                 <div className="input-group-field h-8 w-52">
@@ -1796,10 +1723,8 @@ export const FeedbackScreen: React.FC<FeedbackScreenProps> = ({ onNavigate }) =>
                           <td className="py-3 px-5 font-semibold text-[#171717]">
                             {poll.title}
                           </td>
-                          <td className="py-3 px-4">
-                            <span className="px-2 py-0.5 rounded bg-[#B8EEEE]/70 text-[#171717] text-[11px] font-semibold">
-                              {poll.category}
-                            </span>
+                          <td className="py-3 px-4 text-[#57564F] font-medium">
+                            {poll.category}
                           </td>
                           <td className="py-3 px-4 font-mono-tabular text-[#57564F]">
                             {poll.targetSlot}

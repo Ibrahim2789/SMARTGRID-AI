@@ -7,8 +7,6 @@ import {
   ArrowRight,
   Download,
   X,
-  RefreshCw,
-  Table,
   Check
 } from 'lucide-react';
 import { institutionalStore, useInstitutionalData } from '../data/store';
@@ -20,11 +18,6 @@ interface DataImportWizardProps {
   onClose?: () => void;
   onSuccess?: (summary: string) => void;
   defaultCategory?: ImportCategory;
-}
-
-interface ColumnMapping {
-  csvHeader: string;
-  targetField: string;
 }
 
 interface ParsedRow {
@@ -119,6 +112,7 @@ export const DataImportWizard: React.FC<DataImportWizardProps> = ({
   const [parsedData, setParsedData] = useState<ParsedRow[]>([]);
   const [importMode, setImportMode] = useState<'merge' | 'replace'>('merge');
   const [importResult, setImportResult] = useState<{ count: number; category: string } | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
 
   const currentSchema = CATEGORY_SCHEMAS[category];
 
@@ -182,9 +176,10 @@ export const DataImportWizard: React.FC<DataImportWizardProps> = ({
 
   const processCSVContent = (content: string) => {
     setRawText(content);
+    setImportError(null);
     const matrix = parseCSVLines(content);
     if (matrix.length < 2) {
-      alert('The provided file appears empty or lacks data rows.');
+      setImportError('The provided file appears empty or lacks data rows.');
       return;
     }
     const headers = matrix[0].map(h => h.trim());
@@ -262,9 +257,10 @@ export const DataImportWizard: React.FC<DataImportWizardProps> = ({
   };
 
   const handleCommitImport = () => {
+    setImportError(null);
     const validRows = parsedData.filter(r => r.isValid);
     if (validRows.length === 0) {
-      alert('No valid rows available to import. Please check mapping and correct data errors.');
+      setImportError('No valid rows available to import. Check column mapping and errors.');
       return;
     }
 
@@ -392,25 +388,18 @@ export const DataImportWizard: React.FC<DataImportWizardProps> = ({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/45 backdrop-blur-xs">
       <div className="w-full max-w-4xl max-h-[92vh] flex flex-col bg-white border border-[#E4E2DA] rounded-2xl shadow-xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
         {/* Header */}
-        <div className="px-6 py-4 bg-[#F7F6EF] border-b border-[#E4E2DA] flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-[#171717] text-white flex items-center justify-center">
-              <Upload className="w-4 h-4" />
-            </div>
-            <div>
-              <h2 className="font-serif-editorial text-lg text-[#171717] font-semibold leading-tight">
-                Universal Academic Data Importer
-              </h2>
-              <p className="text-xs text-[#77766F] mt-0.5">
-                Import CSV or tabular datasets with dynamic column detection and validation
-              </p>
-            </div>
+        <div className="px-6 py-4 border-b border-[#E4E2DA] flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <Upload className="w-4 h-4 text-[#171717] shrink-0" />
+            <h2 className="font-serif-editorial text-lg text-[#171717] font-semibold leading-tight">
+              Academic Data Importer
+            </h2>
           </div>
           {onClose && (
             <button
               type="button"
               onClick={onClose}
-              className="p-1.5 rounded-lg text-[#77766F] hover:text-[#171717] hover:bg-black/5 cursor-pointer"
+              className="p-1.5 rounded-lg text-[#77766F] hover:text-[#171717] hover:bg-[#F7F6EF] cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
@@ -420,7 +409,7 @@ export const DataImportWizard: React.FC<DataImportWizardProps> = ({
         {/* Category Tabs */}
         {step !== 'completed' && (
           <div className="px-6 py-2.5 bg-white border-b border-[#E4E2DA] flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-1.5 p-1 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] text-xs font-medium">
+            <div className="flex items-center gap-1 p-1 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] text-xs font-medium">
               {(
                 [
                   { id: 'rooms' as const, label: 'Rooms & Labs' },
@@ -437,6 +426,7 @@ export const DataImportWizard: React.FC<DataImportWizardProps> = ({
                     setStep('upload');
                     setParsedData([]);
                     setCsvHeaders([]);
+                    setImportError(null);
                   }}
                   className={`px-3 py-1.5 rounded-lg transition-colors cursor-pointer ${
                     category === t.id
@@ -455,18 +445,22 @@ export const DataImportWizard: React.FC<DataImportWizardProps> = ({
               className="btn-secondary h-8 px-3 text-xs inline-flex items-center gap-1.5"
             >
               <Download className="w-3.5 h-3.5" />
-              <span>Download CSV Template</span>
+              <span>CSV Template</span>
             </button>
           </div>
         )}
 
         {/* Content Body */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+        <div className="flex-1 overflow-y-auto p-6 space-y-5">
+          {importError && (
+            <div className="px-4 py-2.5 rounded-xl bg-[#FDE8E8] border border-[#F5B5B5] text-[#8B1E1E] text-xs flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 shrink-0" />
+              <span>{importError}</span>
+            </div>
+          )}
+
           {step === 'upload' && (
-            <div className="space-y-6">
-              <div className="p-4 rounded-xl bg-[#B8EEEE]/30 border border-[#95DFDF] text-xs text-[#171717]">
-                <strong className="font-semibold">Flexible University Mapping:</strong> Your CSV does not need to match exact column names. The importer automatically detects synonyms like <em>"Room Code"</em>, <em>"Classroom"</em>, <em>"Instructor"</em>, <em>"Faculty"</em>, or <em>"Max Seats"</em>, and allows custom re-mapping before saving.
-              </div>
+            <div className="space-y-5">
 
               {/* Drag/Drop Box */}
               <div
@@ -706,8 +700,8 @@ export const DataImportWizard: React.FC<DataImportWizardProps> = ({
                 Import Completed Successfully
               </h3>
               <p className="text-sm text-[#77766F] max-w-md mx-auto">
-                Successfully imported <strong>{importResult?.count}</strong> records into{' '}
-                <strong>{importResult?.category}</strong>. The university academic structure has been updated and synchronized with the scheduling engine.
+                Imported <strong>{importResult?.count}</strong> records into{' '}
+                <strong>{importResult?.category}</strong>.
               </p>
               <div className="pt-4 flex items-center justify-center gap-3">
                 <button

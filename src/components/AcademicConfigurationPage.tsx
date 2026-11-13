@@ -366,62 +366,51 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
   }
 
   return (
-    <div className="space-y-8">
-      {/* =========================================================
-          1. PAGE HEADER & PRIMARY SAVE / RESET ACTIONS
-         ========================================================= */}
-      <header className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 pb-6 border-b border-[#E4E2DA]">
-        <div className="space-y-2">
-          <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-[#77766F]">
-            <span>Academic Administration</span>
-            <span>·</span>
-            <span>{institutionName}</span>
-            <span>·</span>
-            <span className="px-2 py-0.5 rounded font-semibold bg-[#B7F77C] text-[#171717]">
-              Administrator ({currentUser?.role || 'Registrar'})
-            </span>
-          </div>
+    <div className="space-y-6">
+      {/* 1. PAGE HEADER */}
+      <header className="flex flex-col lg:flex-row lg:items-end justify-between gap-4 pb-5 border-b border-[#E4E2DA]">
+        <div>
           <h1 className="font-serif-editorial text-3xl sm:text-4xl text-[#171717] tracking-tight">
             Academic Configuration
           </h1>
-          <p className="text-sm text-[#77766F] max-w-2xl">
-            Configure the university’s general academic timing structure once. Whenever a timetable is generated, validated, viewed, or exported to Google Sheets, the scheduling engine automatically uses this saved configuration.
+          <p className="text-xs sm:text-sm text-[#77766F] mt-1 font-mono-tabular">
+            {livePreview.summaryText}
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
           <button
             type="button"
             onClick={() => setShowOnboardingModal(true)}
-            className="btn-secondary text-xs h-10 px-4"
+            className="btn-secondary text-xs h-9 px-3.5"
           >
             <Sliders className="w-3.5 h-3.5" />
-            <span>Multi-Step Setup Wizard</span>
+            <span>Setup Wizard</span>
           </button>
 
           <button
             type="button"
             onClick={() => setShowImportWizard(true)}
-            className="btn-secondary text-xs h-10 px-4"
+            className="btn-secondary text-xs h-9 px-3.5"
           >
             <Upload className="w-3.5 h-3.5" />
-            <span>Import CSV Dataset</span>
+            <span>Import CSV</span>
           </button>
 
           <button
             type="button"
             onClick={handleResetToDefaults}
-            className="btn-secondary text-xs h-10 px-4"
+            className="btn-secondary text-xs h-9 px-3.5"
           >
             <RotateCcw className="w-3.5 h-3.5" />
-            <span>Reset to Defaults</span>
+            <span>Reset</span>
           </button>
 
           <button
             type="button"
             disabled={!liveValidation.valid}
             onClick={() => handleSaveConfiguration()}
-            className="btn-primary text-xs h-10 px-5 disabled:opacity-50"
+            className="btn-primary text-xs h-9 px-4 disabled:opacity-50"
           >
             <Sparkles className="w-3.5 h-3.5" />
             <span>Save Configuration</span>
@@ -458,12 +447,12 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
 
       {/* Validation Error Banner */}
       {(timingValidationErrors.length > 0 || !liveValidation.valid) && (
-        <div className="p-5 rounded-2xl bg-[#FDE8E8] border border-[#F5B7B7] space-y-2">
+        <div className="p-4 rounded-2xl bg-[#FDE8E8] border border-[#F5B7B7] space-y-1.5">
           <div className="flex items-center gap-2 text-xs font-bold text-[#8A1C1C]">
             <AlertCircle className="w-4 h-4 shrink-0" />
-            <span>Scheduling Configuration Conflict — Please adjust the parameters below:</span>
+            <span>Configuration Conflict</span>
           </div>
-          <ul className="list-disc list-inside text-xs text-[#8A1C1C] space-y-1">
+          <ul className="list-disc list-inside text-xs text-[#8A1C1C] space-y-0.5">
             {(timingValidationErrors.length > 0 ? timingValidationErrors : liveValidation.errors).map(
               (err, i) => (
                 <li key={i}>{err}</li>
@@ -473,146 +462,110 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
         </div>
       )}
 
-      {/* Active Summary & Quick Academic Structure Presets Bar */}
-      <div className="sf-card-white p-4 sm:px-5 flex flex-col xl:flex-row xl:items-center justify-between gap-4">
-        <div className="flex flex-wrap items-center gap-2 text-xs">
-          <Sliders className="w-4 h-4 text-[#171717]" />
-          <span className="font-semibold text-[#171717]">Active Summary:</span>
-          <strong className="text-[#171717] font-mono-tabular">{livePreview.summaryText}</strong>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-[#77766F] mr-1">
-            Presets:
-          </span>
-          {[
-            {
-              label: 'Standard 9–5 (50m + 10m)',
-              dayStartTime: '09:00',
-              dayEndTime: '17:00',
-              periodLengthMinutes: 50,
-              shortBreakEnabled: true,
-              shortBreakMinutes: 10,
-              middayBreakEnabled: true,
-              middayBreakMode: 'fixed' as const,
-              middayBreakStartTime: '13:00',
-              middayBreakDurationMinutes: 60,
-              labDurationMinutes: 180
-            },
-            {
-              label: 'Extended 8:30–5 (60m)',
-              dayStartTime: '08:30',
-              dayEndTime: '17:00',
-              periodLengthMinutes: 60,
-              shortBreakEnabled: true,
-              shortBreakMinutes: 15,
-              middayBreakEnabled: true,
-              middayBreakMode: 'fixed' as const,
-              middayBreakStartTime: '12:15',
-              middayBreakDurationMinutes: 45,
-              labDurationMinutes: 135
-            },
-            {
-              label: 'Back-to-Back (No Breaks)',
-              dayStartTime: '09:00',
-              dayEndTime: '17:00',
-              periodLengthMinutes: 60,
-              shortBreakEnabled: false,
-              shortBreakMinutes: 0,
-              middayBreakEnabled: true,
-              middayBreakMode: 'fixed' as const,
-              middayBreakStartTime: '13:00',
-              middayBreakDurationMinutes: 60,
-              labDurationMinutes: 180
-            },
-            {
-              label: 'Compact Lab (2h Lab)',
-              dayStartTime: '09:00',
-              dayEndTime: '17:00',
-              periodLengthMinutes: 50,
-              shortBreakEnabled: true,
-              shortBreakMinutes: 10,
-              middayBreakEnabled: true,
-              middayBreakMode: 'fixed' as const,
-              middayBreakStartTime: '13:00',
-              middayBreakDurationMinutes: 60,
-              labDurationMinutes: 120
-            }
-          ].map(preset => (
-            <button
-              key={preset.label}
-              type="button"
-              onClick={() => applyTimingPreset(preset)}
-              className="px-2.5 py-1.5 rounded-lg bg-[#F7F6EF] hover:bg-[#EDEAE0] border border-[#E4E2DA] text-[11px] font-medium text-[#171717] transition-colors cursor-pointer"
-            >
-              {preset.label}
-            </button>
-          ))}
-        </div>
+      {/* Quick Presets Strip */}
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-[11px] font-semibold uppercase tracking-wider text-[#77766F] mr-1">
+          Presets:
+        </span>
+        {[
+          {
+            label: 'Standard 9–5 (50m + 10m)',
+            dayStartTime: '09:00',
+            dayEndTime: '17:00',
+            periodLengthMinutes: 50,
+            shortBreakEnabled: true,
+            shortBreakMinutes: 10,
+            middayBreakEnabled: true,
+            middayBreakMode: 'fixed' as const,
+            middayBreakStartTime: '13:00',
+            middayBreakDurationMinutes: 60,
+            labDurationMinutes: 180
+          },
+          {
+            label: 'Extended 8:30–5 (60m)',
+            dayStartTime: '08:30',
+            dayEndTime: '17:00',
+            periodLengthMinutes: 60,
+            shortBreakEnabled: true,
+            shortBreakMinutes: 15,
+            middayBreakEnabled: true,
+            middayBreakMode: 'fixed' as const,
+            middayBreakStartTime: '12:15',
+            middayBreakDurationMinutes: 45,
+            labDurationMinutes: 135
+          },
+          {
+            label: 'Back-to-Back (No Breaks)',
+            dayStartTime: '09:00',
+            dayEndTime: '17:00',
+            periodLengthMinutes: 60,
+            shortBreakEnabled: false,
+            shortBreakMinutes: 0,
+            middayBreakEnabled: true,
+            middayBreakMode: 'fixed' as const,
+            middayBreakStartTime: '13:00',
+            middayBreakDurationMinutes: 60,
+            labDurationMinutes: 180
+          },
+          {
+            label: 'Compact Lab (2h Lab)',
+            dayStartTime: '09:00',
+            dayEndTime: '17:00',
+            periodLengthMinutes: 50,
+            shortBreakEnabled: true,
+            shortBreakMinutes: 10,
+            middayBreakEnabled: true,
+            middayBreakMode: 'fixed' as const,
+            middayBreakStartTime: '13:00',
+            middayBreakDurationMinutes: 60,
+            labDurationMinutes: 120
+          }
+        ].map(preset => (
+          <button
+            key={preset.label}
+            type="button"
+            onClick={() => applyTimingPreset(preset)}
+            className="px-3 py-1.5 rounded-lg bg-white hover:bg-[#EDEAE0] border border-[#E4E2DA] text-xs font-medium text-[#171717] transition-colors cursor-pointer"
+          >
+            {preset.label}
+          </button>
+        ))}
       </div>
 
-      {/* =========================================================
-          UNIVERSITY ACADEMIC CALENDAR & TIMETABLE MANAGEMENT POLICY
-         ========================================================= */}
+      {/* ACADEMIC CALENDAR & SCHEDULING POLICY */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
-        {/* PANEL A: UNIVERSITY ACADEMIC CALENDAR (MULTI-SEMESTER SUPPORT) */}
-        <section className="lg:col-span-7 sf-card-white p-6 flex flex-col justify-between space-y-5">
+        {/* PANEL A: ACADEMIC CALENDAR */}
+        <section className="lg:col-span-7 sf-card-white p-5 sm:p-6 flex flex-col justify-between space-y-4">
           <div className="space-y-4">
-            <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[#E4E2DA] pb-4">
-              <div className="space-y-1">
-                <div className="text-[11px] font-mono-tabular font-semibold uppercase tracking-wider text-[#77766F]">
-                  University Academic Calendar · Multi-Cohort Semesters
-                </div>
-                <h2 className="font-serif-editorial text-xl text-[#171717] flex items-center gap-2">
-                  <Calendar className="w-4 h-4 text-[#171717]" />
-                  <span>Configured Semesters &amp; Active Periods</span>
-                </h2>
-                <p className="text-xs text-[#77766F]">
-                  Define custom semester names, academic years, and dates. Multiple semesters (e.g., Fall, Spring, Summer) can be active simultaneously for different cohorts.
-                </p>
-              </div>
-              <span className="px-2.5 py-1 rounded-lg bg-[#B7F77C] text-[#171717] font-mono-tabular text-xs font-semibold shrink-0">
-                {activeTermsList.length} Active / {store.terms.length} Total
+            <div className="flex items-center justify-between gap-3 border-b border-[#E4E2DA] pb-3">
+              <h2 className="font-serif-editorial text-xl text-[#171717] flex items-center gap-2">
+                <Calendar className="w-4 h-4 text-[#171717]" />
+                <span>Academic Calendar</span>
+              </h2>
+              <span className="text-xs font-mono-tabular font-semibold text-[#77766F]">
+                {activeTermsList.length} active · {store.terms.length} total
               </span>
             </div>
 
-            <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+            <div className="divide-y divide-[#E4E2DA] border border-[#E4E2DA] rounded-xl max-h-60 overflow-y-auto bg-white">
               {store.terms.map(term => {
                 const isActive = term.status === 'active';
                 return (
                   <div
                     key={term.id}
-                    className={`p-3 rounded-xl border flex flex-wrap items-center justify-between gap-3 transition-colors ${
-                      isActive
-                        ? 'bg-[#B7F77C]/20 border-[#98DF58]'
-                        : 'bg-[#F7F6EF]/60 border-[#E4E2DA]'
-                    }`}
+                    className="px-4 py-3 flex flex-wrap items-center justify-between gap-3 hover:bg-[#F7F6EF]/60 transition-colors"
                   >
-                    <div className="flex items-center gap-3 min-w-[200px]">
-                      <span className="px-2 py-1 rounded-md bg-[#171717] text-white text-[10px] font-mono-tabular font-bold">
-                        {term.code}
-                      </span>
-                      <div>
-                        <div className="text-xs font-semibold text-[#171717] flex items-center gap-2 flex-wrap">
-                          <span>{term.name}</span>
-                          {term.academicYear && (
-                            <span className="text-[10.5px] font-mono-tabular text-[#77766F]">
-                              ({term.academicYear})
-                            </span>
-                          )}
-                          <span
-                            className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
-                              isActive
-                                ? 'bg-[#171717] text-[#B7F77C]'
-                                : 'bg-white text-[#77766F] border border-[#E4E2DA]'
-                            }`}
-                          >
-                            {isActive ? 'Active' : 'Inactive'}
-                          </span>
-                        </div>
-                        <div className="text-[11px] text-[#77766F] font-mono-tabular mt-0.5">
-                          {term.startDate} → {term.endDate} · {term.weeksCount} weeks
-                        </div>
+                    <div className="min-w-[180px]">
+                      <div className="text-xs font-semibold text-[#171717] flex items-center gap-2 flex-wrap">
+                        <span className="font-mono-tabular font-bold">{term.code}</span>
+                        <span>·</span>
+                        <span>{term.name}</span>
+                        {isActive && (
+                          <span className="text-[11px] font-medium text-[#1B5E20]">· Active</span>
+                        )}
+                      </div>
+                      <div className="text-[11px] text-[#77766F] font-mono-tabular mt-0.5">
+                        {term.startDate} → {term.endDate} · {term.weeksCount}w
                       </div>
                     </div>
 
@@ -621,11 +574,9 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
                         type="button"
                         onClick={() => {
                           institutionalStore.toggleTermActiveStatus(term.id);
-                          showToast(
-                            `Updated active status for "${term.name}".`
-                          );
+                          showToast(`Updated status for "${term.name}".`);
                         }}
-                        className={`h-8 px-3 rounded-lg text-xs font-semibold border transition-colors cursor-pointer ${
+                        className={`h-7 px-2.5 rounded-lg text-xs font-semibold border transition-colors cursor-pointer ${
                           isActive
                             ? 'bg-white text-[#171717] border-[#E4E2DA] hover:bg-[#F7F6EF]'
                             : 'bg-[#171717] text-white border-[#171717]'
@@ -638,9 +589,9 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
                           type="button"
                           onClick={() => {
                             institutionalStore.deleteTerm(term.id);
-                            showToast(`Removed semester "${term.name}".`);
+                            showToast(`Removed "${term.name}".`);
                           }}
-                          className="h-8 w-8 rounded-lg border border-[#E4E2DA] bg-white hover:bg-[#FDE8E8] text-[#77766F] hover:text-[#8B1E1E] flex items-center justify-center transition-colors cursor-pointer"
+                          className="h-7 w-7 rounded-lg border border-[#E4E2DA] bg-white hover:bg-[#FDE8E8] text-[#77766F] hover:text-[#8B1E1E] flex items-center justify-center transition-colors cursor-pointer"
                           title="Delete semester"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
@@ -654,11 +605,9 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
           </div>
 
           {/* Add New Semester Form */}
-          <div className="p-3.5 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] space-y-2.5">
+          <div className="pt-3 border-t border-[#E4E2DA] space-y-2.5">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-[#171717]">
-                Add Semester to Academic Calendar
-              </span>
+              <span className="text-xs font-semibold text-[#171717]">Add Semester</span>
               <label className="inline-flex items-center gap-1.5 text-[11px] text-[#57564F] cursor-pointer">
                 <input
                   type="checkbox"
@@ -666,13 +615,13 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
                   onChange={e => setNewSemActive(e.target.checked)}
                   className="w-3.5 h-3.5 accent-[#171717]"
                 />
-                <span>Mark Active Immediately</span>
+                <span>Active immediately</span>
               </label>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-6 gap-2">
               <input
                 type="text"
-                placeholder="Semester Name (e.g. Spring 2027)"
+                placeholder="Name (e.g. Spring 2027)"
                 value={newSemName}
                 onChange={e => setNewSemName(e.target.value)}
                 className="input-field h-9 text-xs bg-white sm:col-span-2"
@@ -703,7 +652,6 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
                   value={newSemEnd}
                   onChange={e => setNewSemEnd(e.target.value)}
                   className="input-field h-9 text-xs font-mono-tabular bg-white flex-1 min-w-0"
-                  title="Semester End Date"
                 />
                 <button
                   type="button"
@@ -719,56 +667,44 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
           </div>
         </section>
 
-        {/* PANEL B: UNIVERSITY TIMETABLE MANAGEMENT POLICY */}
-        <section className="lg:col-span-5 sf-card-white p-6 flex flex-col justify-between space-y-5">
+        {/* PANEL B: TIMETABLE MANAGEMENT POLICY */}
+        <section className="lg:col-span-5 sf-card-white p-5 sm:p-6 flex flex-col justify-between space-y-4">
           <div className="space-y-4">
-            <div className="flex items-start justify-between gap-3 border-b border-[#E4E2DA] pb-4">
-              <div className="space-y-1">
-                <div className="text-[11px] font-mono-tabular font-semibold uppercase tracking-wider text-[#77766F]">
-                  Institutional Governance · Scheduling Policy
-                </div>
-                <h2 className="font-serif-editorial text-xl text-[#171717] flex items-center gap-2">
-                  <Building2 className="w-4 h-4 text-[#171717]" />
-                  <span>Timetable Management Policy</span>
-                </h2>
-                <p className="text-xs text-[#77766F]">
-                  Configure how timetable generation and resource allocation operate across your university’s departments.
-                </p>
-              </div>
-              <span className="px-2.5 py-1 rounded-lg bg-[#B8EEEE] text-[#171717] font-mono-tabular text-xs font-semibold shrink-0">
+            <div className="flex items-center justify-between gap-3 border-b border-[#E4E2DA] pb-3">
+              <h2 className="font-serif-editorial text-xl text-[#171717] flex items-center gap-2">
+                <Building2 className="w-4 h-4 text-[#171717]" />
+                <span>Scheduling Policy</span>
+              </h2>
+              <span className="text-xs font-mono-tabular text-[#77766F]">
                 {currentPolicy === 'whole_university' ? 'Whole-University' : 'Department-Wise'}
               </span>
             </div>
 
-            <div className="space-y-3">
+            <div className="space-y-2.5">
               <button
                 type="button"
                 onClick={() => {
                   institutionalStore.setTimetableManagementPolicy('whole_university');
-                  showToast('Activated Policy: Whole-University Integrated Timetable Management.');
+                  showToast('Activated Whole-University Timetable Policy.');
                 }}
                 className={`w-full p-4 rounded-xl border text-left transition-colors cursor-pointer ${
                   currentPolicy === 'whole_university'
                     ? 'bg-[#171717] text-white border-[#171717]'
-                    : 'bg-[#F7F6EF] text-[#171717] border-[#E4E2DA] hover:bg-[#EDEAE0]'
+                    : 'bg-white text-[#171717] border-[#E4E2DA] hover:bg-[#F7F6EF]'
                 }`}
               >
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs font-semibold">
-                    Policy 1: Whole-University Timetable Management
-                  </span>
+                  <span className="text-xs font-semibold">Whole-University Integrated</span>
                   {currentPolicy === 'whole_university' && (
-                    <span className="px-2 py-0.5 rounded-full bg-[#B7F77C] text-[#171717] text-[10px] font-bold">
-                      Configured Policy
-                    </span>
+                    <Check className="w-3.5 h-3.5 text-[#B7F77C]" />
                   )}
                 </div>
                 <p
-                  className={`text-[11px] mt-1.5 leading-relaxed ${
-                    currentPolicy === 'whole_university' ? 'text-[#B8EEEE]' : 'text-[#57564F]'
+                  className={`text-[11px] mt-1 ${
+                    currentPolicy === 'whole_university' ? 'text-white/75' : 'text-[#77766F]'
                   }`}
                 >
-                  All configured departments ({store.departments.length}), semesters, batches, and sections ({store.studentGroups.length}) are scheduled in one integrated operation. Prevents cross-department shared faculty, classroom, and laboratory double-booking while providing both university-wide and department-specific views.
+                  Schedules all {store.departments.length} departments ({store.studentGroups.length} sections) together to prevent shared resource conflicts.
                 </p>
               </button>
 
@@ -776,44 +712,35 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
                 type="button"
                 onClick={() => {
                   institutionalStore.setTimetableManagementPolicy('department_wise');
-                  showToast('Activated Policy: Department-wise Timetable Management.');
+                  showToast('Activated Department-Wise Timetable Policy.');
                 }}
                 className={`w-full p-4 rounded-xl border text-left transition-colors cursor-pointer ${
                   currentPolicy === 'department_wise'
                     ? 'bg-[#171717] text-white border-[#171717]'
-                    : 'bg-[#F7F6EF] text-[#171717] border-[#E4E2DA] hover:bg-[#EDEAE0]'
+                    : 'bg-white text-[#171717] border-[#E4E2DA] hover:bg-[#F7F6EF]'
                 }`}
               >
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs font-semibold">
-                    Policy 2: Department-wise Timetable Management
-                  </span>
+                  <span className="text-xs font-semibold">Department-Wise Isolation</span>
                   {currentPolicy === 'department_wise' && (
-                    <span className="px-2 py-0.5 rounded-full bg-[#B7F77C] text-[#171717] text-[10px] font-bold">
-                      Configured Policy
-                    </span>
+                    <Check className="w-3.5 h-3.5 text-[#B7F77C]" />
                   )}
                 </div>
                 <p
-                  className={`text-[11px] mt-1.5 leading-relaxed ${
-                    currentPolicy === 'department_wise' ? 'text-[#B8EEEE]' : 'text-[#57564F]'
+                  className={`text-[11px] mt-1 ${
+                    currentPolicy === 'department_wise' ? 'text-white/75' : 'text-[#77766F]'
                   }`}
                 >
-                  Each department generates and manages its own timetable using department-specific faculty, classrooms, laboratories, courses, batches, and sections, while university administrators retain a master overview of all departmental schedules.
+                  Each department generates its own timetable using department-assigned faculty, rooms, and batches.
                 </p>
               </button>
             </div>
           </div>
 
-          <div className="p-3.5 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] flex items-center justify-between gap-3 text-xs">
-            <div className="flex items-center gap-2 text-[#57564F]">
-              <Layers className="w-4 h-4 text-[#171717] shrink-0" />
-              <span>
-                Hierarchy: <strong className="text-[#171717]">{store.departments.length} Depts</strong> ·{' '}
-                <strong className="text-[#171717]">{store.programs.length} Programs</strong> ·{' '}
-                <strong className="text-[#171717]">{store.studentGroups.length} Sections</strong>
-              </span>
-            </div>
+          <div className="pt-3 border-t border-[#E4E2DA] flex items-center justify-between gap-3 text-xs">
+            <span className="text-[#57564F] font-mono-tabular">
+              {store.departments.length} Depts · {store.programs.length} Programs · {store.studentGroups.length} Sections
+            </span>
             <button
               type="button"
               onClick={() => onNavigate('generate')}
@@ -825,26 +752,16 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
         </section>
       </div>
 
-      {/* =========================================================
-          5 SEPARATED CONFIGURATION PANELS
-         ========================================================= */}
+      {/* TIMING CONFIGURATION PANELS */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* PANEL 1: UNIVERSITY OPERATING HOURS (6 cols) */}
-        <section className="lg:col-span-6 sf-card-white p-6 space-y-5">
-          <div className="flex items-start justify-between gap-3 border-b border-[#E4E2DA] pb-4">
-            <div className="space-y-1">
-              <div className="text-[11px] font-mono-tabular font-semibold uppercase tracking-wider text-[#77766F]">
-                Section 01 · Operating Window
-              </div>
-              <h2 className="font-serif-editorial text-xl text-[#171717] flex items-center gap-2">
-                <Clock className="w-4 h-4 text-[#171717]" />
-                <span>University Operating Hours</span>
-              </h2>
-              <p className="text-xs text-[#77766F]">
-                Define daily opening time, closing time, and active academic working days.
-              </p>
-            </div>
-            <span className="px-2.5 py-1 rounded-lg bg-[#B8EEEE] text-[#171717] font-mono-tabular text-xs font-semibold shrink-0">
+        {/* PANEL 1: OPERATING HOURS */}
+        <section className="lg:col-span-6 sf-card-white p-5 sm:p-6 space-y-5">
+          <div className="flex items-center justify-between gap-3 border-b border-[#E4E2DA] pb-3">
+            <h2 className="font-serif-editorial text-xl text-[#171717] flex items-center gap-2">
+              <Clock className="w-4 h-4 text-[#171717]" />
+              <span>Operating Hours</span>
+            </h2>
+            <span className="font-mono-tabular text-xs font-semibold text-[#57564F]">
               {livePreview.operatingHoursLabel}
             </span>
           </div>
@@ -863,9 +780,6 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
                 }}
                 className="input-field h-10 text-xs font-mono-tabular"
               />
-              <span className="block text-[11px] text-[#77766F] mt-1">
-                First morning lecture or lab starts at this hour.
-              </span>
             </div>
 
             <div>
@@ -881,20 +795,14 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
                 }}
                 className="input-field h-10 text-xs font-mono-tabular"
               />
-              <span className="block text-[11px] text-[#77766F] mt-1">
-                All lectures and continuous labs must end by this hour.
-              </span>
             </div>
           </div>
 
           <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-semibold text-[#171717]">
-                Working Days ({workingDays.length} active days)
-              </label>
-              <span className="text-[11px] text-[#77766F]">Click to toggle active teaching days</span>
-            </div>
-            <div className="flex flex-wrap gap-2">
+            <label className="block text-xs font-semibold text-[#171717]">
+              Working Days ({workingDays.length})
+            </label>
+            <div className="flex flex-wrap gap-1.5">
               {ALL_WEEK_DAYS.map(day => {
                 const active = workingDays.includes(day.code);
                 return (
@@ -902,10 +810,10 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
                     key={day.code}
                     type="button"
                     onClick={() => handleToggleWorkingDay(day.code)}
-                    className={`px-3.5 py-2 rounded-xl text-xs font-semibold border transition-colors cursor-pointer ${
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors cursor-pointer ${
                       active
                         ? 'bg-[#171717] text-white border-[#171717]'
-                        : 'bg-[#F7F6EF] text-[#77766F] border-[#E4E2DA] hover:text-[#171717]'
+                        : 'bg-white text-[#77766F] border-[#E4E2DA] hover:text-[#171717]'
                     }`}
                   >
                     {day.label}
@@ -915,37 +823,32 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
             </div>
           </div>
 
-          {/* Optional Friday Afternoon Operating Shift */}
-          <div className="p-4 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] space-y-3">
+          {/* Friday Afternoon Operating Shift */}
+          <div className="pt-4 border-t border-[#E4E2DA] space-y-3">
             <div className="flex items-center justify-between gap-4">
               <div>
                 <div className="text-xs font-semibold text-[#171717]">
-                  Friday Afternoon Operating Shift (Jummah Buffer)
-                </div>
-                <div className="text-[11px] text-[#77766F]">
-                  Optional daily difference for Friday afternoon sessions.
+                  Friday Afternoon Shift (Jummah Buffer)
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => setFridayAfternoonShiftEnabled(!fridayAfternoonShiftEnabled)}
-                className={`w-11 h-6 flex items-center rounded-full p-1 transition-colors cursor-pointer shrink-0 ${
+                className={`w-10 h-6 flex items-center rounded-full p-1 transition-colors cursor-pointer shrink-0 ${
                   fridayAfternoonShiftEnabled ? 'bg-[#171717]' : 'bg-[#D6D3C9]'
                 }`}
               >
                 <div
                   className={`bg-white w-4 h-4 rounded-full transition-transform ${
-                    fridayAfternoonShiftEnabled ? 'translate-x-5' : 'translate-x-0'
+                    fridayAfternoonShiftEnabled ? 'translate-x-4' : 'translate-x-0'
                   }`}
                 />
               </button>
             </div>
 
             {fridayAfternoonShiftEnabled && (
-              <div className="flex items-center justify-between gap-3 pt-2 border-t border-[#E4E2DA]">
-                <span className="text-xs text-[#171717] font-medium">
-                  Friday Afternoon Start Time:
-                </span>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-xs text-[#57564F]">Friday Afternoon Start:</span>
                 <input
                   type="time"
                   value={fridayAfternoonStartTime}
@@ -957,33 +860,21 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
           </div>
         </section>
 
-        {/* PANEL 2: REGULAR CLASS DURATION & PANEL 3: BREAK BETWEEN CLASSES (6 cols) */}
+        {/* PANEL 2 & 3: LECTURE DURATION & INTER-CLASS BREAKS */}
         <div className="lg:col-span-6 space-y-6">
-          {/* PANEL 2: REGULAR CLASS DURATION */}
-          <section className="sf-card-white p-6 space-y-4">
-            <div className="flex items-start justify-between gap-3 border-b border-[#E4E2DA] pb-3.5">
-              <div className="space-y-1">
-                <div className="text-[11px] font-mono-tabular font-semibold uppercase tracking-wider text-[#77766F]">
-                  Section 02 · Lecture Slot Length
-                </div>
-                <h2 className="font-serif-editorial text-xl text-[#171717] flex items-center gap-2">
-                  <BookOpen className="w-4 h-4 text-[#171717]" />
-                  <span>Regular Class Duration</span>
-                </h2>
-                <p className="text-xs text-[#77766F]">
-                  Configure the duration of each standard lecture session in minutes.
-                </p>
-              </div>
-              <span className="px-2.5 py-1 rounded-lg bg-[#B8F2E6] text-[#171717] font-mono-tabular text-xs font-semibold shrink-0">
-                {periodLengthMinutes} minutes
+          <section className="sf-card-white p-5 sm:p-6 space-y-4">
+            <div className="flex items-center justify-between gap-3 border-b border-[#E4E2DA] pb-3">
+              <h2 className="font-serif-editorial text-xl text-[#171717] flex items-center gap-2">
+                <BookOpen className="w-4 h-4 text-[#171717]" />
+                <span>Lecture Duration</span>
+              </h2>
+              <span className="font-mono-tabular text-xs font-semibold text-[#57564F]">
+                {periodLengthMinutes} min
               </span>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 items-end">
+            <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 items-center">
               <div className="sm:col-span-5">
-                <label className="block text-xs font-semibold text-[#171717] mb-1.5">
-                  Lecture Duration
-                </label>
                 <div className="input-group-field h-10 px-3 gap-2">
                   <input
                     type="number"
@@ -1003,47 +894,33 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
                 </div>
               </div>
 
-              <div className="sm:col-span-7 space-y-1.5">
-                <span className="block text-[11px] font-medium text-[#77766F]">
-                  Standard Lecture Durations:
-                </span>
-                <div className="flex flex-wrap gap-1.5">
-                  {[45, 50, 60, 75, 90].map(mins => (
-                    <button
-                      key={mins}
-                      type="button"
-                      onClick={() => {
-                        setTimingValidationErrors([]);
-                        setPeriodLengthMinutes(mins);
-                      }}
-                      className={`px-2.5 py-1.5 rounded-lg text-xs font-mono-tabular transition-colors cursor-pointer ${
-                        periodLengthMinutes === mins
-                          ? 'bg-[#171717] text-white font-semibold'
-                          : 'bg-[#F7F6EF] hover:bg-[#EDEAE0] text-[#171717] border border-[#E4E2DA]'
-                      }`}
-                    >
-                      {mins} min
-                    </button>
-                  ))}
-                </div>
+              <div className="sm:col-span-7 flex flex-wrap gap-1.5">
+                {[45, 50, 60, 75, 90].map(mins => (
+                  <button
+                    key={mins}
+                    type="button"
+                    onClick={() => {
+                      setTimingValidationErrors([]);
+                      setPeriodLengthMinutes(mins);
+                    }}
+                    className={`px-2.5 py-1.5 rounded-lg text-xs font-mono-tabular transition-colors cursor-pointer ${
+                      periodLengthMinutes === mins
+                        ? 'bg-[#171717] text-white font-semibold'
+                        : 'bg-white hover:bg-[#F7F6EF] text-[#171717] border border-[#E4E2DA]'
+                    }`}
+                  >
+                    {mins}m
+                  </button>
+                ))}
               </div>
             </div>
           </section>
 
-          {/* PANEL 3: BREAK BETWEEN CLASSES */}
-          <section className="sf-card-white p-6 space-y-4">
-            <div className="flex items-start justify-between gap-3 border-b border-[#E4E2DA] pb-3.5">
-              <div className="space-y-1">
-                <div className="text-[11px] font-mono-tabular font-semibold uppercase tracking-wider text-[#77766F]">
-                  Section 03 · Inter-Class Transition
-                </div>
-                <h2 className="font-serif-editorial text-xl text-[#171717]">
-                  Break Between Classes
-                </h2>
-                <p className="text-xs text-[#77766F]">
-                  Enable or disable short breaks between consecutive classes and configure break duration in minutes.
-                </p>
-              </div>
+          <section className="sf-card-white p-5 sm:p-6 space-y-4">
+            <div className="flex items-center justify-between gap-3 border-b border-[#E4E2DA] pb-3">
+              <h2 className="font-serif-editorial text-xl text-[#171717]">
+                Inter-Class Break
+              </h2>
 
               <button
                 type="button"
@@ -1051,23 +928,23 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
                   setTimingValidationErrors([]);
                   setShortBreakEnabled(!shortBreakEnabled);
                 }}
-                className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-2 border transition-colors cursor-pointer shrink-0 ${
-                  shortBreakEnabled
-                    ? 'bg-[#B7F77C] border-[#98DF58] text-[#171717]'
-                    : 'bg-[#F7F6EF] border-[#E4E2DA] text-[#77766F]'
+                className={`w-10 h-6 flex items-center rounded-full p-1 transition-colors cursor-pointer shrink-0 ${
+                  shortBreakEnabled ? 'bg-[#171717]' : 'bg-[#D6D3C9]'
                 }`}
+                aria-label="Toggle short breaks"
               >
-                <span>Breaks: {shortBreakEnabled ? 'Enabled (ON)' : 'Disabled (OFF)'}</span>
+                <div
+                  className={`bg-white w-4 h-4 rounded-full transition-transform ${
+                    shortBreakEnabled ? 'translate-x-4' : 'translate-x-0'
+                  }`}
+                />
               </button>
             </div>
 
             {shortBreakEnabled ? (
               <div className="space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 items-end">
+                <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 items-center">
                   <div className="sm:col-span-5">
-                    <label className="block text-xs font-semibold text-[#171717] mb-1.5">
-                      Break Duration
-                    </label>
                     <div className="input-group-field h-10 px-3 gap-2">
                       <input
                         type="number"
@@ -1087,41 +964,31 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
                     </div>
                   </div>
 
-                  <div className="sm:col-span-7 space-y-1.5">
-                    <span className="block text-[11px] font-medium text-[#77766F]">
-                      Quick Break Durations:
-                    </span>
-                    <div className="flex flex-wrap gap-1.5">
-                      {[5, 10, 15, 20].map(mins => (
-                        <button
-                          key={mins}
-                          type="button"
-                          onClick={() => {
-                            setTimingValidationErrors([]);
-                            setShortBreakMinutes(mins);
-                          }}
-                          className={`px-2.5 py-1.5 rounded-lg text-xs font-mono-tabular transition-colors cursor-pointer ${
-                            shortBreakMinutes === mins
-                              ? 'bg-[#171717] text-white font-semibold'
-                              : 'bg-[#F7F6EF] hover:bg-[#EDEAE0] text-[#171717] border border-[#E4E2DA]'
-                          }`}
-                        >
-                          {mins} min
-                        </button>
-                      ))}
-                    </div>
+                  <div className="sm:col-span-7 flex flex-wrap gap-1.5">
+                    {[5, 10, 15, 20].map(mins => (
+                      <button
+                        key={mins}
+                        type="button"
+                        onClick={() => {
+                          setTimingValidationErrors([]);
+                          setShortBreakMinutes(mins);
+                        }}
+                        className={`px-2.5 py-1.5 rounded-lg text-xs font-mono-tabular transition-colors cursor-pointer ${
+                          shortBreakMinutes === mins
+                            ? 'bg-[#171717] text-white font-semibold'
+                            : 'bg-white hover:bg-[#F7F6EF] text-[#171717] border border-[#E4E2DA]'
+                        }`}
+                      >
+                        {mins}m
+                      </button>
+                    ))}
                   </div>
                 </div>
 
-                <div className="p-3.5 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] flex items-center justify-between gap-3">
-                  <div>
-                    <div className="text-xs font-semibold text-[#171717]">
-                      Include break after final class of a session
-                    </div>
-                    <div className="text-[11px] text-[#77766F]">
-                      Each lecture cycle spans {periodLengthMinutes} minutes + {shortBreakMinutes} minutes break ({periodLengthMinutes + shortBreakMinutes} minutes total).
-                    </div>
-                  </div>
+                <div className="pt-3 border-t border-[#E4E2DA] flex items-center justify-between gap-3">
+                  <span className="text-xs text-[#57564F]">
+                    Include break after final slot ({periodLengthMinutes + shortBreakMinutes}m cycle)
+                  </span>
                   <button
                     type="button"
                     onClick={() => setIncludeBreakAfterLastSlot(!includeBreakAfterLastSlot)}
@@ -1138,28 +1005,20 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
                 </div>
               </div>
             ) : (
-              <div className="p-4 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] text-xs text-[#77766F]">
-                Breaks between classes are currently <strong className="text-[#171717]">DISABLED</strong>. Regular {periodLengthMinutes}-minute lectures are scheduled consecutively back-to-back.
-              </div>
+              <p className="text-xs text-[#77766F]">
+                Disabled — {periodLengthMinutes}-minute lectures run back-to-back.
+              </p>
             )}
           </section>
         </div>
 
-        {/* PANEL 4: MIDDAY / LUNCH BREAK (6 cols) */}
-        <section className="lg:col-span-6 sf-card-white p-6 space-y-5">
-          <div className="flex items-start justify-between gap-3 border-b border-[#E4E2DA] pb-4">
-            <div className="space-y-1">
-              <div className="text-[11px] font-mono-tabular font-semibold uppercase tracking-wider text-[#77766F]">
-                Section 04 · Protected Midday Window
-              </div>
-              <h2 className="font-serif-editorial text-xl text-[#171717] flex items-center gap-2">
-                <Coffee className="w-4 h-4 text-[#171717]" />
-                <span>Midday / Lunch Break</span>
-              </h2>
-              <p className="text-xs text-[#77766F]">
-                Enable or disable the midday break and configure its start time and duration. No lectures or labs overlap this period.
-              </p>
-            </div>
+        {/* PANEL 4: MIDDAY / LUNCH BREAK */}
+        <section className="lg:col-span-6 sf-card-white p-5 sm:p-6 space-y-4">
+          <div className="flex items-center justify-between gap-3 border-b border-[#E4E2DA] pb-3">
+            <h2 className="font-serif-editorial text-xl text-[#171717] flex items-center gap-2">
+              <Coffee className="w-4 h-4 text-[#171717]" />
+              <span>Midday Break</span>
+            </h2>
 
             <button
               type="button"
@@ -1167,69 +1026,53 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
                 setTimingValidationErrors([]);
                 setMiddayBreakEnabled(!middayBreakEnabled);
               }}
-              className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-colors cursor-pointer shrink-0 ${
-                middayBreakEnabled
-                  ? 'bg-[#E8D36B] border-[#D4BC4C] text-[#171717]'
-                  : 'bg-[#F7F6EF] border-[#E4E2DA] text-[#77766F]'
+              className={`w-10 h-6 flex items-center rounded-full p-1 transition-colors cursor-pointer shrink-0 ${
+                middayBreakEnabled ? 'bg-[#171717]' : 'bg-[#D6D3C9]'
               }`}
+              aria-label="Toggle midday break"
             >
-              {middayBreakEnabled
-                ? `Enabled (${livePreview.middayBreak.timeRangeLabel})`
-                : 'Disabled'}
+              <div
+                className={`bg-white w-4 h-4 rounded-full transition-transform ${
+                  middayBreakEnabled ? 'translate-x-4' : 'translate-x-0'
+                }`}
+              />
             </button>
           </div>
 
           {middayBreakEnabled ? (
             <div className="space-y-4">
-              <div className="space-y-1.5">
-                <label className="block text-xs font-semibold text-[#171717]">
-                  Midday Break Placement Mode
-                </label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                  <button
-                    type="button"
-                    onClick={() => setMiddayBreakMode('fixed')}
-                    className={`p-3 rounded-xl border text-left transition-colors cursor-pointer ${
-                      middayBreakMode === 'fixed'
-                        ? 'bg-[#171717] text-white border-[#171717]'
-                        : 'bg-[#F7F6EF] text-[#171717] border-[#E4E2DA] hover:bg-[#EDEAE0]'
-                    }`}
-                  >
-                    <div className="text-xs font-semibold">Fixed Start Time</div>
-                    <div
-                      className={`text-[11px] mt-0.5 ${
-                        middayBreakMode === 'fixed' ? 'text-[#B8EEEE]' : 'text-[#77766F]'
-                      }`}
-                    >
-                      Specify exact start time (e.g. 1:00 PM)
-                    </div>
-                  </button>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setMiddayBreakMode('fixed')}
+                  className={`p-3 rounded-xl border text-left transition-colors cursor-pointer ${
+                    middayBreakMode === 'fixed'
+                      ? 'bg-[#171717] text-white border-[#171717]'
+                      : 'bg-white text-[#171717] border-[#E4E2DA] hover:bg-[#F7F6EF]'
+                  }`}
+                >
+                  <div className="text-xs font-semibold">Fixed Start Time</div>
+                </button>
 
-                  <button
-                    type="button"
-                    onClick={() => setMiddayBreakMode('auto')}
-                    className={`p-3 rounded-xl border text-left transition-colors cursor-pointer ${
-                      middayBreakMode === 'auto'
-                        ? 'bg-[#171717] text-white border-[#171717]'
-                        : 'bg-[#F7F6EF] text-[#171717] border-[#E4E2DA] hover:bg-[#EDEAE0]'
-                    }`}
-                  >
-                    <div className="text-xs font-semibold">Auto-Calculated Midday</div>
-                    <div
-                      className={`text-[11px] mt-0.5 ${
-                        middayBreakMode === 'auto' ? 'text-[#B8EEEE]' : 'text-[#77766F]'
-                      }`}
-                    >
-                      Placed after morning slots ({livePreview.middayBreak.startTime24})
-                    </div>
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => setMiddayBreakMode('auto')}
+                  className={`p-3 rounded-xl border text-left transition-colors cursor-pointer ${
+                    middayBreakMode === 'auto'
+                      ? 'bg-[#171717] text-white border-[#171717]'
+                      : 'bg-white text-[#171717] border-[#E4E2DA] hover:bg-[#F7F6EF]'
+                  }`}
+                >
+                  <div className="text-xs font-semibold">
+                    Auto ({livePreview.middayBreak.startTime24})
+                  </div>
+                </button>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-[#171717] mb-1.5">
-                    Midday Break Start Time
+                    Start Time ({livePreview.middayBreak.timeRangeLabel})
                   </label>
                   <input
                     type="time"
@@ -1245,17 +1088,11 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
                     }}
                     className="input-field h-10 text-xs font-mono-tabular disabled:opacity-60"
                   />
-                  <span className="block text-[11px] text-[#77766F] mt-1">
-                    Active Window:{' '}
-                    <strong className="text-[#171717]">
-                      {livePreview.middayBreak.fullRangeLabel}
-                    </strong>
-                  </span>
                 </div>
 
                 <div>
                   <label className="block text-xs font-semibold text-[#171717] mb-1.5">
-                    Midday Break Duration
+                    Duration
                   </label>
                   <div className="input-group-field h-10 px-3 gap-2">
                     <input
@@ -1273,7 +1110,7 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
                       className="text-xs font-mono-tabular font-semibold"
                     />
                     <span className="text-[11px] font-mono-tabular text-[#77766F] shrink-0">
-                      minutes
+                      min
                     </span>
                   </div>
                   <div className="flex flex-wrap gap-1.5 mt-2">
@@ -1288,10 +1125,10 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
                         className={`px-2 py-1 rounded-md text-[11px] font-mono-tabular cursor-pointer ${
                           middayBreakDurationMinutes === mins
                             ? 'bg-[#171717] text-white font-semibold'
-                            : 'bg-[#F7F6EF] text-[#171717] border border-[#E4E2DA]'
+                            : 'bg-white text-[#171717] border border-[#E4E2DA]'
                         }`}
                       >
-                        {mins} min
+                        {mins}m
                       </button>
                     ))}
                   </div>
@@ -1299,38 +1136,26 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
               </div>
             </div>
           ) : (
-            <div className="p-4 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] text-xs text-[#77766F]">
-              Midday / Lunch Break is currently <strong className="text-[#171717]">DISABLED</strong>. Instructional slots are generated continuously from opening time ({dayStartTime}) to closing time ({dayEndTime}).
-            </div>
+            <p className="text-xs text-[#77766F]">
+              Disabled — continuous slots from {dayStartTime} to {dayEndTime}.
+            </p>
           )}
         </section>
 
-        {/* PANEL 5: LABORATORY DURATION (6 cols) */}
-        <section className="lg:col-span-6 sf-card-white p-6 space-y-5">
-          <div className="flex items-start justify-between gap-3 border-b border-[#E4E2DA] pb-4">
-            <div className="space-y-1">
-              <div className="text-[11px] font-mono-tabular font-semibold uppercase tracking-wider text-[#77766F]">
-                Section 05 · Continuous Practical Sessions
-              </div>
-              <h2 className="font-serif-editorial text-xl text-[#171717] flex items-center gap-2">
-                <FlaskConical className="w-4 h-4 text-[#171717]" />
-                <span>Laboratory Duration</span>
-              </h2>
-              <p className="text-xs text-[#77766F]">
-                Configure the duration of one continuous laboratory session in minutes and hours. Labs never split across different times of day.
-              </p>
-            </div>
-
-            <span className="px-2.5 py-1 rounded-lg bg-[#F2D8FA] text-[#171717] font-mono-tabular text-xs font-semibold shrink-0">
-              {labDurationMinutes} min ({labHoursEquivalent} hrs)
+        {/* PANEL 5: LABORATORY DURATION */}
+        <section className="lg:col-span-6 sf-card-white p-5 sm:p-6 space-y-4">
+          <div className="flex items-center justify-between gap-3 border-b border-[#E4E2DA] pb-3">
+            <h2 className="font-serif-editorial text-xl text-[#171717] flex items-center gap-2">
+              <FlaskConical className="w-4 h-4 text-[#171717]" />
+              <span>Laboratory Duration</span>
+            </h2>
+            <span className="font-mono-tabular text-xs font-semibold text-[#57564F]">
+              {labDurationMinutes}m ({labHoursEquivalent}h)
             </span>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 items-end">
+          <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 items-center">
             <div className="sm:col-span-5">
-              <label className="block text-xs font-semibold text-[#171717] mb-1.5">
-                Continuous Lab Duration
-              </label>
               <div className="input-group-field h-10 px-3 gap-2">
                 <input
                   type="number"
@@ -1347,58 +1172,51 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
                   className="text-xs font-mono-tabular font-semibold"
                 />
                 <span className="text-[11px] font-mono-tabular text-[#77766F] shrink-0">
-                  minutes ({labHoursEquivalent}h)
+                  min
                 </span>
               </div>
             </div>
 
-            <div className="sm:col-span-7 space-y-1.5">
-              <span className="block text-[11px] font-medium text-[#77766F]">
-                Standard Lab Duration Presets:
-              </span>
-              <div className="flex flex-wrap gap-1.5">
-                {[
-                  { mins: 120, label: '120 min (2 hours)' },
-                  { mins: 150, label: '150 min (2.5 hours)' },
-                  { mins: 180, label: '180 min (3 hours)' }
-                ].map(opt => (
-                  <button
-                    key={opt.mins}
-                    type="button"
-                    onClick={() => {
-                      setTimingValidationErrors([]);
-                      setLabDurationMinutes(opt.mins);
-                    }}
-                    className={`px-2.5 py-1.5 rounded-lg text-xs font-mono-tabular transition-colors cursor-pointer ${
-                      labDurationMinutes === opt.mins
-                        ? 'bg-[#171717] text-white font-semibold'
-                        : 'bg-[#F7F6EF] hover:bg-[#EDEAE0] text-[#171717] border border-[#E4E2DA]'
-                    }`}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
+            <div className="sm:col-span-7 flex flex-wrap gap-1.5">
+              {[
+                { mins: 120, label: '2h (120m)' },
+                { mins: 150, label: '2.5h (150m)' },
+                { mins: 180, label: '3h (180m)' }
+              ].map(opt => (
+                <button
+                  key={opt.mins}
+                  type="button"
+                  onClick={() => {
+                    setTimingValidationErrors([]);
+                    setLabDurationMinutes(opt.mins);
+                  }}
+                  className={`px-2.5 py-1.5 rounded-lg text-xs font-mono-tabular transition-colors cursor-pointer ${
+                    labDurationMinutes === opt.mins
+                      ? 'bg-[#171717] text-white font-semibold'
+                      : 'bg-white hover:bg-[#F7F6EF] text-[#171717] border border-[#E4E2DA]'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
             </div>
           </div>
 
-          {/* Computed Continuous Lab Windows Preview */}
-          <div className="p-4 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] space-y-2.5">
+          {/* Lab Windows */}
+          <div className="pt-3 border-t border-[#E4E2DA] space-y-2">
             <div className="flex items-center justify-between text-xs">
               <span className="font-semibold text-[#171717]">
-                Valid Continuous Lab Windows ({livePreview.continuousLabBlocks.length})
+                Continuous Lab Windows ({livePreview.continuousLabBlocks.length})
               </span>
               <span className="font-mono-tabular text-[11px] text-[#77766F]">
-                Spans {livePreview.labSpanSlots} consecutive timetable slots (Merged)
+                {livePreview.labSpanSlots} merged slots
               </span>
             </div>
-            <div className="flex flex-wrap gap-2">
-              {livePreview.continuousLabBlocks.map(block => (
-                <span
-                  key={block.startPeriod}
-                  className="px-2.5 py-1 rounded-lg bg-[#F2D8FA]/75 border border-[#DFB9EC] text-xs font-mono-tabular font-semibold text-[#171717]"
-                >
+            <div className="flex flex-wrap gap-1.5 text-xs font-mono-tabular text-[#57564F]">
+              {livePreview.continuousLabBlocks.map((block, idx) => (
+                <span key={block.startPeriod}>
                   {block.session}: {block.continuousLabel}
+                  {idx < livePreview.continuousLabBlocks.length - 1 ? ' · ' : ''}
                 </span>
               ))}
             </div>
@@ -1406,27 +1224,25 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
         </section>
       </div>
 
-      {/* =========================================================
-          COLLAPSIBLE DAILY TIMETABLE SLOT TIMELINE PREVIEW
-         ========================================================= */}
-      <div className="sf-card-white p-6 space-y-4">
+      {/* COLLAPSIBLE DAILY TIMETABLE SLOT TIMELINE PREVIEW */}
+      <div className="sf-card-white p-5 sm:p-6 space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div>
+          <div className="flex items-baseline gap-3">
             <h2 className="font-serif-editorial text-xl text-[#171717]">
-              Daily Timetable Slot Preview ({livePreview.slots.length} Slots)
+              Daily Slot Breakdown
             </h2>
-            <p className="text-xs text-[#77766F]">
-              Inspect how the scheduling solver partitions the university day based on the settings above.
-            </p>
+            <span className="text-xs font-mono-tabular text-[#77766F]">
+              {livePreview.slots.length} slots
+            </span>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2.5">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={() => setShowSlotTimeline(prev => !prev)}
               className="btn-secondary text-xs h-9 px-3.5"
             >
-              <span>{showSlotTimeline ? 'Hide Slot Breakdown' : 'Preview Daily Slots'}</span>
+              <span>{showSlotTimeline ? 'Hide Slots' : 'Preview Slots'}</span>
             </button>
 
             <button
@@ -1442,7 +1258,7 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
         </div>
 
         {showSlotTimeline && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-2.5 pt-4 border-t border-[#E4E2DA]">
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2.5 pt-4 border-t border-[#E4E2DA]">
             {livePreview.slots.map(slot => {
               const showLunchBefore =
                 livePreview.middayBreak.enabled &&
@@ -1451,20 +1267,20 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
               return (
                 <React.Fragment key={slot.slotNumber}>
                   {showLunchBefore && (
-                    <div className="p-3 rounded-xl bg-[#E8D36B]/45 border border-[#D4BC4C] flex flex-col justify-between">
+                    <div className="p-3 rounded-xl bg-[#E8D36B]/35 border border-[#D4BC4C] flex flex-col justify-between">
                       <div className="text-[10px] font-mono-tabular font-bold uppercase text-[#171717]">
-                        Midday Break
+                        Break
                       </div>
                       <div className="text-xs font-mono-tabular font-bold text-[#171717] my-1">
                         {livePreview.middayBreak.timeRangeLabel}
                       </div>
-                      <div className="text-[10.5px] text-[#171717]/80">
-                        {livePreview.middayBreak.durationMinutes} min Protected Lunch
+                      <div className="text-[10.5px] text-[#57564F]">
+                        {livePreview.middayBreak.durationMinutes}m lunch
                       </div>
                     </div>
                   )}
 
-                  <div className="p-3 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] flex flex-col justify-between">
+                  <div className="p-3 rounded-xl bg-[#F7F6EF]/60 border border-[#E4E2DA] flex flex-col justify-between">
                     <div className="flex items-center justify-between text-[10px] font-mono-tabular text-[#77766F]">
                       <span className="font-bold text-[#171717]">Slot {slot.slotNumber}</span>
                       <span>{slot.session}</span>
@@ -1474,8 +1290,8 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
                     </div>
                     <div className="text-[10.5px] font-mono-tabular text-[#77766F]">
                       {livePreview.shortBreakEnabled && livePreview.shortBreakMinutes > 0
-                        ? `Break: ${slot.shortBreak}`
-                        : 'No Break (0 min)'}
+                        ? `+${livePreview.shortBreakMinutes}m break`
+                        : 'No break'}
                     </div>
                   </div>
                 </React.Fragment>

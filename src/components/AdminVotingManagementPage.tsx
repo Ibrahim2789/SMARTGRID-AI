@@ -9,8 +9,6 @@ import {
   Plus,
   Users,
   KeyRound,
-  UserCheck,
-  UserX,
   BarChart3,
   Filter,
   Calendar,
@@ -306,7 +304,6 @@ export const AdminVotingManagementPage: React.FC<AdminVotingManagementPageProps>
   };
 
   // Analytics Computations
-  const totalVotesCast = polls.reduce((sum, p) => sum + p.totalVotes, 0);
   const maleBrQuestionsCount = polls.filter(p => p.brGenderRole === 'male').length;
   const femaleBrQuestionsCount = polls.filter(p => p.brGenderRole === 'female').length;
   const activeQuestionsCount = polls.filter(p => p.status === 'Published').length;
@@ -376,114 +373,113 @@ export const AdminVotingManagementPage: React.FC<AdminVotingManagementPageProps>
     return true;
   });
 
-  const statusBadgeStyle = (status: PollDTO['status']) => {
+  const statusTextStyle = (status: PollDTO['status']) => {
     switch (status) {
       case 'Pending':
-        return 'bg-[#FFF6D6] border-[#F0D98C] text-[#6E5100]';
+        return { text: 'text-[#8B5E00]', dot: 'bg-[#8B5E00]' };
       case 'Approved':
-        return 'bg-[#E3F2FD] border-[#90CAF9] text-[#0D47A1]';
+        return { text: 'text-[#0D47A1]', dot: 'bg-[#0D47A1]' };
       case 'Published':
-        return 'bg-[#E8F8E0] border-[#A5E087] text-[#1B5E20]';
+        return { text: 'text-[#1B5E20]', dot: 'bg-[#1B5E20]' };
       case 'Rejected':
-        return 'bg-[#FDE8E8] border-[#F5B5B5] text-[#8B1E1E]';
+        return { text: 'text-[#8B1E1E]', dot: 'bg-[#8B1E1E]' };
       case 'Closed':
-        return 'bg-[#EDEAE0] border-[#D6D4CE] text-[#57564F]';
+        return { text: 'text-[#57564F]', dot: 'bg-[#77766F]' };
     }
   };
 
   return (
-    <div className="space-y-8 pb-16">
+    <div className="space-y-6 pb-16">
       {/* Top Admin Header & 3-Tab Sub-View Switcher */}
-      <div className="bg-white border border-[#E4E2DA] rounded-3xl p-6 sm:p-8 shadow-xs">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-          <div className="space-y-2 max-w-2xl">
-            <div className="text-xs font-semibold text-[#57564F]">
-              Registrar & Governance Control Center · {publishedOrClosedPollsCount} Published/Closed Polls
-            </div>
-            <h1 className="font-serif-editorial text-3xl sm:text-4xl text-[#171717] tracking-tight">
-              {subView === 'voting'
-                ? 'Voting Moderation Queue'
-                : subView === 'analytics'
-                ? 'Voting Analytics & Cohort Engagement'
-                : 'Batch & Representative (BR) Management'}
-            </h1>
-            <p className="text-xs sm:text-sm text-[#57564F] leading-relaxed">
-              {subView === 'voting'
-                ? 'Review, approve, reject, or publish questions submitted by Male and Female Batch Representatives. Configure voting windows and result visibility rules.'
-                : subView === 'analytics'
-                ? 'Interactive visualizations of student participation rates across batches, vote distributions, and Male vs Female BR submission activity.'
-                : 'Manage university batches, assign one Male and one Female Batch Representative per cohort, and issue or reset BR login credentials.'}
-            </p>
-          </div>
+      <header className="flex flex-col lg:flex-row lg:items-end justify-between gap-4 pb-5 border-b border-[#E4E2DA]">
+        <div className="space-y-1">
+          <h1 className="font-serif-editorial text-3xl sm:text-4xl text-[#171717] tracking-tight">
+            {subView === 'voting'
+              ? 'Voting Moderation Queue'
+              : subView === 'analytics'
+              ? 'Voting Analytics'
+              : 'Batch & BR Management'}
+          </h1>
+          <p className="text-xs sm:text-sm text-[#77766F]">
+            {subView === 'voting'
+              ? 'Review BR poll submissions, set voting windows, and control result visibility.'
+              : subView === 'analytics'
+              ? 'Student turnout across batches and representative submission parity.'
+              : 'Assign Male and Female Batch Representatives and manage credentials.'}
+          </p>
+        </div>
 
-          <div className="flex flex-wrap items-center gap-2 shrink-0">
-            <div
-              className="flex flex-wrap items-center gap-1 p-1.5 rounded-2xl bg-[#F7F6EF] border border-[#E4E2DA]"
-              role="tablist"
-              aria-label="Voting administration tabs"
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
+          <div
+            className="flex flex-wrap items-center gap-1 p-1 rounded-xl bg-[#EDEAE0]/70 border border-[#E4E2DA]"
+            role="tablist"
+            aria-label="Voting administration tabs"
+          >
+            <button
+              type="button"
+              role="tab"
+              aria-selected={subView === 'voting'}
+              onClick={() => setSubView('voting')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
+                subView === 'voting'
+                  ? 'bg-[#171717] text-white'
+                  : 'text-[#57564F] hover:text-[#171717]'
+              }`}
             >
-              <button
-                type="button"
-                role="tab"
-                aria-selected={subView === 'voting'}
-                onClick={() => setSubView('voting')}
-                className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap ${
-                  subView === 'voting'
-                    ? 'bg-[#171717] text-white'
-                    : 'text-[#57564F] hover:text-[#171717]'
-                }`}
-              >
-                <ShieldCheck className="w-3.5 h-3.5" />
-                <span>Moderation Queue</span>
-                {pendingApprovalCount > 0 && (
-                  <span className="px-1.5 py-0.5 rounded bg-[#B7F77C] text-[#171717] text-[10px] font-bold">
-                    {pendingApprovalCount}
-                  </span>
-                )}
-              </button>
-
-              <button
-                type="button"
-                role="tab"
-                aria-selected={subView === 'analytics'}
-                onClick={() => setSubView('analytics')}
-                className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap ${
-                  subView === 'analytics'
-                    ? 'bg-[#171717] text-white'
-                    : 'text-[#57564F] hover:text-[#171717]'
-                }`}
-              >
-                <BarChart3 className="w-3.5 h-3.5" />
-                <span>Voting Analytics</span>
-              </button>
-
-              <button
-                type="button"
-                role="tab"
-                aria-selected={subView === 'br-management'}
-                onClick={() => setSubView('br-management')}
-                className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap ${
-                  subView === 'br-management'
-                    ? 'bg-[#171717] text-white'
-                    : 'text-[#57564F] hover:text-[#171717]'
-                }`}
-              >
-                <Users className="w-3.5 h-3.5" />
-                <span>BR Management</span>
-              </button>
-            </div>
+              <ShieldCheck className="w-3.5 h-3.5" />
+              <span>Moderation</span>
+              {pendingApprovalCount > 0 && (
+                <span
+                  className={`text-[11px] font-mono-tabular ${
+                    subView === 'voting' ? 'text-[#B7F77C]' : 'text-[#8B5E00]'
+                  }`}
+                >
+                  ({pendingApprovalCount})
+                </span>
+              )}
+            </button>
 
             <button
               type="button"
-              onClick={loadAdminOverview}
-              className="btn-secondary h-10 px-3 text-xs"
-              title="Refresh data"
+              role="tab"
+              aria-selected={subView === 'analytics'}
+              onClick={() => setSubView('analytics')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
+                subView === 'analytics'
+                  ? 'bg-[#171717] text-white'
+                  : 'text-[#57564F] hover:text-[#171717]'
+              }`}
             >
-              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+              <BarChart3 className="w-3.5 h-3.5" />
+              <span>Analytics</span>
+            </button>
+
+            <button
+              type="button"
+              role="tab"
+              aria-selected={subView === 'br-management'}
+              onClick={() => setSubView('br-management')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
+                subView === 'br-management'
+                  ? 'bg-[#171717] text-white'
+                  : 'text-[#57564F] hover:text-[#171717]'
+              }`}
+            >
+              <Users className="w-3.5 h-3.5" />
+              <span>BR Directory</span>
             </button>
           </div>
+
+          <button
+            type="button"
+            onClick={loadAdminOverview}
+            className="btn-secondary h-9 px-3 text-xs"
+            title="Refresh data"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+          </button>
         </div>
-      </div>
+      </header>
 
       {/* Feedback Banner */}
       {banner && (
@@ -519,19 +515,12 @@ export const AdminVotingManagementPage: React.FC<AdminVotingManagementPageProps>
         <div className="space-y-6">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
             {/* Chart 1 (8 cols): Participation Rate & Votes Cast Across Batches */}
-            <div className="lg:col-span-8 bg-white border border-[#E4E2DA] rounded-3xl p-6 sm:p-8 space-y-4">
-              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#E4E2DA] pb-4">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <TrendingUp className="w-4 h-4 text-[#171717]" />
-                    <h2 className="font-serif-editorial text-2xl text-[#171717]">
-                      Student Participation & Engagement Across Batches
-                    </h2>
-                  </div>
-                  <p className="text-xs text-[#77766F] mt-0.5">
-                    Compares engagement rate (%), total votes cast, and BR questions proposed per academic cohort
-                  </p>
-                </div>
+            <div className="lg:col-span-8 bg-white border border-[#E4E2DA] rounded-2xl p-5 sm:p-6 space-y-4">
+              <div className="flex items-center gap-2 border-b border-[#E4E2DA] pb-3.5">
+                <TrendingUp className="w-4 h-4 text-[#171717]" />
+                <h2 className="font-serif-editorial text-xl text-[#171717]">
+                  Student Participation &amp; Engagement Across Batches
+                </h2>
               </div>
 
               <div className="h-[320px] w-full pt-2">
@@ -584,17 +573,12 @@ export const AdminVotingManagementPage: React.FC<AdminVotingManagementPageProps>
             </div>
 
             {/* Chart 2 (4 cols): Male vs Female BR Submissions & Status Breakdown */}
-            <div className="lg:col-span-4 bg-white border border-[#E4E2DA] rounded-3xl p-6 sm:p-8 flex flex-col justify-between space-y-6">
-              <div className="space-y-2 border-b border-[#E4E2DA] pb-4">
-                <div className="flex items-center gap-2">
-                  <PieChartIcon className="w-4 h-4 text-[#171717]" />
-                  <h2 className="font-serif-editorial text-2xl text-[#171717]">
-                    Representative Parity
-                  </h2>
-                </div>
-                <p className="text-xs text-[#77766F]">
-                  Questions submitted by designated Male vs Female Batch Representatives
-                </p>
+            <div className="lg:col-span-4 bg-white border border-[#E4E2DA] rounded-2xl p-5 sm:p-6 flex flex-col justify-between space-y-4">
+              <div className="flex items-center gap-2 border-b border-[#E4E2DA] pb-3.5">
+                <PieChartIcon className="w-4 h-4 text-[#171717]" />
+                <h2 className="font-serif-editorial text-xl text-[#171717]">
+                  Representative Parity
+                </h2>
               </div>
 
               <div className="h-[200px] w-full">
@@ -627,9 +611,9 @@ export const AdminVotingManagementPage: React.FC<AdminVotingManagementPageProps>
                 </ResponsiveContainer>
               </div>
 
-              <div className="space-y-2 text-xs">
-                <div className="flex items-center justify-between p-2.5 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA]">
-                  <span className="font-semibold text-[#171717]">Male BR Questions</span>
+              <div className="border-t border-[#E4E2DA] divide-y divide-[#E4E2DA] text-xs">
+                <div className="flex items-center justify-between py-2.5">
+                  <span className="font-medium text-[#57564F]">Male BR Questions</span>
                   <span className="font-mono-tabular font-bold text-[#171717]">
                     {maleBrQuestionsCount} (
                     {polls.length > 0
@@ -638,8 +622,8 @@ export const AdminVotingManagementPage: React.FC<AdminVotingManagementPageProps>
                     %)
                   </span>
                 </div>
-                <div className="flex items-center justify-between p-2.5 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA]">
-                  <span className="font-semibold text-[#171717]">Female BR Questions</span>
+                <div className="flex items-center justify-between pt-2.5">
+                  <span className="font-medium text-[#57564F]">Female BR Questions</span>
                   <span className="font-mono-tabular font-bold text-[#171717]">
                     {femaleBrQuestionsCount} (
                     {polls.length > 0
@@ -654,9 +638,9 @@ export const AdminVotingManagementPage: React.FC<AdminVotingManagementPageProps>
 
           {/* Detailed Batch Engagement Table & Question Status Distribution */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-            <div className="lg:col-span-8 bg-white border border-[#E4E2DA] rounded-3xl p-6 sm:p-8 space-y-4">
-              <h3 className="font-serif-editorial text-2xl text-[#171717]">
-                Cohort-by-Cohort Participation Breakdown
+            <div className="lg:col-span-8 bg-white border border-[#E4E2DA] rounded-2xl p-5 sm:p-6 space-y-4">
+              <h3 className="font-serif-editorial text-xl text-[#171717]">
+                Cohort-by-Cohort Participation
               </h3>
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse text-xs">
@@ -699,8 +683,8 @@ export const AdminVotingManagementPage: React.FC<AdminVotingManagementPageProps>
               </div>
             </div>
 
-            <div className="lg:col-span-4 bg-white border border-[#E4E2DA] rounded-3xl p-6 sm:p-8 space-y-4">
-              <h3 className="font-serif-editorial text-2xl text-[#171717]">
+            <div className="lg:col-span-4 bg-white border border-[#E4E2DA] rounded-2xl p-5 sm:p-6 space-y-4">
+              <h3 className="font-serif-editorial text-xl text-[#171717]">
                 Poll Lifecycle Pipeline
               </h3>
               <div className="h-[220px] w-full">
@@ -799,44 +783,43 @@ export const AdminVotingManagementPage: React.FC<AdminVotingManagementPageProps>
 
           {/* Questions Moderation Cards */}
           <div className="space-y-5">
-            {filteredPolls.map(poll => (
+            {filteredPolls.map(poll => {
+              const st = statusTextStyle(poll.status);
+              return (
               <div
                 key={poll.id}
-                className="bg-white border border-[#E4E2DA] rounded-3xl p-6 sm:p-8 shadow-xs space-y-6"
+                className="bg-white border border-[#E4E2DA] rounded-2xl p-5 sm:p-6 shadow-xs space-y-5"
               >
-                <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-[#E4E2DA]">
+                <div className="flex flex-wrap items-center justify-between gap-3 pb-3.5 border-b border-[#E4E2DA]">
                   <div className="flex flex-wrap items-center gap-2 text-xs">
-                    <span
-                      className={`px-2.5 py-1 rounded-lg border font-bold ${statusBadgeStyle(
-                        poll.status
-                      )}`}
-                    >
+                    <span className={`inline-flex items-center gap-1.5 font-bold ${st.text}`}>
+                      <span className={`w-1.5 h-1.5 rounded-full ${st.dot}`} />
                       {poll.status}
                     </span>
-
+                    <span className="text-[#E4E2DA]">·</span>
                     <span className="font-bold text-[#171717]">{poll.batchCode}</span>
-                    <span>·</span>
-                    <span className="font-semibold text-[#57564F]">
+                    <span className="text-[#E4E2DA]">·</span>
+                    <span className="font-medium text-[#57564F]">
                       {poll.brGenderRole === 'female' ? 'Female BR' : 'Male BR'}
                     </span>
-                    <span>·</span>
+                    <span className="text-[#E4E2DA]">·</span>
                     <span className="text-[#57564F]">
-                      Submitted by <strong className="text-[#171717]">{poll.submittedByName}</strong>
+                      {poll.submittedByName}
                     </span>
                   </div>
 
                   <div className="flex flex-wrap items-center gap-3 text-xs text-[#77766F]">
                     <span className="inline-flex items-center gap-1">
                       <Calendar className="w-3.5 h-3.5" />
-                      <span>Submitted {new Date(poll.createdAt).toLocaleDateString()}</span>
+                      <span>{new Date(poll.createdAt).toLocaleDateString()}</span>
                     </span>
                     <span className="font-mono-tabular font-bold text-[#171717]">
-                      {poll.totalVotes} Total Votes
+                      {poll.totalVotes} Votes
                     </span>
                   </div>
                 </div>
 
-                <div className="space-y-1.5">
+                <div className="space-y-1">
                   <h2 className="font-serif-editorial text-2xl text-[#171717]">{poll.title}</h2>
                   <p className="text-xs sm:text-sm text-[#57564F] leading-relaxed">
                     {poll.description}
@@ -845,25 +828,25 @@ export const AdminVotingManagementPage: React.FC<AdminVotingManagementPageProps>
 
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
                   <div className={`${poll.batchBreakdown.length > 0 ? 'lg:col-span-7' : 'lg:col-span-12'} space-y-2`}>
-                    <div className="text-[11px] font-semibold text-[#77766F]">
-                      Answer Options & Vote Distribution
+                    <div className="text-[11px] font-semibold uppercase tracking-wider text-[#77766F]">
+                      Answer Options
                     </div>
-                    <div className={`grid grid-cols-1 ${poll.batchBreakdown.length === 0 ? 'sm:grid-cols-2' : ''} gap-2`}>
+                    <div className="border border-[#E4E2DA] rounded-xl divide-y divide-[#E4E2DA] overflow-hidden">
                       {poll.options.map(opt => {
                         const pct = opt.percentage ?? 0;
                         return (
                           <div
                             key={opt.id}
-                            className="relative overflow-hidden rounded-xl border border-[#E4E2DA] bg-[#F7F6EF] p-3"
+                            className="relative overflow-hidden bg-white px-3.5 py-2.5"
                           >
                             <div
-                              className="absolute inset-y-0 left-0 bg-[#B8EEEE]/45 pointer-events-none"
+                              className="absolute inset-y-0 left-0 bg-[#B8EEEE]/35 pointer-events-none"
                               style={{ width: `${Math.min(100, Math.max(0, pct))}%` }}
                             />
                             <div className="relative z-10 flex items-center justify-between gap-3 text-xs">
-                              <span className="font-semibold text-[#171717]">{opt.label}</span>
-                              <span className="font-mono-tabular font-bold text-[#171717] shrink-0">
-                                {opt.percentage ?? 0}% ({opt.votes ?? 0} votes)
+                              <span className="font-medium text-[#171717]">{opt.label}</span>
+                              <span className="font-mono-tabular font-semibold text-[#171717] shrink-0">
+                                {opt.percentage ?? 0}% ({opt.votes ?? 0})
                               </span>
                             </div>
                           </div>
@@ -874,22 +857,19 @@ export const AdminVotingManagementPage: React.FC<AdminVotingManagementPageProps>
 
                   {poll.batchBreakdown.length > 0 && (
                     <div className="lg:col-span-5 space-y-2">
-                      <div className="text-[11px] font-semibold text-[#77766F]">
-                        Participation by Batch
+                      <div className="text-[11px] font-semibold uppercase tracking-wider text-[#77766F]">
+                        Turnout by Batch
                       </div>
-                      <div className="space-y-2">
+                      <div className="border border-[#E4E2DA] rounded-xl divide-y divide-[#E4E2DA] overflow-hidden">
                         {poll.batchBreakdown.map(b => (
-                          <div
-                            key={b.batchId}
-                            className="p-3 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] space-y-1"
-                          >
+                          <div key={b.batchId} className="px-3.5 py-2.5 space-y-1.5">
                             <div className="flex items-center justify-between text-xs">
-                              <span className="font-bold text-[#171717]">{b.batchCode}</span>
+                              <span className="font-semibold text-[#171717]">{b.batchCode}</span>
                               <span className="font-mono-tabular text-[#57564F]">
-                                {b.votesCast} / {b.studentCount} students ({b.participationRate}%)
+                                {b.votesCast}/{b.studentCount} ({b.participationRate}%)
                               </span>
                             </div>
-                            <div className="w-full h-1.5 rounded-full bg-[#E4E2DA] overflow-hidden">
+                            <div className="w-full h-1 rounded-full bg-[#EDEAE0] overflow-hidden">
                               <div
                                 className="h-full bg-[#171717]"
                                 style={{ width: `${Math.min(100, b.participationRate)}%` }}
@@ -998,7 +978,8 @@ export const AdminVotingManagementPage: React.FC<AdminVotingManagementPageProps>
                   </div>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
@@ -1007,9 +988,9 @@ export const AdminVotingManagementPage: React.FC<AdminVotingManagementPageProps>
           SUB-VIEW 2: BATCH & BR MANAGEMENT (Section 1A & 1B)
          ========================================================= */}
       {subView === 'br-management' && (
-        <div className="space-y-8">
+        <div className="space-y-6">
           {issuedCredsCard && (
-            <div className="bg-[#171717] text-white rounded-3xl p-6 border border-[#383838] shadow-lg space-y-4">
+            <div className="bg-[#171717] text-white rounded-2xl p-5 border border-[#383838] space-y-4">
               <div className="flex flex-wrap items-center justify-between gap-4">
                 <div className="flex items-center gap-2.5">
                   <div className="w-9 h-9 rounded-xl bg-[#B7F77C] text-[#171717] flex items-center justify-center font-bold">
@@ -1065,19 +1046,19 @@ export const AdminVotingManagementPage: React.FC<AdminVotingManagementPageProps>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs font-mono-tabular">
-                <div className="p-3 rounded-xl bg-white/5 border border-white/10">
+              <div className="border border-white/10 rounded-xl grid grid-cols-1 sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-white/10 text-xs font-mono-tabular">
+                <div className="p-3">
                   <div className="text-[10px] text-white/60">Login Email</div>
                   <div className="text-white font-semibold mt-0.5">{issuedCredsCard.email}</div>
                 </div>
-                <div className="p-3 rounded-xl bg-white/5 border border-white/10">
+                <div className="p-3">
                   <div className="text-[10px] text-white/60">Issued Password</div>
                   <div className="text-[#B7F77C] font-semibold mt-0.5">
                     {issuedCredsCard.password}
                   </div>
                 </div>
-                <div className="p-3 rounded-xl bg-white/5 border border-white/10">
-                  <div className="text-[10px] text-white/60">Assigned Batch & Role</div>
+                <div className="p-3">
+                  <div className="text-[10px] text-white/60">Assigned Batch &amp; Role</div>
                   <div className="text-white font-semibold mt-0.5 capitalize">
                     {issuedCredsCard.batchCode || 'Assigned Batch'} ·{' '}
                     {issuedCredsCard.genderRole || 'Representative'} BR
@@ -1090,14 +1071,9 @@ export const AdminVotingManagementPage: React.FC<AdminVotingManagementPageProps>
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
             <div className="lg:col-span-7 space-y-4">
               <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="font-serif-editorial text-2xl text-[#171717]">
-                    University Batches & Designated Representatives
-                  </h2>
-                  <p className="text-xs text-[#77766F]">
-                    Each batch has strictly 1 Male Representative slot and 1 Female Representative slot.
-                  </p>
-                </div>
+                <h2 className="font-serif-editorial text-2xl text-[#171717]">
+                  Batches &amp; Representatives
+                </h2>
 
                 <button
                   type="button"
@@ -1137,11 +1113,8 @@ export const AdminVotingManagementPage: React.FC<AdminVotingManagementPageProps>
                           <td className="py-3.5 px-4">
                             {batch.maleRepresentative ? (
                               <div className="space-y-0.5">
-                                <div className="font-semibold text-[#171717] flex items-center gap-1.5">
-                                  <span>{batch.maleRepresentative.name}</span>
-                                  <span className="px-1.5 py-0.2 rounded bg-[#E8F8E0] text-[#1B5E20] text-[10px]">
-                                    Assigned
-                                  </span>
+                                <div className="font-semibold text-[#171717]">
+                                  {batch.maleRepresentative.name}
                                 </div>
                                 <div className="text-[11px] text-[#57564F] font-mono-tabular truncate max-w-[180px]">
                                   {batch.maleRepresentative.email}
@@ -1169,35 +1142,28 @@ export const AdminVotingManagementPage: React.FC<AdminVotingManagementPageProps>
                               </div>
                             ) : (
                               <div className="space-y-1">
-                                <span className="inline-block px-1.5 py-0.5 rounded bg-[#FFF4E5] text-[#6E5100] text-[10px] font-semibold">
-                                  Vacant Slot
-                                </span>
-                                <div>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setBrFormBatchId(batch.id);
-                                      setBrFormGender('male');
-                                      setBrFormEmail(
-                                        `br.male.${batch.code.toLowerCase().replace(/[^a-z0-9]/g, '')}@westernpoly.edu`
-                                      );
-                                    }}
-                                    className="text-[11px] font-bold text-[#171717] underline cursor-pointer"
-                                  >
-                                    + Assign Male BR →
-                                  </button>
-                                </div>
+                                <div className="text-[11px] text-[#77766F]">Vacant</div>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setBrFormBatchId(batch.id);
+                                    setBrFormGender('male');
+                                    setBrFormEmail(
+                                      `br.male.${batch.code.toLowerCase().replace(/[^a-z0-9]/g, '')}@westernpoly.edu`
+                                    );
+                                  }}
+                                  className="text-[11px] font-bold text-[#171717] underline cursor-pointer"
+                                >
+                                  + Assign Male BR
+                                </button>
                               </div>
                             )}
                           </td>
                           <td className="py-3.5 px-4">
                             {batch.femaleRepresentative ? (
                               <div className="space-y-0.5">
-                                <div className="font-semibold text-[#171717] flex items-center gap-1.5">
-                                  <span>{batch.femaleRepresentative.name}</span>
-                                  <span className="px-1.5 py-0.2 rounded bg-[#E8F8E0] text-[#1B5E20] text-[10px]">
-                                    Assigned
-                                  </span>
+                                <div className="font-semibold text-[#171717]">
+                                  {batch.femaleRepresentative.name}
                                 </div>
                                 <div className="text-[11px] text-[#57564F] font-mono-tabular truncate max-w-[180px]">
                                   {batch.femaleRepresentative.email}
@@ -1225,24 +1191,20 @@ export const AdminVotingManagementPage: React.FC<AdminVotingManagementPageProps>
                               </div>
                             ) : (
                               <div className="space-y-1">
-                                <span className="inline-block px-1.5 py-0.5 rounded bg-[#FFF4E5] text-[#6E5100] text-[10px] font-semibold">
-                                  Vacant Slot
-                                </span>
-                                <div>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setBrFormBatchId(batch.id);
-                                      setBrFormGender('female');
-                                      setBrFormEmail(
-                                        `br.female.${batch.code.toLowerCase().replace(/[^a-z0-9]/g, '')}@westernpoly.edu`
-                                      );
-                                    }}
-                                    className="text-[11px] font-bold text-[#171717] underline cursor-pointer"
-                                  >
-                                    + Assign Female BR →
-                                  </button>
-                                </div>
+                                <div className="text-[11px] text-[#77766F]">Vacant</div>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setBrFormBatchId(batch.id);
+                                    setBrFormGender('female');
+                                    setBrFormEmail(
+                                      `br.female.${batch.code.toLowerCase().replace(/[^a-z0-9]/g, '')}@westernpoly.edu`
+                                    );
+                                  }}
+                                  className="text-[11px] font-bold text-[#171717] underline cursor-pointer"
+                                >
+                                  + Assign Female BR
+                                </button>
                               </div>
                             )}
                           </td>
@@ -1255,14 +1217,11 @@ export const AdminVotingManagementPage: React.FC<AdminVotingManagementPageProps>
             </div>
 
             <div className="lg:col-span-5 space-y-6">
-              <div className="bg-white border border-[#E4E2DA] rounded-3xl p-6 shadow-xs space-y-5">
+              <div className="bg-white border border-[#E4E2DA] rounded-2xl p-5 sm:p-6 shadow-xs space-y-4">
                 <div className="border-b border-[#E4E2DA] pb-3">
                   <h3 className="font-serif-editorial text-xl text-[#171717]">
-                    Create BR Login Account &amp; Assign Slot
+                    Create BR Account &amp; Assign Slot
                   </h3>
-                  <p className="text-xs text-[#77766F] mt-0.5">
-                    Creates a verified Batch Representative account and issues login credentials.
-                  </p>
                 </div>
 
                 <form onSubmit={handleCreateBrAccount} className="space-y-4">
@@ -1407,13 +1366,16 @@ export const AdminVotingManagementPage: React.FC<AdminVotingManagementPageProps>
                           </td>
                           <td className="py-2.5 px-3">
                             <span
-                              className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                                acc.isActive
-                                  ? 'bg-[#E8F8E0] text-[#1B5E20]'
-                                  : 'bg-[#FDE8E8] text-[#8B1E1E]'
+                              className={`inline-flex items-center gap-1.5 text-[11px] font-semibold ${
+                                acc.isActive ? 'text-[#1B5E20]' : 'text-[#8B1E1E]'
                               }`}
                             >
-                              {acc.isActive ? 'Active' : 'Deactivated'}
+                              <span
+                                className={`w-1.5 h-1.5 rounded-full ${
+                                  acc.isActive ? 'bg-[#1B5E20]' : 'bg-[#8B1E1E]'
+                                }`}
+                              />
+                              {acc.isActive ? 'Active' : 'Inactive'}
                             </span>
                           </td>
                           <td className="py-2.5 px-3.5 text-right whitespace-nowrap">
@@ -1466,7 +1428,7 @@ export const AdminVotingManagementPage: React.FC<AdminVotingManagementPageProps>
         >
           <div
             onClick={e => e.stopPropagation()}
-            className="bg-white border border-[#E4E2DA] rounded-3xl max-w-xl w-full p-6 sm:p-8 shadow-2xl space-y-5 max-h-[90vh] overflow-y-auto"
+            className="bg-white border border-[#E4E2DA] rounded-2xl max-w-xl w-full p-6 shadow-2xl space-y-5 max-h-[90vh] overflow-y-auto"
           >
             <div className="flex items-center justify-between border-b border-[#E4E2DA] pb-3">
               <h3 className="font-serif-editorial text-2xl text-[#171717]">

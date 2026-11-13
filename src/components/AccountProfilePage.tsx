@@ -74,33 +74,30 @@ export const AccountProfilePage: React.FC<AccountProfilePageProps> = ({
   };
 
   return (
-    <div className="space-y-8 pb-14 max-w-3xl">
-      <header className="bg-white border border-[#E4E2DA] rounded-3xl p-6 sm:p-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="space-y-1.5">
+    <div className="space-y-6 pb-12 max-w-3xl">
+      <header className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 pb-4 border-b border-[#E4E2DA]">
+        <div className="space-y-1">
           <div className="text-xs font-medium text-[#77766F]">
-            Verified Account Session · {currentUser.institution || 'Western Polytechnic'}
+            {currentUser.institution || 'Western Polytechnic'}
           </div>
-          <h1 className="font-serif-editorial text-3xl sm:text-4xl text-[#171717]">
-            Account & Profile Settings
+          <h1 className="font-serif-editorial text-3xl text-[#171717] tracking-tight">
+            Account &amp; Profile Settings
           </h1>
-          <p className="text-xs sm:text-sm text-[#57564F]">
-            Manage your personal profile details and account password. Your role and cohort permissions are enforced by the university backend.
-          </p>
         </div>
 
         <button
           type="button"
           onClick={onSignOut}
-          className="btn-secondary text-xs h-10 px-4 shrink-0"
+          className="btn-secondary text-xs h-9 px-3.5 shrink-0"
         >
-          <LogOut className="w-4 h-4" />
+          <LogOut className="w-3.5 h-3.5" />
           <span>Sign Out</span>
         </button>
       </header>
 
       {feedback && (
         <div
-          className={`p-4 rounded-2xl border text-xs font-medium flex items-center gap-2.5 ${
+          className={`px-4 py-3 rounded-xl border text-xs font-medium flex items-center gap-2.5 ${
             feedback.type === 'success'
               ? 'bg-[#E8F8E0] border-[#A5E087] text-[#1B5E20]'
               : 'bg-[#FDE8E8] border-[#F5B5B5] text-[#8B1E1E]'
@@ -116,18 +113,20 @@ export const AccountProfilePage: React.FC<AccountProfilePageProps> = ({
       )}
 
       {/* Read-Only Verified Role & Cohort Credentials */}
-      <div className="bg-white border border-[#E4E2DA] rounded-3xl p-6 sm:p-8 space-y-4">
-        <h2 className="font-serif-editorial text-2xl text-[#171717] border-b border-[#E4E2DA] pb-3">
-          Verified Role & Institutional Assignment
-        </h2>
+      <div className="bg-white border border-[#E4E2DA] rounded-2xl overflow-hidden">
+        <div className="px-6 py-4 border-b border-[#E4E2DA]">
+          <h2 className="font-serif-editorial text-xl text-[#171717]">
+            Verified Institutional Assignment
+          </h2>
+        </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-          <div className="p-4 rounded-2xl bg-[#F7F6EF] border border-[#E4E2DA] space-y-1">
+        <div className="grid grid-cols-1 sm:grid-cols-2 divide-y sm:divide-y-0 sm:divide-x divide-[#E4E2DA] text-xs">
+          <div className="px-6 py-4 space-y-1">
             <div className="text-[#77766F] flex items-center gap-1.5">
               <ShieldCheck className="w-3.5 h-3.5" />
-              <span>Authenticated Role (Backend Enforced)</span>
+              <span>Role</span>
             </div>
-            <div className="text-sm font-bold text-[#171717]">
+            <div className="text-sm font-semibold text-[#171717]">
               {isBr
                 ? `Batch Representative (${
                     currentUser.brGenderRole === 'female' ? 'Female BR' : 'Male BR'
@@ -136,51 +135,51 @@ export const AccountProfilePage: React.FC<AccountProfilePageProps> = ({
             </div>
           </div>
 
-          <div className="p-4 rounded-2xl bg-[#F7F6EF] border border-[#E4E2DA] space-y-1">
+          <div className="px-6 py-4 space-y-1">
             <div className="text-[#77766F] flex items-center gap-1.5">
               <Mail className="w-3.5 h-3.5" />
               <span>Institutional Email</span>
             </div>
-            <div className="text-sm font-bold text-[#171717] font-mono-tabular">
+            <div className="text-sm font-semibold text-[#171717] font-mono-tabular">
               {currentUser.email}
             </div>
           </div>
-
-          {(isStudent || isBr) && (
-            <>
-              <div className="p-4 rounded-2xl bg-[#F7F6EF] border border-[#E4E2DA] space-y-1">
-                <div className="text-[#77766F] flex items-center gap-1.5">
-                  <Users className="w-3.5 h-3.5" />
-                  <span>Assigned Batch Cohort</span>
-                </div>
-                <div className="text-sm font-bold text-[#171717]">
-                  {currentUser.batchCode
-                    ? `${currentUser.batchCode} — ${currentUser.batchName}`
-                    : 'Assigned Cohort'}
-                </div>
-              </div>
-
-              <div className="p-4 rounded-2xl bg-[#F7F6EF] border border-[#E4E2DA] space-y-1">
-                <div className="text-[#77766F] flex items-center gap-1.5">
-                  <Hash className="w-3.5 h-3.5" />
-                  <span>Registration / Roll Number</span>
-                </div>
-                <div className="text-sm font-bold text-[#171717] font-mono-tabular">
-                  {currentUser.registrationNumber || 'Verified Record'}
-                </div>
-              </div>
-            </>
-          )}
         </div>
+
+        {(isStudent || isBr) && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 border-t border-[#E4E2DA] divide-y sm:divide-y-0 sm:divide-x divide-[#E4E2DA] text-xs">
+            <div className="px-6 py-4 space-y-1">
+              <div className="text-[#77766F] flex items-center gap-1.5">
+                <Users className="w-3.5 h-3.5" />
+                <span>Assigned Batch Cohort</span>
+              </div>
+              <div className="text-sm font-semibold text-[#171717]">
+                {currentUser.batchCode
+                  ? `${currentUser.batchCode} — ${currentUser.batchName}`
+                  : 'Assigned Cohort'}
+              </div>
+            </div>
+
+            <div className="px-6 py-4 space-y-1">
+              <div className="text-[#77766F] flex items-center gap-1.5">
+                <Hash className="w-3.5 h-3.5" />
+                <span>Registration / Roll Number</span>
+              </div>
+              <div className="text-sm font-semibold text-[#171717] font-mono-tabular">
+                {currentUser.registrationNumber || 'Verified Record'}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Editable Profile & Password Form */}
       <form
         onSubmit={handleSave}
-        className="bg-white border border-[#E4E2DA] rounded-3xl p-6 sm:p-8 space-y-5"
+        className="bg-white border border-[#E4E2DA] rounded-2xl p-6 space-y-5"
       >
-        <h2 className="font-serif-editorial text-2xl text-[#171717] border-b border-[#E4E2DA] pb-3">
-          Update Profile & Password
+        <h2 className="font-serif-editorial text-xl text-[#171717] border-b border-[#E4E2DA] pb-3">
+          Update Profile &amp; Password
         </h2>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

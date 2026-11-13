@@ -891,22 +891,19 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
                 <div className="flex items-center justify-between border-b border-[#333333] pb-2.5">
                   <div className="flex items-center gap-2">
                     <Info className="w-4 h-4 text-[#F2D8FA]" />
-                    <span className="text-xs font-semibold text-white">Application Info</span>
+                    <span className="text-xs font-semibold text-white">Workspace Overview</span>
                   </div>
-                  <span className="text-[10px] font-mono-tabular px-2 py-0.5 rounded bg-[#292929] text-[#B8EEEE]">
-                    Institutional
-                  </span>
                 </div>
-                <div className="grid grid-cols-2 gap-2 text-xs">
-                  <div className="p-2.5 rounded-xl bg-[#292929]">
-                    <div className="text-[10px] text-[#8E8C84]">Active Courses</div>
-                    <div className="font-semibold text-white text-sm mt-0.5">
-                      {storeSnapshot.courses.length} Courses
+                <div className="grid grid-cols-2 divide-x divide-[#333333] border border-[#333333] rounded-xl text-xs">
+                  <div className="p-2.5">
+                    <div className="text-[10px] text-[#8E8C84]">Courses</div>
+                    <div className="font-semibold text-white text-sm mt-0.5 font-mono-tabular">
+                      {storeSnapshot.courses.length}
                     </div>
                   </div>
-                  <div className="p-2.5 rounded-xl bg-[#292929]">
-                    <div className="text-[10px] text-[#8E8C84]">Scheduled Sections</div>
-                    <div className="font-semibold text-white text-sm mt-0.5">
+                  <div className="p-2.5">
+                    <div className="text-[10px] text-[#8E8C84]">Scheduled</div>
+                    <div className="font-semibold text-white text-sm mt-0.5 font-mono-tabular">
                       {scheduledCount} / {totalSections}
                     </div>
                   </div>
@@ -920,7 +917,7 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
                     className="w-full flex items-center justify-center gap-1.5 py-2 rounded-xl bg-[#292929] hover:bg-[#333333] text-xs font-medium text-[#EAE8E1] border border-[#383838] cursor-pointer"
                   >
                     <RotateCcw className="w-3.5 h-3.5" />
-                    <span>Restore Default University Seed</span>
+                    <span>Restore Default Seed</span>
                   </button>
                 )}
               </div>
@@ -1022,11 +1019,6 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
                         ? `FACULTY · TEACHING`
                         : institutionName}
                     </span>
-                    {currentInstSummary?.isDemoTemplate && (
-                      <span className="text-[8.5px] px-1 py-0.2 rounded bg-[#E8D36B]/20 text-[#E8D36B] font-mono-tabular shrink-0">
-                        Demo
-                      </span>
-                    )}
                   </div>
                   <div className="text-[11.5px] font-semibold text-white flex items-center gap-1.5 leading-tight mt-0.5">
                     <span className="truncate">{activeTerm}</span>
@@ -1039,12 +1031,9 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
                 <div className="absolute left-2.5 right-2.5 top-[58px] bg-[#1F1F1F] border border-[#3E3E3E] rounded-xl p-2 shadow-2xl z-50 space-y-2 max-h-[420px] overflow-y-auto">
                   {/* Section 1: Switch Active University */}
                   <div>
-                    <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-[#8E8C84] flex items-center justify-between">
-                      <span className="flex items-center gap-1 text-[#B8EEEE]">
-                        <Building2 className="w-3 h-3" />
-                        Active University
-                      </span>
-                      <span className="text-[9px] text-[#8E8C84]">Multi-Tenant</span>
+                    <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-[#8E8C84] flex items-center gap-1.5">
+                      <Building2 className="w-3 h-3 text-[#B8EEEE]" />
+                      <span>Active University</span>
                     </div>
                     <div className="space-y-0.5 mt-1">
                       {availableInstitutions.map(inst => {
@@ -1063,14 +1052,8 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
                               <div className="truncate text-[11px] font-medium leading-tight">
                                 {inst.name}
                               </div>
-                              <div className="text-[9.5px] text-[#8E8C84] leading-tight flex items-center gap-1 mt-0.5">
-                                <span>{inst.code}</span>
-                                <span>·</span>
-                                {inst.isDemoTemplate ? (
-                                  <span className="text-[#E8D36B]">Sample Demo</span>
-                                ) : (
-                                  <span className="text-[#B7F77C]">Configured</span>
-                                )}
+                              <div className="text-[9.5px] text-[#8E8C84] leading-tight mt-0.5">
+                                {inst.code} · {inst.isDemoTemplate ? 'Sample' : 'Configured'}
                               </div>
                             </div>
                             {isSelected && (
@@ -1092,15 +1075,14 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
                       className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg bg-[#2A2A2A] hover:bg-[#353535] text-[11px] text-[#EAE8E1] font-medium transition-colors cursor-pointer"
                     >
                       <Upload className="w-3.5 h-3.5 text-[#B7F77C] shrink-0" />
-                      <span>Universal CSV Importer</span>
+                      <span>Import CSV Dataset</span>
                     </button>
                   </div>
 
-                  {/* Section 3: Configured Academic Semesters (Multi-Active Support) */}
+                  {/* Section 3: Configured Academic Semesters */}
                   <div className="pt-1.5 border-t border-[#333333] space-y-1">
-                    <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-[#8E8C84] flex items-center justify-between">
-                      <span>Configured Semesters</span>
-                      <span className="text-[9px] text-[#B7F77C]">Multi-Active</span>
+                    <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-[#8E8C84]">
+                      Academic Semesters
                     </div>
                     {storeSnapshot.terms.map(term => {
                       const isTermActive = term.status === 'active';
@@ -1117,18 +1099,13 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
                           <div className="min-w-0 text-left pr-1">
                             <div className="text-[11px] truncate">{term.name}</div>
                             <div className="text-[9.5px] text-[#8E8C84] font-mono-tabular">
-                              {term.code} · {term.startDate}
+                              {term.code}
                             </div>
                           </div>
                           {isTermActive ? (
-                            <span className="text-[9px] px-1.5 py-0.5 rounded bg-[#B7F77C]/20 text-[#B7F77C] font-semibold shrink-0 flex items-center gap-1">
-                              <Check className="w-3 h-3" />
-                              Active
-                            </span>
+                            <Check className="w-3.5 h-3.5 text-[#B7F77C] shrink-0" />
                           ) : (
-                            <span className="text-[9px] px-1.5 py-0.5 rounded bg-[#2C2C2C] text-[#8E8C84] shrink-0">
-                              Inactive
-                            </span>
+                            <span className="text-[10px] text-[#7E7C74] shrink-0">Off</span>
                           )}
                         </button>
                       );
@@ -1140,7 +1117,7 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
                       }}
                       className="w-full text-left px-2 py-1.5 rounded-lg text-[10.5px] text-[#B8EEEE] hover:bg-[#2C2C2C] transition-colors cursor-pointer"
                     >
-                      Manage Academic Calendar &amp; Policies →
+                      Manage Calendar &amp; Policies →
                     </button>
                   </div>
                 </div>

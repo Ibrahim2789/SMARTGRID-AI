@@ -122,29 +122,14 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
 
   return (
     <div className="space-y-8">
-      {/* =========================================================
-          1. PAGE HEADING
-         ========================================================= */}
-      <header className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 pb-6 border-b border-[#E4E2DA]">
-        <div className="space-y-2">
-          <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-[#77766F]">
-            <span>Workspace Administration</span>
-            <span>·</span>
-            <span>{name}</span>
-            <span>·</span>
-            <span
-              className={`px-2 py-0.5 rounded font-semibold ${
-                isAdmin ? 'bg-[#B7F77C] text-[#171717]' : 'bg-[#EDEAE0] text-[#77766F]'
-              }`}
-            >
-              {isAdmin ? `Admin Access (${currentUser?.role || 'Registrar'})` : `Read-Only (${currentUser?.role})`}
-            </span>
-          </div>
+      {/* 1. PAGE HEADING */}
+      <header className="flex flex-col lg:flex-row lg:items-end justify-between gap-4 pb-5 border-b border-[#E4E2DA]">
+        <div>
           <h1 className="font-serif-editorial text-3xl sm:text-4xl text-[#171717] tracking-tight">
-            Workspace Settings & Audit Log
+            Workspace Settings
           </h1>
-          <p className="text-sm text-[#77766F] max-w-2xl">
-            Manage institutional profile metadata, dataset snapshots, JSON backups, and chronological system audit trails.
+          <p className="text-xs sm:text-sm text-[#77766F] mt-1">
+            {name} · {isAdmin ? currentUser?.role || 'Registrar' : `Read-Only (${currentUser?.role})`}
           </p>
         </div>
 
@@ -152,16 +137,16 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
           <button
             type="button"
             onClick={() => onNavigate('academic-config')}
-            className="btn-secondary text-xs h-10 px-4"
+            className="btn-secondary text-xs h-9 px-3.5"
           >
             <Clock className="w-3.5 h-3.5" />
-            <span>Academic Configuration</span>
+            <span>Academic Config</span>
           </button>
 
           <button
             type="button"
             onClick={() => onNavigate('timetables')}
-            className="btn-primary text-xs h-10 px-4"
+            className="btn-primary text-xs h-9 px-3.5"
           >
             <Calendar className="w-3.5 h-3.5" />
             <span>View Timetables</span>
@@ -254,17 +239,14 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Left (6 cols): Institutional Profile Form */}
         <div className="lg:col-span-6 space-y-6">
-          <form onSubmit={handleSaveProfile} className="sf-card-white p-6 space-y-5">
-            <div className="flex items-center justify-between border-b border-[#E4E2DA] pb-3.5">
+          <form onSubmit={handleSaveProfile} className="sf-card-white p-5 sm:p-6 space-y-5">
+            <div className="flex items-center justify-between border-b border-[#E4E2DA] pb-3">
               <div className="flex items-center gap-2">
                 <Building2 className="w-4 h-4 text-[#171717]" />
                 <h2 className="font-serif-editorial text-xl text-[#171717]">
-                  Academic Institution Profile
+                  Institution Profile
                 </h2>
               </div>
-              <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded bg-[#B7F77C] text-[#171717]">
-                FERPA Compliant
-              </span>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -299,7 +281,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
 
             <div>
               <label className="block text-xs font-semibold text-[#171717] mb-1.5">
-                Accreditation Authority (Displayed on PDF Timetable Exports)
+                Accreditation Authority
               </label>
               <input
                 type="text"
@@ -341,13 +323,13 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
               </div>
             </div>
 
-            <div className="p-4 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] flex items-center justify-between gap-4">
+            <div className="pt-4 border-t border-[#E4E2DA] flex items-center justify-between gap-4">
               <div>
                 <div className="text-xs font-semibold text-[#171717]">
-                  Automated Conflict Sweep on Slot Edit
+                  Auto-Sweep on Slot Edit
                 </div>
                 <div className="text-[11px] text-[#77766F]">
-                  Automatically validate room and instructor parity when manually moving classes in My Timetable.
+                  Validate room and instructor parity when manually moving classes
                 </div>
               </div>
               <button
@@ -366,79 +348,79 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
               </button>
             </div>
 
-            <div className="flex justify-between items-center pt-2 border-t border-[#E4E2DA]">
+            <div className="flex justify-between items-center pt-3 border-t border-[#E4E2DA]">
               <button
                 type="button"
                 onClick={handleExportJSON}
                 className="btn-secondary text-xs h-9 px-3.5"
               >
                 <Download className="w-3.5 h-3.5" />
-                <span>Export JSON Backup</span>
+                <span>Export JSON</span>
               </button>
 
               <button
                 type="submit"
                 disabled={!isAdmin}
-                className="btn-primary text-xs disabled:opacity-50"
+                className="btn-primary text-xs h-9 px-4 disabled:opacity-50"
               >
-                <ShieldCheck className="w-4 h-4" />
+                <ShieldCheck className="w-3.5 h-3.5" />
                 <span>Save Profile</span>
               </button>
             </div>
           </form>
 
-          {/* Sample Data & Reset Controls */}
-          <div className="sf-card-white p-6 space-y-4">
+          {/* Dataset & Reset Controls — Clean Hairline Rows */}
+          <div className="sf-card-white p-5 sm:p-6 space-y-4">
             <h3 className="font-serif-editorial text-xl text-[#171717] border-b border-[#E4E2DA] pb-3">
-              Dataset & Snapshot Administration
+              Data &amp; Baseline
             </h3>
 
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA]">
-              <div>
-                <div className="text-xs font-semibold text-[#171717]">
-                  Multi-Department University Sample Dataset
+            <div className="divide-y divide-[#E4E2DA]">
+              <div className="py-3 first:pt-0 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <div className="text-xs font-semibold text-[#171717]">
+                    Sample University Dataset
+                  </div>
+                  <div className="text-[11px] text-[#77766F]">
+                    {isSampleLoaded ? 'Loaded in current workspace' : 'Load multi-department test records'}
+                  </div>
                 </div>
-                <div className="text-[11px] text-[#77766F] mt-0.5">
-                  {isSampleLoaded
-                    ? 'Realistic sample dataset is currently active alongside your workspace data.'
-                    : 'Load a comprehensive multi-department dataset for testing and demonstration.'}
-                </div>
+                <button
+                  type="button"
+                  disabled={!isAdmin}
+                  onClick={() => {
+                    if (isSampleLoaded) {
+                      institutionalStore.removeSampleData();
+                      showToast('Removed multi-department sample dataset.');
+                    } else {
+                      institutionalStore.loadSampleData();
+                      showToast('Loaded multi-department university sample dataset.');
+                    }
+                  }}
+                  className="btn-secondary text-xs h-8 px-3 shrink-0 disabled:opacity-50"
+                >
+                  <Database className="w-3.5 h-3.5" />
+                  <span>{isSampleLoaded ? 'Remove Sample' : 'Load Sample'}</span>
+                </button>
               </div>
-              <button
-                type="button"
-                disabled={!isAdmin}
-                onClick={() => {
-                  if (isSampleLoaded) {
-                    institutionalStore.removeSampleData();
-                    showToast('Removed multi-department sample dataset.');
-                  } else {
-                    institutionalStore.loadSampleData();
-                    showToast('Loaded multi-department university sample dataset.');
-                  }
-                }}
-                className="btn-secondary text-xs h-9 shrink-0 disabled:opacity-50"
-              >
-                <Database className="w-3.5 h-3.5" />
-                <span>{isSampleLoaded ? 'Remove Sample Data' : 'Load Sample Data'}</span>
-              </button>
-            </div>
 
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-xl bg-[#EDEAE0] border border-[#E4E2DA]">
-              <div>
-                <div className="text-xs font-semibold text-[#171717]">Restore Factory Baseline</div>
-                <div className="text-[11px] text-[#77766F] mt-0.5">
-                  Reset all rooms, courses, instructors, cohorts, and scenarios to initial defaults.
+              <div className="py-3 last:pb-0 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <div className="text-xs font-semibold text-[#171717]">Factory Baseline</div>
+                  <div className="text-[11px] text-[#77766F]">
+                    Restore default rooms, courses, instructors, and schedules
+                  </div>
                 </div>
+                <button
+                  type="button"
+                  disabled={!isAdmin}
+                  onClick={() => setShowResetConfirm(true)}
+                  className="btn-secondary text-xs h-8 px-3 shrink-0 disabled:opacity-50"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Reset Defaults</span>
+                </button>
               </div>
-              <button
-                type="button"
-                disabled={!isAdmin}
-                onClick={() => setShowResetConfirm(true)}
-                className="btn-secondary text-xs h-9 shrink-0 disabled:opacity-50"
-              >
-                <RotateCcw className="w-3.5 h-3.5" />
-                <span>Reset to Defaults</span>
-              </button>
             </div>
           </div>
         </div>
@@ -446,17 +428,12 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
         {/* Right (6 cols): Searchable Audit Log */}
         <div className="lg:col-span-6">
           <div className="sf-card-white overflow-hidden flex flex-col h-full">
-            <div className="p-5 border-b border-[#E4E2DA] bg-[#F7F6EF] space-y-3">
+            <div className="p-5 border-b border-[#E4E2DA] space-y-3">
               <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="font-serif-editorial text-xl text-[#171717]">
-                    System Audit Trail
-                  </h2>
-                  <p className="text-xs text-[#77766F]">
-                    Chronological log of all data changes, timing updates, solver runs, and slot edits
-                  </p>
-                </div>
-                <span className="text-xs font-mono-tabular font-semibold px-2.5 py-1 rounded bg-white border border-[#E4E2DA]">
+                <h2 className="font-serif-editorial text-xl text-[#171717]">
+                  Audit Log
+                </h2>
+                <span className="text-xs font-mono-tabular text-[#77766F]">
                   {filteredLogs.length} events
                 </span>
               </div>
@@ -466,7 +443,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                   <Search className="w-3.5 h-3.5 text-[#77766F] shrink-0" />
                   <input
                     type="text"
-                    placeholder="Filter logs by user, entity, or summary..."
+                    placeholder="Filter logs..."
                     value={logSearch}
                     onChange={e => setLogSearch(e.target.value)}
                     className="text-xs"
@@ -479,9 +456,9 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                 >
                   <option value="all">All Actions</option>
                   <option value="generate">Solver Runs</option>
-                  <option value="create">Created Records</option>
-                  <option value="update">Updated Records</option>
-                  <option value="delete">Deleted Records</option>
+                  <option value="create">Created</option>
+                  <option value="update">Updated</option>
+                  <option value="delete">Deleted</option>
                 </select>
               </div>
             </div>
@@ -489,30 +466,30 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
             <div className="divide-y divide-[#E4E2DA] max-h-[540px] overflow-y-auto bg-white">
               {filteredLogs.length === 0 ? (
                 <div className="p-8 text-center text-xs text-[#77766F]">
-                  No audit events match your current filter criteria.
+                  No audit events match your filter.
                 </div>
               ) : (
                 filteredLogs.map(log => (
                   <div
                     key={log.id}
-                    className="px-5 py-3.5 text-xs hover:bg-[#F7F6EF]/60 transition-colors space-y-1"
+                    className="px-5 py-3 text-xs hover:bg-[#F7F6EF]/60 transition-colors space-y-1"
                   >
                     <div className="flex items-center justify-between text-[#77766F]">
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold text-[#171717]">{log.userName}</span>
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="font-semibold text-[#171717] truncate">{log.userName}</span>
                         <span>·</span>
-                        <span className="font-mono-tabular text-[11px] uppercase px-1.5 py-0.5 rounded bg-[#B8EEEE] text-[#171717] font-semibold">
-                          {log.action} / {log.entityType}
+                        <span className="font-mono-tabular text-[11px] uppercase text-[#57564F]">
+                          {log.action} {log.entityType}
                         </span>
                       </div>
-                      <span className="text-[11px] text-[#77766F] font-mono-tabular">
+                      <span className="text-[11px] text-[#77766F] font-mono-tabular shrink-0 ml-2">
                         {new Date(log.timestamp).toLocaleTimeString([], {
                           hour: '2-digit',
                           minute: '2-digit'
                         })}
                       </span>
                     </div>
-                    <p className="text-[#77766F] leading-relaxed">{log.summary}</p>
+                    <p className="text-[#57564F] leading-relaxed">{log.summary}</p>
                   </div>
                 ))
               )}
