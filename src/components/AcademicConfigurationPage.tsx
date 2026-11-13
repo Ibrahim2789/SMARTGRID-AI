@@ -3,6 +3,8 @@ import { RouteType } from './SmartGridNav';
 import { useInstitutionalData, institutionalStore } from '../data/store';
 import {
   DayOfWeek,
+  FridayMode,
+  FridayCompressionScope,
   TimetableManagementPolicy,
   DEFAULT_ACADEMIC_TIMING_CONFIG,
   computeAcademicScheduleConfig,
@@ -139,12 +141,31 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
   const [workingDays, setWorkingDays] = useState<DayOfWeek[]>(
     ts.workingDays?.length ? ts.workingDays : DEFAULT_ACADEMIC_TIMING_CONFIG.workingDays
   );
-  const [fridayAfternoonShiftEnabled, setFridayAfternoonShiftEnabled] = useState<boolean>(
-    ts.fridayAfternoonShiftEnabled ?? DEFAULT_ACADEMIC_TIMING_CONFIG.fridayAfternoonShiftEnabled
+  const [fridayMode, setFridayMode] = useState<FridayMode>(
+    ts.fridayMode ||
+      (ts.fridayAfternoonShiftEnabled === false ? 'standard' : 'jummah_break')
   );
-  const [fridayAfternoonStartTime, setFridayAfternoonStartTime] = useState<string>(
-    ts.fridayAfternoonStartTime || DEFAULT_ACADEMIC_TIMING_CONFIG.fridayAfternoonStartTime
+  const [fridayBreakStartTime, setFridayBreakStartTime] = useState<string>(
+    ts.fridayBreakStartTime || DEFAULT_ACADEMIC_TIMING_CONFIG.fridayBreakStartTime
   );
+  const [fridayBreakEndTime, setFridayBreakEndTime] = useState<string>(
+    ts.fridayBreakEndTime ||
+      ts.fridayAfternoonStartTime ||
+      DEFAULT_ACADEMIC_TIMING_CONFIG.fridayBreakEndTime
+  );
+  const [fridayClosingTime, setFridayClosingTime] = useState<string>(
+    ts.fridayClosingTime || DEFAULT_ACADEMIC_TIMING_CONFIG.fridayClosingTime
+  );
+  const [fridayCompressionScope, setFridayCompressionScope] = useState<FridayCompressionScope>(
+    ts.fridayCompressionScope || DEFAULT_ACADEMIC_TIMING_CONFIG.fridayCompressionScope
+  );
+  const [fridayPeriodLengthMinutes, setFridayPeriodLengthMinutes] = useState<number>(
+    ts.fridayPeriodLengthMinutes ?? DEFAULT_ACADEMIC_TIMING_CONFIG.fridayPeriodLengthMinutes
+  );
+  const [fridayShortBreakMinutes, setFridayShortBreakMinutes] = useState<number>(
+    ts.fridayShortBreakMinutes ?? DEFAULT_ACADEMIC_TIMING_CONFIG.fridayShortBreakMinutes
+  );
+  const [previewDayTab, setPreviewDayTab] = useState<'mon_thu' | 'friday'>('mon_thu');
 
   const [periodLengthMinutes, setPeriodLengthMinutes] = useState<number>(
     ts.periodLengthMinutes || DEFAULT_ACADEMIC_TIMING_CONFIG.periodLengthMinutes
@@ -225,11 +246,29 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
     setWorkingDays(
       ts.workingDays?.length ? ts.workingDays : DEFAULT_ACADEMIC_TIMING_CONFIG.workingDays
     );
-    setFridayAfternoonShiftEnabled(
-      ts.fridayAfternoonShiftEnabled ?? DEFAULT_ACADEMIC_TIMING_CONFIG.fridayAfternoonShiftEnabled
+    setFridayMode(
+      ts.fridayMode ||
+        (ts.fridayAfternoonShiftEnabled === false ? 'standard' : 'jummah_break')
     );
-    setFridayAfternoonStartTime(
-      ts.fridayAfternoonStartTime || DEFAULT_ACADEMIC_TIMING_CONFIG.fridayAfternoonStartTime
+    setFridayBreakStartTime(
+      ts.fridayBreakStartTime || DEFAULT_ACADEMIC_TIMING_CONFIG.fridayBreakStartTime
+    );
+    setFridayBreakEndTime(
+      ts.fridayBreakEndTime ||
+        ts.fridayAfternoonStartTime ||
+        DEFAULT_ACADEMIC_TIMING_CONFIG.fridayBreakEndTime
+    );
+    setFridayClosingTime(
+      ts.fridayClosingTime || DEFAULT_ACADEMIC_TIMING_CONFIG.fridayClosingTime
+    );
+    setFridayCompressionScope(
+      ts.fridayCompressionScope || DEFAULT_ACADEMIC_TIMING_CONFIG.fridayCompressionScope
+    );
+    setFridayPeriodLengthMinutes(
+      ts.fridayPeriodLengthMinutes ?? DEFAULT_ACADEMIC_TIMING_CONFIG.fridayPeriodLengthMinutes
+    );
+    setFridayShortBreakMinutes(
+      ts.fridayShortBreakMinutes ?? DEFAULT_ACADEMIC_TIMING_CONFIG.fridayShortBreakMinutes
     );
     setPeriodLengthMinutes(
       ts.periodLengthMinutes || DEFAULT_ACADEMIC_TIMING_CONFIG.periodLengthMinutes
@@ -263,8 +302,15 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
     workingDays,
     dayStartTime,
     dayEndTime,
-    fridayAfternoonShiftEnabled,
-    fridayAfternoonStartTime,
+    fridayAfternoonShiftEnabled: fridayMode !== 'standard',
+    fridayAfternoonStartTime: fridayBreakEndTime,
+    fridayMode,
+    fridayBreakStartTime,
+    fridayBreakEndTime,
+    fridayClosingTime,
+    fridayCompressionScope,
+    fridayPeriodLengthMinutes,
+    fridayShortBreakMinutes: shortBreakEnabled ? fridayShortBreakMinutes : 0,
     periodLengthMinutes,
     shortBreakEnabled,
     shortBreakMinutes: shortBreakEnabled ? shortBreakMinutes : 0,
@@ -557,9 +603,9 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-            {/* LEFT 7 COLUMNS: UNIFIED TIMING CONTROLS */}
+            {/* LEFT 7 COLUMNS: UNIFIED TIMING CONTROLS (IN LOGICAL ORDER) */}
             <div className="lg:col-span-7 space-y-6">
-              {/* SECTION A: OPERATING HOURS & WORKING DAYS */}
+              {/* SECTION 1: OPERATING HOURS & WORKING DAYS */}
               <section className="sf-card-white p-6 space-y-5">
                 <div className="flex items-center justify-between gap-3 border-b border-[#E4E2DA] pb-3.5">
                   <div className="flex items-center gap-2">
@@ -632,45 +678,9 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
                     })}
                   </div>
                 </div>
-
-                {/* Friday Afternoon Shift */}
-                <div className="pt-4 border-t border-[#E4E2DA] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <div>
-                    <div className="text-xs font-semibold text-[#171717]">
-                      Friday Afternoon Shift (Jummah Buffer)
-                    </div>
-                    <div className="text-[11px] text-[#77766F] mt-0.5">
-                      Shifts Friday afternoon sessions to start after prayer break.
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3 shrink-0">
-                    {fridayAfternoonShiftEnabled && (
-                      <input
-                        type="time"
-                        value={fridayAfternoonStartTime}
-                        onChange={e => setFridayAfternoonStartTime(e.target.value)}
-                        className="input-field h-9 w-32 text-xs font-mono-tabular"
-                      />
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => setFridayAfternoonShiftEnabled(!fridayAfternoonShiftEnabled)}
-                      className={`w-10 h-6 flex items-center rounded-full p-1 transition-colors cursor-pointer shrink-0 ${
-                        fridayAfternoonShiftEnabled ? 'bg-[#171717]' : 'bg-[#D6D3C9]'
-                      }`}
-                      aria-label="Toggle Friday afternoon shift"
-                    >
-                      <div
-                        className={`bg-white w-4 h-4 rounded-full transition-transform ${
-                          fridayAfternoonShiftEnabled ? 'translate-x-4' : 'translate-x-0'
-                        }`}
-                      />
-                    </button>
-                  </div>
-                </div>
               </section>
 
-              {/* SECTION B: LECTURES, BREAKS & LABS IN ONE CLEAN HAIRLINE SHEET */}
+              {/* SECTION 2: LECTURES, BREAKS & LABS IN ONE CLEAN HAIRLINE SHEET */}
               <section className="sf-card-white divide-y divide-[#E4E2DA] overflow-hidden">
                 {/* 1. Lecture Duration */}
                 <div className="p-6 space-y-4">
@@ -1027,64 +1037,588 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
                   )}
                 </div>
               </section>
+
+              {/* SECTION 3: FRIDAY & JUMMAH PRAYER CONFIGURATION (END OF SCREEN) */}
+              <section className="sf-card-white divide-y divide-[#E4E2DA] overflow-hidden">
+                {/* Header */}
+                <div className="p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-[#F7F6EF]/40">
+                  <div>
+                    <h2 className="font-serif-editorial text-xl text-[#171717]">
+                      Friday &amp; Jummah Prayer Schedule
+                    </h2>
+                    <p className="text-xs text-[#77766F] mt-0.5">
+                      Configure Jummah prayer break, half-day closure, and reduced Friday class durations.
+                    </p>
+                  </div>
+                  <span className="font-mono-tabular text-xs font-semibold text-[#57564F] shrink-0">
+                    {workingDays.includes('Fri') ? livePreview.fridaySchedule.operatingHoursLabel : 'Friday Off'}
+                  </span>
+                </div>
+
+                {!workingDays.includes('Fri') ? (
+                  <div className="p-6 text-xs text-[#77766F]">
+                    Friday is currently unchecked in <strong>Working Days</strong> above. Select <strong>Fri</strong> to enable Friday &amp; Jummah prayer rules.
+                  </div>
+                ) : (
+                  <>
+                    {/* Row 1: Friday Day Structure */}
+                    <div className="p-6 space-y-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs font-semibold text-[#171717]">
+                          Friday Day Structure
+                        </span>
+                        <span className="text-[11px] font-mono-tabular text-[#77766F]">
+                          {fridayMode === 'jummah_break'
+                            ? `Break ${livePreview.fridaySchedule.jummahBreak.timeRangeLabel}`
+                            : fridayMode === 'morning_only'
+                            ? `Ends at ${livePreview.fridaySchedule.closingTime24}`
+                            : 'Follows Mon–Thu'}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                        {[
+                          {
+                            mode: 'jummah_break' as const,
+                            title: 'Extended Jummah Break',
+                            desc: 'Longer midday prayer break + shifted afternoon'
+                          },
+                          {
+                            mode: 'morning_only' as const,
+                            title: 'Morning Only (Half-Day)',
+                            desc: 'Close classes cleanly before Jummah prayer'
+                          },
+                          {
+                            mode: 'standard' as const,
+                            title: 'Same as Mon–Thu',
+                            desc: 'Use standard operating hours on Friday'
+                          }
+                        ].map(opt => {
+                          const selected = fridayMode === opt.mode;
+                          return (
+                            <button
+                              key={opt.mode}
+                              type="button"
+                              onClick={() => {
+                                setTimingValidationErrors([]);
+                                setFridayMode(opt.mode);
+                                if (
+                                  opt.mode === 'morning_only' &&
+                                  (fridayCompressionScope === 'after_jummah' ||
+                                    fridayCompressionScope === 'all_day')
+                                ) {
+                                  setFridayCompressionScope(
+                                    fridayCompressionScope === 'all_day' ? 'before_jummah' : 'none'
+                                  );
+                                }
+                                setPreviewDayTab('friday');
+                              }}
+                              className={`text-left p-3.5 rounded-xl border transition-colors cursor-pointer ${
+                                selected
+                                  ? 'bg-[#171717] text-white border-[#171717]'
+                                  : 'bg-[#F7F6EF]/60 text-[#171717] border-[#E4E2DA] hover:bg-[#F7F6EF]'
+                              }`}
+                            >
+                              <div className="text-xs font-semibold">{opt.title}</div>
+                              <div
+                                className={`text-[11px] mt-1 leading-snug ${
+                                  selected ? 'text-white/75' : 'text-[#77766F]'
+                                }`}
+                              >
+                                {opt.desc}
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Row 2: Jummah Prayer Window / Closing Time */}
+                    {fridayMode === 'jummah_break' && (
+                      <div className="p-6 space-y-3">
+                        <div className="text-xs font-semibold text-[#171717]">
+                          Jummah Prayer Break Window
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <label className="block text-[11px] font-medium text-[#57564F]">
+                              Jummah Break Starts
+                            </label>
+                            <input
+                              type="time"
+                              value={fridayBreakStartTime}
+                              onChange={e => {
+                                setTimingValidationErrors([]);
+                                setFridayBreakStartTime(e.target.value);
+                                setPreviewDayTab('friday');
+                              }}
+                              className="input-field h-10 text-xs font-mono-tabular"
+                            />
+                            <div className="flex flex-wrap gap-1.5">
+                              {[
+                                { val: '12:30', label: '12:30 PM' },
+                                { val: '13:00', label: '1:00 PM' },
+                                { val: '13:15', label: '1:15 PM' }
+                              ].map(chip => (
+                                <button
+                                  key={chip.val}
+                                  type="button"
+                                  onClick={() => {
+                                    setTimingValidationErrors([]);
+                                    setFridayBreakStartTime(chip.val);
+                                    setPreviewDayTab('friday');
+                                  }}
+                                  className={`px-2.5 py-1 rounded-md text-[11px] font-mono-tabular cursor-pointer ${
+                                    fridayBreakStartTime === chip.val
+                                      ? 'bg-[#171717] text-white font-semibold'
+                                      : 'bg-[#F7F6EF] text-[#171717] border border-[#E4E2DA]'
+                                  }`}
+                                >
+                                  {chip.label}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+
+                          <div className="space-y-2">
+                            <label className="block text-[11px] font-medium text-[#57564F]">
+                              Friday Afternoon Resumes
+                            </label>
+                            <input
+                              type="time"
+                              value={fridayBreakEndTime}
+                              onChange={e => {
+                                setTimingValidationErrors([]);
+                                setFridayBreakEndTime(e.target.value);
+                                setPreviewDayTab('friday');
+                              }}
+                              className="input-field h-10 text-xs font-mono-tabular"
+                            />
+                            <div className="flex flex-wrap gap-1.5">
+                              {[
+                                { val: '14:00', label: '2:00 PM' },
+                                { val: '14:30', label: '2:30 PM' },
+                                { val: '15:00', label: '3:00 PM' }
+                              ].map(chip => (
+                                <button
+                                  key={chip.val}
+                                  type="button"
+                                  onClick={() => {
+                                    setTimingValidationErrors([]);
+                                    setFridayBreakEndTime(chip.val);
+                                    setPreviewDayTab('friday');
+                                  }}
+                                  className={`px-2.5 py-1 rounded-md text-[11px] font-mono-tabular cursor-pointer ${
+                                    fridayBreakEndTime === chip.val
+                                      ? 'bg-[#171717] text-white font-semibold'
+                                      : 'bg-[#F7F6EF] text-[#171717] border border-[#E4E2DA]'
+                                  }`}
+                                >
+                                  {chip.label}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {fridayMode === 'morning_only' && (
+                      <div className="p-6 space-y-3">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                          <div>
+                            <label className="block text-xs font-semibold text-[#171717]">
+                              Friday Closing Time (Before Jummah)
+                            </label>
+                            <p className="text-[11px] text-[#77766F] mt-0.5">
+                              All Friday afternoon slots are closed; solver schedules only in morning hours.
+                            </p>
+                          </div>
+                          <input
+                            type="time"
+                            value={fridayClosingTime}
+                            onChange={e => {
+                              setTimingValidationErrors([]);
+                              setFridayClosingTime(e.target.value);
+                              setPreviewDayTab('friday');
+                            }}
+                            className="input-field h-10 w-36 text-xs font-mono-tabular shrink-0"
+                          />
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {[
+                            { val: '12:00', label: 'Close 12:00 PM' },
+                            { val: '12:30', label: 'Close 12:30 PM' },
+                            { val: '13:00', label: 'Close 1:00 PM' },
+                            { val: '13:30', label: 'Close 1:30 PM' }
+                          ].map(chip => (
+                            <button
+                              key={chip.val}
+                              type="button"
+                              onClick={() => {
+                                setTimingValidationErrors([]);
+                                setFridayClosingTime(chip.val);
+                                setPreviewDayTab('friday');
+                              }}
+                              className={`px-2.5 py-1 rounded-md text-[11px] font-mono-tabular cursor-pointer ${
+                                fridayClosingTime === chip.val
+                                  ? 'bg-[#171717] text-white font-semibold'
+                                  : 'bg-[#F7F6EF] text-[#171717] border border-[#E4E2DA]'
+                              }`}
+                            >
+                              {chip.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Row 3: Reduced Friday Class Durations */}
+                    {fridayMode !== 'standard' && (
+                      <div className="p-6 space-y-4">
+                        <div>
+                          <div className="text-xs font-semibold text-[#171717]">
+                            Reduced Friday Class Timings
+                          </div>
+                          <div className="text-[11px] text-[#77766F] mt-0.5">
+                            Optionally shorten lectures before and/or after Jummah so all Friday periods fit cleanly.
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                          {[
+                            { id: 'none' as const, label: 'Standard Length' },
+                            { id: 'before_jummah' as const, label: 'Before Jummah' },
+                            ...(fridayMode === 'jummah_break'
+                              ? [
+                                  { id: 'after_jummah' as const, label: 'After Jummah' },
+                                  { id: 'all_day' as const, label: 'All Friday' }
+                                ]
+                              : [])
+                          ].map(scopeOpt => (
+                            <button
+                              key={scopeOpt.id}
+                              type="button"
+                              onClick={() => {
+                                setTimingValidationErrors([]);
+                                setFridayCompressionScope(scopeOpt.id);
+                                setPreviewDayTab('friday');
+                              }}
+                              className={`h-9 px-2.5 rounded-lg text-xs font-semibold border transition-colors cursor-pointer ${
+                                fridayCompressionScope === scopeOpt.id
+                                  ? 'bg-[#171717] text-white border-[#171717]'
+                                  : 'bg-white text-[#57564F] border-[#E4E2DA] hover:text-[#171717]'
+                              }`}
+                            >
+                              {scopeOpt.label}
+                            </button>
+                          ))}
+                        </div>
+
+                        {fridayCompressionScope !== 'none' && (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+                            <div>
+                              <label className="block text-xs font-semibold text-[#171717] mb-1.5">
+                                Friday Lecture Duration
+                              </label>
+                              <div className="input-group-field h-10 px-3 gap-2">
+                                <input
+                                  type="number"
+                                  min={20}
+                                  max={periodLengthMinutes}
+                                  step={5}
+                                  value={fridayPeriodLengthMinutes}
+                                  onChange={e => {
+                                    setTimingValidationErrors([]);
+                                    setFridayPeriodLengthMinutes(
+                                      Math.max(15, parseInt(e.target.value, 10) || 40)
+                                    );
+                                    setPreviewDayTab('friday');
+                                  }}
+                                  className="text-xs font-mono-tabular font-semibold"
+                                />
+                                <span className="text-[11px] font-mono-tabular text-[#77766F] shrink-0">
+                                  min
+                                </span>
+                              </div>
+                              <div className="flex flex-wrap gap-1.5 mt-2">
+                                {[35, 40, 45].filter(m => m <= periodLengthMinutes).map(mins => (
+                                  <button
+                                    key={mins}
+                                    type="button"
+                                    onClick={() => {
+                                      setTimingValidationErrors([]);
+                                      setFridayPeriodLengthMinutes(mins);
+                                      setPreviewDayTab('friday');
+                                    }}
+                                    className={`px-2.5 py-1 rounded-md text-[11px] font-mono-tabular cursor-pointer ${
+                                      fridayPeriodLengthMinutes === mins
+                                        ? 'bg-[#171717] text-white font-semibold'
+                                        : 'bg-[#F7F6EF] text-[#171717] border border-[#E4E2DA]'
+                                    }`}
+                                  >
+                                    {mins}m
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+
+                            {shortBreakEnabled && (
+                              <div>
+                                <label className="block text-xs font-semibold text-[#171717] mb-1.5">
+                                  Friday Inter-Class Break
+                                </label>
+                                <div className="input-group-field h-10 px-3 gap-2">
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    max={30}
+                                    step={5}
+                                    value={fridayShortBreakMinutes}
+                                    onChange={e => {
+                                      setTimingValidationErrors([]);
+                                      setFridayShortBreakMinutes(
+                                        Math.max(0, parseInt(e.target.value, 10) || 0)
+                                      );
+                                      setPreviewDayTab('friday');
+                                    }}
+                                    className="text-xs font-mono-tabular font-semibold"
+                                  />
+                                  <span className="text-[11px] font-mono-tabular text-[#77766F] shrink-0">
+                                    min
+                                  </span>
+                                </div>
+                                <div className="flex flex-wrap gap-1.5 mt-2">
+                                  {[0, 5, 10].map(mins => (
+                                    <button
+                                      key={mins}
+                                      type="button"
+                                      onClick={() => {
+                                        setTimingValidationErrors([]);
+                                        setFridayShortBreakMinutes(mins);
+                                        setPreviewDayTab('friday');
+                                      }}
+                                      className={`px-2.5 py-1 rounded-md text-[11px] font-mono-tabular cursor-pointer ${
+                                        fridayShortBreakMinutes === mins
+                                          ? 'bg-[#171717] text-white font-semibold'
+                                          : 'bg-[#F7F6EF] text-[#171717] border border-[#E4E2DA]'
+                                      }`}
+                                    >
+                                      {mins}m
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {livePreview.fridaySchedule.continuousLabBlocks.length > 0 && (
+                          <div className="text-xs text-[#57564F] font-mono-tabular pt-1">
+                            Friday Lab Windows:{' '}
+                            {livePreview.fridaySchedule.continuousLabBlocks.map((block, idx) => (
+                              <span key={`${block.session}-${block.startPeriod}`}>
+                                <strong className="text-[#171717]">{block.session}</strong> {block.continuousLabel}
+                                {idx < livePreview.fridaySchedule.continuousLabBlocks.length - 1 ? ' · ' : ''}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </>
+                )}
+              </section>
+
+              {/* BOTTOM ACTION BAR AT END OF TIMINGS FLOW */}
+              <div className="sf-card-white px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="text-xs text-[#57564F]">
+                  <span className="font-semibold text-[#171717]">Ready to apply?</span>{' '}
+                  <span className="font-mono-tabular">
+                    {livePreview.slots.length} Mon–Thu slots
+                    {workingDays.includes('Fri')
+                      ? ` · ${livePreview.fridaySchedule.slots.length} Friday slots`
+                      : ''}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={handleResetToDefaults}
+                    className="btn-secondary text-xs h-9 px-3.5 whitespace-nowrap"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>Reset Defaults</span>
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!liveValidation.valid}
+                    onClick={() => handleSaveConfiguration()}
+                    className="btn-primary text-xs h-9 px-4 whitespace-nowrap disabled:opacity-50"
+                  >
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>Save Configuration</span>
+                  </button>
+                </div>
+              </div>
             </div>
 
             {/* RIGHT 5 COLUMNS: LIVE DAILY SLOT BREAKDOWN TIMELINE */}
             <aside className="lg:col-span-5 lg:sticky lg:top-6 sf-card-white overflow-hidden">
-              <div className="px-5 py-4 border-b border-[#E4E2DA] bg-[#F7F6EF]/60 flex items-center justify-between">
+              <div className="px-5 py-4 border-b border-[#E4E2DA] bg-[#F7F6EF]/60 flex items-center justify-between gap-3">
                 <div>
                   <h2 className="font-serif-editorial text-xl text-[#171717]">
                     Daily Slot Breakdown
                   </h2>
                   <p className="text-xs text-[#77766F] mt-0.5 font-mono-tabular">
-                    Live preview · {livePreview.slots.length} slots ({periodLengthMinutes}m lecture)
+                    {previewDayTab === 'friday'
+                      ? `${livePreview.fridaySchedule.slots.length} Friday slots · ${livePreview.fridaySchedule.operatingHoursLabel}`
+                      : `${livePreview.slots.length} Mon–Thu slots (${periodLengthMinutes}m lecture)`}
                   </p>
                 </div>
+
+                {workingDays.includes('Fri') && (
+                  <div className="inline-flex items-center p-0.5 rounded-lg bg-[#EDEAE0] border border-[#E4E2DA] shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setPreviewDayTab('mon_thu')}
+                      className={`px-2.5 py-1 rounded-md text-[11px] font-semibold cursor-pointer transition-colors ${
+                        previewDayTab === 'mon_thu'
+                          ? 'bg-white text-[#171717] shadow-2xs'
+                          : 'text-[#77766F] hover:text-[#171717]'
+                      }`}
+                    >
+                      Mon–Thu
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPreviewDayTab('friday')}
+                      className={`px-2.5 py-1 rounded-md text-[11px] font-semibold cursor-pointer transition-colors ${
+                        previewDayTab === 'friday'
+                          ? 'bg-white text-[#171717] shadow-2xs'
+                          : 'text-[#77766F] hover:text-[#171717]'
+                      }`}
+                    >
+                      Friday
+                    </button>
+                  </div>
+                )}
               </div>
 
-              <div className="divide-y divide-[#E4E2DA]">
-                {livePreview.slots.map(slot => {
-                  const showLunchBefore =
-                    livePreview.middayBreak.enabled &&
-                    slot.slotNumber === livePreview.firstAfternoonSlotNumber;
+              {previewDayTab === 'mon_thu' ? (
+                <div className="divide-y divide-[#E4E2DA]">
+                  {livePreview.slots.map(slot => {
+                    const showLunchBefore =
+                      livePreview.middayBreak.enabled &&
+                      slot.slotNumber === livePreview.firstAfternoonSlotNumber;
 
-                  return (
-                    <React.Fragment key={slot.slotNumber}>
-                      {showLunchBefore && (
-                        <div className="px-5 py-3 bg-[#E8D36B]/25 flex items-center justify-between gap-3">
-                          <div className="flex items-center gap-2 text-xs font-semibold text-[#171717]">
-                            <Coffee className="w-3.5 h-3.5 shrink-0" />
-                            <span>Midday / Lunch Break</span>
+                    return (
+                      <React.Fragment key={slot.slotNumber}>
+                        {showLunchBefore && (
+                          <div className="px-5 py-3 bg-[#E8D36B]/25 flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-2 text-xs font-semibold text-[#171717]">
+                              <Coffee className="w-3.5 h-3.5 shrink-0" />
+                              <span>Midday / Lunch Break</span>
+                            </div>
+                            <div className="text-xs font-mono-tabular font-semibold text-[#171717]">
+                              {livePreview.middayBreak.timeRangeLabel} ({livePreview.middayBreak.durationMinutes}m)
+                            </div>
                           </div>
-                          <div className="text-xs font-mono-tabular font-semibold text-[#171717]">
-                            {livePreview.middayBreak.timeRangeLabel} ({livePreview.middayBreak.durationMinutes}m)
-                          </div>
-                        </div>
-                      )}
+                        )}
 
-                      <div className="px-5 py-3 flex items-center justify-between gap-3 hover:bg-[#F7F6EF]/40 transition-colors">
-                        <div className="flex items-center gap-3 min-w-0">
-                          <span className="text-xs font-mono-tabular font-bold text-[#171717] w-12 shrink-0">
-                            Slot {slot.slotNumber}
-                          </span>
-                          <span className="text-xs font-mono-tabular font-medium text-[#171717] truncate">
-                            {slot.period}
-                          </span>
+                        <div className="px-5 py-3 flex items-center justify-between gap-3 hover:bg-[#F7F6EF]/40 transition-colors">
+                          <div className="flex items-center gap-3 min-w-0">
+                            <span className="text-xs font-mono-tabular font-bold text-[#171717] w-12 shrink-0">
+                              Slot {slot.slotNumber}
+                            </span>
+                            <span className="text-xs font-mono-tabular font-medium text-[#171717] truncate">
+                              {slot.period}
+                            </span>
+                          </div>
+                          <div className="text-[11px] font-mono-tabular text-[#77766F] shrink-0">
+                            {slot.session}
+                            {livePreview.shortBreakEnabled && livePreview.shortBreakMinutes > 0
+                              ? ` · +${livePreview.shortBreakMinutes}m break`
+                              : ''}
+                          </div>
                         </div>
-                        <div className="text-[11px] font-mono-tabular text-[#77766F] shrink-0">
-                          {slot.session}
-                          {livePreview.shortBreakEnabled && livePreview.shortBreakMinutes > 0
-                            ? ` · +${livePreview.shortBreakMinutes}m break`
-                            : ''}
+                      </React.Fragment>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="divide-y divide-[#E4E2DA]">
+                  {livePreview.fridaySchedule.slots.map(slot => {
+                    const fri = livePreview.fridaySchedule;
+                    const showJummahBefore =
+                      fri.mode !== 'morning_only' &&
+                      fri.jummahBreak.enabled &&
+                      slot.slotNumber === fri.firstAfternoonSlotNumber;
+                    const slotLen =
+                      slot.session === 'Afternoon'
+                        ? fri.afternoonPeriodLengthMinutes
+                        : fri.morningPeriodLengthMinutes;
+                    const slotBreak =
+                      slot.session === 'Afternoon'
+                        ? fri.afternoonShortBreakMinutes
+                        : fri.morningShortBreakMinutes;
+
+                    return (
+                      <React.Fragment key={`fri-${slot.slotNumber}`}>
+                        {showJummahBefore && (
+                          <div className="px-5 py-3 bg-[#E8D36B]/30 flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-2 text-xs font-semibold text-[#171717]">
+                              <Coffee className="w-3.5 h-3.5 shrink-0" />
+                              <span>
+                                {fri.mode === 'jummah_break' ? 'Jummah Prayer Break' : 'Midday Break'}
+                              </span>
+                            </div>
+                            <div className="text-xs font-mono-tabular font-semibold text-[#171717]">
+                              {fri.jummahBreak.timeRangeLabel} ({fri.jummahBreak.durationMinutes}m)
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="px-5 py-3 flex items-center justify-between gap-3 hover:bg-[#F7F6EF]/40 transition-colors">
+                          <div className="flex items-center gap-3 min-w-0">
+                            <span className="text-xs font-mono-tabular font-bold text-[#171717] w-12 shrink-0">
+                              Slot {slot.slotNumber}
+                            </span>
+                            <span className="text-xs font-mono-tabular font-medium text-[#171717] truncate">
+                              {slot.period}
+                            </span>
+                          </div>
+                          <div className="text-[11px] font-mono-tabular text-[#77766F] shrink-0">
+                            {slotLen}m
+                            {livePreview.shortBreakEnabled && slotBreak > 0
+                              ? ` · +${slotBreak}m`
+                              : ''}
+                          </div>
                         </div>
+                      </React.Fragment>
+                    );
+                  })}
+
+                  {livePreview.fridaySchedule.mode === 'morning_only' && (
+                    <div className="px-5 py-3.5 bg-[#E8D36B]/25 flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2 text-xs font-semibold text-[#171717]">
+                        <Coffee className="w-3.5 h-3.5 shrink-0" />
+                        <span>Closed for Jummah Prayer</span>
                       </div>
-                    </React.Fragment>
-                  );
-                })}
-              </div>
+                      <div className="text-xs font-mono-tabular font-semibold text-[#171717]">
+                        {livePreview.fridaySchedule.closingTime24} Onward
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div className="px-5 py-3.5 border-t border-[#E4E2DA] bg-[#F7F6EF]/50 flex items-center justify-between text-[11px] font-mono-tabular text-[#77766F]">
-                <span>Lab span: {livePreview.labSpanSlots} consecutive slots</span>
+                <span>
+                  {previewDayTab === 'friday'
+                    ? `${livePreview.fridaySchedule.continuousLabBlocks.length} Friday lab windows`
+                    : `Lab span: ${livePreview.labSpanSlots} consecutive slots`}
+                </span>
                 <span>{workingDays.join(' · ')}</span>
               </div>
             </aside>

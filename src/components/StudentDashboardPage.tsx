@@ -514,6 +514,12 @@ export const StudentDashboardPage: React.FC<StudentDashboardPageProps> = ({
                 </span>
               </div>
               <div className="flex items-center justify-between px-3.5 py-2.5">
+                <span className="text-[#57564F]">Friday / Jummah</span>
+                <span className="font-mono-tabular font-semibold text-[#171717] text-right">
+                  {activeTiming.fridaySchedule.summaryText}
+                </span>
+              </div>
+              <div className="flex items-center justify-between px-3.5 py-2.5">
                 <span className="text-[#57564F]">Laboratory Block</span>
                 <span className="font-mono-tabular font-semibold text-[#171717]">
                   {labHoursLabel}h ({activeTiming.labDurationMinutes}m)

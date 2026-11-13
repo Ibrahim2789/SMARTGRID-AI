@@ -23,7 +23,9 @@ import {
   computeAcademicScheduleConfig,
   validateAcademicTimingConfig,
   getLabBlockByStartPeriod,
-  getCoveredPeriodsForAssignment
+  getCoveredPeriodsForAssignment,
+  getEffectiveSlotDisplayForDay,
+  ContinuousLabBlockMeta
 } from '../types/institutional';
 
 import {
@@ -571,8 +573,15 @@ export const institutionalStore = {
         middayBreakStartTime: computed.middayBreak.startTime24,
         middayBreakDurationMinutes: computed.middayBreak.durationMinutes,
         labDurationMinutes: computed.labDurationMinutes,
-        fridayAfternoonShiftEnabled: Boolean(config.fridayAfternoonShiftEnabled),
-        fridayAfternoonStartTime: config.fridayAfternoonStartTime || '14:30',
+        fridayAfternoonShiftEnabled: computed.fridayAfternoonShiftEnabled,
+        fridayAfternoonStartTime: computed.fridayAfternoonStartTime,
+        fridayMode: computed.fridaySchedule.mode,
+        fridayBreakStartTime: computed.fridaySchedule.jummahBreak.startTime24,
+        fridayBreakEndTime: computed.fridaySchedule.jummahBreak.endTime24,
+        fridayClosingTime: computed.fridaySchedule.closingTime24,
+        fridayCompressionScope: computed.fridaySchedule.compressionScope,
+        fridayPeriodLengthMinutes: computed.fridaySchedule.fridayPeriodLengthMinutes,
+        fridayShortBreakMinutes: computed.fridaySchedule.fridayShortBreakMinutes,
         periods: computed.periods,
         breaks: [...defaultLunchBreak, ...customAdditionalBreaks]
       },
@@ -748,7 +757,14 @@ export const institutionalStore = {
       dayStartTime: hours.dayStartTime,
       dayEndTime: hours.dayEndTime,
       fridayAfternoonShiftEnabled: hours.fridayAfternoonShiftEnabled,
-      fridayAfternoonStartTime: hours.fridayAfternoonStartTime
+      fridayAfternoonStartTime: hours.fridayAfternoonStartTime,
+      fridayMode: hours.fridayMode,
+      fridayBreakStartTime: hours.fridayBreakStartTime,
+      fridayBreakEndTime: hours.fridayBreakEndTime,
+      fridayClosingTime: hours.fridayClosingTime,
+      fridayCompressionScope: hours.fridayCompressionScope,
+      fridayPeriodLengthMinutes: hours.fridayPeriodLengthMinutes,
+      fridayShortBreakMinutes: hours.fridayShortBreakMinutes
     });
   },
 
@@ -975,17 +991,32 @@ export const institutionalStore = {
 
     const computed = computeAcademicScheduleConfig(candidateConfig);
     const customBreaks = (newConfig.breaks || currentStore.timeStructure.breaks || []).filter(
-      b => b.id !== 'brk-lunch' && !b.id.endsWith('-lunch')
+      b => b.id !== 'brk-lunch' && !b.id.endsWith('-lunch') && b.id !== 'brk-jummah'
+    );
+    const jummahDays: DayOfWeek[] = computed.workingDays.includes('Fri') ? ['Fri'] : [];
+    const standardBreakDays: DayOfWeek[] = computed.workingDays.filter(
+      d => d !== 'Fri' || computed.fridaySchedule.mode === 'standard'
     );
     const updatedBreaks = [
-      ...(computed.middayBreak.enabled
+      ...(computed.middayBreak.enabled && standardBreakDays.length > 0
         ? [
             {
               id: 'brk-lunch',
               name: 'University Midday / Lunch Break',
               startTime: computed.middayBreak.startTime24,
               endTime: computed.middayBreak.endTime24,
-              days: computed.workingDays
+              days: standardBreakDays
+            }
+          ]
+        : []),
+      ...(jummahDays.length > 0 && computed.fridaySchedule.mode === 'jummah_break'
+        ? [
+            {
+              id: 'brk-jummah',
+              name: 'Friday Jummah Prayer Break',
+              startTime: computed.fridaySchedule.jummahBreak.startTime24,
+              endTime: computed.fridaySchedule.jummahBreak.endTime24,
+              days: jummahDays
             }
           ]
         : []),
@@ -1011,6 +1042,13 @@ export const institutionalStore = {
         labDurationMinutes: computed.labDurationMinutes,
         fridayAfternoonShiftEnabled: computed.fridayAfternoonShiftEnabled,
         fridayAfternoonStartTime: computed.fridayAfternoonStartTime,
+        fridayMode: computed.fridaySchedule.mode,
+        fridayBreakStartTime: computed.fridaySchedule.jummahBreak.startTime24,
+        fridayBreakEndTime: computed.fridaySchedule.jummahBreak.endTime24,
+        fridayClosingTime: computed.fridaySchedule.closingTime24,
+        fridayCompressionScope: computed.fridaySchedule.compressionScope,
+        fridayPeriodLengthMinutes: computed.fridaySchedule.fridayPeriodLengthMinutes,
+        fridayShortBreakMinutes: computed.fridaySchedule.fridayShortBreakMinutes,
         periods: computed.periods,
         breaks: updatedBreaks
       }
@@ -1438,11 +1476,14 @@ export const institutionalStore = {
     const activeLabBlocks = computedTiming.continuousLabBlocks.length > 0
       ? computedTiming.continuousLabBlocks
       : VALID_CONTINUOUS_LAB_BLOCKS;
+    const fridayLabBlocks = computedTiming.fridaySchedule.continuousLabBlocks;
     const labSpanSlots = computedTiming.labSpanSlots || 3;
     const labDurationMinutes = computedTiming.labDurationMinutes || 180;
     const lectureDurationMinutes = computedTiming.periodLengthMinutes || 50;
 
     const validPeriodsSet = new Set(periods);
+    const validFridayPeriodsSet = new Set(computedTiming.fridaySchedule.validBasePeriods);
+    const validFridayLabStartsSet = new Set(fridayLabBlocks.map(b => b.startPeriod));
     const validDaysSet = new Set(days);
     const groupFilter = options?.selectedGroupIds ? new Set(options.selectedGroupIds) : null;
     const targetDeptId =
@@ -1460,6 +1501,13 @@ export const institutionalStore = {
       return course?.departmentId === deptId;
     };
 
+    const isSectionLab = (sec: Section): boolean => {
+      if (sec.sessionType === 'Lab' || (sec.spanSlots && sec.spanSlots > 1)) return true;
+      if (sec.assignedSlot?.sessionType === 'Lab' || (sec.assignedSlot?.spanSlots && sec.assignedSlot.spanSlots > 1)) return true;
+      if (sec.sectionNumber.toLowerCase().includes('lab')) return true;
+      return false;
+    };
+
     const sectionsToSolve: Section[] = [];
     const fixedSections: Section[] = [];
 
@@ -1467,10 +1515,15 @@ export const institutionalStore = {
       const matchesGroup = !groupFilter || groupFilter.has(sec.studentGroupId);
       const matchesDept = !targetDeptId || isSectionInDepartment(sec, targetDeptId);
       const inScope = matchesGroup && matchesDept;
+      const secIsLab = isSectionLab(sec);
+      const slotDay = sec.assignedSlot?.day;
+      const slotTime = sec.assignedSlot?.timeSlot || '';
       const hasValidExistingSlot =
         Boolean(sec.assignedSlot) &&
-        validDaysSet.has(sec.assignedSlot!.day) &&
-        validPeriodsSet.has(sec.assignedSlot!.timeSlot);
+        validDaysSet.has(slotDay!) &&
+        (slotDay === 'Fri'
+          ? (secIsLab ? validFridayLabStartsSet.has(slotTime) : validFridayPeriodsSet.has(slotTime))
+          : validPeriodsSet.has(slotTime));
 
       if (!inScope && hasValidExistingSlot) {
         // Keep out-of-scope department/cohort sections fixed so shared rooms/faculty don't clash
@@ -1487,13 +1540,6 @@ export const institutionalStore = {
         sectionsToSolve.push(sec);
       }
     });
-
-    const isSectionLab = (sec: Section): boolean => {
-      if (sec.sessionType === 'Lab' || (sec.spanSlots && sec.spanSlots > 1)) return true;
-      if (sec.assignedSlot?.sessionType === 'Lab' || (sec.assignedSlot?.spanSlots && sec.assignedSlot.spanSlots > 1)) return true;
-      if (sec.sectionNumber.toLowerCase().includes('lab')) return true;
-      return false;
-    };
 
     // Sort sections by constraint tightness:
     // 1. Continuous Labs first (since they require multiple consecutive free cycles)
@@ -1524,7 +1570,7 @@ export const institutionalStore = {
     };
 
     const markCoveredSlots = (day: DayOfWeek, startPeriod: string, spanSlots: number, roomId: string, instId: string, groupId: string) => {
-      const covered = getCoveredPeriodsForAssignment(startPeriod, spanSlots, currentStore.timeStructure);
+      const covered = getCoveredPeriodsForAssignment(startPeriod, spanSlots, currentStore.timeStructure, day);
       covered.forEach(p => markSingleSlot(day, p, roomId, instId, groupId));
     };
 
@@ -1573,21 +1619,22 @@ export const institutionalStore = {
       let assigned: SectionSlotAssignment | undefined = undefined;
 
       if (isLab) {
-        // Continuous Lab: must occupy one of activeLabBlocks (never crossing the midday break or closing time)
-        const labCandidates: Array<{ day: DayOfWeek; blockIdx: number; score: number }> = [];
+        // Continuous Lab: must occupy valid lab blocks for that specific day (Friday uses Jummah-aware blocks)
+        const labCandidates: Array<{ day: DayOfWeek; block: ContinuousLabBlockMeta; score: number }> = [];
         days.forEach((day, dIdx) => {
-          activeLabBlocks.forEach((block, bIdx) => {
+          const dayBlocks = day === 'Fri' ? fridayLabBlocks : activeLabBlocks;
+          dayBlocks.forEach((block, bIdx) => {
             let score = 100;
             const currentLoadOnDay = groupDailyLoad.get(`${sec.studentGroupId}__${day}`) || 0;
             score -= currentLoadOnDay * 20;
             score += ((secIdx + dIdx * 3 + bIdx * 5) % 13);
-            labCandidates.push({ day, blockIdx: bIdx, score });
+            labCandidates.push({ day, block, score });
           });
         });
         labCandidates.sort((a, b) => b.score - a.score);
 
         for (const cand of labCandidates) {
-          const block = activeLabBlocks[cand.blockIdx];
+          const block = cand.block;
           const covered = block.coveredPeriods;
           const blockSpan = block.spanSlots || covered.length || labSpanSlots;
 
@@ -1611,7 +1658,7 @@ export const institutionalStore = {
               day: cand.day,
               timeSlot: block.startPeriod,
               roomId: freeRoom.id,
-              durationMinutes: labDurationMinutes,
+              durationMinutes: block.durationMinutes || labDurationMinutes,
               sessionType: 'Lab',
               spanSlots: blockSpan,
               continuousTimeLabel: block.continuousLabel
@@ -1624,7 +1671,7 @@ export const institutionalStore = {
         // Fallback for continuous lab if cohort schedule is very dense
         if (!assigned && sortedRooms.length > 0) {
           for (const cand of labCandidates) {
-            const block = activeLabBlocks[cand.blockIdx];
+            const block = cand.block;
             const covered = block.coveredPeriods;
             const blockSpan = block.spanSlots || covered.length || labSpanSlots;
             const freeRoom = sortedRooms.find(r =>
@@ -1636,7 +1683,7 @@ export const institutionalStore = {
                 day: cand.day,
                 timeSlot: block.startPeriod,
                 roomId: freeRoom.id,
-                durationMinutes: labDurationMinutes,
+                durationMinutes: block.durationMinutes || labDurationMinutes,
                 sessionType: 'Lab',
                 spanSlots: blockSpan,
                 continuousTimeLabel: block.continuousLabel
@@ -1647,16 +1694,22 @@ export const institutionalStore = {
           }
         }
       } else {
-        // Regular Lecture: occupies 1 configured class slot
-        const slotCandidates: Array<{ day: DayOfWeek; period: string; score: number }> = [];
+        // Regular Lecture: occupies 1 configured class slot (respecting Friday valid periods & Jummah break)
+        const slotCandidates: Array<{ day: DayOfWeek; period: string; durationMinutes: number; score: number }> = [];
         days.forEach((day, dIdx) => {
-          periods.forEach((period, pIdx) => {
+          const dayPeriods =
+            day === 'Fri'
+              ? computedTiming.fridaySchedule.validBasePeriods
+              : periods;
+          dayPeriods.forEach((period, pIdx) => {
+            const eff = getEffectiveSlotDisplayForDay(day, period, computedTiming);
+            if (!eff.isOpen) return;
             let score = 100;
             const currentLoadOnDay = groupDailyLoad.get(`${sec.studentGroupId}__${day}`) || 0;
             score -= currentLoadOnDay * 25;
             if (pIdx <= 3) score += 8; // Morning preference for lectures
             score += ((secIdx + dIdx * 3 + pIdx * 2) % 11);
-            slotCandidates.push({ day, period, score });
+            slotCandidates.push({ day, period, durationMinutes: eff.durationMinutes || lectureDurationMinutes, score });
           });
         });
 
@@ -1679,7 +1732,7 @@ export const institutionalStore = {
               day: slot.day,
               timeSlot: slot.period,
               roomId: freeRoom.id,
-              durationMinutes: lectureDurationMinutes,
+              durationMinutes: slot.durationMinutes,
               sessionType: 'Lecture',
               spanSlots: 1
             };
@@ -1697,7 +1750,7 @@ export const institutionalStore = {
                 day: slot.day,
                 timeSlot: slot.period,
                 roomId: freeRoom.id,
-                durationMinutes: lectureDurationMinutes,
+                durationMinutes: slot.durationMinutes,
                 sessionType: 'Lecture',
                 spanSlots: 1
               };
@@ -1867,9 +1920,13 @@ export const institutionalStore = {
           s.assignedSlot?.sessionType === 'Lab' ||
           (s.assignedSlot?.spanSlots && s.assignedSlot.spanSlots > 1);
         if (isLab) {
+          const dayBlocks =
+            slot.day === 'Fri' && computedTiming.fridaySchedule.continuousLabBlocks.length > 0
+              ? computedTiming.fridaySchedule.continuousLabBlocks
+              : activeLabBlocks;
           const matchedLabBlock =
-            getLabBlockByStartPeriod(slot.timeSlot, currentStore.timeStructure) ||
-            activeLabBlocks[0];
+            getLabBlockByStartPeriod(slot.timeSlot, currentStore.timeStructure, slot.day) ||
+            dayBlocks[0];
           const labSpan = matchedLabBlock.spanSlots || computedTiming.labSpanSlots || 3;
           return {
             ...s,
@@ -1879,7 +1936,7 @@ export const institutionalStore = {
               day: slot.day,
               timeSlot: matchedLabBlock.startPeriod,
               roomId: slot.roomId,
-              durationMinutes: computedTiming.labDurationMinutes || 180,
+              durationMinutes: matchedLabBlock.durationMinutes || computedTiming.labDurationMinutes || 180,
               sessionType: 'Lab',
               spanSlots: labSpan,
               continuousTimeLabel: matchedLabBlock.continuousLabel
@@ -1887,6 +1944,7 @@ export const institutionalStore = {
           };
         }
 
+        const effSlot = getEffectiveSlotDisplayForDay(slot.day, slot.timeSlot, computedTiming);
         return {
           ...s,
           sessionType: 'Lecture',
@@ -1895,7 +1953,7 @@ export const institutionalStore = {
             day: slot.day,
             timeSlot: slot.timeSlot,
             roomId: slot.roomId,
-            durationMinutes: computedTiming.periodLengthMinutes || 50,
+            durationMinutes: effSlot.durationMinutes || computedTiming.periodLengthMinutes || 50,
             sessionType: 'Lecture',
             spanSlots: 1
           }
@@ -2024,8 +2082,21 @@ export const institutionalStore = {
 
     const computedTiming = computeAcademicScheduleConfig(currentStore.timeStructure);
 
-    // 1. Check Lunch Break Protection
-    if (computedTiming.middayBreak.enabled) {
+    // 1. Check Midday Lunch Break & Friday / Jummah Prayer Restrictions
+    if (targetDay === 'Fri') {
+      const friInfo = getEffectiveSlotDisplayForDay('Fri', targetPeriod, computedTiming);
+      if (!friInfo.isOpen) {
+        const fri = computedTiming.fridaySchedule;
+        conflicts.push({
+          type: 'lunch',
+          message:
+            fri.mode === 'morning_only'
+              ? `Friday is Morning-Only (${fri.operatingHoursLabel}) — afternoon slots are closed before Jummah Prayer.`
+              : `Slot "${targetPeriod}" is unavailable on Friday due to the Jummah Prayer break (${fri.jummahBreak.fullRangeLabel}) / Friday schedule limits.`,
+          severity: 'hard'
+        });
+      }
+    } else if (computedTiming.middayBreak.enabled) {
       const lunchRange = computedTiming.middayBreak.timeRangeLabel;
       if (targetPeriod.includes('13:') || targetPeriod.includes('1:00') || targetPeriod === lunchRange) {
         conflicts.push({
@@ -2036,13 +2107,16 @@ export const institutionalStore = {
       }
     }
 
-    // 2. Check 3-Hour Continuous Lab boundary
+    // 2. Check Continuous Lab boundary (respecting Friday Jummah split)
     if (isLab) {
-      const validLabBlock = getLabBlockByStartPeriod(targetPeriod, currentStore.timeStructure);
+      const validLabBlock = getLabBlockByStartPeriod(targetPeriod, currentStore.timeStructure, targetDay);
       if (!validLabBlock) {
         conflicts.push({
           type: 'lab_boundary',
-          message: `Selected period "${targetPeriod}" is not a standard 3-hour continuous lab start block (e.g. 09:00, 10:00, 14:00).`,
+          message:
+            targetDay === 'Fri'
+              ? `Selected period "${targetPeriod}" cannot host a continuous lab on Friday without crossing the Jummah Prayer break or closing time.`
+              : `Selected period "${targetPeriod}" is not a standard continuous lab start block.`,
           severity: 'warning'
         });
       }
@@ -2056,7 +2130,8 @@ export const institutionalStore = {
       const covered = getCoveredPeriodsForAssignment(
         s.assignedSlot.timeSlot,
         s.assignedSlot.spanSlots || (s.sessionType === 'Lab' ? 3 : 1),
-        currentStore.timeStructure
+        currentStore.timeStructure,
+        targetDay
       );
       return covered.includes(targetPeriod);
     });

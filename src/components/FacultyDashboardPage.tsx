@@ -12,7 +12,7 @@ import {
 import { useInstitutionalData, institutionalStore } from '../data/store';
 import { AuthenticatedVotingUser } from '../services/votingApi';
 import { RouteType } from './SmartGridNav';
-import { DayOfWeek, computeAcademicScheduleConfig, getLabBlockByStartPeriod } from '../types/institutional';
+import { DayOfWeek, computeAcademicScheduleConfig, getLabBlockByStartPeriod, getEffectiveSlotDisplayForDay } from '../types/institutional';
 import { resolveFacultyInstructor } from '../utils/userTimetableScope';
 
 interface FacultyDashboardPageProps {
@@ -301,11 +301,18 @@ export const FacultyDashboardPage: React.FC<FacultyDashboardPageProps> = ({
                       const cohort = store.studentGroups.find(g => g.id === sec.studentGroupId);
                       const room = store.rooms.find(r => r.id === sec.assignedSlot?.roomId);
                       const isLab = sec.sessionType === 'Lab' || (sec.spanSlots && sec.spanSlots > 1);
+                      const slotDay = sec.assignedSlot?.day || 'Mon';
+                      const basePeriod = sec.assignedSlot?.timeSlot || '';
+                      const effSlot = getEffectiveSlotDisplayForDay(slotDay, basePeriod, computedTiming);
+                      const labBlock = isLab ? getLabBlockByStartPeriod(basePeriod, store.timeStructure, slotDay) : undefined;
                       const timeWindow = isLab
-                        ? (sec.assignedSlot?.continuousTimeLabel ||
-                           getLabBlockByStartPeriod(sec.assignedSlot?.timeSlot || '', store.timeStructure)?.continuousLabel ||
-                           sec.assignedSlot?.timeSlot)
-                        : sec.assignedSlot?.timeSlot;
+                        ? (slotDay === 'Fri'
+                            ? (labBlock?.continuousLabel || sec.assignedSlot?.continuousTimeLabel || basePeriod)
+                            : (sec.assignedSlot?.continuousTimeLabel || labBlock?.continuousLabel || basePeriod))
+                        : (effSlot.isOpen ? effSlot.period : basePeriod);
+                      const effMinutes = isLab
+                        ? (labBlock?.durationMinutes || computedTiming.labDurationMinutes)
+                        : (effSlot.isOpen ? effSlot.durationMinutes : computedTiming.periodLengthMinutes);
 
                       return (
                         <tr
@@ -326,8 +333,8 @@ export const FacultyDashboardPage: React.FC<FacultyDashboardPageProps> = ({
                             <span className="inline-flex items-center gap-1.5 font-medium text-[#171717]">
                               <span className={`w-1.5 h-1.5 rounded-full ${isLab ? 'bg-[#9C52B5]' : 'bg-[#2C7A7B]'}`} />
                               {isLab
-                                ? `Lab (${computedTiming.labDurationHoursLabel})`
-                                : `Lecture (${computedTiming.periodLengthMinutes}m)`}
+                                ? `Lab (${effMinutes === computedTiming.labDurationMinutes ? computedTiming.labDurationHoursLabel : `${effMinutes}m`})`
+                                : `Lecture (${effMinutes}m)`}
                             </span>
                           </td>
                           <td className="py-3 px-4">

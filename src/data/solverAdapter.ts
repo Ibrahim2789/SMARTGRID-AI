@@ -4,7 +4,8 @@ import {
   UNIVERSITY_PERIODS,
   computeAcademicScheduleConfig,
   getLabBlockByStartPeriod,
-  getCoveredPeriodsForAssignment
+  getCoveredPeriodsForAssignment,
+  getEffectiveSlotDisplayForDay
 } from '../types/institutional';
 
 export function getDepartmentBlockClass(code: string): string {
@@ -84,16 +85,19 @@ export function buildMatrixSchedule(store: InstitutionalDataStore): {
       (sec.assignedSlot.spanSlots && sec.assignedSlot.spanSlots > 1) ||
       sec.sectionNumber.toLowerCase().includes('lab');
 
-    const labBlockMeta = isLab ? getLabBlockByStartPeriod(timeSlot, store.timeStructure) : undefined;
+    const labBlockMeta = isLab ? getLabBlockByStartPeriod(timeSlot, store.timeStructure, day) : undefined;
+    const effectiveDaySlot = getEffectiveSlotDisplayForDay(day, timeSlot, computedTiming);
     const spanSlots = isLab
       ? (sec.assignedSlot.spanSlots || labBlockMeta?.spanSlots || computedTiming.labSpanSlots || 3)
       : 1;
     const sessionType: 'Lecture' | 'Lab' = isLab ? 'Lab' : 'Lecture';
     const continuousTimeLabel = isLab
-      ? (sec.assignedSlot.continuousTimeLabel || labBlockMeta?.continuousLabel || computedTiming.continuousLabBlocks[0]?.continuousLabel || timeSlot)
+      ? (day === 'Fri'
+          ? (labBlockMeta?.continuousLabel || sec.assignedSlot.continuousTimeLabel || effectiveDaySlot.period)
+          : (sec.assignedSlot.continuousTimeLabel || labBlockMeta?.continuousLabel || computedTiming.continuousLabBlocks[0]?.continuousLabel || timeSlot))
       : undefined;
 
-    const coveredPeriods = getCoveredPeriodsForAssignment(timeSlot, spanSlots, store.timeStructure);
+    const coveredPeriods = getCoveredPeriodsForAssignment(timeSlot, spanSlots, store.timeStructure, day);
     let hasConflict = false;
 
     coveredPeriods.forEach(covPeriod => {
@@ -128,6 +132,12 @@ export function buildMatrixSchedule(store: InstitutionalDataStore): {
     const capacity = room?.capacity || 40;
     const enrolled = sec.expectedEnrollment || group?.size || 30;
 
+    const effectiveDisplayTime = isLab
+      ? continuousTimeLabel || timeSlot
+      : effectiveDaySlot.isOpen && effectiveDaySlot.isFridaySpecial
+      ? effectiveDaySlot.period
+      : timeSlot;
+
     const classItem: ClassItem = {
       id: sec.id,
       code,
@@ -144,13 +154,14 @@ export function buildMatrixSchedule(store: InstitutionalDataStore): {
       capacity,
       enrolled,
       time: timeSlot,
+      effectiveTime: effectiveDisplayTime,
       day,
       type: isLab ? 'Lab' : 'Lecture',
       sessionType,
       spanSlots,
       durationMinutes: isLab
-        ? (sec.assignedSlot.durationMinutes || computedTiming.labDurationMinutes || 180)
-        : (sec.assignedSlot.durationMinutes || computedTiming.periodLengthMinutes || 50),
+        ? (labBlockMeta?.durationMinutes || sec.assignedSlot.durationMinutes || computedTiming.labDurationMinutes || 180)
+        : (effectiveDaySlot.isOpen ? effectiveDaySlot.durationMinutes : (sec.assignedSlot.durationMinutes || computedTiming.periodLengthMinutes || 50)),
       continuousTimeLabel,
       credits: course?.creditHours || 3,
       accent: getDepartmentAccent(code),

@@ -6,7 +6,8 @@ import {
   StudentGroup,
   ComputedAcademicScheduleConfig,
   computeAcademicScheduleConfig,
-  getLabBlockByStartPeriod
+  getLabBlockByStartPeriod,
+  getEffectiveSlotDisplayForDay
 } from '../types/institutional';
 
 /**
@@ -214,9 +215,15 @@ function populateCompactLandscapeTimetable(params: {
     'TIME SLOT',
     ...days.map(d => {
       const label = DAY_FULL_LABELS[d] || d.toUpperCase();
-      return d === 'Fri' && computedTiming.fridayAfternoonShiftEnabled
-        ? `FRIDAY (PM ${computedTiming.fridayAfternoonStartTime})`
-        : label;
+      if (d !== 'Fri') return label;
+      const fri = computedTiming.fridaySchedule;
+      if (fri.mode === 'morning_only') {
+        return `FRIDAY (AM ONLY · ${fri.jummahBreak.startTime24} CLOSE)`;
+      }
+      if (fri.mode === 'jummah_break') {
+        return `FRIDAY (JUMMAH ${fri.jummahBreak.timeRangeLabel})`;
+      }
+      return label;
     })
   ];
   const headerRow = worksheet.addRow(headerValues);
@@ -331,16 +338,23 @@ function populateCompactLandscapeTimetable(params: {
         return;
       }
 
+      const effSlot = getEffectiveSlotDisplayForDay(day, slotMeta.period, computedTiming);
       const cellClasses = (scheduleData[slotMeta.period]?.[day] || []).filter(itemPredicate);
 
       if (cellClasses.length === 0) {
-        cell.value = '';
+        if (day === 'Fri' && !effSlot.isOpen) {
+          cell.value = computedTiming.fridaySchedule.mode === 'morning_only' ? 'Jummah / Half-Day' : 'Jummah Break';
+          cell.font = { name: 'Calibri', size: 7.5, italic: true, color: { argb: 'FF8C8B84' } };
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF7F6EF' } };
+        } else {
+          cell.value = '';
+        }
         return;
       }
 
       // Check if a continuous Lab starts in this slot
       const labItem = cellClasses.find(c => c.sessionType === 'Lab' || (c.spanSlots && c.spanSlots > 1));
-      const labBlock = labItem ? getLabBlockByStartPeriod(slotMeta.period, store.timeStructure) : undefined;
+      const labBlock = labItem ? getLabBlockByStartPeriod(slotMeta.period, store.timeStructure, day) : undefined;
       const desiredSpan = labItem?.spanSlots || labBlock?.spanSlots || computedTiming.labSpanSlots || 3;
       const sameSessionSlots = dynamicSlots
         .slice(slotIdx, slotIdx + desiredSpan)
@@ -353,6 +367,7 @@ function populateCompactLandscapeTimetable(params: {
         });
 
         const continuousWindow =
+          (day === 'Fri' ? labBlock?.continuousLabel : undefined) ||
           labItem.continuousTimeLabel ||
           labBlock?.continuousLabel ||
           `${slotMeta.startTime} – ${sameSessionSlots[sameSessionSlots.length - 1].cycleEndTime}`;
@@ -414,6 +429,10 @@ function populateCompactLandscapeTimetable(params: {
           const cleanTitle = cleanCourseTitle(primary.title, 24);
           const cleanProf = compactText(primary.prof, 18);
           const cohortSuffix = isSingleClassSheet ? '' : ` [${primary.cohort}]`;
+          const friTimeSuffix =
+            day === 'Fri' && effSlot.isOpen && effSlot.isFridaySpecial
+              ? `\n${effSlot.period}`
+              : '';
 
           cell.value = {
             richText: [
@@ -423,7 +442,7 @@ function populateCompactLandscapeTimetable(params: {
               },
               {
                 font: { name: 'Calibri', size: 7.5, bold: false, color: { argb: 'FF444440' } },
-                text: `${cleanProf} • ${primary.room}${cohortSuffix}`
+                text: `${cleanProf} • ${primary.room}${cohortSuffix}${friTimeSuffix}`
               }
             ]
           };

@@ -5,7 +5,8 @@ import { buildMatrixSchedule } from '../data/solverAdapter';
 import {
   UNIVERSITY_SLOTS,
   computeAcademicScheduleConfig,
-  getLabBlockByStartPeriod
+  getLabBlockByStartPeriod,
+  getEffectiveSlotDisplayForDay
 } from '../types/institutional';
 import { exportTimetableToGoogleSheetsWorkbook } from '../utils/googleSheetsExport';
 import {
@@ -490,18 +491,21 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
         classes.forEach(cls => {
           if (safeScope === 'all' || filterClass(cls)) {
             const isLab = cls.sessionType === 'Lab' || (cls.spanSlots && cls.spanSlots > 1);
-            const labMeta = isLab ? getLabBlockByStartPeriod(time, store.timeStructure) : undefined;
+            const effSlot = getEffectiveSlotDisplayForDay(day, time, computedTiming);
+            const labMeta = isLab ? getLabBlockByStartPeriod(time, store.timeStructure, day) : undefined;
             const breakDesc =
               computedTiming.shortBreakEnabled && computedTiming.shortBreakMinutes > 0
                 ? `(+ ${computedTiming.shortBreakMinutes}m Short Break)`
                 : '(Back-to-Back, No Break)';
             records.push({
               day,
-              timeSlot: isLab ? (cls.continuousTimeLabel || labMeta?.continuousLabel || time) : time,
+              timeSlot: isLab
+                ? ((day === 'Fri' ? labMeta?.continuousLabel : undefined) || cls.continuousTimeLabel || labMeta?.continuousLabel || time)
+                : (effSlot.isOpen ? effSlot.period : time),
               sessionType: isLab ? `Lab (${computedTiming.labDurationHoursLabel} Continuous)` : 'Lecture',
               duration: isLab
-                ? `${computedTiming.labDurationMinutes} mins (${computedTiming.labDurationHoursLabel} continuous)`
-                : `${computedTiming.periodLengthMinutes} mins ${breakDesc}`,
+                ? `${labMeta?.durationMinutes || computedTiming.labDurationMinutes} mins continuous`
+                : `${effSlot.isOpen ? effSlot.durationMinutes : computedTiming.periodLengthMinutes} mins ${breakDesc}`,
               code: cls.code,
               title: cls.title,
               credits: cls.credits || 3,
@@ -619,7 +623,13 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(8);
       doc.setTextColor(23, 23, 23);
-      doc.text(day.toUpperCase(), x + 4, tableStartY + 4.8);
+      const dayLabel =
+        day === 'Fri' && computedTiming.fridaySchedule.mode === 'morning_only'
+          ? 'FRI (AM ONLY)'
+          : day === 'Fri' && computedTiming.fridaySchedule.mode === 'jummah_break'
+          ? `FRI (JUMMAH ${computedTiming.fridaySchedule.jummahBreak.timeRangeLabel})`
+          : day.toUpperCase();
+      doc.text(dayLabel, x + 3, tableStartY + 4.8);
     });
 
     let currentY = tableStartY + headerHeight;
@@ -746,7 +756,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
 
       if (!labItem) return;
 
-      const labBlock = getLabBlockByStartPeriod(slotMeta.period, store.timeStructure);
+      const labBlock = getLabBlockByStartPeriod(slotMeta.period, store.timeStructure, day);
       const desiredSpan = Math.max(
         2,
         labItem.spanSlots || labBlock?.spanSlots || computedTiming.labSpanSlots || 3
@@ -773,6 +783,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
         );
 
         const continuousWindow =
+          (day === 'Fri' ? labBlock?.continuousLabel : undefined) ||
           labItem.continuousTimeLabel ||
           labBlock?.continuousLabel ||
           `${slotMeta.startTime} – ${spannedSlots[spannedSlots.length - 1].cycleEndTime}`;
@@ -1275,9 +1286,17 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
                   .map(cls => {
                     const pastel = getCoursePastel(cls.code);
                     const isLab = cls.sessionType === 'Lab' || (cls.spanSlots && cls.spanSlots > 1);
+                    const effSlot = getEffectiveSlotDisplayForDay(day, slotMeta.period, computedTiming);
+                    const labBlock = isLab ? getLabBlockByStartPeriod(slotMeta.period, store.timeStructure, day) : undefined;
                     const timeWindow = isLab
-                      ? (cls.continuousTimeLabel || getLabBlockByStartPeriod(slotMeta.period, store.timeStructure)?.continuousLabel || slotMeta.period)
-                      : slotMeta.period;
+                      ? ((day === 'Fri' ? labBlock?.continuousLabel : undefined) ||
+                         cls.continuousTimeLabel ||
+                         labBlock?.continuousLabel ||
+                         slotMeta.period)
+                      : (effSlot.isOpen ? effSlot.period : slotMeta.period);
+                    const effDuration = isLab
+                      ? `${labBlock?.durationMinutes ? (labBlock.durationMinutes === computedTiming.labDurationMinutes ? computedTiming.labDurationHoursLabel : `${labBlock.durationMinutes}m`) : computedTiming.labDurationHoursLabel}`
+                      : `${effSlot.isOpen ? effSlot.durationMinutes : computedTiming.periodLengthMinutes}m`;
                     return (
                       <div
                         key={`${day}-${slotMeta.period}-${cls.id}`}
@@ -1287,7 +1306,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
                       >
                         <div className="flex items-center justify-between text-xs">
                           <span className="font-mono-tabular font-semibold text-[#171717]/80">
-                            {cls.code} · {isLab ? `Lab (${computedTiming.labDurationHoursLabel})` : `Lecture (${computedTiming.periodLengthMinutes}m)`}
+                            {cls.code} · {isLab ? `Lab (${effDuration})` : `Lecture (${effDuration})`}
                           </span>
                           <span className="font-mono-tabular font-medium">
                             {day} · {timeWindow}
@@ -1359,9 +1378,20 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
                         >
                           <div className="flex items-center justify-between gap-1 min-w-0">
                             <span className="truncate">{day}</span>
-                            {day === 'Fri' && computedTiming.fridayAfternoonShiftEnabled && (
-                              <span className="text-[9.5px] font-sans font-mono-tabular font-normal text-[#77766F] truncate">
-                                {computedTiming.fridayAfternoonStartTime} PM
+                            {day === 'Fri' && computedTiming.fridaySchedule.mode === 'jummah_break' && (
+                              <span
+                                className="text-[9.5px] font-sans font-mono-tabular font-normal text-[#77766F] truncate"
+                                title={`Friday Jummah Prayer Break: ${computedTiming.fridaySchedule.jummahBreak.fullRangeLabel}`}
+                              >
+                                Jummah {computedTiming.fridaySchedule.jummahBreak.timeRangeLabel.replace(' PM', '')}
+                              </span>
+                            )}
+                            {day === 'Fri' && computedTiming.fridaySchedule.mode === 'morning_only' && (
+                              <span
+                                className="text-[9.5px] font-sans font-mono-tabular font-normal text-[#77766F] truncate"
+                                title={`Friday Half-Day: ${computedTiming.fridaySchedule.operatingHoursLabel}`}
+                              >
+                                AM Only
                               </span>
                             )}
                             {isWeekend && (
@@ -1544,6 +1574,8 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
 
                             // Standard 1-Slot Lecture Cell
                             const classes = (scheduleData[time]?.[day] || []).filter(filterClass);
+                            const effDaySlot = getEffectiveSlotDisplayForDay(day, time, computedTiming);
+                            const isFridayClosed = day === 'Fri' && !effDaySlot.isOpen;
                             const isInstructorBlackedOut =
                               effectivePerspective === 'instructor' &&
                               currentInstructorObj?.unavailableSlots.some(
@@ -1585,10 +1617,18 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
                                 className={`h-[76px] p-1 border-l border-[#E4E2DA] align-middle overflow-hidden transition-colors ${
                                   isDragOver ? 'bg-[#B8F2E6]/60 ring-2 ring-inset ring-[#93DEC9]' : ''
                                 } ${
-                                  isWeekend && visibleItems.length === 0 ? 'bg-[#F7F6EF]/25' : ''
+                                  (isWeekend || isFridayClosed) && visibleItems.length === 0 ? 'bg-[#F7F6EF]/60' : ''
                                 }`}
                               >
-                                {isInstructorBlackedOut && (
+                                {isFridayClosed && visibleItems.length === 0 && (
+                                  <div className="px-1.5 py-2 rounded-lg border border-dashed border-[#E4E2DA] text-[9.5px] text-[#77766F] text-center leading-tight truncate">
+                                    {computedTiming.fridaySchedule.mode === 'morning_only'
+                                      ? 'Jummah · Half-Day'
+                                      : 'Jummah Window'}
+                                  </div>
+                                )}
+
+                                {isInstructorBlackedOut && !isFridayClosed && (
                                   <div className="p-1 rounded-lg bg-[#F7F6EF] border border-[#E4E2DA] text-[9.5px] text-[#77766F] text-center truncate">
                                     Unavailable
                                   </div>
@@ -1597,6 +1637,8 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
                                 {visibleItems.map(cls => {
                                   const pastel = getCoursePastel(cls.code);
                                   const isLab = cls.sessionType === 'Lab' || (cls.spanSlots && cls.spanSlots > 1);
+                                  const showFridaySlotTime =
+                                    day === 'Fri' && effDaySlot.isOpen && effDaySlot.isFridaySpecial && !isLab;
 
                                   return (
                                     <div
@@ -1635,7 +1677,14 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
 
                                       <div className="text-[9.5px] font-mono-tabular font-bold text-[#171717]/80 w-full truncate flex items-center justify-center gap-1">
                                         {isAdmin && <GripVertical className="w-2.5 h-2.5 text-[#77766F] shrink-0" />}
-                                        <span className="truncate">{cls.code} {isLab ? `· Lab (${computedTiming.labDurationHoursLabel})` : ''}</span>
+                                        <span className="truncate">
+                                          {cls.code}{' '}
+                                          {isLab
+                                            ? `· Lab (${computedTiming.labDurationHoursLabel})`
+                                            : showFridaySlotTime
+                                            ? `· ${effDaySlot.period.replace(' AM', '').replace(' PM', '')}`
+                                            : ''}
+                                        </span>
                                       </div>
 
                                       <div className="w-full pt-0.5 border-t border-black/10 text-[9.5px] text-[#171717]/80 leading-tight min-w-0">

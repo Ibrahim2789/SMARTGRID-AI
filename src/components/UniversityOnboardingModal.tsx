@@ -20,6 +20,8 @@ import { institutionalStore, InstitutionProfile } from '../data/store';
 import {
   AcademicTerm,
   DayOfWeek,
+  FridayCompressionScope,
+  FridayMode,
   TimeBlockBreak,
   TimeStructure,
   TermStatus,
@@ -158,11 +160,42 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
   const [dayEndTime, setDayEndTime] = useState(
     isEditingExisting ? existingSnapshot.timeStructure.dayEndTime || '17:00' : '17:00'
   );
-  const [fridayAfternoonShiftEnabled, setFridayAfternoonShiftEnabled] = useState<boolean>(
-    isEditingExisting ? Boolean(existingSnapshot.timeStructure.fridayAfternoonShiftEnabled) : false
+  const [fridayMode, setFridayMode] = useState<FridayMode>(() => {
+    if (isEditingExisting) {
+      if (existingSnapshot.timeStructure.fridayMode) {
+        return existingSnapshot.timeStructure.fridayMode;
+      }
+      return existingSnapshot.timeStructure.fridayAfternoonShiftEnabled
+        ? 'jummah_break'
+        : 'standard';
+    }
+    return 'jummah_break';
+  });
+  const [fridayBreakStartTime, setFridayBreakStartTime] = useState<string>(
+    isEditingExisting ? existingSnapshot.timeStructure.fridayBreakStartTime || '13:00' : '13:00'
   );
-  const [fridayAfternoonStartTime, setFridayAfternoonStartTime] = useState<string>(
-    isEditingExisting ? existingSnapshot.timeStructure.fridayAfternoonStartTime || '14:30' : '14:30'
+  const [fridayBreakEndTime, setFridayBreakEndTime] = useState<string>(
+    isEditingExisting
+      ? existingSnapshot.timeStructure.fridayBreakEndTime ||
+          existingSnapshot.timeStructure.fridayAfternoonStartTime ||
+          '14:30'
+      : '14:30'
+  );
+  const [fridayClosingTime, setFridayClosingTime] = useState<string>(
+    isEditingExisting ? existingSnapshot.timeStructure.fridayClosingTime || '13:00' : '13:00'
+  );
+  const [fridayCompressionScope, setFridayCompressionScope] = useState<FridayCompressionScope>(
+    isEditingExisting
+      ? existingSnapshot.timeStructure.fridayCompressionScope || 'after_jummah'
+      : 'after_jummah'
+  );
+  const [fridayPeriodLengthMinutes, setFridayPeriodLengthMinutes] = useState<number>(
+    isEditingExisting
+      ? existingSnapshot.timeStructure.fridayPeriodLengthMinutes || 45
+      : 45
+  );
+  const [fridayShortBreakMinutes, setFridayShortBreakMinutes] = useState<number>(
+    isEditingExisting ? existingSnapshot.timeStructure.fridayShortBreakMinutes ?? 5 : 5
   );
 
   // =========================================================
@@ -605,8 +638,15 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
     middayBreakStartTime,
     middayBreakDurationMinutes,
     labDurationMinutes,
-    fridayAfternoonShiftEnabled,
-    fridayAfternoonStartTime
+    fridayAfternoonShiftEnabled: fridayMode !== 'standard',
+    fridayAfternoonStartTime: fridayBreakEndTime,
+    fridayMode,
+    fridayBreakStartTime,
+    fridayBreakEndTime,
+    fridayClosingTime,
+    fridayCompressionScope,
+    fridayPeriodLengthMinutes,
+    fridayShortBreakMinutes
   };
 
   const computedPreview = computeAcademicScheduleConfig(timingCandidate);
@@ -674,10 +714,17 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
           workingDays,
           dayStartTime,
           dayEndTime,
-          fridayAfternoonShiftEnabled,
-          fridayAfternoonStartTime
+          fridayAfternoonShiftEnabled: fridayMode !== 'standard',
+          fridayAfternoonStartTime: fridayBreakEndTime,
+          fridayMode,
+          fridayBreakStartTime,
+          fridayBreakEndTime,
+          fridayClosingTime,
+          fridayCompressionScope,
+          fridayPeriodLengthMinutes,
+          fridayShortBreakMinutes
         });
-        setStepSavedToast('Saved Step 3 (Daily Operating Hours) to institutionalStore.');
+        setStepSavedToast('Saved Step 3 (Daily Operating Hours & Friday Policy) to institutionalStore.');
       }
       return true;
     }
@@ -796,8 +843,15 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
         workingDays,
         dayStartTime,
         dayEndTime,
-        fridayAfternoonShiftEnabled,
-        fridayAfternoonStartTime
+        fridayAfternoonShiftEnabled: fridayMode !== 'standard',
+        fridayAfternoonStartTime: fridayBreakEndTime,
+        fridayMode,
+        fridayBreakStartTime,
+        fridayBreakEndTime,
+        fridayClosingTime,
+        fridayCompressionScope,
+        fridayPeriodLengthMinutes,
+        fridayShortBreakMinutes
       });
       institutionalStore.saveSessionAndBreakPolicyConfig({
         ...timeConfig,
@@ -1529,34 +1583,155 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
                 </div>
               </div>
 
-              {/* Friday / Day-Specific Shift Configuration */}
-              <div className="p-4 rounded-xl border border-[#E4E2DA] bg-[#F7F6EF]/50 space-y-3">
-                <div className="flex items-center justify-between">
+              {/* Friday / Jummah Prayer Schedule Policy */}
+              <div className="p-4 rounded-xl border border-[#E4E2DA] bg-[#F7F6EF]/60 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <div>
                     <div className="text-xs font-semibold text-[#171717]">
-                      Friday Extended Midday / Afternoon Shift Policy
+                      Friday &amp; Jummah Prayer Schedule
                     </div>
                     <div className="text-[11px] text-[#77766F]">
-                      Optionally shift Friday afternoon session start time (e.g., for Friday congregation / assembly window)
+                      Configure Friday prayer break, morning-only half-day, and optional shortened Friday class timings.
                     </div>
                   </div>
-                  <input
-                    type="checkbox"
-                    checked={fridayAfternoonShiftEnabled}
-                    onChange={e => setFridayAfternoonShiftEnabled(e.target.checked)}
-                    className="w-4 h-4 accent-[#171717]"
-                  />
+                  <div className="grid grid-cols-3 gap-1.5 shrink-0">
+                    {(
+                      [
+                        { id: 'jummah_break', label: 'Jummah Break' },
+                        { id: 'morning_only', label: 'Morning Only' },
+                        { id: 'standard', label: 'Standard' }
+                      ] as const
+                    ).map(opt => (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => setFridayMode(opt.id)}
+                        className={`px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border transition-colors cursor-pointer ${
+                          fridayMode === opt.id
+                            ? 'bg-[#171717] text-white border-[#171717]'
+                            : 'bg-white text-[#57564F] border-[#E4E2DA] hover:text-[#171717]'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
-                {fridayAfternoonShiftEnabled && (
+                {fridayMode === 'jummah_break' && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-[#E4E2DA]">
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-medium text-[#57564F] block">
+                        Jummah Break Starts
+                      </label>
+                      <input
+                        type="time"
+                        value={fridayBreakStartTime}
+                        onChange={e => setFridayBreakStartTime(e.target.value)}
+                        className="input-field h-8 w-full text-xs font-mono-tabular bg-white"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-medium text-[#57564F] block">
+                        Friday Afternoon Resumes
+                      </label>
+                      <input
+                        type="time"
+                        value={fridayBreakEndTime}
+                        onChange={e => setFridayBreakEndTime(e.target.value)}
+                        className="input-field h-8 w-full text-xs font-mono-tabular bg-white"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {fridayMode === 'morning_only' && (
                   <div className="flex items-center justify-between pt-2 border-t border-[#E4E2DA]">
-                    <span className="text-xs text-[#57564F]">Friday Afternoon Session Resumes At:</span>
+                    <span className="text-xs text-[#57564F]">
+                      Friday Classes Conclude Before Jummah At:
+                    </span>
                     <input
                       type="time"
-                      value={fridayAfternoonStartTime}
-                      onChange={e => setFridayAfternoonStartTime(e.target.value)}
+                      value={fridayClosingTime}
+                      onChange={e => setFridayClosingTime(e.target.value)}
                       className="input-field h-8 w-32 text-xs font-mono-tabular bg-white"
                     />
+                  </div>
+                )}
+
+                {fridayMode !== 'standard' && (
+                  <div className="pt-2 border-t border-[#E4E2DA] space-y-2.5">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="text-[11px] font-semibold text-[#171717]">
+                        Shortened Friday Class Timings
+                      </span>
+                      <div className="flex flex-wrap gap-1">
+                        {(
+                          [
+                            { id: 'none', label: 'Same Length' },
+                            { id: 'before_jummah', label: 'Before Jummah' },
+                            ...(fridayMode === 'jummah_break'
+                              ? [{ id: 'after_jummah', label: 'After Jummah' }]
+                              : []),
+                            { id: 'all_day', label: 'All Friday' }
+                          ] as { id: FridayCompressionScope; label: string }[]
+                        ).map(scope => (
+                          <button
+                            key={scope.id}
+                            type="button"
+                            onClick={() => setFridayCompressionScope(scope.id)}
+                            className={`px-2 py-1 rounded-md text-[10px] font-semibold border cursor-pointer ${
+                              fridayCompressionScope === scope.id
+                                ? 'bg-[#171717] text-white border-[#171717]'
+                                : 'bg-white text-[#57564F] border-[#E4E2DA]'
+                            }`}
+                          >
+                            {scope.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {fridayCompressionScope !== 'none' && (
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <label className="text-[11px] text-[#57564F] block">
+                            Friday Lecture Length (mins)
+                          </label>
+                          <input
+                            type="number"
+                            min={25}
+                            max={90}
+                            step={5}
+                            value={fridayPeriodLengthMinutes}
+                            onChange={e =>
+                              setFridayPeriodLengthMinutes(
+                                Math.max(25, Math.min(90, Number(e.target.value) || 45))
+                              )
+                            }
+                            className="input-field h-8 w-full text-xs font-mono-tabular bg-white"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[11px] text-[#57564F] block">
+                            Friday Break Between Classes (mins)
+                          </label>
+                          <input
+                            type="number"
+                            min={0}
+                            max={20}
+                            step={5}
+                            value={fridayShortBreakMinutes}
+                            onChange={e =>
+                              setFridayShortBreakMinutes(
+                                Math.max(0, Math.min(20, Number(e.target.value) || 0))
+                              )
+                            }
+                            className="input-field h-8 w-full text-xs font-mono-tabular bg-white"
+                          />
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
