@@ -26,8 +26,7 @@ import {
   Upload,
   Plus,
   Trash2,
-  Building2,
-  Layers
+  Building2
 } from 'lucide-react';
 import { DataImportWizard } from './DataImportWizard';
 import { UniversityOnboardingModal } from './UniversityOnboardingModal';
@@ -48,14 +47,71 @@ interface AcademicConfigurationPageProps {
   }) => void;
 }
 
+type ConfigTab = 'timings' | 'calendar' | 'policy';
+
 const ALL_WEEK_DAYS: Array<{ code: DayOfWeek; label: string }> = [
-  { code: 'Mon', label: 'Monday' },
-  { code: 'Tue', label: 'Tuesday' },
-  { code: 'Wed', label: 'Wednesday' },
-  { code: 'Thu', label: 'Thursday' },
-  { code: 'Fri', label: 'Friday' },
-  { code: 'Sat', label: 'Saturday' },
-  { code: 'Sun', label: 'Sunday' }
+  { code: 'Mon', label: 'Mon' },
+  { code: 'Tue', label: 'Tue' },
+  { code: 'Wed', label: 'Wed' },
+  { code: 'Thu', label: 'Thu' },
+  { code: 'Fri', label: 'Fri' },
+  { code: 'Sat', label: 'Sat' },
+  { code: 'Sun', label: 'Sun' }
+];
+
+const TIMING_PRESETS = [
+  {
+    label: 'Standard 9–5 (50m + 10m)',
+    dayStartTime: '09:00',
+    dayEndTime: '17:00',
+    periodLengthMinutes: 50,
+    shortBreakEnabled: true,
+    shortBreakMinutes: 10,
+    middayBreakEnabled: true,
+    middayBreakMode: 'fixed' as const,
+    middayBreakStartTime: '13:00',
+    middayBreakDurationMinutes: 60,
+    labDurationMinutes: 180
+  },
+  {
+    label: 'Extended 8:30–5 (60m)',
+    dayStartTime: '08:30',
+    dayEndTime: '17:00',
+    periodLengthMinutes: 60,
+    shortBreakEnabled: true,
+    shortBreakMinutes: 15,
+    middayBreakEnabled: true,
+    middayBreakMode: 'fixed' as const,
+    middayBreakStartTime: '12:15',
+    middayBreakDurationMinutes: 45,
+    labDurationMinutes: 135
+  },
+  {
+    label: 'Back-to-Back (No Breaks)',
+    dayStartTime: '09:00',
+    dayEndTime: '17:00',
+    periodLengthMinutes: 60,
+    shortBreakEnabled: false,
+    shortBreakMinutes: 0,
+    middayBreakEnabled: true,
+    middayBreakMode: 'fixed' as const,
+    middayBreakStartTime: '13:00',
+    middayBreakDurationMinutes: 60,
+    labDurationMinutes: 180
+  },
+  {
+    label: 'Compact Lab (2h Lab)',
+    dayStartTime: '09:00',
+    dayEndTime: '17:00',
+    periodLengthMinutes: 50,
+    shortBreakEnabled: true,
+    shortBreakMinutes: 10,
+    middayBreakEnabled: true,
+    middayBreakMode: 'fixed' as const,
+    middayBreakStartTime: '13:00',
+    middayBreakDurationMinutes: 60,
+    labDurationMinutes: 120
+  }
 ];
 
 export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps> = ({
@@ -66,9 +122,12 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
   const store = useInstitutionalData();
   const profile = store.institutionProfile;
   const ts = store.timeStructure;
-  const institutionName = profile?.name || currentUser?.institution || 'University of Engineering & Computing';
+  const institutionName =
+    profile?.name || currentUser?.institution || 'University of Engineering & Computing';
 
   const isAdmin = isUserAdminRole(currentUser?.role || 'Registrar');
+
+  const [activeTab, setActiveTab] = useState<ConfigTab>('timings');
 
   // --- Academic Configuration Form State ---
   const [dayStartTime, setDayStartTime] = useState<string>(
@@ -120,7 +179,6 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
 
   const [timingValidationErrors, setTimingValidationErrors] = useState<string[]>([]);
   const [statusNotice, setStatusNotice] = useState<string | null>(null);
-  const [showSlotTimeline, setShowSlotTimeline] = useState<boolean>(false);
   const [showImportWizard, setShowImportWizard] = useState<boolean>(false);
   const [showOnboardingModal, setShowOnboardingModal] = useState<boolean>(false);
 
@@ -137,7 +195,13 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
     profile?.timetableManagementPolicy || 'whole_university';
   const activeTermsList = store.terms.filter(t => t.status === 'active');
 
-  const handleAddSemester = () => {
+  const showToast = (msg: string) => {
+    setStatusNotice(msg);
+    setTimeout(() => setStatusNotice(null), 5500);
+  };
+
+  const handleAddSemester = (e: React.FormEvent) => {
+    e.preventDefault();
     if (!isAdmin || !newSemName.trim() || !newSemCode.trim()) return;
     institutionalStore.addTerm({
       id: `term-custom-${Date.now().toString(36)}`,
@@ -193,11 +257,6 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
       ts.labDurationMinutes ?? DEFAULT_ACADEMIC_TIMING_CONFIG.labDurationMinutes
     );
   }, [ts]);
-
-  const showToast = (msg: string) => {
-    setStatusNotice(msg);
-    setTimeout(() => setStatusNotice(null), 5500);
-  };
 
   // Draft timing configuration for real-time slot calculation & validation
   const draftTimingConfig = {
@@ -257,19 +316,7 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
     );
   };
 
-  const applyTimingPreset = (preset: {
-    label: string;
-    dayStartTime: string;
-    dayEndTime: string;
-    periodLengthMinutes: number;
-    shortBreakEnabled: boolean;
-    shortBreakMinutes: number;
-    middayBreakEnabled: boolean;
-    middayBreakMode: 'fixed' | 'auto';
-    middayBreakStartTime: string;
-    middayBreakDurationMinutes: number;
-    labDurationMinutes: number;
-  }) => {
+  const applyTimingPreset = (preset: (typeof TIMING_PRESETS)[number]) => {
     if (!isAdmin) return;
     setTimingValidationErrors([]);
     setDayStartTime(preset.dayStartTime);
@@ -309,7 +356,7 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
           <button
             type="button"
             onClick={() => onNavigate('timetables')}
-            className="btn-secondary text-xs h-10 px-4"
+            className="btn-secondary text-xs h-10 px-4 shrink-0"
           >
             <Calendar className="w-3.5 h-3.5" />
             <span>Back to My Timetable</span>
@@ -366,51 +413,37 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
   }
 
   return (
-    <div className="space-y-6">
-      {/* 1. PAGE HEADER */}
+    <div className="space-y-6 pb-8">
+      {/* 1. CLEAN PAGE HEADER */}
       <header className="flex flex-col lg:flex-row lg:items-end justify-between gap-4 pb-5 border-b border-[#E4E2DA]">
-        <div>
+        <div className="space-y-1">
+          <div className="flex items-center gap-2 text-xs text-[#77766F]">
+            <span>{institutionName}</span>
+            <span>·</span>
+            <span className="font-mono-tabular">{livePreview.operatingHoursLabel}</span>
+            <span>·</span>
+            <span className="font-mono-tabular">{livePreview.slots.length} daily slots</span>
+          </div>
           <h1 className="font-serif-editorial text-3xl sm:text-4xl text-[#171717] tracking-tight">
             Academic Configuration
           </h1>
-          <p className="text-xs sm:text-sm text-[#77766F] mt-1 font-mono-tabular">
-            {livePreview.summaryText}
-          </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 shrink-0">
-          <button
-            type="button"
-            onClick={() => setShowOnboardingModal(true)}
-            className="btn-secondary text-xs h-9 px-3.5"
-          >
-            <Sliders className="w-3.5 h-3.5" />
-            <span>Setup Wizard</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setShowImportWizard(true)}
-            className="btn-secondary text-xs h-9 px-3.5"
-          >
-            <Upload className="w-3.5 h-3.5" />
-            <span>Import CSV</span>
-          </button>
-
+        <div className="flex items-center gap-2.5 shrink-0">
           <button
             type="button"
             onClick={handleResetToDefaults}
-            className="btn-secondary text-xs h-9 px-3.5"
+            className="btn-secondary text-xs h-9 px-3.5 whitespace-nowrap shrink-0"
           >
             <RotateCcw className="w-3.5 h-3.5" />
-            <span>Reset</span>
+            <span>Reset Defaults</span>
           </button>
 
           <button
             type="button"
             disabled={!liveValidation.valid}
             onClick={() => handleSaveConfiguration()}
-            className="btn-primary text-xs h-9 px-4 disabled:opacity-50"
+            className="btn-primary text-xs h-9 px-4 whitespace-nowrap shrink-0 disabled:opacity-50"
           >
             <Sparkles className="w-3.5 h-3.5" />
             <span>Save Configuration</span>
@@ -429,14 +462,14 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
             <button
               type="button"
               onClick={() => onNavigate('generate')}
-              className="px-3 py-1.5 rounded-lg bg-white border border-[#171717]/20 text-[#171717] text-xs font-semibold cursor-pointer"
+              className="px-3 py-1.5 rounded-lg bg-white border border-[#171717]/20 text-[#171717] text-xs font-semibold cursor-pointer whitespace-nowrap"
             >
               Generate Schedule
             </button>
             <button
               type="button"
               onClick={() => onNavigate('timetables')}
-              className="px-3 py-1.5 rounded-lg bg-[#171717] text-white text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer"
+              className="px-3 py-1.5 rounded-lg bg-[#171717] text-white text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
             >
               <span>Inspect Timetables</span>
               <ArrowRight className="w-3.5 h-3.5" />
@@ -462,100 +495,631 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
         </div>
       )}
 
-      {/* Quick Presets Strip */}
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-[11px] font-semibold uppercase tracking-wider text-[#77766F] mr-1">
-          Presets:
-        </span>
-        {[
-          {
-            label: 'Standard 9–5 (50m + 10m)',
-            dayStartTime: '09:00',
-            dayEndTime: '17:00',
-            periodLengthMinutes: 50,
-            shortBreakEnabled: true,
-            shortBreakMinutes: 10,
-            middayBreakEnabled: true,
-            middayBreakMode: 'fixed' as const,
-            middayBreakStartTime: '13:00',
-            middayBreakDurationMinutes: 60,
-            labDurationMinutes: 180
-          },
-          {
-            label: 'Extended 8:30–5 (60m)',
-            dayStartTime: '08:30',
-            dayEndTime: '17:00',
-            periodLengthMinutes: 60,
-            shortBreakEnabled: true,
-            shortBreakMinutes: 15,
-            middayBreakEnabled: true,
-            middayBreakMode: 'fixed' as const,
-            middayBreakStartTime: '12:15',
-            middayBreakDurationMinutes: 45,
-            labDurationMinutes: 135
-          },
-          {
-            label: 'Back-to-Back (No Breaks)',
-            dayStartTime: '09:00',
-            dayEndTime: '17:00',
-            periodLengthMinutes: 60,
-            shortBreakEnabled: false,
-            shortBreakMinutes: 0,
-            middayBreakEnabled: true,
-            middayBreakMode: 'fixed' as const,
-            middayBreakStartTime: '13:00',
-            middayBreakDurationMinutes: 60,
-            labDurationMinutes: 180
-          },
-          {
-            label: 'Compact Lab (2h Lab)',
-            dayStartTime: '09:00',
-            dayEndTime: '17:00',
-            periodLengthMinutes: 50,
-            shortBreakEnabled: true,
-            shortBreakMinutes: 10,
-            middayBreakEnabled: true,
-            middayBreakMode: 'fixed' as const,
-            middayBreakStartTime: '13:00',
-            middayBreakDurationMinutes: 60,
-            labDurationMinutes: 120
-          }
-        ].map(preset => (
-          <button
-            key={preset.label}
-            type="button"
-            onClick={() => applyTimingPreset(preset)}
-            className="px-3 py-1.5 rounded-lg bg-white hover:bg-[#EDEAE0] border border-[#E4E2DA] text-xs font-medium text-[#171717] transition-colors cursor-pointer"
-          >
-            {preset.label}
-          </button>
-        ))}
+      {/* 2. SECTION NAVIGATION TABS */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="inline-flex items-center p-1 rounded-xl bg-[#EDEAE0] border border-[#E4E2DA] self-start">
+          {[
+            { id: 'timings' as const, label: 'Timings & Breaks', icon: Clock },
+            {
+              id: 'calendar' as const,
+              label: `Academic Calendar (${store.terms.length})`,
+              icon: Calendar
+            },
+            { id: 'policy' as const, label: 'Policy & Tools', icon: Building2 }
+          ].map(tab => {
+            const Icon = tab.icon;
+            const isActive = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveTab(tab.id)}
+                className={`h-8 px-3.5 rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+                  isActive
+                    ? 'bg-[#171717] text-white'
+                    : 'text-[#57564F] hover:text-[#171717]'
+                }`}
+              >
+                <Icon className="w-3.5 h-3.5 shrink-0" />
+                <span>{tab.label}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="text-xs text-[#77766F] font-mono-tabular">
+          Active Policy: <strong className="text-[#171717]">{currentPolicy === 'whole_university' ? 'Whole-University' : 'Department-Wise'}</strong>
+          {' · '}
+          {activeTermsList.length} active {activeTermsList.length === 1 ? 'term' : 'terms'}
+        </div>
       </div>
 
-      {/* ACADEMIC CALENDAR & SCHEDULING POLICY */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
-        {/* PANEL A: ACADEMIC CALENDAR */}
-        <section className="lg:col-span-7 sf-card-white p-5 sm:p-6 flex flex-col justify-between space-y-4">
-          <div className="space-y-4">
-            <div className="flex items-center justify-between gap-3 border-b border-[#E4E2DA] pb-3">
-              <h2 className="font-serif-editorial text-xl text-[#171717] flex items-center gap-2">
+      {/* =========================================================
+          TAB 1: TIMINGS & BREAKS (SPACIOUS 7/5 SPLIT + LIVE SLOT PREVIEW)
+         ========================================================= */}
+      {activeTab === 'timings' && (
+        <div className="space-y-6">
+          {/* Quick Presets Bar */}
+          <div className="sf-card-white px-5 py-3.5 flex flex-wrap items-center justify-between gap-3">
+            <span className="text-xs font-semibold text-[#171717]">Quick Schedule Presets</span>
+            <div className="flex flex-wrap items-center gap-2">
+              {TIMING_PRESETS.map(preset => (
+                <button
+                  key={preset.label}
+                  type="button"
+                  onClick={() => applyTimingPreset(preset)}
+                  className="px-3 py-1.5 rounded-lg bg-[#F7F6EF] hover:bg-[#EDEAE0] border border-[#E4E2DA] text-xs font-medium text-[#171717] transition-colors cursor-pointer whitespace-nowrap"
+                >
+                  {preset.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+            {/* LEFT 7 COLUMNS: UNIFIED TIMING CONTROLS */}
+            <div className="lg:col-span-7 space-y-6">
+              {/* SECTION A: OPERATING HOURS & WORKING DAYS */}
+              <section className="sf-card-white p-6 space-y-5">
+                <div className="flex items-center justify-between gap-3 border-b border-[#E4E2DA] pb-3.5">
+                  <div className="flex items-center gap-2">
+                    <Clock className="w-4 h-4 text-[#171717]" />
+                    <h2 className="font-serif-editorial text-xl text-[#171717]">
+                      Operating Hours &amp; Days
+                    </h2>
+                  </div>
+                  <span className="font-mono-tabular text-xs font-semibold text-[#57564F]">
+                    {livePreview.operatingHoursLabel}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-[#171717] mb-1.5">
+                      Opening Time
+                    </label>
+                    <input
+                      type="time"
+                      value={dayStartTime}
+                      onChange={e => {
+                        setTimingValidationErrors([]);
+                        setDayStartTime(e.target.value);
+                      }}
+                      className="input-field h-10 text-xs font-mono-tabular"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-[#171717] mb-1.5">
+                      Closing Time
+                    </label>
+                    <input
+                      type="time"
+                      value={dayEndTime}
+                      onChange={e => {
+                        setTimingValidationErrors([]);
+                        setDayEndTime(e.target.value);
+                      }}
+                      className="input-field h-10 text-xs font-mono-tabular"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-semibold text-[#171717]">Working Days</span>
+                    <span className="font-mono-tabular text-[#77766F]">
+                      {workingDays.length} days selected
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-4 sm:grid-cols-7 gap-2">
+                    {ALL_WEEK_DAYS.map(day => {
+                      const active = workingDays.includes(day.code);
+                      return (
+                        <button
+                          key={day.code}
+                          type="button"
+                          onClick={() => handleToggleWorkingDay(day.code)}
+                          className={`h-9 rounded-lg text-xs font-semibold border transition-colors cursor-pointer ${
+                            active
+                              ? 'bg-[#171717] text-white border-[#171717]'
+                              : 'bg-white text-[#77766F] border-[#E4E2DA] hover:text-[#171717]'
+                          }`}
+                        >
+                          {day.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Friday Afternoon Shift */}
+                <div className="pt-4 border-t border-[#E4E2DA] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <div className="text-xs font-semibold text-[#171717]">
+                      Friday Afternoon Shift (Jummah Buffer)
+                    </div>
+                    <div className="text-[11px] text-[#77766F] mt-0.5">
+                      Shifts Friday afternoon sessions to start after prayer break.
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3 shrink-0">
+                    {fridayAfternoonShiftEnabled && (
+                      <input
+                        type="time"
+                        value={fridayAfternoonStartTime}
+                        onChange={e => setFridayAfternoonStartTime(e.target.value)}
+                        className="input-field h-9 w-32 text-xs font-mono-tabular"
+                      />
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setFridayAfternoonShiftEnabled(!fridayAfternoonShiftEnabled)}
+                      className={`w-10 h-6 flex items-center rounded-full p-1 transition-colors cursor-pointer shrink-0 ${
+                        fridayAfternoonShiftEnabled ? 'bg-[#171717]' : 'bg-[#D6D3C9]'
+                      }`}
+                      aria-label="Toggle Friday afternoon shift"
+                    >
+                      <div
+                        className={`bg-white w-4 h-4 rounded-full transition-transform ${
+                          fridayAfternoonShiftEnabled ? 'translate-x-4' : 'translate-x-0'
+                        }`}
+                      />
+                    </button>
+                  </div>
+                </div>
+              </section>
+
+              {/* SECTION B: LECTURES, BREAKS & LABS IN ONE CLEAN HAIRLINE SHEET */}
+              <section className="sf-card-white divide-y divide-[#E4E2DA] overflow-hidden">
+                {/* 1. Lecture Duration */}
+                <div className="p-6 space-y-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      <BookOpen className="w-4 h-4 text-[#171717]" />
+                      <h2 className="font-serif-editorial text-xl text-[#171717]">
+                        Lecture Duration
+                      </h2>
+                    </div>
+                    <span className="font-mono-tabular text-xs font-semibold text-[#57564F]">
+                      {periodLengthMinutes} min / slot
+                    </span>
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                    <div className="input-group-field h-10 px-3 gap-2 sm:w-44 shrink-0">
+                      <input
+                        type="number"
+                        min={20}
+                        max={240}
+                        step={5}
+                        value={periodLengthMinutes}
+                        onChange={e => {
+                          setTimingValidationErrors([]);
+                          setPeriodLengthMinutes(Math.max(1, parseInt(e.target.value, 10) || 50));
+                        }}
+                        className="text-xs font-mono-tabular font-semibold"
+                      />
+                      <span className="text-[11px] font-mono-tabular text-[#77766F] shrink-0">
+                        min
+                      </span>
+                    </div>
+
+                    <div className="flex flex-wrap gap-1.5">
+                      {[45, 50, 60, 75, 90].map(mins => (
+                        <button
+                          key={mins}
+                          type="button"
+                          onClick={() => {
+                            setTimingValidationErrors([]);
+                            setPeriodLengthMinutes(mins);
+                          }}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-mono-tabular transition-colors cursor-pointer ${
+                            periodLengthMinutes === mins
+                              ? 'bg-[#171717] text-white font-semibold'
+                              : 'bg-[#F7F6EF] hover:bg-[#EDEAE0] text-[#171717] border border-[#E4E2DA]'
+                          }`}
+                        >
+                          {mins}m
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* 2. Inter-Class Break */}
+                <div className="p-6 space-y-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <h2 className="font-serif-editorial text-xl text-[#171717]">
+                        Inter-Class Break
+                      </h2>
+                      <p className="text-xs text-[#77766F] mt-0.5">
+                        {shortBreakEnabled
+                          ? `${shortBreakMinutes}-minute transition buffer between lecture slots`
+                          : `Disabled — ${periodLengthMinutes}-minute lectures run back-to-back`}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTimingValidationErrors([]);
+                        setShortBreakEnabled(!shortBreakEnabled);
+                      }}
+                      className={`w-10 h-6 flex items-center rounded-full p-1 transition-colors cursor-pointer shrink-0 ${
+                        shortBreakEnabled ? 'bg-[#171717]' : 'bg-[#D6D3C9]'
+                      }`}
+                      aria-label="Toggle inter-class break"
+                    >
+                      <div
+                        className={`bg-white w-4 h-4 rounded-full transition-transform ${
+                          shortBreakEnabled ? 'translate-x-4' : 'translate-x-0'
+                        }`}
+                      />
+                    </button>
+                  </div>
+
+                  {shortBreakEnabled && (
+                    <div className="space-y-4">
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                        <div className="input-group-field h-10 px-3 gap-2 sm:w-44 shrink-0">
+                          <input
+                            type="number"
+                            min={0}
+                            max={60}
+                            step={5}
+                            value={shortBreakMinutes}
+                            onChange={e => {
+                              setTimingValidationErrors([]);
+                              setShortBreakMinutes(Math.max(0, parseInt(e.target.value, 10) || 0));
+                            }}
+                            className="text-xs font-mono-tabular font-semibold"
+                          />
+                          <span className="text-[11px] font-mono-tabular text-[#77766F] shrink-0">
+                            min
+                          </span>
+                        </div>
+
+                        <div className="flex flex-wrap gap-1.5">
+                          {[5, 10, 15, 20].map(mins => (
+                            <button
+                              key={mins}
+                              type="button"
+                              onClick={() => {
+                                setTimingValidationErrors([]);
+                                setShortBreakMinutes(mins);
+                              }}
+                              className={`px-3 py-1.5 rounded-lg text-xs font-mono-tabular transition-colors cursor-pointer ${
+                                shortBreakMinutes === mins
+                                  ? 'bg-[#171717] text-white font-semibold'
+                                  : 'bg-[#F7F6EF] hover:bg-[#EDEAE0] text-[#171717] border border-[#E4E2DA]'
+                              }`}
+                            >
+                              {mins}m
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between gap-3 pt-1">
+                        <span className="text-xs text-[#57564F]">
+                          Include break after final slot ({periodLengthMinutes + shortBreakMinutes}m cycle)
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setIncludeBreakAfterLastSlot(!includeBreakAfterLastSlot)}
+                          className={`w-10 h-6 flex items-center rounded-full p-1 transition-colors cursor-pointer shrink-0 ${
+                            includeBreakAfterLastSlot ? 'bg-[#171717]' : 'bg-[#D6D3C9]'
+                          }`}
+                          aria-label="Toggle break after final slot"
+                        >
+                          <div
+                            className={`bg-white w-4 h-4 rounded-full transition-transform ${
+                              includeBreakAfterLastSlot ? 'translate-x-4' : 'translate-x-0'
+                            }`}
+                          />
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* 3. Midday / Lunch Break */}
+                <div className="p-6 space-y-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      <Coffee className="w-4 h-4 text-[#171717]" />
+                      <div>
+                        <h2 className="font-serif-editorial text-xl text-[#171717]">
+                          Midday / Lunch Break
+                        </h2>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTimingValidationErrors([]);
+                        setMiddayBreakEnabled(!middayBreakEnabled);
+                      }}
+                      className={`w-10 h-6 flex items-center rounded-full p-1 transition-colors cursor-pointer shrink-0 ${
+                        middayBreakEnabled ? 'bg-[#171717]' : 'bg-[#D6D3C9]'
+                      }`}
+                      aria-label="Toggle midday break"
+                    >
+                      <div
+                        className={`bg-white w-4 h-4 rounded-full transition-transform ${
+                          middayBreakEnabled ? 'translate-x-4' : 'translate-x-0'
+                        }`}
+                      />
+                    </button>
+                  </div>
+
+                  {middayBreakEnabled ? (
+                    <div className="space-y-4">
+                      <div className="inline-flex items-center p-1 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA]">
+                        <button
+                          type="button"
+                          onClick={() => setMiddayBreakMode('fixed')}
+                          className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
+                            middayBreakMode === 'fixed'
+                              ? 'bg-[#171717] text-white'
+                              : 'text-[#57564F] hover:text-[#171717]'
+                          }`}
+                        >
+                          Fixed Start Time
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setMiddayBreakMode('auto')}
+                          className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
+                            middayBreakMode === 'auto'
+                              ? 'bg-[#171717] text-white'
+                              : 'text-[#57564F] hover:text-[#171717]'
+                          }`}
+                        >
+                          Auto ({livePreview.middayBreak.startTime24})
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">
+                        <div>
+                          <label className="block text-xs font-semibold text-[#171717] mb-1.5">
+                            Start Time ({livePreview.middayBreak.timeRangeLabel})
+                          </label>
+                          <input
+                            type="time"
+                            disabled={middayBreakMode === 'auto'}
+                            value={
+                              middayBreakMode === 'auto'
+                                ? livePreview.middayBreak.startTime24
+                                : middayBreakStartTime
+                            }
+                            onChange={e => {
+                              setTimingValidationErrors([]);
+                              setMiddayBreakStartTime(e.target.value);
+                            }}
+                            className="input-field h-10 text-xs font-mono-tabular disabled:opacity-60"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-semibold text-[#171717] mb-1.5">
+                            Break Duration
+                          </label>
+                          <div className="input-group-field h-10 px-3 gap-2">
+                            <input
+                              type="number"
+                              min={15}
+                              max={180}
+                              step={15}
+                              value={middayBreakDurationMinutes}
+                              onChange={e => {
+                                setTimingValidationErrors([]);
+                                setMiddayBreakDurationMinutes(
+                                  Math.max(15, parseInt(e.target.value, 10) || 60)
+                                );
+                              }}
+                              className="text-xs font-mono-tabular font-semibold"
+                            />
+                            <span className="text-[11px] font-mono-tabular text-[#77766F] shrink-0">
+                              min
+                            </span>
+                          </div>
+                          <div className="flex flex-wrap gap-1.5 mt-2">
+                            {[30, 45, 60, 90].map(mins => (
+                              <button
+                                key={mins}
+                                type="button"
+                                onClick={() => {
+                                  setTimingValidationErrors([]);
+                                  setMiddayBreakDurationMinutes(mins);
+                                }}
+                                className={`px-2.5 py-1 rounded-md text-[11px] font-mono-tabular cursor-pointer ${
+                                  middayBreakDurationMinutes === mins
+                                    ? 'bg-[#171717] text-white font-semibold'
+                                    : 'bg-[#F7F6EF] text-[#171717] border border-[#E4E2DA]'
+                                }`}
+                              >
+                                {mins}m
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-[#77766F]">
+                      Disabled — continuous slots from {dayStartTime} to {dayEndTime}.
+                    </p>
+                  )}
+                </div>
+
+                {/* 4. Laboratory Duration */}
+                <div className="p-6 space-y-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      <FlaskConical className="w-4 h-4 text-[#171717]" />
+                      <h2 className="font-serif-editorial text-xl text-[#171717]">
+                        Laboratory Duration
+                      </h2>
+                    </div>
+                    <span className="font-mono-tabular text-xs font-semibold text-[#57564F]">
+                      {labDurationMinutes}m ({labHoursEquivalent}h · {livePreview.labSpanSlots} merged slots)
+                    </span>
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                    <div className="input-group-field h-10 px-3 gap-2 sm:w-44 shrink-0">
+                      <input
+                        type="number"
+                        min={periodLengthMinutes}
+                        max={360}
+                        step={15}
+                        value={labDurationMinutes}
+                        onChange={e => {
+                          setTimingValidationErrors([]);
+                          setLabDurationMinutes(
+                            Math.max(periodLengthMinutes, parseInt(e.target.value, 10) || 180)
+                          );
+                        }}
+                        className="text-xs font-mono-tabular font-semibold"
+                      />
+                      <span className="text-[11px] font-mono-tabular text-[#77766F] shrink-0">
+                        min
+                      </span>
+                    </div>
+
+                    <div className="flex flex-wrap gap-1.5">
+                      {[
+                        { mins: 120, label: '2h (120m)' },
+                        { mins: 150, label: '2.5h (150m)' },
+                        { mins: 180, label: '3h (180m)' }
+                      ].map(opt => (
+                        <button
+                          key={opt.mins}
+                          type="button"
+                          onClick={() => {
+                            setTimingValidationErrors([]);
+                            setLabDurationMinutes(opt.mins);
+                          }}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-mono-tabular transition-colors cursor-pointer ${
+                            labDurationMinutes === opt.mins
+                              ? 'bg-[#171717] text-white font-semibold'
+                              : 'bg-[#F7F6EF] hover:bg-[#EDEAE0] text-[#171717] border border-[#E4E2DA]'
+                          }`}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {livePreview.continuousLabBlocks.length > 0 && (
+                    <div className="text-xs text-[#57564F] font-mono-tabular pt-1">
+                      Continuous Lab Windows:{' '}
+                      {livePreview.continuousLabBlocks.map((block, idx) => (
+                        <span key={block.startPeriod}>
+                          <strong className="text-[#171717]">{block.session}</strong> {block.continuousLabel}
+                          {idx < livePreview.continuousLabBlocks.length - 1 ? ' · ' : ''}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </section>
+            </div>
+
+            {/* RIGHT 5 COLUMNS: LIVE DAILY SLOT BREAKDOWN TIMELINE */}
+            <aside className="lg:col-span-5 lg:sticky lg:top-6 sf-card-white overflow-hidden">
+              <div className="px-5 py-4 border-b border-[#E4E2DA] bg-[#F7F6EF]/60 flex items-center justify-between">
+                <div>
+                  <h2 className="font-serif-editorial text-xl text-[#171717]">
+                    Daily Slot Breakdown
+                  </h2>
+                  <p className="text-xs text-[#77766F] mt-0.5 font-mono-tabular">
+                    Live preview · {livePreview.slots.length} slots ({periodLengthMinutes}m lecture)
+                  </p>
+                </div>
+              </div>
+
+              <div className="divide-y divide-[#E4E2DA]">
+                {livePreview.slots.map(slot => {
+                  const showLunchBefore =
+                    livePreview.middayBreak.enabled &&
+                    slot.slotNumber === livePreview.firstAfternoonSlotNumber;
+
+                  return (
+                    <React.Fragment key={slot.slotNumber}>
+                      {showLunchBefore && (
+                        <div className="px-5 py-3 bg-[#E8D36B]/25 flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-2 text-xs font-semibold text-[#171717]">
+                            <Coffee className="w-3.5 h-3.5 shrink-0" />
+                            <span>Midday / Lunch Break</span>
+                          </div>
+                          <div className="text-xs font-mono-tabular font-semibold text-[#171717]">
+                            {livePreview.middayBreak.timeRangeLabel} ({livePreview.middayBreak.durationMinutes}m)
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="px-5 py-3 flex items-center justify-between gap-3 hover:bg-[#F7F6EF]/40 transition-colors">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <span className="text-xs font-mono-tabular font-bold text-[#171717] w-12 shrink-0">
+                            Slot {slot.slotNumber}
+                          </span>
+                          <span className="text-xs font-mono-tabular font-medium text-[#171717] truncate">
+                            {slot.period}
+                          </span>
+                        </div>
+                        <div className="text-[11px] font-mono-tabular text-[#77766F] shrink-0">
+                          {slot.session}
+                          {livePreview.shortBreakEnabled && livePreview.shortBreakMinutes > 0
+                            ? ` · +${livePreview.shortBreakMinutes}m break`
+                            : ''}
+                        </div>
+                      </div>
+                    </React.Fragment>
+                  );
+                })}
+              </div>
+
+              <div className="px-5 py-3.5 border-t border-[#E4E2DA] bg-[#F7F6EF]/50 flex items-center justify-between text-[11px] font-mono-tabular text-[#77766F]">
+                <span>Lab span: {livePreview.labSpanSlots} consecutive slots</span>
+                <span>{workingDays.join(' · ')}</span>
+              </div>
+            </aside>
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================
+          TAB 2: ACADEMIC CALENDAR (7/5 SPACIOUS SPLIT)
+         ========================================================= */}
+      {activeTab === 'calendar' && (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+          {/* LEFT 7 COLUMNS: REGISTERED SEMESTERS */}
+          <section className="lg:col-span-7 sf-card-white overflow-hidden">
+            <div className="px-6 py-4 border-b border-[#E4E2DA] flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
                 <Calendar className="w-4 h-4 text-[#171717]" />
-                <span>Academic Calendar</span>
-              </h2>
+                <h2 className="font-serif-editorial text-xl text-[#171717]">
+                  Semesters &amp; Terms
+                </h2>
+              </div>
               <span className="text-xs font-mono-tabular font-semibold text-[#77766F]">
                 {activeTermsList.length} active · {store.terms.length} total
               </span>
             </div>
 
-            <div className="divide-y divide-[#E4E2DA] border border-[#E4E2DA] rounded-xl max-h-60 overflow-y-auto bg-white">
+            <div className="divide-y divide-[#E4E2DA]">
               {store.terms.map(term => {
                 const isActive = term.status === 'active';
                 return (
                   <div
                     key={term.id}
-                    className="px-4 py-3 flex flex-wrap items-center justify-between gap-3 hover:bg-[#F7F6EF]/60 transition-colors"
+                    className="px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-[#F7F6EF]/50 transition-colors"
                   >
-                    <div className="min-w-[180px]">
+                    <div className="space-y-0.5 min-w-0">
                       <div className="text-xs font-semibold text-[#171717] flex items-center gap-2 flex-wrap">
                         <span className="font-mono-tabular font-bold">{term.code}</span>
                         <span>·</span>
@@ -564,19 +1128,19 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
                           <span className="text-[11px] font-medium text-[#1B5E20]">· Active</span>
                         )}
                       </div>
-                      <div className="text-[11px] text-[#77766F] font-mono-tabular mt-0.5">
-                        {term.startDate} → {term.endDate} · {term.weeksCount}w
+                      <div className="text-[11px] text-[#77766F] font-mono-tabular">
+                        {term.academicYear} · {term.startDate} to {term.endDate} · {term.weeksCount} weeks
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 shrink-0">
                       <button
                         type="button"
                         onClick={() => {
                           institutionalStore.toggleTermActiveStatus(term.id);
                           showToast(`Updated status for "${term.name}".`);
                         }}
-                        className={`h-7 px-2.5 rounded-lg text-xs font-semibold border transition-colors cursor-pointer ${
+                        className={`h-8 px-3 rounded-lg text-xs font-semibold border transition-colors cursor-pointer ${
                           isActive
                             ? 'bg-white text-[#171717] border-[#E4E2DA] hover:bg-[#F7F6EF]'
                             : 'bg-[#171717] text-white border-[#171717]'
@@ -591,7 +1155,7 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
                             institutionalStore.deleteTerm(term.id);
                             showToast(`Removed "${term.name}".`);
                           }}
-                          className="h-7 w-7 rounded-lg border border-[#E4E2DA] bg-white hover:bg-[#FDE8E8] text-[#77766F] hover:text-[#8B1E1E] flex items-center justify-center transition-colors cursor-pointer"
+                          className="h-8 w-8 rounded-lg border border-[#E4E2DA] bg-white hover:bg-[#FDE8E8] text-[#77766F] hover:text-[#8B1E1E] flex items-center justify-center transition-colors cursor-pointer"
                           title="Delete semester"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
@@ -602,85 +1166,144 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
                 );
               })}
             </div>
-          </div>
+          </section>
 
-          {/* Add New Semester Form */}
-          <div className="pt-3 border-t border-[#E4E2DA] space-y-2.5">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-[#171717]">Add Semester</span>
-              <label className="inline-flex items-center gap-1.5 text-[11px] text-[#57564F] cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={newSemActive}
-                  onChange={e => setNewSemActive(e.target.checked)}
-                  className="w-3.5 h-3.5 accent-[#171717]"
-                />
-                <span>Active immediately</span>
-              </label>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-6 gap-2">
-              <input
-                type="text"
-                placeholder="Name (e.g. Spring 2027)"
-                value={newSemName}
-                onChange={e => setNewSemName(e.target.value)}
-                className="input-field h-9 text-xs bg-white sm:col-span-2"
-              />
-              <input
-                type="text"
-                placeholder="Code (SPR-27)"
-                value={newSemCode}
-                onChange={e => setNewSemCode(e.target.value.toUpperCase())}
-                className="input-field h-9 text-xs font-mono-tabular uppercase bg-white"
-              />
-              <input
-                type="text"
-                placeholder="Academic Yr"
-                value={newSemYear}
-                onChange={e => setNewSemYear(e.target.value)}
-                className="input-field h-9 text-xs font-mono-tabular bg-white"
-              />
-              <input
-                type="date"
-                value={newSemStart}
-                onChange={e => setNewSemStart(e.target.value)}
-                className="input-field h-9 text-xs font-mono-tabular bg-white"
-              />
-              <div className="flex items-center gap-1.5">
-                <input
-                  type="date"
-                  value={newSemEnd}
-                  onChange={e => setNewSemEnd(e.target.value)}
-                  className="input-field h-9 text-xs font-mono-tabular bg-white flex-1 min-w-0"
-                />
-                <button
-                  type="button"
-                  onClick={handleAddSemester}
-                  disabled={!newSemName.trim() || !newSemCode.trim()}
-                  className="btn-primary h-9 px-3 text-xs shrink-0 disabled:opacity-50"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>Add</span>
-                </button>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* PANEL B: TIMETABLE MANAGEMENT POLICY */}
-        <section className="lg:col-span-5 sf-card-white p-5 sm:p-6 flex flex-col justify-between space-y-4">
-          <div className="space-y-4">
-            <div className="flex items-center justify-between gap-3 border-b border-[#E4E2DA] pb-3">
-              <h2 className="font-serif-editorial text-xl text-[#171717] flex items-center gap-2">
-                <Building2 className="w-4 h-4 text-[#171717]" />
-                <span>Scheduling Policy</span>
+          {/* RIGHT 5 COLUMNS: CLEAN ADD SEMESTER FORM */}
+          <section className="lg:col-span-5 sf-card-white p-6 space-y-5">
+            <div className="border-b border-[#E4E2DA] pb-3.5">
+              <h2 className="font-serif-editorial text-xl text-[#171717]">
+                Add Semester
               </h2>
+              <p className="text-xs text-[#77766F] mt-0.5">
+                Create an upcoming or active academic term.
+              </p>
+            </div>
+
+            <form onSubmit={handleAddSemester} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-[#171717] mb-1.5">
+                  Semester Name
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Spring 2027"
+                  value={newSemName}
+                  onChange={e => setNewSemName(e.target.value)}
+                  className="input-field h-10 text-xs"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-[#171717] mb-1.5">
+                    Semester Code
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="SPR-27"
+                    value={newSemCode}
+                    onChange={e => setNewSemCode(e.target.value.toUpperCase())}
+                    className="input-field h-10 text-xs font-mono-tabular uppercase"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-[#171717] mb-1.5">
+                    Academic Year
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="2026–2027"
+                    value={newSemYear}
+                    onChange={e => setNewSemYear(e.target.value)}
+                    className="input-field h-10 text-xs font-mono-tabular"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-[#171717] mb-1.5">
+                    Start Date
+                  </label>
+                  <input
+                    type="date"
+                    value={newSemStart}
+                    onChange={e => setNewSemStart(e.target.value)}
+                    className="input-field h-10 text-xs font-mono-tabular"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-[#171717] mb-1.5">
+                    End Date
+                  </label>
+                  <input
+                    type="date"
+                    value={newSemEnd}
+                    onChange={e => setNewSemEnd(e.target.value)}
+                    className="input-field h-10 text-xs font-mono-tabular"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-end">
+                <div>
+                  <label className="block text-xs font-semibold text-[#171717] mb-1.5">
+                    Duration (Weeks)
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={52}
+                    value={newSemWeeks}
+                    onChange={e => setNewSemWeeks(Math.max(1, parseInt(e.target.value, 10) || 16))}
+                    className="input-field h-10 text-xs font-mono-tabular"
+                  />
+                </div>
+
+                <label className="h-10 px-3 rounded-xl border border-[#E4E2DA] bg-[#F7F6EF]/60 flex items-center justify-between gap-2 text-xs text-[#171717] cursor-pointer">
+                  <span className="font-medium">Active immediately</span>
+                  <input
+                    type="checkbox"
+                    checked={newSemActive}
+                    onChange={e => setNewSemActive(e.target.checked)}
+                    className="w-4 h-4 accent-[#171717]"
+                  />
+                </label>
+              </div>
+
+              <button
+                type="submit"
+                disabled={!newSemName.trim() || !newSemCode.trim()}
+                className="w-full btn-primary h-10 text-xs disabled:opacity-50"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Add Semester</span>
+              </button>
+            </form>
+          </section>
+        </div>
+      )}
+
+      {/* =========================================================
+          TAB 3: SCHEDULING POLICY & INSTITUTIONAL TOOLS
+         ========================================================= */}
+      {activeTab === 'policy' && (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+          {/* LEFT 7 COLUMNS: SCHEDULING POLICY */}
+          <section className="lg:col-span-7 sf-card-white p-6 space-y-5">
+            <div className="flex items-center justify-between gap-3 border-b border-[#E4E2DA] pb-3.5">
+              <div className="flex items-center gap-2">
+                <Building2 className="w-4 h-4 text-[#171717]" />
+                <h2 className="font-serif-editorial text-xl text-[#171717]">
+                  Timetable Scheduling Policy
+                </h2>
+              </div>
               <span className="text-xs font-mono-tabular text-[#77766F]">
                 {currentPolicy === 'whole_university' ? 'Whole-University' : 'Department-Wise'}
               </span>
             </div>
 
-            <div className="space-y-2.5">
+            <div className="space-y-3">
               <button
                 type="button"
                 onClick={() => {
@@ -696,15 +1319,15 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-xs font-semibold">Whole-University Integrated</span>
                   {currentPolicy === 'whole_university' && (
-                    <Check className="w-3.5 h-3.5 text-[#B7F77C]" />
+                    <Check className="w-4 h-4 text-[#B7F77C]" />
                   )}
                 </div>
                 <p
-                  className={`text-[11px] mt-1 ${
+                  className={`text-xs mt-1 leading-relaxed ${
                     currentPolicy === 'whole_university' ? 'text-white/75' : 'text-[#77766F]'
                   }`}
                 >
-                  Schedules all {store.departments.length} departments ({store.studentGroups.length} sections) together to prevent shared resource conflicts.
+                  Schedules all {store.departments.length} departments ({store.studentGroups.length} sections) together in one conflict-free matrix to prevent shared room and faculty collisions.
                 </p>
               </button>
 
@@ -723,583 +1346,86 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-xs font-semibold">Department-Wise Isolation</span>
                   {currentPolicy === 'department_wise' && (
-                    <Check className="w-3.5 h-3.5 text-[#B7F77C]" />
+                    <Check className="w-4 h-4 text-[#B7F77C]" />
                   )}
                 </div>
                 <p
-                  className={`text-[11px] mt-1 ${
+                  className={`text-xs mt-1 leading-relaxed ${
                     currentPolicy === 'department_wise' ? 'text-white/75' : 'text-[#77766F]'
                   }`}
                 >
-                  Each department generates its own timetable using department-assigned faculty, rooms, and batches.
+                  Each department generates and manages its own timetable independently using department-assigned faculty, rooms, and batches.
                 </p>
               </button>
             </div>
-          </div>
 
-          <div className="pt-3 border-t border-[#E4E2DA] flex items-center justify-between gap-3 text-xs">
-            <span className="text-[#57564F] font-mono-tabular">
-              {store.departments.length} Depts · {store.programs.length} Programs · {store.studentGroups.length} Sections
-            </span>
-            <button
-              type="button"
-              onClick={() => onNavigate('generate')}
-              className="text-xs font-semibold text-[#171717] underline hover:opacity-80 cursor-pointer shrink-0"
-            >
-              Open Generator →
-            </button>
-          </div>
-        </section>
-      </div>
-
-      {/* TIMING CONFIGURATION PANELS */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* PANEL 1: OPERATING HOURS */}
-        <section className="lg:col-span-6 sf-card-white p-5 sm:p-6 space-y-5">
-          <div className="flex items-center justify-between gap-3 border-b border-[#E4E2DA] pb-3">
-            <h2 className="font-serif-editorial text-xl text-[#171717] flex items-center gap-2">
-              <Clock className="w-4 h-4 text-[#171717]" />
-              <span>Operating Hours</span>
-            </h2>
-            <span className="font-mono-tabular text-xs font-semibold text-[#57564F]">
-              {livePreview.operatingHoursLabel}
-            </span>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-semibold text-[#171717] mb-1.5">
-                Opening Time
-              </label>
-              <input
-                type="time"
-                value={dayStartTime}
-                onChange={e => {
-                  setTimingValidationErrors([]);
-                  setDayStartTime(e.target.value);
-                }}
-                className="input-field h-10 text-xs font-mono-tabular"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-[#171717] mb-1.5">
-                Closing Time
-              </label>
-              <input
-                type="time"
-                value={dayEndTime}
-                onChange={e => {
-                  setTimingValidationErrors([]);
-                  setDayEndTime(e.target.value);
-                }}
-                className="input-field h-10 text-xs font-mono-tabular"
-              />
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <label className="block text-xs font-semibold text-[#171717]">
-              Working Days ({workingDays.length})
-            </label>
-            <div className="flex flex-wrap gap-1.5">
-              {ALL_WEEK_DAYS.map(day => {
-                const active = workingDays.includes(day.code);
-                return (
-                  <button
-                    key={day.code}
-                    type="button"
-                    onClick={() => handleToggleWorkingDay(day.code)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors cursor-pointer ${
-                      active
-                        ? 'bg-[#171717] text-white border-[#171717]'
-                        : 'bg-white text-[#77766F] border-[#E4E2DA] hover:text-[#171717]'
-                    }`}
-                  >
-                    {day.label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Friday Afternoon Operating Shift */}
-          <div className="pt-4 border-t border-[#E4E2DA] space-y-3">
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <div className="text-xs font-semibold text-[#171717]">
-                  Friday Afternoon Shift (Jummah Buffer)
-                </div>
-              </div>
+            <div className="pt-4 border-t border-[#E4E2DA] flex items-center justify-between gap-3 text-xs">
+              <span className="text-[#57564F] font-mono-tabular">
+                {store.departments.length} Depts · {store.programs.length} Programs · {store.studentGroups.length} Sections
+              </span>
               <button
                 type="button"
-                onClick={() => setFridayAfternoonShiftEnabled(!fridayAfternoonShiftEnabled)}
-                className={`w-10 h-6 flex items-center rounded-full p-1 transition-colors cursor-pointer shrink-0 ${
-                  fridayAfternoonShiftEnabled ? 'bg-[#171717]' : 'bg-[#D6D3C9]'
-                }`}
+                onClick={() => onNavigate('generate')}
+                className="text-xs font-semibold text-[#171717] underline hover:opacity-80 cursor-pointer shrink-0"
               >
-                <div
-                  className={`bg-white w-4 h-4 rounded-full transition-transform ${
-                    fridayAfternoonShiftEnabled ? 'translate-x-4' : 'translate-x-0'
-                  }`}
-                />
+                Open Generator →
               </button>
-            </div>
-
-            {fridayAfternoonShiftEnabled && (
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-xs text-[#57564F]">Friday Afternoon Start:</span>
-                <input
-                  type="time"
-                  value={fridayAfternoonStartTime}
-                  onChange={e => setFridayAfternoonStartTime(e.target.value)}
-                  className="input-field h-9 w-36 text-xs font-mono-tabular"
-                />
-              </div>
-            )}
-          </div>
-        </section>
-
-        {/* PANEL 2 & 3: LECTURE DURATION & INTER-CLASS BREAKS */}
-        <div className="lg:col-span-6 space-y-6">
-          <section className="sf-card-white p-5 sm:p-6 space-y-4">
-            <div className="flex items-center justify-between gap-3 border-b border-[#E4E2DA] pb-3">
-              <h2 className="font-serif-editorial text-xl text-[#171717] flex items-center gap-2">
-                <BookOpen className="w-4 h-4 text-[#171717]" />
-                <span>Lecture Duration</span>
-              </h2>
-              <span className="font-mono-tabular text-xs font-semibold text-[#57564F]">
-                {periodLengthMinutes} min
-              </span>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 items-center">
-              <div className="sm:col-span-5">
-                <div className="input-group-field h-10 px-3 gap-2">
-                  <input
-                    type="number"
-                    min={20}
-                    max={240}
-                    step={5}
-                    value={periodLengthMinutes}
-                    onChange={e => {
-                      setTimingValidationErrors([]);
-                      setPeriodLengthMinutes(Math.max(1, parseInt(e.target.value, 10) || 50));
-                    }}
-                    className="text-xs font-mono-tabular font-semibold"
-                  />
-                  <span className="text-[11px] font-mono-tabular text-[#77766F] shrink-0">
-                    minutes
-                  </span>
-                </div>
-              </div>
-
-              <div className="sm:col-span-7 flex flex-wrap gap-1.5">
-                {[45, 50, 60, 75, 90].map(mins => (
-                  <button
-                    key={mins}
-                    type="button"
-                    onClick={() => {
-                      setTimingValidationErrors([]);
-                      setPeriodLengthMinutes(mins);
-                    }}
-                    className={`px-2.5 py-1.5 rounded-lg text-xs font-mono-tabular transition-colors cursor-pointer ${
-                      periodLengthMinutes === mins
-                        ? 'bg-[#171717] text-white font-semibold'
-                        : 'bg-white hover:bg-[#F7F6EF] text-[#171717] border border-[#E4E2DA]'
-                    }`}
-                  >
-                    {mins}m
-                  </button>
-                ))}
-              </div>
             </div>
           </section>
 
-          <section className="sf-card-white p-5 sm:p-6 space-y-4">
-            <div className="flex items-center justify-between gap-3 border-b border-[#E4E2DA] pb-3">
+          {/* RIGHT 5 COLUMNS: SETUP WIZARD & CSV IMPORT */}
+          <section className="lg:col-span-5 sf-card-white divide-y divide-[#E4E2DA] overflow-hidden">
+            <div className="px-6 py-4">
               <h2 className="font-serif-editorial text-xl text-[#171717]">
-                Inter-Class Break
+                Institutional Setup &amp; Data
               </h2>
+              <p className="text-xs text-[#77766F] mt-0.5">
+                Configure institutional structure or import bulk records.
+              </p>
+            </div>
 
+            <div className="p-6 space-y-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="space-y-1">
+                  <div className="text-xs font-semibold text-[#171717]">
+                    University Setup Wizard
+                  </div>
+                  <p className="text-xs text-[#77766F] leading-relaxed">
+                    Step-by-step configuration for campus details, academic calendar, daily hours, and break rules.
+                  </p>
+                </div>
+              </div>
               <button
                 type="button"
-                onClick={() => {
-                  setTimingValidationErrors([]);
-                  setShortBreakEnabled(!shortBreakEnabled);
-                }}
-                className={`w-10 h-6 flex items-center rounded-full p-1 transition-colors cursor-pointer shrink-0 ${
-                  shortBreakEnabled ? 'bg-[#171717]' : 'bg-[#D6D3C9]'
-                }`}
-                aria-label="Toggle short breaks"
+                onClick={() => setShowOnboardingModal(true)}
+                className="btn-secondary text-xs h-9 px-4"
               >
-                <div
-                  className={`bg-white w-4 h-4 rounded-full transition-transform ${
-                    shortBreakEnabled ? 'translate-x-4' : 'translate-x-0'
-                  }`}
-                />
+                <Sliders className="w-3.5 h-3.5" />
+                <span>Launch Setup Wizard</span>
               </button>
             </div>
 
-            {shortBreakEnabled ? (
-              <div className="space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 items-center">
-                  <div className="sm:col-span-5">
-                    <div className="input-group-field h-10 px-3 gap-2">
-                      <input
-                        type="number"
-                        min={0}
-                        max={60}
-                        step={5}
-                        value={shortBreakMinutes}
-                        onChange={e => {
-                          setTimingValidationErrors([]);
-                          setShortBreakMinutes(Math.max(0, parseInt(e.target.value, 10) || 0));
-                        }}
-                        className="text-xs font-mono-tabular font-semibold"
-                      />
-                      <span className="text-[11px] font-mono-tabular text-[#77766F] shrink-0">
-                        minutes
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="sm:col-span-7 flex flex-wrap gap-1.5">
-                    {[5, 10, 15, 20].map(mins => (
-                      <button
-                        key={mins}
-                        type="button"
-                        onClick={() => {
-                          setTimingValidationErrors([]);
-                          setShortBreakMinutes(mins);
-                        }}
-                        className={`px-2.5 py-1.5 rounded-lg text-xs font-mono-tabular transition-colors cursor-pointer ${
-                          shortBreakMinutes === mins
-                            ? 'bg-[#171717] text-white font-semibold'
-                            : 'bg-white hover:bg-[#F7F6EF] text-[#171717] border border-[#E4E2DA]'
-                        }`}
-                      >
-                        {mins}m
-                      </button>
-                    ))}
-                  </div>
+            <div className="p-6 space-y-3">
+              <div className="space-y-1">
+                <div className="text-xs font-semibold text-[#171717]">
+                  Bulk CSV Data Import
                 </div>
-
-                <div className="pt-3 border-t border-[#E4E2DA] flex items-center justify-between gap-3">
-                  <span className="text-xs text-[#57564F]">
-                    Include break after final slot ({periodLengthMinutes + shortBreakMinutes}m cycle)
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setIncludeBreakAfterLastSlot(!includeBreakAfterLastSlot)}
-                    className={`w-10 h-6 flex items-center rounded-full p-1 transition-colors cursor-pointer shrink-0 ${
-                      includeBreakAfterLastSlot ? 'bg-[#171717]' : 'bg-[#D6D3C9]'
-                    }`}
-                  >
-                    <div
-                      className={`bg-white w-4 h-4 rounded-full transition-transform ${
-                        includeBreakAfterLastSlot ? 'translate-x-4' : 'translate-x-0'
-                      }`}
-                    />
-                  </button>
-                </div>
+                <p className="text-xs text-[#77766F] leading-relaxed">
+                  Import courses, faculty members, classrooms, and student batches from CSV spreadsheets.
+                </p>
               </div>
-            ) : (
-              <p className="text-xs text-[#77766F]">
-                Disabled — {periodLengthMinutes}-minute lectures run back-to-back.
-              </p>
-            )}
+              <button
+                type="button"
+                onClick={() => setShowImportWizard(true)}
+                className="btn-secondary text-xs h-9 px-4"
+              >
+                <Upload className="w-3.5 h-3.5" />
+                <span>Import CSV Data</span>
+              </button>
+            </div>
           </section>
         </div>
-
-        {/* PANEL 4: MIDDAY / LUNCH BREAK */}
-        <section className="lg:col-span-6 sf-card-white p-5 sm:p-6 space-y-4">
-          <div className="flex items-center justify-between gap-3 border-b border-[#E4E2DA] pb-3">
-            <h2 className="font-serif-editorial text-xl text-[#171717] flex items-center gap-2">
-              <Coffee className="w-4 h-4 text-[#171717]" />
-              <span>Midday Break</span>
-            </h2>
-
-            <button
-              type="button"
-              onClick={() => {
-                setTimingValidationErrors([]);
-                setMiddayBreakEnabled(!middayBreakEnabled);
-              }}
-              className={`w-10 h-6 flex items-center rounded-full p-1 transition-colors cursor-pointer shrink-0 ${
-                middayBreakEnabled ? 'bg-[#171717]' : 'bg-[#D6D3C9]'
-              }`}
-              aria-label="Toggle midday break"
-            >
-              <div
-                className={`bg-white w-4 h-4 rounded-full transition-transform ${
-                  middayBreakEnabled ? 'translate-x-4' : 'translate-x-0'
-                }`}
-              />
-            </button>
-          </div>
-
-          {middayBreakEnabled ? (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => setMiddayBreakMode('fixed')}
-                  className={`p-3 rounded-xl border text-left transition-colors cursor-pointer ${
-                    middayBreakMode === 'fixed'
-                      ? 'bg-[#171717] text-white border-[#171717]'
-                      : 'bg-white text-[#171717] border-[#E4E2DA] hover:bg-[#F7F6EF]'
-                  }`}
-                >
-                  <div className="text-xs font-semibold">Fixed Start Time</div>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setMiddayBreakMode('auto')}
-                  className={`p-3 rounded-xl border text-left transition-colors cursor-pointer ${
-                    middayBreakMode === 'auto'
-                      ? 'bg-[#171717] text-white border-[#171717]'
-                      : 'bg-white text-[#171717] border-[#E4E2DA] hover:bg-[#F7F6EF]'
-                  }`}
-                >
-                  <div className="text-xs font-semibold">
-                    Auto ({livePreview.middayBreak.startTime24})
-                  </div>
-                </button>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-[#171717] mb-1.5">
-                    Start Time ({livePreview.middayBreak.timeRangeLabel})
-                  </label>
-                  <input
-                    type="time"
-                    disabled={middayBreakMode === 'auto'}
-                    value={
-                      middayBreakMode === 'auto'
-                        ? livePreview.middayBreak.startTime24
-                        : middayBreakStartTime
-                    }
-                    onChange={e => {
-                      setTimingValidationErrors([]);
-                      setMiddayBreakStartTime(e.target.value);
-                    }}
-                    className="input-field h-10 text-xs font-mono-tabular disabled:opacity-60"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-[#171717] mb-1.5">
-                    Duration
-                  </label>
-                  <div className="input-group-field h-10 px-3 gap-2">
-                    <input
-                      type="number"
-                      min={15}
-                      max={180}
-                      step={15}
-                      value={middayBreakDurationMinutes}
-                      onChange={e => {
-                        setTimingValidationErrors([]);
-                        setMiddayBreakDurationMinutes(
-                          Math.max(15, parseInt(e.target.value, 10) || 60)
-                        );
-                      }}
-                      className="text-xs font-mono-tabular font-semibold"
-                    />
-                    <span className="text-[11px] font-mono-tabular text-[#77766F] shrink-0">
-                      min
-                    </span>
-                  </div>
-                  <div className="flex flex-wrap gap-1.5 mt-2">
-                    {[30, 45, 60, 90].map(mins => (
-                      <button
-                        key={mins}
-                        type="button"
-                        onClick={() => {
-                          setTimingValidationErrors([]);
-                          setMiddayBreakDurationMinutes(mins);
-                        }}
-                        className={`px-2 py-1 rounded-md text-[11px] font-mono-tabular cursor-pointer ${
-                          middayBreakDurationMinutes === mins
-                            ? 'bg-[#171717] text-white font-semibold'
-                            : 'bg-white text-[#171717] border border-[#E4E2DA]'
-                        }`}
-                      >
-                        {mins}m
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <p className="text-xs text-[#77766F]">
-              Disabled — continuous slots from {dayStartTime} to {dayEndTime}.
-            </p>
-          )}
-        </section>
-
-        {/* PANEL 5: LABORATORY DURATION */}
-        <section className="lg:col-span-6 sf-card-white p-5 sm:p-6 space-y-4">
-          <div className="flex items-center justify-between gap-3 border-b border-[#E4E2DA] pb-3">
-            <h2 className="font-serif-editorial text-xl text-[#171717] flex items-center gap-2">
-              <FlaskConical className="w-4 h-4 text-[#171717]" />
-              <span>Laboratory Duration</span>
-            </h2>
-            <span className="font-mono-tabular text-xs font-semibold text-[#57564F]">
-              {labDurationMinutes}m ({labHoursEquivalent}h)
-            </span>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 items-center">
-            <div className="sm:col-span-5">
-              <div className="input-group-field h-10 px-3 gap-2">
-                <input
-                  type="number"
-                  min={periodLengthMinutes}
-                  max={360}
-                  step={15}
-                  value={labDurationMinutes}
-                  onChange={e => {
-                    setTimingValidationErrors([]);
-                    setLabDurationMinutes(
-                      Math.max(periodLengthMinutes, parseInt(e.target.value, 10) || 180)
-                    );
-                  }}
-                  className="text-xs font-mono-tabular font-semibold"
-                />
-                <span className="text-[11px] font-mono-tabular text-[#77766F] shrink-0">
-                  min
-                </span>
-              </div>
-            </div>
-
-            <div className="sm:col-span-7 flex flex-wrap gap-1.5">
-              {[
-                { mins: 120, label: '2h (120m)' },
-                { mins: 150, label: '2.5h (150m)' },
-                { mins: 180, label: '3h (180m)' }
-              ].map(opt => (
-                <button
-                  key={opt.mins}
-                  type="button"
-                  onClick={() => {
-                    setTimingValidationErrors([]);
-                    setLabDurationMinutes(opt.mins);
-                  }}
-                  className={`px-2.5 py-1.5 rounded-lg text-xs font-mono-tabular transition-colors cursor-pointer ${
-                    labDurationMinutes === opt.mins
-                      ? 'bg-[#171717] text-white font-semibold'
-                      : 'bg-white hover:bg-[#F7F6EF] text-[#171717] border border-[#E4E2DA]'
-                  }`}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Lab Windows */}
-          <div className="pt-3 border-t border-[#E4E2DA] space-y-2">
-            <div className="flex items-center justify-between text-xs">
-              <span className="font-semibold text-[#171717]">
-                Continuous Lab Windows ({livePreview.continuousLabBlocks.length})
-              </span>
-              <span className="font-mono-tabular text-[11px] text-[#77766F]">
-                {livePreview.labSpanSlots} merged slots
-              </span>
-            </div>
-            <div className="flex flex-wrap gap-1.5 text-xs font-mono-tabular text-[#57564F]">
-              {livePreview.continuousLabBlocks.map((block, idx) => (
-                <span key={block.startPeriod}>
-                  {block.session}: {block.continuousLabel}
-                  {idx < livePreview.continuousLabBlocks.length - 1 ? ' · ' : ''}
-                </span>
-              ))}
-            </div>
-          </div>
-        </section>
-      </div>
-
-      {/* COLLAPSIBLE DAILY TIMETABLE SLOT TIMELINE PREVIEW */}
-      <div className="sf-card-white p-5 sm:p-6 space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex items-baseline gap-3">
-            <h2 className="font-serif-editorial text-xl text-[#171717]">
-              Daily Slot Breakdown
-            </h2>
-            <span className="text-xs font-mono-tabular text-[#77766F]">
-              {livePreview.slots.length} slots
-            </span>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setShowSlotTimeline(prev => !prev)}
-              className="btn-secondary text-xs h-9 px-3.5"
-            >
-              <span>{showSlotTimeline ? 'Hide Slots' : 'Preview Slots'}</span>
-            </button>
-
-            <button
-              type="button"
-              disabled={!liveValidation.valid}
-              onClick={() => handleSaveConfiguration()}
-              className="btn-primary text-xs h-9 px-4 disabled:opacity-50"
-            >
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>Save Configuration</span>
-            </button>
-          </div>
-        </div>
-
-        {showSlotTimeline && (
-          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2.5 pt-4 border-t border-[#E4E2DA]">
-            {livePreview.slots.map(slot => {
-              const showLunchBefore =
-                livePreview.middayBreak.enabled &&
-                slot.slotNumber === livePreview.firstAfternoonSlotNumber;
-
-              return (
-                <React.Fragment key={slot.slotNumber}>
-                  {showLunchBefore && (
-                    <div className="p-3 rounded-xl bg-[#E8D36B]/35 border border-[#D4BC4C] flex flex-col justify-between">
-                      <div className="text-[10px] font-mono-tabular font-bold uppercase text-[#171717]">
-                        Break
-                      </div>
-                      <div className="text-xs font-mono-tabular font-bold text-[#171717] my-1">
-                        {livePreview.middayBreak.timeRangeLabel}
-                      </div>
-                      <div className="text-[10.5px] text-[#57564F]">
-                        {livePreview.middayBreak.durationMinutes}m lunch
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="p-3 rounded-xl bg-[#F7F6EF]/60 border border-[#E4E2DA] flex flex-col justify-between">
-                    <div className="flex items-center justify-between text-[10px] font-mono-tabular text-[#77766F]">
-                      <span className="font-bold text-[#171717]">Slot {slot.slotNumber}</span>
-                      <span>{slot.session}</span>
-                    </div>
-                    <div className="text-xs font-mono-tabular font-semibold text-[#171717] my-1">
-                      {slot.period}
-                    </div>
-                    <div className="text-[10.5px] font-mono-tabular text-[#77766F]">
-                      {livePreview.shortBreakEnabled && livePreview.shortBreakMinutes > 0
-                        ? `+${livePreview.shortBreakMinutes}m break`
-                        : 'No break'}
-                    </div>
-                  </div>
-                </React.Fragment>
-              );
-            })}
-          </div>
-        )}
-      </div>
+      )}
 
       {showImportWizard && (
         <DataImportWizard
