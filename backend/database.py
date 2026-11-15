@@ -1,6 +1,6 @@
 """
-Python SQLite Database, Password Hashing (scrypt), Token Signing, and Multi-University Seed Layer
-for SmartGrid AI (Python + FastAPI Backend).
+SmartGrid AI — Supabase PostgreSQL Seed Layer, Password Hashing (scrypt), and Token Signing
+Pure Supabase PostgREST persistence (zero SQLite dependency).
 """
 
 from __future__ import annotations
@@ -11,42 +11,13 @@ import hmac
 import json
 import os
 import secrets
-import sqlite3
-import threading
 import time
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-BASE_DIR = Path(__file__).resolve().parent.parent
-DATA_DIR = BASE_DIR / "data"
-DATA_DIR.mkdir(parents=True, exist_ok=True)
+from app.database.supabase import SupabaseQueryError, get_supabase_client
 
-DB_PATH = DATA_DIR / "smartgrid_voting.sqlite"
 TOKEN_SECRET = os.environ.get("SMARTGRID_AUTH_SECRET", "smartgrid-institutional-secret-key-2026")
-
-_db_lock = threading.RLock()
-
-
-def get_connection() -> sqlite3.Connection:
-    conn = sqlite3.connect(str(DB_PATH), check_same_thread=False, timeout=15.0)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode = WAL;")
-    conn.execute("PRAGMA foreign_keys = ON;")
-    return conn
-
-
-db_conn = get_connection()
-
-
-def row_to_dict(row: Optional[sqlite3.Row]) -> Optional[Dict[str, Any]]:
-    if row is None:
-        return None
-    return dict(row)
-
-
-def rows_to_dicts(rows: List[sqlite3.Row]) -> List[Dict[str, Any]]:
-    return [dict(r) for r in rows]
 
 
 def now_iso() -> str:
@@ -143,459 +114,96 @@ def verify_auth_token(token: str) -> Optional[Dict[str, Any]]:
 
 
 def initialize_voting_database() -> None:
-    with _db_lock:
-        db_conn.executescript(
-            """
-            CREATE TABLE IF NOT EXISTS institutions (
-              id TEXT PRIMARY KEY,
-              name TEXT NOT NULL,
-              code TEXT NOT NULL UNIQUE,
-              logo_url TEXT,
-              campus_name TEXT NOT NULL DEFAULT 'Main Campus',
-              accreditation TEXT NOT NULL DEFAULT 'Accredited University',
-              academic_year TEXT NOT NULL DEFAULT '2026–2027',
-              current_term TEXT NOT NULL DEFAULT 'Fall Semester 2026',
-              working_days TEXT NOT NULL DEFAULT 'Mon,Tue,Wed,Thu,Fri',
-              day_start_time TEXT NOT NULL DEFAULT '09:00',
-              day_end_time TEXT NOT NULL DEFAULT '17:00',
-              period_length_minutes INTEGER NOT NULL DEFAULT 50,
-              short_break_minutes INTEGER NOT NULL DEFAULT 10,
-              midday_break_enabled INTEGER NOT NULL DEFAULT 1,
-              midday_break_start TEXT NOT NULL DEFAULT '13:00',
-              midday_break_duration INTEGER NOT NULL DEFAULT 60,
-              lab_duration_minutes INTEGER NOT NULL DEFAULT 180,
-              timezone TEXT NOT NULL DEFAULT 'UTC',
-              is_sample INTEGER NOT NULL DEFAULT 0,
-              created_at TEXT NOT NULL
-            );
+    """
+    Idempotently seeds multi-university institutions, batches, users, BR assignments,
+    polls, and academic catalog entities into Supabase PostgreSQL via PostgREST.
+    """
+    client = get_supabase_client()
+    if client is None:
+        print("[SmartGrid] Supabase credentials not configured; skipping startup seed.")
+        return
 
-            CREATE TABLE IF NOT EXISTS institution_data (
-              institution_id TEXT PRIMARY KEY,
-              payload TEXT NOT NULL,
-              updated_at TEXT NOT NULL,
-              FOREIGN KEY (institution_id) REFERENCES institutions(id) ON DELETE CASCADE
-            );
-
-            CREATE TABLE IF NOT EXISTS batches (
-              id TEXT PRIMARY KEY,
-              code TEXT NOT NULL UNIQUE,
-              name TEXT NOT NULL,
-              department_code TEXT NOT NULL,
-              year INTEGER NOT NULL,
-              semester INTEGER NOT NULL,
-              student_count INTEGER NOT NULL DEFAULT 60,
-              institution_id TEXT NOT NULL DEFAULT 'inst-western-poly',
-              created_at TEXT NOT NULL
-            );
-
-            CREATE TABLE IF NOT EXISTS users (
-              id TEXT PRIMARY KEY,
-              name TEXT NOT NULL,
-              email TEXT NOT NULL UNIQUE,
-              password_hash TEXT NOT NULL,
-              role TEXT NOT NULL CHECK (role IN ('student', 'br', 'admin', 'faculty')),
-              gender TEXT CHECK (gender IN ('male', 'female') OR gender IS NULL),
-              batch_id TEXT,
-              registration_number TEXT,
-              section TEXT,
-              is_active INTEGER NOT NULL DEFAULT 1,
-              must_reset_password INTEGER NOT NULL DEFAULT 0,
-              credential_hint TEXT,
-              institution TEXT NOT NULL DEFAULT 'Western Polytechnic',
-              institution_id TEXT NOT NULL DEFAULT 'inst-western-poly',
-              created_at TEXT NOT NULL,
-              FOREIGN KEY (batch_id) REFERENCES batches(id) ON DELETE SET NULL
-            );
-
-            CREATE TABLE IF NOT EXISTS br_assignments (
-              id TEXT PRIMARY KEY,
-              batch_id TEXT NOT NULL,
-              user_id TEXT NOT NULL,
-              gender_role TEXT NOT NULL CHECK (gender_role IN ('male', 'female')),
-              is_active INTEGER NOT NULL DEFAULT 1,
-              assigned_by TEXT NOT NULL,
-              assigned_at TEXT NOT NULL,
-              FOREIGN KEY (batch_id) REFERENCES batches(id) ON DELETE CASCADE,
-              FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-            );
-
-            CREATE TABLE IF NOT EXISTS polls (
-              id TEXT PRIMARY KEY,
-              title TEXT NOT NULL,
-              description TEXT NOT NULL,
-              batch_id TEXT NOT NULL,
-              target_scope TEXT NOT NULL DEFAULT 'all_batches' CHECK (target_scope IN ('all_batches', 'submitting_batch')),
-              submitted_by_user_id TEXT NOT NULL,
-              submitted_by_name TEXT NOT NULL,
-              br_gender_role TEXT NOT NULL CHECK (br_gender_role IN ('male', 'female')),
-              status TEXT NOT NULL DEFAULT 'Pending' CHECK (status IN ('Pending', 'Approved', 'Rejected', 'Published', 'Closed')),
-              rejection_reason TEXT,
-              result_visibility TEXT NOT NULL DEFAULT 'after_vote' CHECK (result_visibility IN ('after_vote', 'after_close', 'always')),
-              start_at TEXT,
-              end_at TEXT,
-              published_at TEXT,
-              closed_at TEXT,
-              institution_id TEXT NOT NULL DEFAULT 'inst-western-poly',
-              created_at TEXT NOT NULL,
-              updated_at TEXT NOT NULL,
-              FOREIGN KEY (batch_id) REFERENCES batches(id) ON DELETE CASCADE,
-              FOREIGN KEY (submitted_by_user_id) REFERENCES users(id) ON DELETE CASCADE
-            );
-
-            CREATE TABLE IF NOT EXISTS poll_options (
-              id TEXT PRIMARY KEY,
-              poll_id TEXT NOT NULL,
-              label TEXT NOT NULL,
-              sort_order INTEGER NOT NULL DEFAULT 0,
-              FOREIGN KEY (poll_id) REFERENCES polls(id) ON DELETE CASCADE
-            );
-
-            CREATE TABLE IF NOT EXISTS poll_votes (
-              id TEXT PRIMARY KEY,
-              poll_id TEXT NOT NULL,
-              option_id TEXT NOT NULL,
-              student_user_id TEXT NOT NULL,
-              batch_id TEXT NOT NULL,
-              created_at TEXT NOT NULL,
-              UNIQUE(poll_id, student_user_id),
-              FOREIGN KEY (poll_id) REFERENCES polls(id) ON DELETE CASCADE,
-              FOREIGN KEY (option_id) REFERENCES poll_options(id) ON DELETE CASCADE,
-              FOREIGN KEY (student_user_id) REFERENCES users(id) ON DELETE CASCADE,
-              FOREIGN KEY (batch_id) REFERENCES batches(id) ON DELETE CASCADE
-            );
-
-            CREATE TABLE IF NOT EXISTS departments (
-              id TEXT PRIMARY KEY,
-              university_id TEXT NOT NULL DEFAULT 'inst-western-poly',
-              code TEXT NOT NULL,
-              name TEXT NOT NULL,
-              faculty_group TEXT DEFAULT 'Engineering & Computing',
-              head_of_department TEXT,
-              created_at TEXT NOT NULL
-            );
-
-            CREATE TABLE IF NOT EXISTS programs (
-              id TEXT PRIMARY KEY,
-              university_id TEXT NOT NULL DEFAULT 'inst-western-poly',
-              department_id TEXT,
-              code TEXT NOT NULL,
-              name TEXT NOT NULL,
-              degree_level TEXT NOT NULL DEFAULT 'Undergraduate',
-              duration_years INTEGER NOT NULL DEFAULT 4,
-              total_semesters INTEGER NOT NULL DEFAULT 8,
-              created_at TEXT NOT NULL
-            );
-
-            CREATE TABLE IF NOT EXISTS semesters (
-              id TEXT PRIMARY KEY,
-              university_id TEXT NOT NULL DEFAULT 'inst-western-poly',
-              code TEXT NOT NULL,
-              name TEXT NOT NULL,
-              academic_year TEXT NOT NULL DEFAULT '2026–2027',
-              semester_number INTEGER NOT NULL DEFAULT 1,
-              is_current INTEGER NOT NULL DEFAULT 1,
-              created_at TEXT NOT NULL
-            );
-
-            CREATE TABLE IF NOT EXISTS sections (
-              id TEXT PRIMARY KEY,
-              university_id TEXT NOT NULL DEFAULT 'inst-western-poly',
-              batch_id TEXT NOT NULL,
-              code TEXT NOT NULL,
-              name TEXT NOT NULL,
-              student_count INTEGER NOT NULL DEFAULT 50,
-              created_at TEXT NOT NULL
-            );
-
-            CREATE TABLE IF NOT EXISTS instructors (
-              id TEXT PRIMARY KEY,
-              university_id TEXT NOT NULL DEFAULT 'inst-western-poly',
-              user_id TEXT,
-              department_code TEXT NOT NULL,
-              name TEXT NOT NULL,
-              email TEXT,
-              designation TEXT NOT NULL DEFAULT 'Professor',
-              specialization TEXT,
-              max_weekly_hours INTEGER NOT NULL DEFAULT 15,
-              max_lectures_per_day INTEGER NOT NULL DEFAULT 3,
-              unavailable_slots TEXT NOT NULL DEFAULT '[]',
-              preferred_slots TEXT NOT NULL DEFAULT '[]',
-              avoid_early_morning INTEGER NOT NULL DEFAULT 0,
-              avoid_late_afternoon INTEGER NOT NULL DEFAULT 0,
-              created_at TEXT NOT NULL
-            );
-
-            CREATE TABLE IF NOT EXISTS classrooms (
-              id TEXT PRIMARY KEY,
-              university_id TEXT NOT NULL DEFAULT 'inst-western-poly',
-              name TEXT NOT NULL,
-              building TEXT NOT NULL DEFAULT 'Main Academic Block',
-              floor INTEGER NOT NULL DEFAULT 1,
-              type TEXT NOT NULL DEFAULT 'Theory',
-              capacity INTEGER NOT NULL DEFAULT 60,
-              equipment TEXT NOT NULL DEFAULT '[]',
-              unavailable_slots TEXT NOT NULL DEFAULT '[]',
-              created_at TEXT NOT NULL
-            );
-
-            CREATE TABLE IF NOT EXISTS courses (
-              id TEXT PRIMARY KEY,
-              university_id TEXT NOT NULL DEFAULT 'inst-western-poly',
-              code TEXT NOT NULL,
-              title TEXT NOT NULL,
-              department_code TEXT NOT NULL,
-              batch_id TEXT NOT NULL,
-              semester INTEGER NOT NULL DEFAULT 3,
-              type TEXT NOT NULL DEFAULT 'Theory',
-              credit_hours INTEGER NOT NULL DEFAULT 3,
-              hours_per_week INTEGER NOT NULL DEFAULT 3,
-              instructor_id TEXT NOT NULL,
-              student_count INTEGER NOT NULL DEFAULT 60,
-              required_room_type TEXT NOT NULL DEFAULT 'Theory',
-              required_equipment TEXT NOT NULL DEFAULT '[]',
-              sections_count INTEGER NOT NULL DEFAULT 1,
-              created_at TEXT NOT NULL
-            );
-
-            CREATE TABLE IF NOT EXISTS student_preferences (
-              id TEXT PRIMARY KEY,
-              university_id TEXT NOT NULL DEFAULT 'inst-western-poly',
-              student_user_id TEXT NOT NULL,
-              batch_id TEXT NOT NULL,
-              preferred_start_window TEXT NOT NULL DEFAULT '09:00-14:00',
-              preferred_lab_slots TEXT NOT NULL DEFAULT '[]',
-              avoid_early_morning INTEGER NOT NULL DEFAULT 0,
-              avoid_late_evening INTEGER NOT NULL DEFAULT 1,
-              max_acceptable_idle_gaps INTEGER NOT NULL DEFAULT 1,
-              compact_schedule_weight REAL NOT NULL DEFAULT 0.85,
-              preferred_free_day TEXT,
-              notes TEXT,
-              updated_at TEXT NOT NULL,
-              UNIQUE(student_user_id)
-            );
-
-            CREATE TABLE IF NOT EXISTS instructor_preferences (
-              id TEXT PRIMARY KEY,
-              university_id TEXT NOT NULL DEFAULT 'inst-western-poly',
-              instructor_id TEXT NOT NULL,
-              preferred_days TEXT NOT NULL DEFAULT '["Mon","Tue","Wed","Thu","Fri"]',
-              preferred_slots TEXT NOT NULL DEFAULT '[]',
-              unavailable_slots TEXT NOT NULL DEFAULT '[]',
-              max_consecutive_hours INTEGER NOT NULL DEFAULT 2,
-              avoid_early_morning INTEGER NOT NULL DEFAULT 0,
-              avoid_late_afternoon INTEGER NOT NULL DEFAULT 0,
-              notes TEXT,
-              updated_at TEXT NOT NULL,
-              UNIQUE(instructor_id)
-            );
-
-            CREATE TABLE IF NOT EXISTS optimization_runs (
-              id TEXT PRIMARY KEY,
-              university_id TEXT NOT NULL DEFAULT 'inst-western-poly',
-              triggered_by_user_id TEXT,
-              algorithm_pipeline TEXT NOT NULL DEFAULT 'hybrid_dsatur_ga_sa',
-              status TEXT NOT NULL DEFAULT 'Completed',
-              hyperparameters TEXT NOT NULL DEFAULT '{}',
-              objective_weights TEXT NOT NULL DEFAULT '{}',
-              dsatur_initial_fitness REAL,
-              ga_best_fitness REAL,
-              sa_final_fitness REAL,
-              hard_constraint_violations INTEGER NOT NULL DEFAULT 0,
-              execution_time_ms INTEGER NOT NULL DEFAULT 0,
-              generations_executed INTEGER NOT NULL DEFAULT 0,
-              sa_iterations_executed INTEGER NOT NULL DEFAULT 0,
-              convergence_history TEXT NOT NULL DEFAULT '[]',
-              summary_metrics TEXT NOT NULL DEFAULT '{}',
-              created_at TEXT NOT NULL
-            );
-
-            CREATE TABLE IF NOT EXISTS optimization_scores (
-              id TEXT PRIMARY KEY,
-              optimization_run_id TEXT NOT NULL,
-              university_id TEXT NOT NULL DEFAULT 'inst-western-poly',
-              batch_id TEXT,
-              overall_fitness_score REAL NOT NULL DEFAULT 0,
-              hard_constraint_score REAL NOT NULL DEFAULT 100,
-              student_preference_score REAL NOT NULL DEFAULT 0,
-              compactness_score REAL NOT NULL DEFAULT 0,
-              workload_balance_score REAL NOT NULL DEFAULT 0,
-              instructor_preference_score REAL NOT NULL DEFAULT 0,
-              batch_fairness_score REAL NOT NULL DEFAULT 0,
-              room_utilization_score REAL NOT NULL DEFAULT 0,
-              average_idle_gaps_per_day REAL NOT NULL DEFAULT 0,
-              created_at TEXT NOT NULL,
-              FOREIGN KEY (optimization_run_id) REFERENCES optimization_runs(id) ON DELETE CASCADE
-            );
-
-            CREATE TABLE IF NOT EXISTS timetable_versions (
-              id TEXT PRIMARY KEY,
-              university_id TEXT NOT NULL DEFAULT 'inst-western-poly',
-              optimization_run_id TEXT,
-              version_name TEXT NOT NULL,
-              status TEXT NOT NULL DEFAULT 'Draft',
-              fitness_score REAL NOT NULL DEFAULT 0,
-              hard_conflicts_count INTEGER NOT NULL DEFAULT 0,
-              entries_json TEXT NOT NULL DEFAULT '[]',
-              metrics_json TEXT NOT NULL DEFAULT '{}',
-              created_by_user_id TEXT,
-              published_at TEXT,
-              created_at TEXT NOT NULL
-            );
-
-            CREATE TABLE IF NOT EXISTS disruption_events (
-              id TEXT PRIMARY KEY,
-              university_id TEXT NOT NULL DEFAULT 'inst-western-poly',
-              timetable_version_id TEXT,
-              disruption_type TEXT NOT NULL,
-              title TEXT NOT NULL,
-              description TEXT NOT NULL,
-              affected_instructor_id TEXT,
-              affected_classroom_id TEXT,
-              affected_batch_id TEXT,
-              affected_day TEXT,
-              affected_slots TEXT NOT NULL DEFAULT '[]',
-              severity TEXT NOT NULL DEFAULT 'Medium',
-              status TEXT NOT NULL DEFAULT 'Resolved',
-              reported_by_user_id TEXT,
-              created_at TEXT NOT NULL
-            );
-
-            CREATE TABLE IF NOT EXISTS rescheduling_proposals (
-              id TEXT PRIMARY KEY,
-              university_id TEXT NOT NULL DEFAULT 'inst-western-poly',
-              disruption_event_id TEXT NOT NULL,
-              timetable_version_id TEXT,
-              algorithm_used TEXT NOT NULL DEFAULT 'tabu_search_rescheduler',
-              status TEXT NOT NULL DEFAULT 'Pending',
-              affected_classes_count INTEGER NOT NULL DEFAULT 0,
-              moved_classes_count INTEGER NOT NULL DEFAULT 0,
-              unchanged_classes_count INTEGER NOT NULL DEFAULT 0,
-              stability_score REAL NOT NULL DEFAULT 100.0,
-              new_fitness_score REAL NOT NULL DEFAULT 0.0,
-              hard_conflicts_introduced INTEGER NOT NULL DEFAULT 0,
-              diff_payload TEXT NOT NULL DEFAULT '[]',
-              updated_entries_json TEXT NOT NULL DEFAULT '[]',
-              execution_time_ms INTEGER NOT NULL DEFAULT 0,
-              reviewed_by_user_id TEXT,
-              reviewed_at TEXT,
-              created_at TEXT NOT NULL
-            );
-
-            CREATE TABLE IF NOT EXISTS notifications (
-              id TEXT PRIMARY KEY,
-              university_id TEXT NOT NULL DEFAULT 'inst-western-poly',
-              recipient_user_id TEXT,
-              recipient_batch_id TEXT,
-              recipient_role TEXT,
-              category TEXT NOT NULL DEFAULT 'System',
-              title TEXT NOT NULL,
-              message TEXT NOT NULL,
-              is_read INTEGER NOT NULL DEFAULT 0,
-              created_at TEXT NOT NULL
-            );
-
-            CREATE TABLE IF NOT EXISTS audit_logs (
-              id TEXT PRIMARY KEY,
-              university_id TEXT NOT NULL DEFAULT 'inst-western-poly',
-              actor_user_id TEXT,
-              actor_name TEXT,
-              actor_role TEXT,
-              action TEXT NOT NULL,
-              entity_type TEXT NOT NULL,
-              entity_id TEXT,
-              details TEXT NOT NULL DEFAULT '{}',
-              created_at TEXT NOT NULL
-            );
-            """
+    try:
+        current_iso = now_iso()
+        client.insert(
+            "institutions",
+            [
+                {
+                    "id": "inst-western-poly",
+                    "name": "Western Polytechnic University",
+                    "code": "WPU",
+                    "campus_name": "Central Engineering & Computing Campus",
+                    "accreditation": "ABET & Regional Higher Education Commission Accredited",
+                    "academic_year": "2026–2027",
+                    "current_term": "Fall Semester 2026",
+                    "working_days": "Mon,Tue,Wed,Thu,Fri",
+                    "day_start_time": "09:00",
+                    "day_end_time": "17:00",
+                    "period_length_minutes": 50,
+                    "short_break_minutes": 10,
+                    "midday_break_enabled": True,
+                    "midday_break_start": "13:00",
+                    "midday_break_duration": 60,
+                    "lab_duration_minutes": 180,
+                    "timezone": "UTC-5",
+                    "is_sample": True,
+                    "created_at": current_iso,
+                },
+                {
+                    "id": "inst-apex-tech",
+                    "name": "Apex Institute of Technology & Sciences",
+                    "code": "AITS",
+                    "campus_name": "North Innovation & Medical Robotics Campus",
+                    "accreditation": "Global STEM & Autonomous Systems Accreditation Board",
+                    "academic_year": "2026–2027",
+                    "current_term": "Trimester I — 2026",
+                    "working_days": "Mon,Tue,Wed,Thu,Fri,Sat",
+                    "day_start_time": "08:30",
+                    "day_end_time": "16:30",
+                    "period_length_minutes": 60,
+                    "short_break_minutes": 15,
+                    "midday_break_enabled": True,
+                    "midday_break_start": "12:30",
+                    "midday_break_duration": 60,
+                    "lab_duration_minutes": 120,
+                    "timezone": "UTC+1",
+                    "is_sample": True,
+                    "created_at": current_iso,
+                },
+            ],
+            ignore_duplicates=True,
+            on_conflict="id",
         )
 
-        # Ensure schema columns exist on legacy SQLite files
-        user_cols = [r["name"] for r in db_conn.execute("PRAGMA table_info(users)").fetchall()]
-        if "registration_number" not in user_cols:
-            db_conn.execute("ALTER TABLE users ADD COLUMN registration_number TEXT;")
-        if "section" not in user_cols:
-            db_conn.execute("ALTER TABLE users ADD COLUMN section TEXT;")
-        if "institution_id" not in user_cols:
-            db_conn.execute("ALTER TABLE users ADD COLUMN institution_id TEXT NOT NULL DEFAULT 'inst-western-poly';")
-
-        batch_cols = [r["name"] for r in db_conn.execute("PRAGMA table_info(batches)").fetchall()]
-        if "institution_id" not in batch_cols:
-            db_conn.execute("ALTER TABLE batches ADD COLUMN institution_id TEXT NOT NULL DEFAULT 'inst-western-poly';")
-
-        poll_cols = [r["name"] for r in db_conn.execute("PRAGMA table_info(polls)").fetchall()]
-        if "institution_id" not in poll_cols:
-            db_conn.execute("ALTER TABLE polls ADD COLUMN institution_id TEXT NOT NULL DEFAULT 'inst-western-poly';")
-
-        # Seed default institutions if not present
-        db_conn.execute(
-            """
-            INSERT OR IGNORE INTO institutions (
-              id, name, code, campus_name, accreditation, academic_year, current_term,
-              working_days, day_start_time, day_end_time, period_length_minutes, short_break_minutes,
-              midday_break_enabled, midday_break_start, midday_break_duration, lab_duration_minutes,
-              timezone, is_sample, created_at
-            ) VALUES
-            (
-              'inst-western-poly',
-              'Western Polytechnic University',
-              'WPU',
-              'Central Engineering & Computing Campus',
-              'ABET & Regional Higher Education Commission Accredited',
-              '2026–2027',
-              'Fall Semester 2026',
-              'Mon,Tue,Wed,Thu,Fri',
-              '09:00',
-              '17:00',
-              50,
-              10,
-              1,
-              '13:00',
-              60,
-              180,
-              'UTC-5',
-              1,
-              datetime('now')
-            ),
-            (
-              'inst-apex-tech',
-              'Apex Institute of Technology & Sciences',
-              'AITS',
-              'North Innovation & Medical Robotics Campus',
-              'Global STEM & Autonomous Systems Accreditation Board',
-              '2026–2027',
-              'Trimester I — 2026',
-              'Mon,Tue,Wed,Thu,Fri,Sat',
-              '08:30',
-              '16:30',
-              60,
-              15,
-              1,
-              '12:30',
-              60,
-              120,
-              'UTC+1',
-              1,
-              datetime('now')
-            );
-            """
-        )
-        db_conn.commit()
-        _seed_initial_western_poly_data()
-        _seed_apex_tech_data()
-        _seed_academic_catalog()
+        _seed_initial_western_poly_data(client)
+        _seed_apex_tech_data(client)
+        _seed_academic_catalog(client)
+    except SupabaseQueryError as err:
+        if err.status_code in (401, 403):
+            print(
+                "[SmartGrid] Supabase RLS blocked initial seed (ensure SUPABASE_SERVICE_ROLE_KEY is active): "
+                f"{err.message}"
+            )
+        else:
+            print(f"[SmartGrid] Supabase seed warning ({err.status_code}): {err.message}")
+    except Exception as exc:
+        print(f"[SmartGrid] Supabase startup check warning: {exc}")
 
 
-def _seed_initial_western_poly_data() -> None:
-    cnt_row = db_conn.execute("SELECT COUNT(*) as cnt FROM batches WHERE institution_id = 'inst-western-poly'").fetchone()
-    if cnt_row and int(cnt_row["cnt"]) > 0:
+def _seed_initial_western_poly_data(client: Any) -> None:
+    existing = client.select(
+        "batches",
+        filters={"institution_id": "eq.inst-western-poly"},
+        select="id",
+        limit=1,
+    )
+    if existing:
         return
 
     now = datetime.now(timezone.utc)
-    yesterday = (now - timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
     two_days_ago = (now - timedelta(days=2)).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
     three_days_ago = (now - timedelta(days=3)).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
     in_five_days = (now + timedelta(days=5)).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
-    in_seven_days = (now + timedelta(days=7)).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
 
     batches = [
         ("batch-2k25-bscs", "2K25-BSCS", "BS Computer Science — Batch 2K25", "BSCS", 2, 3, 110),
@@ -604,16 +212,27 @@ def _seed_initial_western_poly_data() -> None:
         ("batch-2k25-bce", "2K25-BCE", "BE Computer Systems Engineering — Batch 2K25", "BCE", 2, 3, 90),
         ("batch-2k26-bscs", "2K26-BSCS", "BS Computer Science — Batch 2K26", "BSCS", 1, 1, 120),
     ]
-    for b_id, code, name, dept, yr, sem, st_count in batches:
-        db_conn.execute(
-            """
-            INSERT OR IGNORE INTO batches (id, code, name, department_code, year, semester, student_count, institution_id, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, 'inst-western-poly', ?)
-            """,
-            (b_id, code, name, dept, yr, sem, st_count, three_days_ago),
-        )
+    client.insert(
+        "batches",
+        [
+            {
+                "id": b_id,
+                "code": code,
+                "name": name,
+                "department_code": dept,
+                "year": yr,
+                "semester": sem,
+                "student_count": st_count,
+                "institution_id": "inst-western-poly",
+                "created_at": three_days_ago,
+            }
+            for b_id, code, name, dept, yr, sem, st_count in batches
+        ],
+        ignore_duplicates=True,
+        on_conflict="id",
+    )
 
-    users = [
+    users_raw = [
         ("user-admin-reynolds", "Dr. Katherine Reynolds", "k.reynolds@westernpoly.edu", "Admin@2026", "admin", "female", None, None, None),
         ("user-faculty-turing", "Prof. Alan Turing", "a.turing@westernpoly.edu", "Faculty@2026", "faculty", "male", None, None, None),
         ("user-faculty-jehanzeb", "Dr. Jehanzeb Ahmad", "jehanzeb.ahmad@westernpoly.edu", "Faculty@2026", "faculty", "male", None, None, None),
@@ -633,75 +252,128 @@ def _seed_initial_western_poly_data() -> None:
         ("user-student-rayyan", "Rayyan Qureshi", "r.qureshi@westernpoly.edu", "Student@2026", "student", "male", "batch-2k25-bce", "2K25-BCE-012", "Section A"),
         ("user-student-zoya", "Zoya Hassan", "z.hassan@westernpoly.edu", "Student@2026", "student", "female", "batch-2k26-bscs", "2K26-BSCS-005", "Section A"),
     ]
-    for u_id, name, email, pw, role, gender, batch_id, reg_no, sec in users:
-        db_conn.execute(
-            """
-            INSERT OR IGNORE INTO users (
-              id, name, email, password_hash, role, gender, batch_id,
-              registration_number, section,
-              is_active, must_reset_password, credential_hint, institution, institution_id, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, ?, 'Western Polytechnic', 'inst-western-poly', ?)
-            """,
-            (u_id, name, email, hash_password(pw), role, gender, batch_id, reg_no, sec, pw, three_days_ago),
+    user_payloads: List[Dict[str, Any]] = []
+    br_payloads: List[Dict[str, Any]] = []
+    for u_id, name, email, pw, role, gender, batch_id, reg_no, sec in users_raw:
+        user_payloads.append(
+            {
+                "id": u_id,
+                "name": name,
+                "email": email,
+                "password_hash": hash_password(pw),
+                "role": role,
+                "gender": gender,
+                "batch_id": batch_id,
+                "registration_number": reg_no,
+                "section": sec,
+                "is_active": True,
+                "must_reset_password": False,
+                "credential_hint": pw,
+                "institution": "Western Polytechnic",
+                "institution_id": "inst-western-poly",
+                "created_at": three_days_ago,
+            }
         )
         if role == "br" and batch_id and gender:
-            db_conn.execute(
-                """
-                INSERT OR IGNORE INTO br_assignments (id, batch_id, user_id, gender_role, is_active, assigned_by, assigned_at)
-                VALUES (?, ?, ?, ?, 1, 'Dr. Katherine Reynolds', ?)
-                """,
-                (f"assign-{u_id}", batch_id, u_id, gender, three_days_ago),
+            br_payloads.append(
+                {
+                    "id": f"assign-{u_id}",
+                    "batch_id": batch_id,
+                    "user_id": u_id,
+                    "gender_role": gender,
+                    "is_active": True,
+                    "assigned_by": "Dr. Katherine Reynolds",
+                    "assigned_at": three_days_ago,
+                }
             )
 
-    db_conn.execute(
-        """
-        INSERT OR IGNORE INTO polls (
-          id, title, description, batch_id, target_scope,
-          submitted_by_user_id, submitted_by_name, br_gender_role,
-          status, rejection_reason, result_visibility,
-          start_at, end_at, published_at, closed_at, institution_id, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, 'all_batches', ?, ?, 'male', 'Published', NULL, 'after_vote', ?, ?, ?, NULL, 'inst-western-poly', ?, ?)
-        """,
-        (
-            "poll-1-friday-labs",
-            "Preferred Continuous 3-Hour Lab Slot on Fridays",
-            "To prevent Friday afternoon overlap with inter-departmental societies and Jummah prayers, which continuous 3-hour slot should the timetable engine prioritize for Friday laboratory sections?",
-            "batch-2k25-bscs",
-            "user-br-male-2k25-bscs",
-            "Hamza Tariq (Male BR · 2K25-BSCS)",
-            two_days_ago,
-            in_five_days,
-            two_days_ago,
-            two_days_ago,
-            two_days_ago,
-        ),
+    client.insert("users", user_payloads, ignore_duplicates=True, on_conflict="id")
+    if br_payloads:
+        client.insert("br_assignments", br_payloads, ignore_duplicates=True, on_conflict="id")
+
+    client.insert(
+        "polls",
+        {
+            "id": "poll-1-friday-labs",
+            "title": "Preferred Continuous 3-Hour Lab Slot on Fridays",
+            "description": (
+                "To prevent Friday afternoon overlap with inter-departmental societies and Jummah prayers, "
+                "which continuous 3-hour slot should the timetable engine prioritize for Friday laboratory sections?"
+            ),
+            "batch_id": "batch-2k25-bscs",
+            "target_scope": "all_batches",
+            "submitted_by_user_id": "user-br-male-2k25-bscs",
+            "submitted_by_name": "Hamza Tariq (Male BR · 2K25-BSCS)",
+            "br_gender_role": "male",
+            "status": "Published",
+            "rejection_reason": None,
+            "result_visibility": "after_vote",
+            "start_at": two_days_ago,
+            "end_at": in_five_days,
+            "published_at": two_days_ago,
+            "closed_at": None,
+            "institution_id": "inst-western-poly",
+            "created_at": two_days_ago,
+            "updated_at": two_days_ago,
+        },
+        ignore_duplicates=True,
+        on_conflict="id",
     )
-    for opt_id, label, order in [
-        ("opt-p1-1", "Morning Block (09:00 AM – 12:00 PM)", 1),
-        ("opt-p1-2", "Post-Break Afternoon Block (02:00 PM – 05:00 PM)", 2),
-        ("opt-p1-3", "Move Friday Labs to Thursday Afternoon where room capacity permits", 3),
-    ]:
-        db_conn.execute(
-            "INSERT OR IGNORE INTO poll_options (id, poll_id, label, sort_order) VALUES (?, 'poll-1-friday-labs', ?, ?)",
-            (opt_id, label, order),
-        )
-    db_conn.commit()
+    client.insert(
+        "poll_options",
+        [
+            {"id": "opt-p1-1", "poll_id": "poll-1-friday-labs", "label": "Morning Block (09:00 AM – 12:00 PM)", "sort_order": 1},
+            {"id": "opt-p1-2", "poll_id": "poll-1-friday-labs", "label": "Post-Break Afternoon Block (02:00 PM – 05:00 PM)", "sort_order": 2},
+            {"id": "opt-p1-3", "poll_id": "poll-1-friday-labs", "label": "Move Friday Labs to Thursday Afternoon where room capacity permits", "sort_order": 3},
+        ],
+        ignore_duplicates=True,
+        on_conflict="id",
+    )
 
 
-def _seed_apex_tech_data() -> None:
-    cnt_row = db_conn.execute("SELECT COUNT(*) as cnt FROM batches WHERE institution_id = 'inst-apex-tech'").fetchone()
-    if cnt_row and int(cnt_row["cnt"]) > 0:
+def _seed_apex_tech_data(client: Any) -> None:
+    existing = client.select(
+        "batches",
+        filters={"institution_id": "eq.inst-apex-tech"},
+        select="id",
+        limit=1,
+    )
+    if existing:
         return
 
+    now = datetime.now(timezone.utc)
     current_iso = now_iso()
-    db_conn.execute(
-        """
-        INSERT OR IGNORE INTO batches (id, code, name, department_code, year, semester, student_count, institution_id, created_at)
-        VALUES
-        ('batch-apex-2k25-bme', '2K25-BME', '2K25 Biomedical & Robotics Cohort', 'BME', 2025, 3, 45, 'inst-apex-tech', ?),
-        ('batch-apex-2k25-bsds', '2K25-BSDS', '2K25 Data Science & AI Cohort', 'BSDS', 2025, 3, 55, 'inst-apex-tech', ?)
-        """,
-        (current_iso, current_iso),
+    one_day_ago = (now - timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+    in_five_days = (now + timedelta(days=5)).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+
+    client.insert(
+        "batches",
+        [
+            {
+                "id": "batch-apex-2k25-bme",
+                "code": "2K25-BME",
+                "name": "2K25 Biomedical & Robotics Cohort",
+                "department_code": "BME",
+                "year": 2025,
+                "semester": 3,
+                "student_count": 45,
+                "institution_id": "inst-apex-tech",
+                "created_at": current_iso,
+            },
+            {
+                "id": "batch-apex-2k25-bsds",
+                "code": "2K25-BSDS",
+                "name": "2K25 Data Science & AI Cohort",
+                "department_code": "BSDS",
+                "year": 2025,
+                "semester": 3,
+                "student_count": 55,
+                "institution_id": "inst-apex-tech",
+                "created_at": current_iso,
+            },
+        ],
+        ignore_duplicates=True,
+        on_conflict="id",
     )
 
     apex_users = [
@@ -712,153 +384,423 @@ def _seed_apex_tech_data() -> None:
         ("user-apex-br-aria", "Aria Thorne", "br.female@apextech.edu", "BR@2026", "br", "female", "batch-apex-2k25-bsds", "2K25-BSDS-003", "Section A"),
         ("user-apex-student-alex", "Alex Rivera", "student.alex@apextech.edu", "Student@2026", "student", "male", "batch-apex-2k25-bme", "2K25-BME-001", "Section A"),
     ]
-    for u_id, name, email, pw, role, gender, batch_id, reg_no, sec in apex_users:
-        db_conn.execute(
-            """
-            INSERT OR IGNORE INTO users (
-              id, name, email, password_hash, role, gender, batch_id,
-              registration_number, section,
-              is_active, must_reset_password, credential_hint, institution, institution_id, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, ?, 'Apex Institute of Technology & Sciences', 'inst-apex-tech', ?)
-            """,
-            (u_id, name, email, hash_password(pw), role, gender, batch_id, reg_no, sec, pw, current_iso),
-        )
-
-    db_conn.execute(
-        """
-        INSERT OR IGNORE INTO br_assignments (id, batch_id, user_id, gender_role, is_active, assigned_by, assigned_at)
-        VALUES
-        ('assign-apex-liam', 'batch-apex-2k25-bme', 'user-apex-br-liam', 'male', 1, 'user-apex-admin', ?),
-        ('assign-apex-aria', 'batch-apex-2k25-bsds', 'user-apex-br-aria', 'female', 1, 'user-apex-admin', ?)
-        """,
-        (current_iso, current_iso),
+    client.insert(
+        "users",
+        [
+            {
+                "id": u_id,
+                "name": name,
+                "email": email,
+                "password_hash": hash_password(pw),
+                "role": role,
+                "gender": gender,
+                "batch_id": batch_id,
+                "registration_number": reg_no,
+                "section": sec,
+                "is_active": True,
+                "must_reset_password": False,
+                "credential_hint": pw,
+                "institution": "Apex Institute of Technology & Sciences",
+                "institution_id": "inst-apex-tech",
+                "created_at": current_iso,
+            }
+            for u_id, name, email, pw, role, gender, batch_id, reg_no, sec in apex_users
+        ],
+        ignore_duplicates=True,
+        on_conflict="id",
     )
 
-    db_conn.execute(
-        """
-        INSERT OR IGNORE INTO polls (
-          id, title, description, batch_id, target_scope,
-          submitted_by_user_id, submitted_by_name, br_gender_role,
-          status, result_visibility, start_at, end_at, published_at, institution_id, created_at, updated_at
-        ) VALUES (
-          'poll-apex-gpu-lab',
-          'Extend Saturday High-Performance GPU Cluster Hours for Capstone AI',
-          'Proposal to extend Ada-DS1 high-performance cluster access until 18:30 on Saturdays for senior robotics and machine learning research.',
-          'batch-apex-2k25-bsds',
-          'all_batches',
-          'user-apex-br-aria',
-          'Aria Thorne',
-          'female',
-          'Published',
-          'after_vote',
-          datetime('now', '-1 day'),
-          datetime('now', '+5 days'),
-          datetime('now', '-1 day'),
-          'inst-apex-tech',
-          datetime('now', '-1 day'),
-          datetime('now')
-        )
-        """
+    client.insert(
+        "br_assignments",
+        [
+            {
+                "id": "assign-apex-liam",
+                "batch_id": "batch-apex-2k25-bme",
+                "user_id": "user-apex-br-liam",
+                "gender_role": "male",
+                "is_active": True,
+                "assigned_by": "user-apex-admin",
+                "assigned_at": current_iso,
+            },
+            {
+                "id": "assign-apex-aria",
+                "batch_id": "batch-apex-2k25-bsds",
+                "user_id": "user-apex-br-aria",
+                "gender_role": "female",
+                "is_active": True,
+                "assigned_by": "user-apex-admin",
+                "assigned_at": current_iso,
+            },
+        ],
+        ignore_duplicates=True,
+        on_conflict="id",
     )
-    db_conn.execute(
-        """
-        INSERT OR IGNORE INTO poll_options (id, poll_id, label, sort_order)
-        VALUES
-        ('opt-apex-gpu-1', 'poll-apex-gpu-lab', 'Approve Saturday Extension to 18:30', 1),
-        ('opt-apex-gpu-2', 'poll-apex-gpu-lab', 'Keep Standard 16:30 Saturday Close', 2)
-        """
+
+    client.insert(
+        "polls",
+        {
+            "id": "poll-apex-gpu-lab",
+            "title": "Extend Saturday High-Performance GPU Cluster Hours for Capstone AI",
+            "description": (
+                "Proposal to extend Ada-DS1 high-performance cluster access until 18:30 on Saturdays "
+                "for senior robotics and machine learning research."
+            ),
+            "batch_id": "batch-apex-2k25-bsds",
+            "target_scope": "all_batches",
+            "submitted_by_user_id": "user-apex-br-aria",
+            "submitted_by_name": "Aria Thorne",
+            "br_gender_role": "female",
+            "status": "Published",
+            "result_visibility": "after_vote",
+            "start_at": one_day_ago,
+            "end_at": in_five_days,
+            "published_at": one_day_ago,
+            "institution_id": "inst-apex-tech",
+            "created_at": one_day_ago,
+            "updated_at": current_iso,
+        },
+        ignore_duplicates=True,
+        on_conflict="id",
     )
-    db_conn.commit()
+    client.insert(
+        "poll_options",
+        [
+            {"id": "opt-apex-gpu-1", "poll_id": "poll-apex-gpu-lab", "label": "Approve Saturday Extension to 18:30", "sort_order": 1},
+            {"id": "opt-apex-gpu-2", "poll_id": "poll-apex-gpu-lab", "label": "Keep Standard 16:30 Saturday Close", "sort_order": 2},
+        ],
+        ignore_duplicates=True,
+        on_conflict="id",
+    )
 
 
-def _seed_academic_catalog() -> None:
-    cnt_row = db_conn.execute("SELECT COUNT(*) as cnt FROM courses WHERE university_id = 'inst-western-poly'").fetchone()
-    if cnt_row and int(cnt_row["cnt"]) > 0:
+def _seed_academic_catalog(client: Any) -> None:
+    existing_courses = client.select(
+        "courses",
+        filters={"institution_id": "eq.inst-western-poly"},
+        select="id",
+        limit=1,
+    )
+    if existing_courses:
         return
 
     current_iso = now_iso()
 
-    # Seed departments
-    depts = [
-        ("dept-wpu-bscs", "inst-western-poly", "BSCS", "Department of Computer Science", "Engineering & Computing", "Prof. Alan Turing"),
-        ("dept-wpu-bese", "inst-western-poly", "BESE", "Department of Software Engineering", "Engineering & Computing", "Dr. Jehanzeb Ahmad"),
-        ("dept-wpu-bee", "inst-western-poly", "BEE", "Department of Electrical Engineering", "Engineering & Computing", "Dr. Nikola Tesla"),
-        ("dept-wpu-bce", "inst-western-poly", "BCE", "Department of Computer Systems Engineering", "Engineering & Computing", "Dr. Grace Hopper"),
+    client.insert(
+        "departments",
+        [
+            {
+                "id": "dept-wpu-bscs",
+                "institution_id": "inst-western-poly",
+                "code": "BSCS",
+                "name": "Department of Computer Science",
+                "faculty_name": "Engineering & Computing",
+                "head_of_department": "Prof. Alan Turing",
+                "created_at": current_iso,
+            },
+            {
+                "id": "dept-wpu-bese",
+                "institution_id": "inst-western-poly",
+                "code": "BESE",
+                "name": "Department of Software Engineering",
+                "faculty_name": "Engineering & Computing",
+                "head_of_department": "Dr. Jehanzeb Ahmad",
+                "created_at": current_iso,
+            },
+            {
+                "id": "dept-wpu-bee",
+                "institution_id": "inst-western-poly",
+                "code": "BEE",
+                "name": "Department of Electrical Engineering",
+                "faculty_name": "Engineering & Computing",
+                "head_of_department": "Dr. Nikola Tesla",
+                "created_at": current_iso,
+            },
+            {
+                "id": "dept-wpu-bce",
+                "institution_id": "inst-western-poly",
+                "code": "BCE",
+                "name": "Department of Computer Systems Engineering",
+                "faculty_name": "Engineering & Computing",
+                "head_of_department": "Dr. Grace Hopper",
+                "created_at": current_iso,
+            },
+        ],
+        ignore_duplicates=True,
+        on_conflict="id",
+    )
+
+    client.insert(
+        "instructors",
+        [
+            {
+                "id": "inst-turing",
+                "institution_id": "inst-western-poly",
+                "user_id": "user-faculty-turing",
+                "department_id": "dept-wpu-bscs",
+                "name": "Prof. Alan Turing",
+                "email": "a.turing@westernpoly.edu",
+                "designation": "Professor",
+                "specializations": ["Algorithms & Artificial Intelligence"],
+                "max_weekly_hours": 15,
+                "max_daily_classes": 3,
+                "created_at": current_iso,
+            },
+            {
+                "id": "inst-jehanzeb",
+                "institution_id": "inst-western-poly",
+                "user_id": "user-faculty-jehanzeb",
+                "department_id": "dept-wpu-bese",
+                "name": "Dr. Jehanzeb Ahmad",
+                "email": "jehanzeb.ahmad@westernpoly.edu",
+                "designation": "Associate Professor",
+                "specializations": ["Distributed Software Architecture"],
+                "max_weekly_hours": 15,
+                "max_daily_classes": 3,
+                "created_at": current_iso,
+            },
+            {
+                "id": "inst-hopper",
+                "institution_id": "inst-western-poly",
+                "user_id": None,
+                "department_id": "dept-wpu-bce",
+                "name": "Dr. Grace Hopper",
+                "email": "g.hopper@westernpoly.edu",
+                "designation": "Professor",
+                "specializations": ["Compilers & Embedded Systems"],
+                "max_weekly_hours": 15,
+                "max_daily_classes": 3,
+                "created_at": current_iso,
+            },
+            {
+                "id": "inst-lovelace",
+                "institution_id": "inst-western-poly",
+                "user_id": None,
+                "department_id": "dept-wpu-bscs",
+                "name": "Dr. Ada Lovelace",
+                "email": "a.lovelace@westernpoly.edu",
+                "designation": "Assistant Professor",
+                "specializations": ["Machine Learning & Data Science"],
+                "max_weekly_hours": 15,
+                "max_daily_classes": 3,
+                "created_at": current_iso,
+            },
+            {
+                "id": "inst-dijkstra",
+                "institution_id": "inst-western-poly",
+                "user_id": None,
+                "department_id": "dept-wpu-bese",
+                "name": "Prof. Edsger Dijkstra",
+                "email": "e.dijkstra@westernpoly.edu",
+                "designation": "Professor",
+                "specializations": ["Formal Methods & Operating Systems"],
+                "max_weekly_hours": 15,
+                "max_daily_classes": 3,
+                "created_at": current_iso,
+            },
+            {
+                "id": "inst-tesla",
+                "institution_id": "inst-western-poly",
+                "user_id": None,
+                "department_id": "dept-wpu-bee",
+                "name": "Dr. Nikola Tesla",
+                "email": "n.tesla@westernpoly.edu",
+                "designation": "Professor",
+                "specializations": ["Power Systems & Electromagnetics"],
+                "max_weekly_hours": 15,
+                "max_daily_classes": 3,
+                "created_at": current_iso,
+            },
+        ],
+        ignore_duplicates=True,
+        on_conflict="id",
+    )
+
+    client.insert(
+        "classrooms",
+        [
+            {
+                "id": "room-lh-101",
+                "institution_id": "inst-western-poly",
+                "code": "LH-101",
+                "name": "LH-101 (Turing Lecture Hall)",
+                "building": "Computing Block A",
+                "floor": 1,
+                "room_type": "lecture",
+                "capacity": 120,
+                "is_available": True,
+                "created_at": current_iso,
+            },
+            {
+                "id": "room-lh-102",
+                "institution_id": "inst-western-poly",
+                "code": "LH-102",
+                "name": "LH-102 (Shannon Hall)",
+                "building": "Computing Block A",
+                "floor": 1,
+                "room_type": "lecture",
+                "capacity": 110,
+                "is_available": True,
+                "created_at": current_iso,
+            },
+            {
+                "id": "room-lh-201",
+                "institution_id": "inst-western-poly",
+                "code": "LH-201",
+                "name": "LH-201 (Engineering Auditorium)",
+                "building": "Engineering Block B",
+                "floor": 2,
+                "room_type": "auditorium",
+                "capacity": 130,
+                "is_available": True,
+                "created_at": current_iso,
+            },
+            {
+                "id": "room-lh-202",
+                "institution_id": "inst-western-poly",
+                "code": "LH-202",
+                "name": "LH-202 (Systems Seminar Room)",
+                "building": "Engineering Block B",
+                "floor": 2,
+                "room_type": "seminar",
+                "capacity": 100,
+                "is_available": True,
+                "created_at": current_iso,
+            },
+        ],
+        ignore_duplicates=True,
+        on_conflict="id",
+    )
+
+    client.insert(
+        "laboratories",
+        [
+            {
+                "id": "room-lab-ai",
+                "institution_id": "inst-western-poly",
+                "department_id": "dept-wpu-bscs",
+                "code": "LAB-301",
+                "name": "LAB-301 (AI & GPU Computing Lab)",
+                "building": "Computing Block A",
+                "capacity": 120,
+                "lab_category": "AI & GPU Computing",
+                "is_available": True,
+                "created_at": current_iso,
+            },
+            {
+                "id": "room-lab-se",
+                "institution_id": "inst-western-poly",
+                "department_id": "dept-wpu-bese",
+                "code": "LAB-302",
+                "name": "LAB-302 (Software Systems Lab)",
+                "building": "Computing Block A",
+                "capacity": 110,
+                "lab_category": "Software Systems",
+                "is_available": True,
+                "created_at": current_iso,
+            },
+            {
+                "id": "room-lab-ee",
+                "institution_id": "inst-western-poly",
+                "department_id": "dept-wpu-bee",
+                "code": "LAB-105",
+                "name": "LAB-105 (Power & Embedded Lab)",
+                "building": "Engineering Block B",
+                "capacity": 115,
+                "lab_category": "Power & Embedded",
+                "is_available": True,
+                "created_at": current_iso,
+            },
+        ],
+        ignore_duplicates=True,
+        on_conflict="id",
+    )
+
+    existing_equip = client.select(
+        "room_equipment_capacities",
+        filters={"institution_id": "eq.inst-western-poly"},
+        select="id",
+        limit=1,
+    )
+    if not existing_equip:
+        equip_rows: List[Dict[str, Any]] = []
+        for r_id, r_kind, items in [
+            ("room-lh-101", "classroom", ["Projector", "SmartBoard", "AudioSystem"]),
+            ("room-lh-102", "classroom", ["Projector", "SmartBoard"]),
+            ("room-lh-201", "classroom", ["Projector", "AudioSystem"]),
+            ("room-lh-202", "classroom", ["Projector", "Whiteboard"]),
+            ("room-lab-ai", "laboratory", ["GPUWorkstations", "Projector", "LinuxCluster"]),
+            ("room-lab-se", "laboratory", ["Workstations", "SmartBoard"]),
+            ("room-lab-ee", "laboratory", ["Oscilloscopes", "EmbeddedKits", "Projector"]),
+        ]:
+            for item in items:
+                equip_rows.append(
+                    {
+                        "institution_id": "inst-western-poly",
+                        "room_id": r_id,
+                        "room_kind": r_kind,
+                        "equipment_name": item,
+                        "quantity": 1,
+                        "has_projector": "Projector" in items,
+                        "has_smartboard": "SmartBoard" in items,
+                        "has_high_performance_pcs": any("Workstation" in x or "Cluster" in x for x in items),
+                    }
+                )
+        client.insert("room_equipment_capacities", equip_rows)
+
+    courses_seed = [
+        ("crs-cs301", "dept-wpu-bscs", "CS-301", "Design & Analysis of Algorithms", 3, 3, 0, ["Projector"], "batch-2k25-bscs", "inst-turing", "Theory", 110, "lecture", 50),
+        ("crs-cs302", "dept-wpu-bscs", "CS-302", "Artificial Intelligence & Heuristics", 3, 3, 0, ["Projector"], "batch-2k25-bscs", "inst-lovelace", "Theory", 110, "lecture", 50),
+        ("crs-cs302l", "dept-wpu-bscs", "CS-302L", "Artificial Intelligence Lab", 1, 0, 3, ["GPUWorkstations"], "batch-2k25-bscs", "inst-lovelace", "Lab", 110, "lab", 180),
+        ("crs-se301", "dept-wpu-bese", "SE-301", "Software Architecture & Design", 3, 3, 0, ["Projector"], "batch-2k24-bese", "inst-jehanzeb", "Theory", 95, "lecture", 50),
+        ("crs-se302", "dept-wpu-bese", "SE-302", "Operating Systems Internals", 3, 3, 0, ["Projector"], "batch-2k24-bese", "inst-dijkstra", "Theory", 95, "lecture", 50),
+        ("crs-se302l", "dept-wpu-bese", "SE-302L", "Operating Systems Kernel Lab", 1, 0, 3, ["Workstations"], "batch-2k24-bese", "inst-dijkstra", "Lab", 95, "lab", 180),
+        ("crs-ee301", "dept-wpu-bee", "EE-301", "Power Systems & Smart Grids", 3, 3, 0, ["Projector"], "batch-2k24-bee", "inst-tesla", "Theory", 105, "lecture", 50),
+        ("crs-ce201", "dept-wpu-bce", "CE-201", "Microprocessor & Embedded Systems", 3, 3, 0, ["Projector"], "batch-2k25-bce", "inst-hopper", "Theory", 90, "lecture", 50),
+        ("crs-ce201l", "dept-wpu-bce", "CE-201L", "Embedded Systems Interfacing Lab", 1, 0, 3, ["EmbeddedKits"], "batch-2k25-bce", "inst-hopper", "Lab", 90, "lab", 180),
     ]
-    for d_id, u_id, code, name, fg, hod in depts:
-        db_conn.execute(
-            """
-            INSERT OR IGNORE INTO departments (id, university_id, code, name, faculty_group, head_of_department, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            """,
-            (d_id, u_id, code, name, fg, hod, current_iso),
-        )
 
-    # Seed instructors
-    instructors = [
-        ("inst-turing", "inst-western-poly", "user-faculty-turing", "BSCS", "Prof. Alan Turing", "a.turing@westernpoly.edu", "Professor", "Algorithms & Artificial Intelligence", 15, 3, '["Fri-14:00","Fri-15:00"]', '["Mon-09:00","Tue-09:00","Wed-10:00"]', 0, 1),
-        ("inst-jehanzeb", "inst-western-poly", "user-faculty-jehanzeb", "BESE", "Dr. Jehanzeb Ahmad", "jehanzeb.ahmad@westernpoly.edu", "Associate Professor", "Distributed Software Architecture", 15, 3, '["Mon-15:00"]', '["Mon-10:00","Tue-10:00","Thu-09:00"]', 0, 0),
-        ("inst-hopper", "inst-western-poly", None, "BCE", "Dr. Grace Hopper", "g.hopper@westernpoly.edu", "Professor", "Compilers & Embedded Systems", 15, 3, '[]', '["Tue-09:00","Wed-09:00","Thu-10:00"]', 0, 1),
-        ("inst-lovelace", "inst-western-poly", None, "BSCS", "Dr. Ada Lovelace", "a.lovelace@westernpoly.edu", "Assistant Professor", "Machine Learning & Data Science", 15, 3, '["Wed-15:00"]', '["Mon-11:00","Wed-11:00","Thu-11:00"]', 1, 0),
-        ("inst-dijkstra", "inst-western-poly", None, "BESE", "Prof. Edsger Dijkstra", "e.dijkstra@westernpoly.edu", "Professor", "Formal Methods & Operating Systems", 15, 3, '[]', '["Mon-09:00","Wed-09:00","Fri-09:00"]', 0, 1),
-        ("inst-tesla", "inst-western-poly", None, "BEE", "Dr. Nikola Tesla", "n.tesla@westernpoly.edu", "Professor", "Power Systems & Electromagnetics", 15, 3, '[]', '["Tue-10:00","Thu-10:00"]', 0, 0),
-    ]
-    for i_id, u_id, usr_id, dept, name, email, desig, spec, mwh, mlpd, unavail, pref, aem, ala in instructors:
-        db_conn.execute(
-            """
-            INSERT OR IGNORE INTO instructors (
-              id, university_id, user_id, department_code, name, email, designation, specialization,
-              max_weekly_hours, max_lectures_per_day, unavailable_slots, preferred_slots,
-              avoid_early_morning, avoid_late_afternoon, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (i_id, u_id, usr_id, dept, name, email, desig, spec, mwh, mlpd, unavail, pref, aem, ala, current_iso),
-        )
+    client.insert(
+        "courses",
+        [
+            {
+                "id": c_id,
+                "institution_id": "inst-western-poly",
+                "department_id": dept_id,
+                "code": code,
+                "title": title,
+                "credit_hours": ch,
+                "lecture_hours_per_week": lec_h,
+                "lab_hours_per_week": lab_h,
+                "is_compulsory": True,
+                "required_equipment": req_eq,
+                "created_at": current_iso,
+            }
+            for c_id, dept_id, code, title, ch, lec_h, lab_h, req_eq, *_ in courses_seed
+        ],
+        ignore_duplicates=True,
+        on_conflict="id",
+    )
 
-    # Seed classrooms
-    classrooms = [
-        ("room-lh-101", "inst-western-poly", "LH-101 (Turing Lecture Hall)", "Computing Block A", 1, "Theory", 120, '["Projector","SmartBoard","AudioSystem"]', '[]'),
-        ("room-lh-102", "inst-western-poly", "LH-102 (Shannon Hall)", "Computing Block A", 1, "Theory", 110, '["Projector","SmartBoard"]', '[]'),
-        ("room-lh-201", "inst-western-poly", "LH-201 (Engineering Auditorium)", "Engineering Block B", 2, "Theory", 130, '["Projector","AudioSystem"]', '[]'),
-        ("room-lh-202", "inst-western-poly", "LH-202 (Systems Seminar Room)", "Engineering Block B", 2, "Theory", 100, '["Projector","Whiteboard"]', '[]'),
-        ("room-lab-ai", "inst-western-poly", "LAB-301 (AI & GPU Computing Lab)", "Computing Block A", 3, "Lab", 120, '["GPUWorkstations","Projector","LinuxCluster"]', '[]'),
-        ("room-lab-se", "inst-western-poly", "LAB-302 (Software Systems Lab)", "Computing Block A", 3, "Lab", 110, '["Workstations","SmartBoard"]', '[]'),
-        ("room-lab-ee", "inst-western-poly", "LAB-105 (Power & Embedded Lab)", "Engineering Block B", 1, "Lab", 115, '["Oscilloscopes","EmbeddedKits","Projector"]', '[]'),
-    ]
-    for r_id, u_id, name, bldg, flr, rtype, cap, equip, unavail in classrooms:
-        db_conn.execute(
-            """
-            INSERT OR IGNORE INTO classrooms (
-              id, university_id, name, building, floor, type, capacity, equipment, unavailable_slots, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (r_id, u_id, name, bldg, flr, rtype, cap, equip, unavail, current_iso),
-        )
-
-    # Seed courses
-    courses = [
-        ("crs-cs301", "inst-western-poly", "CS-301", "Design & Analysis of Algorithms", "BSCS", "batch-2k25-bscs", 3, "Theory", 3, 3, "inst-turing", 110, "Theory", '["Projector"]'),
-        ("crs-cs302", "inst-western-poly", "CS-302", "Artificial Intelligence & Heuristics", "BSCS", "batch-2k25-bscs", 3, "Theory", 3, 3, "inst-lovelace", 110, "Theory", '["Projector"]'),
-        ("crs-cs302l", "inst-western-poly", "CS-302L", "Artificial Intelligence Lab", "BSCS", "batch-2k25-bscs", 3, "Lab", 1, 3, "inst-lovelace", 110, "Lab", '["GPUWorkstations"]'),
-        ("crs-se301", "inst-western-poly", "SE-301", "Software Architecture & Design", "BESE", "batch-2k24-bese", 5, "Theory", 3, 3, "inst-jehanzeb", 95, "Theory", '["Projector"]'),
-        ("crs-se302", "inst-western-poly", "SE-302", "Operating Systems Internals", "BESE", "batch-2k24-bese", 5, "Theory", 3, 3, "inst-dijkstra", 95, "Theory", '["Projector"]'),
-        ("crs-se302l", "inst-western-poly", "SE-302L", "Operating Systems Kernel Lab", "BESE", "batch-2k24-bese", 5, "Lab", 1, 3, "inst-dijkstra", 95, "Lab", '["Workstations"]'),
-        ("crs-ee301", "inst-western-poly", "EE-301", "Power Systems & Smart Grids", "BEE", "batch-2k24-bee", 5, "Theory", 3, 3, "inst-tesla", 105, "Theory", '["Projector"]'),
-        ("crs-ce201", "inst-western-poly", "CE-201", "Microprocessor & Embedded Systems", "BCE", "batch-2k25-bce", 3, "Theory", 3, 3, "inst-hopper", 90, "Theory", '["Projector"]'),
-        ("crs-ce201l", "inst-western-poly", "CE-201L", "Embedded Systems Interfacing Lab", "BCE", "batch-2k25-bce", 3, "Lab", 1, 3, "inst-hopper", 90, "Lab", '["EmbeddedKits"]'),
-    ]
-    for c_id, u_id, code, title, dept, b_id, sem, ctype, ch, hpw, i_id, scnt, rtype, req_eq in courses:
-        db_conn.execute(
-            """
-            INSERT OR IGNORE INTO courses (
-              id, university_id, code, title, department_code, batch_id, semester,
-              type, credit_hours, hours_per_week, instructor_id, student_count,
-              required_room_type, required_equipment, sections_count, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
-            """,
-            (c_id, u_id, code, title, dept, b_id, sem, ctype, ch, hpw, i_id, scnt, rtype, req_eq, current_iso),
-        )
-
-    db_conn.commit()
-
-
+    client.insert(
+        "course_sessions",
+        [
+            {
+                "id": f"sec-{c_id}-a",
+                "institution_id": "inst-western-poly",
+                "course_id": c_id,
+                "instructor_id": inst_id,
+                "batch_id": batch_id,
+                "section_code": "A",
+                "session_type": stype,
+                "sessions_per_week": 1 if stype == "Lab" else 3,
+                "duration_minutes": dur,
+                "expected_students": scnt,
+                "required_room_type": rtype,
+                "required_equipment": req_eq,
+                "created_at": current_iso,
+            }
+            for c_id, _dept_id, _code, _title, _ch, _lec_h, _lab_h, req_eq, batch_id, inst_id, stype, scnt, rtype, dur in courses_seed
+        ],
+        ignore_duplicates=True,
+        on_conflict="id",
+    )

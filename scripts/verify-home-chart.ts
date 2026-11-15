@@ -4,7 +4,7 @@ import {
   largeSampleInstructors, 
   largeSampleStudentGroups, 
   largeSampleSections 
-} from '../src/data/largeSampleDataset';
+} from '../frontend/src/data/largeSampleDataset';
 
 const lectureRooms = largeSampleRooms.filter(r => r.type === 'lecture');
 const labRooms = largeSampleRooms.filter(r => r.type === 'lab');

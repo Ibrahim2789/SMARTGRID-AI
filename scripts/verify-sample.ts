@@ -7,8 +7,8 @@ import {
   largeSampleDepartments, 
   largeSamplePrograms,
   largeSampleTimeStructure
-} from '../src/data/largeSampleDataset';
-import { buildMatrixSchedule } from '../src/data/solverAdapter';
+} from '../frontend/src/data/largeSampleDataset';
+import { buildMatrixSchedule } from '../frontend/src/data/solverAdapter';
 
 console.log('--- WPI SAMPLE DATASET AUDIT ---');
 console.log('Departments:', largeSampleDepartments.length);

@@ -1,5 +1,5 @@
-import { institutionalStore } from '../src/data/store';
-import { buildMatrixSchedule } from '../src/data/solverAdapter';
+import { institutionalStore } from '../frontend/src/data/store';
+import { buildMatrixSchedule } from '../frontend/src/data/solverAdapter';
 
 console.log('--- STARTING COMPLETE PIPELINE AUDIT ---');
 

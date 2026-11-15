@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import express, { Request, Response } from 'express';
 import { spawn, ChildProcess } from 'node:child_process';
 import http from 'node:http';

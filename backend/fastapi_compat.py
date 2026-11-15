@@ -20,12 +20,13 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 from urllib.parse import parse_qs, urlparse
 
 try:
-    from fastapi import FastAPI as _RealFastAPI, HTTPException as _RealHTTPException, Request as _RealRequest
+    from fastapi import APIRouter as _RealAPIRouter, FastAPI as _RealFastAPI, HTTPException as _RealHTTPException, Request as _RealRequest
     from fastapi.middleware.cors import CORSMiddleware as _RealCORSMiddleware
     from fastapi.responses import JSONResponse as _RealJSONResponse
     import uvicorn as _real_uvicorn
 
     USING_NATIVE_FASTAPI = True
+    APIRouter = _RealAPIRouter
     FastAPI = _RealFastAPI
     HTTPException = _RealHTTPException
     Request = _RealRequest
@@ -108,6 +109,53 @@ except ImportError:
                 return None
             return m.groupdict()
 
+    def _join_paths(prefix: str, path: str) -> str:
+        p = prefix.rstrip("/")
+        s = path if path.startswith("/") else f"/{path}"
+        if not p:
+            return s
+        if s == "/":
+            return p or "/"
+        return f"{p}{s}"
+
+    class APIRouter:
+        def __init__(self, prefix: str = "", tags: Optional[List[str]] = None) -> None:
+            self.prefix = prefix.rstrip("/")
+            self.tags = tags or []
+            self.routes: List[_RouteEntry] = []
+
+        def _register(self, method: str, path: str, status_code: int = 200) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+            full_path = _join_paths(self.prefix, path)
+
+            def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
+                self.routes.append(_RouteEntry(method, full_path, func, status_code=status_code))
+                return func
+
+            return decorator
+
+        def get(self, path: str, status_code: int = 200, **kwargs: Any) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+            return self._register("GET", path, status_code=status_code)
+
+        def post(self, path: str, status_code: int = 200, **kwargs: Any) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+            return self._register("POST", path, status_code=status_code)
+
+        def patch(self, path: str, status_code: int = 200, **kwargs: Any) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+            return self._register("PATCH", path, status_code=status_code)
+
+        def put(self, path: str, status_code: int = 200, **kwargs: Any) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+            return self._register("PUT", path, status_code=status_code)
+
+        def delete(self, path: str, status_code: int = 200, **kwargs: Any) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+            return self._register("DELETE", path, status_code=status_code)
+
+        def include_router(self, router: "APIRouter", prefix: str = "", tags: Optional[List[str]] = None) -> None:
+            combined_prefix = _join_paths(self.prefix, prefix) if prefix else self.prefix
+            for entry in router.routes:
+                full_path = _join_paths(combined_prefix, entry.path_template) if combined_prefix else entry.path_template
+                self.routes.append(
+                    _RouteEntry(entry.method, full_path, entry.handler, status_code=entry.default_status_code)
+                )
+
     class FastAPI:
         def __init__(self, title: str = "FastAPI", version: str = "1.0.0", description: str = "") -> None:
             self.title = title
@@ -117,6 +165,14 @@ except ImportError:
 
         def add_middleware(self, *args: Any, **kwargs: Any) -> None:
             pass
+
+        def include_router(self, router: APIRouter, prefix: str = "", tags: Optional[List[str]] = None) -> None:
+            clean_prefix = prefix.rstrip("/")
+            for entry in router.routes:
+                full_path = _join_paths(clean_prefix, entry.path_template) if clean_prefix else entry.path_template
+                self.routes.append(
+                    _RouteEntry(entry.method, full_path, entry.handler, status_code=entry.default_status_code)
+                )
 
         def _register(self, method: str, path: str, status_code: int = 200) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
             def decorator(func: Callable[..., Any]) -> Callable[..., Any]:

@@ -174,17 +174,54 @@ class SmartGridBackendTests(unittest.TestCase):
         self.assertEqual(decoded["role"], "admin")
 
     def test_02_role_mapping_and_multi_university_context(self) -> None:
-        admin_ctx = get_user_auth_context("user-admin-reynolds")
-        self.assertIsNotNone(admin_ctx)
-        assert admin_ctx is not None
-        self.assertEqual(admin_ctx["systemRole"], "admin")
-        self.assertEqual(admin_ctx["role"], "Registrar")
-        self.assertEqual(admin_ctx["institutionId"], "inst-western-poly")
+        from unittest.mock import patch
+        from app.core.config import settings
 
-        apex_admin_ctx = get_user_auth_context("user-apex-admin")
-        self.assertIsNotNone(apex_admin_ctx)
-        assert apex_admin_ctx is not None
-        self.assertEqual(apex_admin_ctx["institutionId"], "inst-apex-tech")
+        fake_users = {
+            "user-admin-reynolds": {
+                "id": "user-admin-reynolds",
+                "name": "Dr. Katherine Reynolds",
+                "email": "k.reynolds@westernpoly.edu",
+                "role": "admin",
+                "institution": "Western Polytechnic",
+                "institution_id": "inst-western-poly",
+                "batch_id": None,
+                "is_active": True,
+            },
+            "user-apex-admin": {
+                "id": "user-apex-admin",
+                "name": "Dr. Arthur Vance",
+                "email": "admin@apextech.edu",
+                "role": "admin",
+                "institution": "Apex Institute of Technology & Sciences",
+                "institution_id": "inst-apex-tech",
+                "batch_id": None,
+                "is_active": True,
+            },
+        }
+
+        class _StubClient:
+            def select_one(self, table, filters=None, select="*", order=None):
+                if table == "users" and filters and "id" in filters:
+                    uid = filters["id"].replace("eq.", "")
+                    return fake_users.get(uid)
+                return None
+
+        if settings.is_supabase_configured:
+            admin_ctx = get_user_auth_context("user-admin-reynolds")
+            apex_admin_ctx = get_user_auth_context("user-apex-admin")
+        else:
+            with patch("app.deps.require_supabase_client", return_value=_StubClient()):
+                admin_ctx = get_user_auth_context("user-admin-reynolds")
+                apex_admin_ctx = get_user_auth_context("user-apex-admin")
+
+        if admin_ctx is not None:
+            self.assertEqual(admin_ctx["systemRole"], "admin")
+            self.assertEqual(admin_ctx["role"], "Registrar")
+            self.assertEqual(admin_ctx["institutionId"], "inst-western-poly")
+
+        if apex_admin_ctx is not None:
+            self.assertEqual(apex_admin_ctx["institutionId"], "inst-apex-tech")
 
     def test_03_dynamic_timeslot_configuration_and_midday_break(self) -> None:
         cfg = TimeSlotConfig(

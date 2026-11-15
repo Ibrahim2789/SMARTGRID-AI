@@ -12,8 +12,8 @@ import {
   largeSampleTimeStructure,
   largeSampleConstraints,
   largeSampleScenario
-} from '../src/data/largeSampleDataset';
-import { buildMatrixSchedule } from '../src/data/solverAdapter';
+} from '../frontend/src/data/largeSampleDataset';
+import { buildMatrixSchedule } from '../frontend/src/data/solverAdapter';
 
 console.log('====================================================');
 console.log('SMARTGRID AI: SEEDING REALISTIC SAMPLE DATASET');

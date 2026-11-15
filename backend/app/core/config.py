@@ -8,7 +8,26 @@ external Supabase variables are supplied.
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass
+
+
+def _is_placeholder(val: str) -> bool:
+    low = val.lower().strip()
+    if not low:
+        return True
+    if low.startswith("your-") or "[your-" in low:
+        return True
+    return any(
+        token in low
+        for token in (
+            "your-project-ref",
+            "your-anon-key",
+            "your-service-role",
+            "your-supabase",
+            "example",
+        )
+    )
 
 
 @dataclass
@@ -18,7 +37,7 @@ class Settings:
     backend_host: str = os.environ.get("PYTHON_BACKEND_HOST", "127.0.0.1")
     backend_port: int = int(os.environ.get("PYTHON_BACKEND_PORT", "8001"))
 
-    # Supabase configuration (only active when user configures real project credentials in .env)
+    # Supabase configuration (only active when user configures real project credentials in .env / Secrets)
     supabase_url: str = os.environ.get("SUPABASE_URL", "").strip()
     supabase_anon_key: str = os.environ.get("SUPABASE_ANON_KEY", "").strip()
     supabase_service_role_key: str = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "").strip()
@@ -41,13 +60,38 @@ class Settings:
     tabu_max_iterations: int = int(os.environ.get("TABU_MAX_ITERATIONS", "45"))
 
     @property
+    def effective_supabase_url(self) -> str:
+        if self.supabase_url and self.supabase_url.startswith("http") and not _is_placeholder(self.supabase_url):
+            return self.supabase_url.rstrip("/")
+        if self.supabase_db_url and not _is_placeholder(self.supabase_db_url):
+            m = re.search(r"db\.([a-z0-9]{12,32})\.supabase\.co", self.supabase_db_url)
+            if m:
+                return f"https://{m.group(1)}.supabase.co"
+            m2 = re.search(r"postgres\.([a-z0-9]{12,32}):", self.supabase_db_url)
+            if m2:
+                return f"https://{m2.group(1)}.supabase.co"
+        return ""
+
+    @property
+    def has_valid_anon_key(self) -> bool:
+        return bool(self.supabase_anon_key and not _is_placeholder(self.supabase_anon_key))
+
+    @property
+    def has_valid_service_role_key(self) -> bool:
+        return bool(self.supabase_service_role_key and not _is_placeholder(self.supabase_service_role_key))
+
+    @property
+    def effective_supabase_key(self) -> str:
+        if self.has_valid_service_role_key:
+            return self.supabase_service_role_key
+        if self.has_valid_anon_key:
+            return self.supabase_anon_key
+        return ""
+
+    @property
     def is_supabase_configured(self) -> bool:
-        """Returns True only when non-placeholder Supabase URL and key are provided."""
-        if not self.supabase_url or not (self.supabase_service_role_key or self.supabase_anon_key):
-            return False
-        if "your-project-ref.supabase.co" in self.supabase_url or "your-" in self.supabase_url:
-            return False
-        return True
+        """Returns True only when non-placeholder Supabase HTTPS URL and API key are available."""
+        return bool(self.effective_supabase_url and self.effective_supabase_key)
 
 
 settings = Settings()
