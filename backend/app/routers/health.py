@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
+from app.core.config import settings
 from app.database.supabase import SupabaseQueryError, get_database_connection_status, get_supabase_client
 from database import now_iso
 from fastapi_compat import APIRouter, USING_NATIVE_FASTAPI
@@ -18,6 +19,8 @@ def health_check() -> Dict[str, Any]:
         "engine": "python-fastapi",
         "nativeFastApi": USING_NATIVE_FASTAPI,
         "persistence": "supabase-postgresql",
+        "supabaseConfigured": settings.is_supabase_configured,
+        "usingServiceRoleKey": settings.has_valid_service_role_key,
         "timestamp": now_iso(),
     }
 

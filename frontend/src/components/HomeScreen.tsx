@@ -42,11 +42,12 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   const activeTerm = store.terms.find(t => t.status === 'active') || store.terms[0];
   const scheduledSections = store.sections.filter(s => s.assignedSlot);
   const unscheduledSections = store.sections.filter(s => !s.assignedSlot);
+  const hasGeneratedTimetable = store.scenarios.length > 0 || scheduledSections.length > 0;
   const labSectionsCount = store.sections.filter(s => s.sessionType === 'Lab').length;
   const lectureSectionsCount = store.sections.filter(s => s.sessionType !== 'Lab').length;
 
   const completionPct =
-    store.sections.length > 0
+    hasGeneratedTimetable && store.sections.length > 0
       ? Math.round((scheduledSections.length / store.sections.length) * 100)
       : 0;
 
@@ -197,7 +198,12 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                 Active Schedule Status
               </span>
               <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#171717]">
-                {unscheduledSections.length === 0 ? (
+                {!hasGeneratedTimetable ? (
+                  <>
+                    <Clock className="w-3.5 h-3.5 text-[#77766F]" />
+                    <span className="text-[#57564F]">Not Generated Yet</span>
+                  </>
+                ) : unscheduledSections.length === 0 ? (
                   <>
                     <CheckCircle2 className="w-3.5 h-3.5 text-[#1B5E20]" />
                     <span>Conflict-Free</span>

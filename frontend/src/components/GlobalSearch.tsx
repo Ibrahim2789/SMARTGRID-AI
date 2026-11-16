@@ -1,20 +1,8 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { motion, AnimatePresence, MotionConfig } from 'motion/react';
 import { RouteType } from './SmartGridNav';
 import { useInstitutionalData, institutionalStore } from '../data/store';
-import {
-  Search,
-  Building2,
-  GraduationCap,
-  BookOpen,
-  User,
-  DoorOpen,
-  ArrowRight,
-  Sparkles,
-  Command,
-  X,
-  Layers,
-  Calendar
-} from 'lucide-react';
+import { Search, X } from 'lucide-react';
 
 interface GlobalSearchProps {
   onNavigate: (route: RouteType) => void;
@@ -22,17 +10,18 @@ interface GlobalSearchProps {
   variant?: 'topbar' | 'compact';
 }
 
-type SearchCategory = 'departments' | 'cohorts' | 'courses' | 'faculty' | 'rooms';
+type SearchCategory = 'cohorts' | 'departments' | 'courses' | 'faculty' | 'rooms';
 
 interface SearchResultItem {
   id: string;
   category: SearchCategory;
+  categoryLabel: string;
   title: string;
   subtitle: string;
-  badge?: string;
-  actionText: string;
   onSelect: () => void;
 }
+
+const CALM_EASE: [number, number, number, number] = [0.22, 1, 0.36, 1];
 
 export const GlobalSearch: React.FC<GlobalSearchProps> = ({
   onNavigate,
@@ -46,20 +35,25 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({
 
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // Global keyboard shortcut: Cmd+K / Ctrl+K / '/'
+  // Global keyboard shortcuts: Cmd+K / Ctrl+K / '/' focuses inline input directly
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
-        setIsOpen(prev => !prev);
-      } else if (e.key === '/' && !['INPUT', 'TEXTAREA', 'SELECT'].includes((e.target as HTMLElement).tagName)) {
+        setIsOpen(true);
+        requestAnimationFrame(() => inputRef.current?.focus());
+      } else if (
+        e.key === '/' &&
+        !['INPUT', 'TEXTAREA', 'SELECT'].includes((e.target as HTMLElement).tagName)
+      ) {
         e.preventDefault();
         setIsOpen(true);
+        requestAnimationFrame(() => inputRef.current?.focus());
       } else if (e.key === 'Escape' && isOpen) {
         e.preventDefault();
         setIsOpen(false);
+        inputRef.current?.blur();
       }
     };
 
@@ -67,24 +61,17 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen]);
 
+  // Focus compact mobile input when toggled open
   useEffect(() => {
-    if (isOpen) {
-      setTimeout(() => inputRef.current?.focus(), 50);
-    } else {
-      setQuery('');
-      setSelectedIndex(0);
+    if (variant === 'compact' && isOpen) {
+      requestAnimationFrame(() => inputRef.current?.focus());
     }
-  }, [isOpen]);
+  }, [variant, isOpen]);
 
-  // Click outside listener
+  // Close anchored dropdown on click outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (
-        containerRef.current &&
-        !containerRef.current.contains(event.target as Node) &&
-        dropdownRef.current &&
-        !dropdownRef.current.contains(event.target as Node)
-      ) {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
         setIsOpen(false);
       }
     };
@@ -94,12 +81,12 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isOpen]);
 
-  // Filter & match items across departments, batches/sections, courses, instructors, and rooms
+  // Live filtered results across cohorts, departments, courses, faculty, and rooms
   const searchResults: SearchResultItem[] = useMemo(() => {
     const q = query.trim().toLowerCase();
     const items: SearchResultItem[] = [];
 
-    // 1. Batches & Sections (Primary university scheduling targets)
+    // 1. Batches & Sections
     store.studentGroups.forEach(group => {
       const match =
         !q ||
@@ -114,14 +101,14 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({
         items.push({
           id: `group-${group.id}`,
           category: 'cohorts',
+          categoryLabel: 'Cohort',
           title: group.code,
-          subtitle: `${group.name}${dept ? ` · ${dept.code}` : ''}${group.semester ? ` (Sem ${group.semester})` : ''}`,
-          badge: group.batchCode || 'Cohort',
-          actionText: 'View Timetable',
+          subtitle: `${group.name}${dept ? ` · ${dept.code}` : ''}${group.semester ? ` · Sem ${group.semester}` : ''}`,
           onSelect: () => {
             institutionalStore.setSelectedClassGroupId(group.id);
             onNavigate('timetables');
             setIsOpen(false);
+            inputRef.current?.blur();
           }
         });
       }
@@ -143,10 +130,9 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({
         items.push({
           id: `dept-${dept.id}`,
           category: 'departments',
+          categoryLabel: 'Department',
           title: `${dept.code} — ${dept.name}`,
-          subtitle: `${deptSectionsCount} Sections · ${dept.school || 'Academic School'}`,
-          badge: 'Department',
-          actionText: 'Open Dept Schedule',
+          subtitle: `${deptSectionsCount} ${deptSectionsCount === 1 ? 'Section' : 'Sections'}${dept.school ? ` · ${dept.school}` : ''}`,
           onSelect: () => {
             const firstGroupInDept = store.studentGroups.find(g => {
               const prog = store.programs.find(p => p.id === g.programId);
@@ -157,6 +143,7 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({
             }
             onNavigate('timetables');
             setIsOpen(false);
+            inputRef.current?.blur();
           }
         });
       }
@@ -175,17 +162,17 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({
         items.push({
           id: `course-${course.id}`,
           category: 'courses',
-          title: `${course.code}: ${course.title}`,
-          subtitle: `${course.creditHours} Credits · ${dept ? dept.code : 'Curriculum'}${isLabCourse ? ' · Lab-Integrated' : ''}`,
-          badge: isLabCourse ? 'Theory + Lab' : 'Theory',
-          actionText: 'Locate Course',
+          categoryLabel: 'Course',
+          title: `${course.code} — ${course.title}`,
+          subtitle: `${course.creditHours} Credits${dept ? ` · ${dept.code}` : ''}${isLabCourse ? ' · Lab-Integrated' : ''}`,
           onSelect: () => {
             if (onOpenSetupStep) {
-              onOpenSetupStep(2); // Courses setup step
+              onOpenSetupStep(2);
             } else {
               onNavigate('setup');
             }
             setIsOpen(false);
+            inputRef.current?.blur();
           }
         });
       }
@@ -204,13 +191,13 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({
         items.push({
           id: `inst-${inst.id}`,
           category: 'faculty',
+          categoryLabel: 'Faculty',
           title: inst.name,
-          subtitle: `${inst.title || 'Faculty'}${dept ? ` · ${dept.name}` : ''}`,
-          badge: 'Faculty',
-          actionText: 'View Schedule',
+          subtitle: `${inst.title || 'Faculty'}${dept ? ` · ${dept.code}` : ''}`,
           onSelect: () => {
             onNavigate('timetables');
             setIsOpen(false);
+            inputRef.current?.blur();
           }
         });
       }
@@ -228,260 +215,215 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({
         items.push({
           id: `room-${room.id}`,
           category: 'rooms',
+          categoryLabel: room.type === 'lab' ? 'Lab' : 'Room',
           title: room.code,
           subtitle: `${room.name} · ${room.capacity} seats`,
-          badge: room.type === 'lab' ? 'Laboratory' : 'Classroom',
-          actionText: 'View Room Schedule',
           onSelect: () => {
             onNavigate('timetables');
             setIsOpen(false);
+            inputRef.current?.blur();
           }
         });
       }
     });
 
-    // Sort to prioritize exact/prefix matches and limit to top results
-    return items.slice(0, 15);
+    return items.slice(0, 10);
   }, [query, store, onNavigate, onOpenSetupStep]);
 
   useEffect(() => {
     setSelectedIndex(0);
   }, [searchResults]);
 
-  const handleKeyDownInput = (e: React.KeyboardEvent) => {
+  const handleKeyDownInput = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'ArrowDown') {
       e.preventDefault();
+      if (!isOpen) setIsOpen(true);
       setSelectedIndex(prev => (prev < searchResults.length - 1 ? prev + 1 : 0));
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
+      if (!isOpen) setIsOpen(true);
       setSelectedIndex(prev => (prev > 0 ? prev - 1 : Math.max(0, searchResults.length - 1)));
     } else if (e.key === 'Enter') {
       e.preventDefault();
       if (searchResults[selectedIndex]) {
         searchResults[selectedIndex].onSelect();
       }
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      setIsOpen(false);
+      inputRef.current?.blur();
     }
   };
 
-  const getCategoryIcon = (category: SearchCategory) => {
-    switch (category) {
-      case 'departments':
-        return <Building2 className="w-4 h-4 text-[#171717]" />;
-      case 'cohorts':
-        return <GraduationCap className="w-4 h-4 text-[#171717]" />;
-      case 'courses':
-        return <BookOpen className="w-4 h-4 text-[#171717]" />;
-      case 'faculty':
-        return <User className="w-4 h-4 text-[#171717]" />;
-      case 'rooms':
-        return <DoorOpen className="w-4 h-4 text-[#171717]" />;
-    }
-  };
-
-  return (
-    <div ref={containerRef} className="relative z-40">
-      {/* Trigger Button: Top Bar or Compact Icon */}
-      {variant === 'compact' ? (
-        <button
-          type="button"
-          onClick={() => setIsOpen(true)}
-          className="w-8 h-8 rounded-lg bg-[#292929] hover:bg-[#333333] border border-[#3E3E3E] text-[#C2C0B8] hover:text-white flex items-center justify-center transition-colors cursor-pointer"
-          title="Search academic records (Cmd+K)"
-          aria-label="Global search"
-        >
-          <Search className="w-4 h-4" />
-        </button>
-      ) : (
-        <button
-          type="button"
-          onClick={() => setIsOpen(true)}
-          className="h-9 px-3 w-64 lg:w-84 rounded-xl bg-[#F7F6EF] hover:bg-[#EDEAE0] border border-[#E4E2DA] flex items-center justify-between text-xs text-[#77766F] transition-all cursor-pointer shadow-2xs group"
-          title="Search departments, student batches, courses, faculty (Cmd+K)"
-          aria-label="Global search"
-        >
-          <span className="flex items-center gap-2 truncate">
-            <Search className="w-3.5 h-3.5 text-[#171717] shrink-0" />
-            <span className="text-[#57564F] group-hover:text-[#171717] truncate font-medium">
-              Search departments, batches, courses...
-            </span>
-          </span>
-          <span className="hidden sm:inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-white border border-[#E4E2DA] text-[10px] font-mono-tabular font-medium text-[#77766F] shrink-0">
-            <Command className="w-2.5 h-2.5" />
-            <span>K</span>
-          </span>
-        </button>
-      )}
-
-      {/* Global Search Modal & Dropdown Palette */}
+  const renderDropdownResults = () => (
+    <AnimatePresence>
       {isOpen && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center pt-16 sm:pt-24 px-4 bg-black/40 backdrop-blur-xs">
-          <div
-            ref={dropdownRef}
-            className="w-full max-w-2xl bg-white border border-[#E4E2DA] rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[82vh] animate-in fade-in zoom-in-95 duration-150"
-          >
-            {/* Search Input Header */}
-            <div className="p-3.5 sm:p-4 border-b border-[#E4E2DA] flex items-center gap-3 bg-[#F7F6EF]">
-              <Search className="w-5 h-5 text-[#171717] shrink-0" />
+        <motion.div
+          initial={{ opacity: 0, y: -4 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -4 }}
+          transition={{ duration: 0.16, ease: CALM_EASE }}
+          role="listbox"
+          aria-label="Search suggestions"
+          className={
+            variant === 'compact'
+              ? 'fixed left-4 right-4 top-16 z-50 bg-white border border-[#E4E2DA] rounded-xl shadow-xl overflow-hidden'
+              : 'absolute left-0 right-0 top-full mt-1.5 z-50 bg-white border border-[#E4E2DA] rounded-xl shadow-lg overflow-hidden'
+          }
+        >
+          {variant === 'compact' && (
+            <div className="px-3 py-2 border-b border-[#E4E2DA] bg-[#F7F6EF] flex items-center gap-2">
+              <Search className="w-3.5 h-3.5 text-[#77766F] shrink-0" />
               <input
                 ref={inputRef}
                 type="text"
-                placeholder="Find department (e.g. CS), batch (BSCS-1A), course (CS101), faculty..."
                 value={query}
                 onChange={e => setQuery(e.target.value)}
                 onKeyDown={handleKeyDownInput}
-                className="w-full bg-transparent text-sm sm:text-base font-medium text-[#171717] placeholder:text-[#77766F] focus:outline-hidden"
+                placeholder="Search departments, cohorts, courses, faculty..."
+                className="w-full bg-transparent text-xs font-medium text-[#171717] placeholder:text-[#77766F] focus:outline-hidden"
               />
               {query && (
                 <button
                   type="button"
-                  onClick={() => setQuery('')}
-                  className="p-1 text-[#77766F] hover:text-[#171717] rounded-md cursor-pointer"
-                  aria-label="Clear query"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={() => setIsOpen(false)}
-                className="px-2 py-1 text-xs rounded-lg bg-white border border-[#E4E2DA] text-[#57564F] hover:text-[#171717] cursor-pointer shrink-0 font-medium"
-              >
-                Esc
-              </button>
-            </div>
-
-            {/* Live Categorized Results List */}
-            <div className="overflow-y-auto p-2 divide-y divide-[#F0EFEA] max-h-[55vh]">
-              {searchResults.length > 0 ? (
-                <div className="space-y-1">
-                  {searchResults.map((item, idx) => {
-                    const isSelected = idx === selectedIndex;
-                    return (
-                      <div
-                        key={item.id}
-                        onClick={item.onSelect}
-                        onMouseEnter={() => setSelectedIndex(idx)}
-                        className={`p-3 rounded-xl flex items-center justify-between gap-3 cursor-pointer transition-colors ${
-                          isSelected
-                            ? 'bg-[#171717] text-white'
-                            : 'hover:bg-[#F7F6EF] text-[#171717]'
-                        }`}
-                      >
-                        <div className="flex items-center gap-3 min-w-0">
-                          <div
-                            className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 border ${
-                              isSelected
-                                ? 'bg-white/10 border-white/20 text-white'
-                                : 'bg-[#F7F6EF] border-[#E4E2DA] text-[#171717]'
-                            }`}
-                          >
-                            {getCategoryIcon(item.category)}
-                          </div>
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-2">
-                              <span
-                                className={`text-sm font-semibold truncate ${
-                                  isSelected ? 'text-white' : 'text-[#171717]'
-                                }`}
-                              >
-                                {item.title}
-                              </span>
-                              {item.badge && (
-                                <span
-                                  className={`px-1.5 py-0.5 rounded text-[10px] font-mono-tabular font-semibold shrink-0 ${
-                                    isSelected
-                                      ? 'bg-white/15 text-[#B8EEEE]'
-                                      : 'bg-[#F7F6EF] text-[#57564F] border border-[#E4E2DA]'
-                                  }`}
-                                >
-                                  {item.badge}
-                                </span>
-                              )}
-                            </div>
-                            <div
-                              className={`text-xs truncate mt-0.5 ${
-                                isSelected ? 'text-white/80' : 'text-[#77766F]'
-                              }`}
-                            >
-                              {item.subtitle}
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-1.5 shrink-0 pl-2">
-                          <span
-                            className={`text-xs font-semibold ${
-                              isSelected ? 'text-[#B7F77C]' : 'text-[#57564F]'
-                            }`}
-                          >
-                            {item.actionText}
-                          </span>
-                          <ArrowRight
-                            className={`w-3.5 h-3.5 transition-transform ${
-                              isSelected
-                                ? 'translate-x-0.5 text-[#B7F77C]'
-                                : 'text-[#77766F]'
-                            }`}
-                          />
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div className="py-10 px-4 text-center space-y-2">
-                  <div className="w-10 h-10 rounded-full bg-[#F7F6EF] text-[#77766F] mx-auto flex items-center justify-center">
-                    <Search className="w-5 h-5" />
-                  </div>
-                  <div className="text-sm font-semibold text-[#171717]">
-                    No matching academic records found
-                  </div>
-                  <p className="text-xs text-[#77766F] max-w-sm mx-auto">
-                    No departments, batches, or courses match "{query}". Try searching by department code (e.g. CS), cohort name (BSCS-1A), or course title.
-                  </p>
-                </div>
-              )}
-            </div>
-
-            {/* Quick Navigation Footer */}
-            <div className="p-3 bg-[#F7F6EF] border-t border-[#E4E2DA] flex flex-wrap items-center justify-between gap-2 text-xs text-[#77766F]">
-              <div className="flex items-center gap-3">
-                <span className="flex items-center gap-1">
-                  <kbd className="px-1.5 py-0.5 rounded bg-white border border-[#E4E2DA] text-[10px] font-mono-tabular">
-                    ↑↓
-                  </kbd>{' '}
-                  Navigate
-                </span>
-                <span className="flex items-center gap-1">
-                  <kbd className="px-1.5 py-0.5 rounded bg-white border border-[#E4E2DA] text-[10px] font-mono-tabular">
-                    ↵
-                  </kbd>{' '}
-                  Jump Directly
-                </span>
-                <span className="flex items-center gap-1">
-                  <kbd className="px-1.5 py-0.5 rounded bg-white border border-[#E4E2DA] text-[10px] font-mono-tabular">
-                    Esc
-                  </kbd>{' '}
-                  Close
-                </span>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
                   onClick={() => {
-                    onNavigate('timetables');
-                    setIsOpen(false);
+                    setQuery('');
+                    inputRef.current?.focus();
                   }}
-                  className="font-semibold text-[#171717] hover:underline cursor-pointer"
+                  className="p-0.5 text-[#77766F] hover:text-[#171717] cursor-pointer"
+                  aria-label="Clear search"
                 >
-                  Master Timetable →
+                  <X className="w-3.5 h-3.5" />
                 </button>
-              </div>
+              )}
             </div>
+          )}
+
+          <div className="max-h-72 overflow-y-auto divide-y divide-[#F0EFEA]">
+            {searchResults.length > 0 ? (
+              searchResults.map((item, idx) => {
+                const isSelected = idx === selectedIndex;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    role="option"
+                    aria-selected={isSelected}
+                    onMouseDown={e => {
+                      // Trigger before input blur closes dropdown
+                      e.preventDefault();
+                      item.onSelect();
+                    }}
+                    onMouseEnter={() => setSelectedIndex(idx)}
+                    className={`w-full px-3.5 py-2.5 text-left flex items-center justify-between gap-3 transition-colors cursor-pointer ${
+                      isSelected ? 'bg-[#F7F6EF]' : 'bg-white hover:bg-[#F7F6EF]/60'
+                    }`}
+                  >
+                    <div className="min-w-0">
+                      <div className="text-[13px] font-medium text-[#171717] truncate">
+                        {item.title}
+                      </div>
+                      <div className="text-[11px] text-[#77766F] truncate mt-0.5">
+                        {item.subtitle}
+                      </div>
+                    </div>
+                    <span className="text-[11px] font-medium text-[#77766F] shrink-0 whitespace-nowrap">
+                      {item.categoryLabel}
+                    </span>
+                  </button>
+                );
+              })
+            ) : (
+              <div className="px-4 py-6 text-center">
+                <div className="text-xs font-medium text-[#171717]">
+                  {query.trim()
+                    ? `No matching records for "${query.trim()}"`
+                    : 'No catalog records yet'}
+                </div>
+                <div className="text-[11px] text-[#77766F] mt-1">
+                  {query.trim()
+                    ? 'Try a department code, cohort, course, instructor, or room.'
+                    : 'Add or import departments, courses, rooms, faculty, or cohorts to search them here.'}
+                </div>
+              </div>
+            )}
           </div>
-        </div>
+        </motion.div>
       )}
-    </div>
+    </AnimatePresence>
+  );
+
+  if (variant === 'compact') {
+    return (
+      <MotionConfig reducedMotion="user">
+        <div ref={containerRef} className="relative z-40">
+          <button
+            type="button"
+            onClick={() => setIsOpen(prev => !prev)}
+            className="w-8 h-8 rounded-lg bg-[#292929] hover:bg-[#333333] border border-[#3E3E3E] text-[#C2C0B8] hover:text-white flex items-center justify-center transition-colors cursor-pointer"
+            title="Search academic records"
+            aria-label="Search academic records"
+            aria-expanded={isOpen}
+          >
+            <Search className="w-4 h-4" />
+          </button>
+          {renderDropdownResults()}
+        </div>
+      </MotionConfig>
+    );
+  }
+
+  return (
+    <MotionConfig reducedMotion="user">
+      <div
+        ref={containerRef}
+        onBlur={e => {
+          if (containerRef.current && !containerRef.current.contains(e.relatedTarget as Node)) {
+            setIsOpen(false);
+          }
+        }}
+        className="relative z-40 w-full max-w-md"
+      >
+        <div
+          className={`h-9 px-3 w-full rounded-xl border flex items-center gap-2 transition-colors ${
+            isOpen
+              ? 'bg-white border-[#171717]'
+              : 'bg-[#F7F6EF] hover:bg-white border-[#E4E2DA]'
+          }`}
+        >
+          <Search className="w-3.5 h-3.5 text-[#77766F] shrink-0" />
+          <input
+            ref={inputRef}
+            type="text"
+            value={query}
+            onFocus={() => setIsOpen(true)}
+            onChange={e => {
+              setQuery(e.target.value);
+              if (!isOpen) setIsOpen(true);
+            }}
+            onKeyDown={handleKeyDownInput}
+            placeholder="Search departments, cohorts, courses, faculty..."
+            aria-label="Search institutional catalog"
+            aria-expanded={isOpen}
+            className="w-full bg-transparent text-xs font-medium text-[#171717] placeholder:text-[#77766F] focus:outline-hidden"
+          />
+          {query && (
+            <button
+              type="button"
+              onClick={() => {
+                setQuery('');
+                inputRef.current?.focus();
+              }}
+              className="p-0.5 text-[#77766F] hover:text-[#171717] rounded-sm cursor-pointer shrink-0"
+              aria-label="Clear search"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+
+        {renderDropdownResults()}
+      </div>
+    </MotionConfig>
   );
 };

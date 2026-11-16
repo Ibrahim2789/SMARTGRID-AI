@@ -37,10 +37,13 @@ class SupabaseRestClient:
     def _headers(self, prefer: Optional[str] = None) -> Dict[str, str]:
         headers = {
             "apikey": self.api_key,
-            "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
             "Accept": "application/json",
         }
+        # Legacy JWT service_role/anon keys require Authorization: Bearer <jwt>.
+        # New Supabase opaque keys (sb_secret_... / sb_publishable_...) authenticate via apikey only.
+        if not self.api_key.startswith("sb_"):
+            headers["Authorization"] = f"Bearer {self.api_key}"
         if prefer:
             headers["Prefer"] = prefer
         return headers
@@ -216,18 +219,31 @@ def probe_supabase_rest() -> Dict[str, Any]:
         except Exception as exc:
             table_statuses[tbl] = {"error": type(exc).__name__}
 
-    rls_write_check: Dict[str, Any] = {}
-    try:
-        client.insert("institutions", {})
-        rls_write_check = {"status": 201, "writable": True}
-    except SupabaseQueryError as err:
-        rls_write_check = {
-            "status": err.status_code,
-            "writable": err.status_code == 400 and "row-level security" not in err.message.lower(),
-            "message": err.message,
-        }
-    except Exception as exc:
-        rls_write_check = {"error": type(exc).__name__}
+    write_tables: Dict[str, Any] = {}
+    all_writable = True
+    for w_tbl in ("institutions", "users", "batches", "polls"):
+        try:
+            client.insert(w_tbl, {})
+            write_tables[w_tbl] = {"status": 201, "writable": True}
+        except SupabaseQueryError as err:
+            tbl_writable = err.status_code == 400 and "row-level security" not in err.message.lower()
+            if not tbl_writable:
+                all_writable = False
+            write_tables[w_tbl] = {
+                "status": err.status_code,
+                "writable": tbl_writable,
+                "message": err.message,
+            }
+        except Exception as exc:
+            all_writable = False
+            write_tables[w_tbl] = {"writable": False, "error": type(exc).__name__}
+
+    rls_write_check: Dict[str, Any] = {
+        "writable": all_writable,
+        "status": write_tables.get("institutions", {}).get("status"),
+        "message": write_tables.get("institutions", {}).get("message"),
+        "tables": write_tables,
+    }
 
     inst_status = table_statuses.get("institutions", {}).get("status")
     return {
@@ -262,7 +278,17 @@ def get_database_connection_status() -> Dict[str, Any]:
     Reports transparent Supabase database connection status without fabricating or exposing credentials.
     """
     rest_probe = probe_supabase_rest() if settings.is_supabase_configured else None
+    schema_ready = bool(rest_probe and rest_probe.get("schemaReady"))
+    writable = bool(rest_probe and (rest_probe.get("rlsWriteCheck") or {}).get("writable"))
+    conn_status = (
+        "connected"
+        if (schema_ready and writable)
+        else ("read_only" if schema_ready else "disconnected")
+    )
     return {
+        "status": conn_status,
+        "provider": "supabase-postgresql",
+        "serviceRoleConnected": bool(settings.has_valid_service_role_key and writable),
         "supabaseConfigured": settings.is_supabase_configured,
         "supabaseUrlProvided": bool(settings.supabase_url),
         "supabaseUrlValid": bool(settings.effective_supabase_url),

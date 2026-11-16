@@ -1,20 +1,25 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
+import { motion, AnimatePresence, MotionConfig } from 'motion/react';
 import {
   Building2,
   Calendar,
   Clock,
   Coffee,
   Layers,
-  CheckCircle2,
   ArrowRight,
   ArrowLeft,
   X,
   Upload,
-  Sparkles,
   Check,
   Plus,
   Trash2,
-  AlertCircle
+  AlertCircle,
+  ChevronDown,
+  Sparkles,
+  BookOpen,
+  DoorOpen,
+  Users,
+  SlidersHorizontal
 } from 'lucide-react';
 import { institutionalStore, InstitutionProfile } from '../data/store';
 import {
@@ -29,6 +34,7 @@ import {
   computeAcademicScheduleConfig,
   validateAcademicTimingConfig
 } from '../types/institutional';
+import { getStoredUser, updateUniversitySettingsBackend } from '../services/votingApi';
 import { DataImportWizard } from './DataImportWizard';
 
 interface UniversityOnboardingModalProps {
@@ -43,6 +49,165 @@ interface UniversityOnboardingModalProps {
 }
 
 type CalendarSystemType = 'semester' | 'trimester' | 'quarter' | 'custom';
+type PresetKey = 'semester-5day' | 'trimester-6day' | 'quarter-block';
+type CatalogTab = 'departments' | 'rooms' | 'courses' | 'instructors';
+
+const CALM_EASE: [number, number, number, number] = [0.22, 1, 0.36, 1];
+
+const STEP_META = [
+  {
+    id: 0,
+    title: 'Identity & Policy',
+    shortDesc: 'Name, campus & governance',
+    eyebrow: 'Institution Identity',
+    heading: 'Tell us about your university',
+    subtitle:
+      'Start with a preset or enter your core campus details. Everything can be adjusted later.'
+  },
+  {
+    id: 1,
+    title: 'Academic Calendar',
+    shortDesc: 'Terms, year & active dates',
+    eyebrow: 'Academic Calendar',
+    heading: 'Shape your academic year',
+    subtitle:
+      'Pick a semester, trimester, or quarter rhythm and mark which terms are active right now.'
+  },
+  {
+    id: 2,
+    title: 'Weekly Hours',
+    shortDesc: 'Teaching days & daily span',
+    eyebrow: 'Operating Schedule',
+    heading: 'Set your campus weekly hours',
+    subtitle:
+      'Choose instructional days, opening and closing times, and any Friday prayer schedule rules.'
+  },
+  {
+    id: 3,
+    title: 'Class Pacing',
+    shortDesc: 'Period lengths & breaks',
+    eyebrow: 'Pacing & Breaks',
+    heading: 'Tune class durations and breaks',
+    subtitle:
+      'Balance lecture lengths, continuous labs, and breathing room between classes with a live preview.'
+  },
+  {
+    id: 4,
+    title: 'Catalog & Launch',
+    shortDesc: 'Starter structure & review',
+    eyebrow: 'Review & Launch',
+    heading: 'Review and launch your workspace',
+    subtitle:
+      'Optionally add starter departments, rooms, or import from CSV — or launch right away.'
+  }
+];
+
+const stepperContainerVariants = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: {
+      staggerChildren: 0.06,
+      delayChildren: 0.08
+    }
+  }
+};
+
+const stepperItemVariants = {
+  hidden: { opacity: 0, x: -14 },
+  visible: {
+    opacity: 1,
+    x: 0,
+    transition: { duration: 0.34, ease: CALM_EASE }
+  }
+};
+
+const mobileStepperItemVariants = {
+  hidden: { opacity: 0, y: -8, scale: 0.94 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    scale: 1,
+    transition: { duration: 0.28, ease: CALM_EASE }
+  }
+};
+
+const stepHeaderSlideVariants = {
+  enter: (direction: number) => ({
+    x: direction >= 0 ? 28 : -28,
+    opacity: 0
+  }),
+  center: {
+    x: 0,
+    opacity: 1,
+    transition: { duration: 0.3, ease: CALM_EASE }
+  },
+  exit: (direction: number) => ({
+    x: direction >= 0 ? -20 : 20,
+    opacity: 0,
+    transition: { duration: 0.18, ease: CALM_EASE }
+  })
+};
+
+const stepSlideVariants = {
+  enter: (direction: number) => ({
+    x: direction >= 0 ? 40 : -40,
+    opacity: 0
+  }),
+  center: {
+    x: 0,
+    opacity: 1,
+    transition: { duration: 0.34, ease: CALM_EASE }
+  },
+  exit: (direction: number) => ({
+    x: direction >= 0 ? -32 : 32,
+    opacity: 0,
+    transition: { duration: 0.2, ease: CALM_EASE }
+  })
+};
+
+interface CalmSwitchProps {
+  checked: boolean;
+  onChange: (next: boolean) => void;
+  ariaLabel: string;
+}
+
+const CalmSwitch: React.FC<CalmSwitchProps> = ({ checked, onChange, ariaLabel }) => (
+  <button
+    type="button"
+    role="switch"
+    aria-checked={checked}
+    aria-label={ariaLabel}
+    onClick={() => onChange(!checked)}
+    className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors cursor-pointer ${
+      checked
+        ? 'bg-[#171717] border-[#171717]'
+        : 'bg-[#EDEAE0] border-[#D6D3C9] hover:border-[#77766F]'
+    }`}
+  >
+    <motion.span
+      layout
+      transition={{ type: 'spring', stiffness: 500, damping: 34 }}
+      className={`inline-block h-4 w-4 rounded-full bg-white shadow-xs ${
+        checked ? 'ml-[22px]' : 'ml-[3px]'
+      }`}
+    />
+  </button>
+);
+
+function parseMinutesSafe(hhmm: string): number {
+  const [h, m] = hhmm.split(':').map(n => Number(n));
+  if (Number.isNaN(h) || Number.isNaN(m)) return 0;
+  return h * 60 + m;
+}
+
+function formatDurationSpan(start: string, end: string): string {
+  const diff = parseMinutesSafe(end) - parseMinutesSafe(start);
+  if (diff <= 0) return 'Invalid span';
+  const hrs = Math.floor(diff / 60);
+  const mins = diff % 60;
+  return mins > 0 ? `${hrs}h ${mins}m campus day` : `${hrs}h campus day`;
+}
 
 export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps> = ({
   onClose,
@@ -58,13 +223,42 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
   const isEditingExisting = Boolean(existingInstitutionId);
 
   const [activeStep, setActiveStep] = useState<number>(0);
+  const [direction, setDirection] = useState<number>(1);
+  const [visitedSteps, setVisitedSteps] = useState<Set<number>>(() => new Set([0]));
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isCompleted, setIsCompleted] = useState(false);
+  const [completedInstId, setCompletedInstId] = useState<string>('');
   const [showImportWizard, setShowImportWizard] = useState(false);
   const [onboardingError, setOnboardingError] = useState<string | null>(null);
   const [stepSavedToast, setStepSavedToast] = useState<string | null>(null);
 
+  // Subtle progressive disclosure toggles to keep every step airy & calm
+  const [selectedPreset, setSelectedPreset] = useState<PresetKey | null>(null);
+  const [showMoreIdentity, setShowMoreIdentity] = useState(false);
+  const [showAddTermDrawer, setShowAddTermDrawer] = useState(false);
+  const [showFridayCompression, setShowFridayCompression] = useState(false);
+  const [showCustomBreaksDrawer, setShowCustomBreaksDrawer] = useState(false);
+  const [activeCatalogTab, setActiveCatalogTab] = useState<CatalogTab>('departments');
+
+  const bodyScrollRef = useRef<HTMLDivElement | null>(null);
+  const completionTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (completionTimerRef.current) {
+        window.clearTimeout(completionTimerRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (bodyScrollRef.current) {
+      bodyScrollRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  }, [activeStep]);
+
   // =========================================================
-  // SCREEN 1: Institution Profile Customization
+  // STEP 1: Institution Identity & Governance
   // =========================================================
   const [name, setName] = useState(
     initialName || (isEditingExisting ? existingSnapshot.institutionProfile?.name || '' : '')
@@ -106,7 +300,7 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
     );
 
   // =========================================================
-  // SCREEN 2: Academic Calendar Structure (Semesters / Terms)
+  // STEP 2: Academic Calendar Structure
   // =========================================================
   const [calendarSystem, setCalendarSystem] = useState<CalendarSystemType>('semester');
   const [academicYear, setAcademicYear] = useState(
@@ -147,7 +341,7 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
   const [newTermActive, setNewTermActive] = useState<boolean>(true);
 
   // =========================================================
-  // SCREEN 3: Daily Operating Hours Configuration
+  // STEP 3: Daily Operating Hours
   // =========================================================
   const [workingDays, setWorkingDays] = useState<DayOfWeek[]>(() =>
     isEditingExisting && existingSnapshot.timeStructure.workingDays?.length
@@ -199,7 +393,7 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
   );
 
   // =========================================================
-  // SCREEN 4: Session Duration & Break Policy Settings
+  // STEP 4: Session Duration & Break Policy
   // =========================================================
   const [periodLengthMinutes, setPeriodLengthMinutes] = useState<number>(
     isEditingExisting ? existingSnapshot.timeStructure.periodLengthMinutes || 50 : 50
@@ -232,7 +426,6 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
     isEditingExisting ? existingSnapshot.timeStructure.middayBreakDurationMinutes || 60 : 60
   );
 
-  // Custom Additional Institutional Breaks
   const [customBreaks, setCustomBreaks] = useState<TimeBlockBreak[]>(() => {
     if (isEditingExisting && existingSnapshot.timeStructure.breaks?.length) {
       return existingSnapshot.timeStructure.breaks.filter(
@@ -247,53 +440,73 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
   const [newBreakDays, setNewBreakDays] = useState<DayOfWeek[]>(['Mon', 'Tue', 'Wed', 'Thu', 'Fri']);
 
   // =========================================================
-  // SCREEN 5: Academic Catalog & Facilities (Starter Seed / Import)
+  // STEP 5: Optional Starter Catalog (Clean slate — zero fake accounts)
   // =========================================================
   const [departments, setDepartments] = useState<
     Array<{ name: string; code: string; school: string }>
-  >([
-    { name: 'Department of Computer Science', code: 'CS', school: 'School of Computing' },
-    { name: 'Department of Electrical Engineering', code: 'EE', school: 'School of Engineering' }
-  ]);
+  >(() =>
+    isEditingExisting
+      ? existingSnapshot.departments.map(d => ({
+          name: d.name,
+          code: d.code,
+          school: d.school || 'Academic Division'
+        }))
+      : []
+  );
   const [newDeptName, setNewDeptName] = useState('');
   const [newDeptCode, setNewDeptCode] = useState('');
 
   const [rooms, setRooms] = useState<
     Array<{ code: string; capacity: number; type: 'lecture' | 'lab' }>
-  >([
-    { code: 'HALL-A', capacity: 60, type: 'lecture' },
-    { code: 'HALL-B', capacity: 60, type: 'lecture' },
-    { code: 'LAB-01', capacity: 45, type: 'lab' }
-  ]);
+  >(() =>
+    isEditingExisting
+      ? existingSnapshot.rooms.map(r => ({
+          code: r.code,
+          capacity: r.capacity,
+          type: r.type === 'lab' ? 'lab' : 'lecture'
+        }))
+      : []
+  );
   const [newRoomCode, setNewRoomCode] = useState('');
   const [newRoomCap, setNewRoomCap] = useState(50);
   const [newRoomType, setNewRoomType] = useState<'lecture' | 'lab'>('lecture');
 
   const [courses, setCourses] = useState<
     Array<{ code: string; title: string; cr: number; isLab: boolean }>
-  >([
-    { code: 'CS-101', title: 'Foundations of Computer Systems', cr: 3, isLab: false },
-    { code: 'CS-101-L', title: 'Systems Programming Laboratory', cr: 1, isLab: true },
-    { code: 'EE-201', title: 'Circuit Analysis & Electronics', cr: 3, isLab: false }
-  ]);
+  >(() =>
+    isEditingExisting
+      ? existingSnapshot.courses.map(c => ({
+          code: c.code,
+          title: c.title,
+          cr: c.creditHours,
+          isLab: c.requiredRoomType === 'lab' || c.labHours > 0
+        }))
+      : []
+  );
   const [newCourseCode, setNewCourseCode] = useState('');
   const [newCourseTitle, setNewCourseTitle] = useState('');
   const [newCourseIsLab, setNewCourseIsLab] = useState<boolean>(false);
 
   const [instructors, setInstructors] = useState<
     Array<{ name: string; title: string; email: string }>
-  >([
-    { name: 'Dr. Michael Chen', title: 'Professor', email: 'm.chen@university.edu' },
-    { name: 'Prof. Sarah Jenkins', title: 'Associate Professor', email: 's.jenkins@university.edu' }
-  ]);
+  >(() =>
+    isEditingExisting
+      ? existingSnapshot.instructors.map(i => ({
+          name: i.name,
+          title: i.title,
+          email: i.email
+        }))
+      : []
+  );
   const [newInstName, setNewInstName] = useState('');
   const [newInstEmail, setNewInstEmail] = useState('');
 
   // =========================================================
   // PRESET & HELPER HANDLERS
   // =========================================================
-  const applyInstitutionPreset = (preset: 'semester-5day' | 'trimester-6day' | 'quarter-block') => {
+  const applyInstitutionPreset = (preset: PresetKey) => {
     setOnboardingError(null);
+    setSelectedPreset(preset);
     if (preset === 'semester-5day') {
       setCalendarSystem('semester');
       setTerms([
@@ -326,6 +539,7 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
       setMiddayBreakStartTime('13:00');
       setMiddayBreakDurationMinutes(60);
       setLabDurationMinutes(180);
+      setStepSavedToast('Applied 5-Day Semester schedule defaults — customize anything below.');
     } else if (preset === 'trimester-6day') {
       setCalendarSystem('trimester');
       setTerms([
@@ -367,6 +581,7 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
       setMiddayBreakStartTime('12:30');
       setMiddayBreakDurationMinutes(60);
       setLabDurationMinutes(120);
+      setStepSavedToast('Applied 6-Day Trimester schedule defaults — customize anything below.');
     } else {
       setCalendarSystem('quarter');
       setTerms([
@@ -408,6 +623,7 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
       setMiddayBreakStartTime('12:30');
       setMiddayBreakDurationMinutes(60);
       setLabDurationMinutes(150);
+      setStepSavedToast('Applied Quarter Block (75 min) defaults — customize anything below.');
     }
   };
 
@@ -521,6 +737,7 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
     setTerms([...terms, created]);
     setNewTermName('');
     setNewTermCode('');
+    setShowAddTermDrawer(false);
   };
 
   const handleToggleTermActive = (termId: string) => {
@@ -625,36 +842,65 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
     setNewInstEmail('');
   };
 
-  const timingCandidate: Partial<TimeStructure> = {
-    workingDays,
-    dayStartTime,
-    dayEndTime,
-    periodLengthMinutes,
-    shortBreakEnabled,
-    shortBreakMinutes,
-    includeBreakAfterLastSlot,
-    middayBreakEnabled,
-    middayBreakMode,
-    middayBreakStartTime,
-    middayBreakDurationMinutes,
-    labDurationMinutes,
-    fridayAfternoonShiftEnabled: fridayMode !== 'standard',
-    fridayAfternoonStartTime: fridayBreakEndTime,
-    fridayMode,
-    fridayBreakStartTime,
-    fridayBreakEndTime,
-    fridayClosingTime,
-    fridayCompressionScope,
-    fridayPeriodLengthMinutes,
-    fridayShortBreakMinutes
-  };
+  const timingCandidate: Partial<TimeStructure> = useMemo(
+    () => ({
+      workingDays,
+      dayStartTime,
+      dayEndTime,
+      periodLengthMinutes,
+      shortBreakEnabled,
+      shortBreakMinutes,
+      includeBreakAfterLastSlot,
+      middayBreakEnabled,
+      middayBreakMode,
+      middayBreakStartTime,
+      middayBreakDurationMinutes,
+      labDurationMinutes,
+      fridayAfternoonShiftEnabled: fridayMode !== 'standard',
+      fridayAfternoonStartTime: fridayBreakEndTime,
+      fridayMode,
+      fridayBreakStartTime,
+      fridayBreakEndTime,
+      fridayClosingTime,
+      fridayCompressionScope,
+      fridayPeriodLengthMinutes,
+      fridayShortBreakMinutes
+    }),
+    [
+      workingDays,
+      dayStartTime,
+      dayEndTime,
+      periodLengthMinutes,
+      shortBreakEnabled,
+      shortBreakMinutes,
+      includeBreakAfterLastSlot,
+      middayBreakEnabled,
+      middayBreakMode,
+      middayBreakStartTime,
+      middayBreakDurationMinutes,
+      labDurationMinutes,
+      fridayMode,
+      fridayBreakStartTime,
+      fridayBreakEndTime,
+      fridayClosingTime,
+      fridayCompressionScope,
+      fridayPeriodLengthMinutes,
+      fridayShortBreakMinutes
+    ]
+  );
 
-  const computedPreview = computeAcademicScheduleConfig(timingCandidate);
-  const timingValidation = validateAcademicTimingConfig(timingCandidate);
+  const computedPreview = useMemo(
+    () => computeAcademicScheduleConfig(timingCandidate),
+    [timingCandidate]
+  );
+  const timingValidation = useMemo(
+    () => validateAcademicTimingConfig(timingCandidate),
+    [timingCandidate]
+  );
   const activeTermObj = terms.find(t => t.status === 'active') || terms[0];
 
   // =========================================================
-  // DIRECT MAPPING TO institutionalStore METHODS PER STEP
+  // STEP VALIDATION & NAVIGATION
   // =========================================================
   const persistCurrentStepToStore = (stepIndex: number): boolean => {
     setOnboardingError(null);
@@ -662,7 +908,7 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
 
     if (stepIndex === 0) {
       if (!name.trim() || !code.trim()) {
-        setOnboardingError('Please enter your university full name and short code.');
+        setOnboardingError('Please enter your university name and short code before continuing.');
         return false;
       }
       if (isEditingExisting) {
@@ -678,14 +924,13 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
           autoConflictSweep,
           timetableManagementPolicy
         });
-        setStepSavedToast('Saved Step 1 (Institution Profile & Policy) to institutionalStore.');
       }
       return true;
     }
 
     if (stepIndex === 1) {
       if (terms.length === 0) {
-        setOnboardingError('Please configure at least one academic semester or term.');
+        setOnboardingError('Please keep at least one academic semester or term.');
         return false;
       }
       const activeNames = terms.filter(t => t.status === 'active').map(t => t.name);
@@ -695,14 +940,13 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
           currentTermName: activeNames.join(' + ') || activeTermObj?.name || terms[0].name,
           terms
         });
-        setStepSavedToast('Saved Step 2 (Academic Calendar & Active Semesters) to institutionalStore.');
       }
       return true;
     }
 
     if (stepIndex === 2) {
       if (workingDays.length === 0) {
-        setOnboardingError('Please select at least one university working day.');
+        setOnboardingError('Please select at least one operating day.');
         return false;
       }
       if (dayEndTime <= dayStartTime) {
@@ -724,7 +968,6 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
           fridayPeriodLengthMinutes,
           fridayShortBreakMinutes
         });
-        setStepSavedToast('Saved Step 3 (Daily Operating Hours & Friday Policy) to institutionalStore.');
       }
       return true;
     }
@@ -732,7 +975,7 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
     if (stepIndex === 3) {
       if (!timingValidation.valid) {
         setOnboardingError(
-          timingValidation.errors[0] || 'Invalid session duration or break policy settings.'
+          timingValidation.errors[0] || 'Please adjust session duration or break settings.'
         );
         return false;
       }
@@ -742,10 +985,9 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
           breaks: customBreaks
         });
         if (!res.success) {
-          setOnboardingError(res.errors[0] || 'Could not save session duration and break policy.');
+          setOnboardingError(res.errors[0] || 'Could not save session and break settings.');
           return false;
         }
-        setStepSavedToast('Saved Step 4 (Session Durations & Break Policies) to institutionalStore.');
       }
       return true;
     }
@@ -753,29 +995,67 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
     return true;
   };
 
+  const goToStep = (targetStep: number) => {
+    if (targetStep === activeStep || isCompleted) return;
+    if (targetStep > activeStep) {
+      const ok = persistCurrentStepToStore(activeStep);
+      if (!ok) return;
+    } else {
+      setOnboardingError(null);
+      setStepSavedToast(null);
+    }
+    setDirection(targetStep > activeStep ? 1 : -1);
+    setVisitedSteps(prev => {
+      const next = new Set(prev);
+      next.add(activeStep);
+      next.add(targetStep);
+      return next;
+    });
+    setActiveStep(targetStep);
+  };
+
   const handleAdvanceStep = () => {
     const ok = persistCurrentStepToStore(activeStep);
     if (!ok) return;
-    setActiveStep(prev => Math.min(steps.length - 1, prev + 1));
+    const nextStep = Math.min(STEP_META.length - 1, activeStep + 1);
+    setDirection(1);
+    setVisitedSteps(prev => {
+      const next = new Set(prev);
+      next.add(activeStep);
+      next.add(nextStep);
+      return next;
+    });
+    setActiveStep(nextStep);
   };
 
-  const handleFinalizeOnboarding = () => {
+  const handlePreviousStep = () => {
+    if (activeStep === 0) return;
+    setOnboardingError(null);
+    setStepSavedToast(null);
+    setDirection(-1);
+    setActiveStep(Math.max(0, activeStep - 1));
+  };
+
+  const handleFinalizeOnboarding = async () => {
     if (!name.trim() || !code.trim()) {
+      setDirection(-1);
       setActiveStep(0);
-      setOnboardingError('Please provide a university name and acronym code.');
+      setOnboardingError('Please provide your university name and short code.');
       return;
     }
 
     if (terms.length === 0) {
+      setDirection(-1);
       setActiveStep(1);
-      setOnboardingError('Please configure at least one academic term or semester.');
+      setOnboardingError('Please configure at least one academic term.');
       return;
     }
 
     if (!timingValidation.valid) {
+      setDirection(-1);
       setActiveStep(3);
       setOnboardingError(
-        timingValidation.errors[0] || 'Invalid operating hours or break policy configuration.'
+        timingValidation.errors[0] || 'Please fix operating hours or break settings.'
       );
       return;
     }
@@ -797,7 +1077,8 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
         campusName: campusName.trim() || 'Main Campus',
         accreditation: accreditation.trim(),
         academicYear: academicYear.trim(),
-        currentTermName: activeNames.join(' + ') || activeTermObj?.name || terms[0]?.name || 'Configured Semester',
+        currentTermName:
+          activeNames.join(' + ') || activeTermObj?.name || terms[0]?.name || 'Configured Semester',
         activeTermIds: terms.filter(t => t.status === 'active').map(t => t.id),
         timetableManagementPolicy,
         registrarName: registrarName.trim(),
@@ -829,7 +1110,6 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
         breaks: allBreaks
       };
 
-      // Map directly to institutionalStore methods to persist all 4 core wizard steps globally
       if (!isEditingExisting) {
         institutionalStore.registerNewInstitution(profile, timeConfig, terms);
       }
@@ -858,9 +1138,9 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
         breaks: customBreaks
       });
 
-      // Populate starter catalog entities if the institution catalog is currently empty
+      // Only add catalog items explicitly created by the user during onboarding
       const current = institutionalStore.get();
-      if (current.departments.length === 0) {
+      if (current.departments.length === 0 && departments.length > 0) {
         departments.forEach((d, i) => {
           institutionalStore.addDepartment({
             id: `dept-${d.code.toLowerCase()}-${i}`,
@@ -876,7 +1156,7 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
       const bldId = afterDepts.buildings[0]?.id || 'bld-main';
       const firstDeptId = afterDepts.departments[0]?.id || 'dept-gen';
 
-      if (afterDepts.rooms.length === 0) {
+      if (afterDepts.rooms.length === 0 && rooms.length > 0) {
         rooms.forEach((r, i) => {
           institutionalStore.addRoom({
             id: `room-${r.code.toLowerCase()}-${i}`,
@@ -895,7 +1175,7 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
         });
       }
 
-      if (afterDepts.courses.length === 0) {
+      if (afterDepts.courses.length === 0 && courses.length > 0) {
         courses.forEach((c, i) => {
           institutionalStore.addCourse({
             id: `course-${c.code.toLowerCase()}-${i}`,
@@ -911,7 +1191,7 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
         });
       }
 
-      if (afterDepts.instructors.length === 0) {
+      if (afterDepts.instructors.length === 0 && instructors.length > 0) {
         instructors.forEach((inst, i) => {
           institutionalStore.addInstructor({
             id: `instructor-${Date.now()}-${i}`,
@@ -927,1422 +1207,2238 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
         });
       }
 
-      if (afterDepts.studentGroups.length === 0) {
-        institutionalStore.addStudentGroup({
-          id: `group-2k26-${code.toLowerCase()}-a`,
-          programId: afterDepts.programs[0]?.id || 'prog-gen',
-          name: `${code.toUpperCase()} First Year Cohort A`,
-          code: `2K26-${code.toUpperCase()}-A`,
-          year: 1,
-          size: 40,
-          homeRoom: rooms[0]?.code || 'HALL-A',
-          sharedCourseIds: []
-        });
+      // Sync saved academy settings to Supabase backend when logged in
+      const storedUser = getStoredUser();
+      if (storedUser?.token) {
+        const targetSyncId = storedUser.institutionId || targetInstId;
+        void updateUniversitySettingsBackend(storedUser, targetSyncId, {
+          workingDays,
+          dayStartTime,
+          dayEndTime,
+          periodLengthMinutes,
+          shortBreakMinutes: shortBreakEnabled ? shortBreakMinutes : 0,
+          middayBreakEnabled,
+          middayBreakStart: middayBreakStartTime,
+          middayBreakDuration: middayBreakDurationMinutes,
+          labDurationMinutes
+        }).catch(() => {});
+        void institutionalStore.syncToBackend(storedUser);
       }
 
-      // Synthesize timetable using the newly persisted institutionalStore configuration
-      institutionalStore.runTimetableSolver({
-        forceRescheduleAll: true,
-        strategyName: `${activeTermObj?.name || 'Configured'} Timetable`
-      });
+      setIsSubmitting(false);
+      setCompletedInstId(targetInstId);
+      setIsCompleted(true);
 
+      completionTimerRef.current = window.setTimeout(() => {
+        onCompleted?.(targetInstId);
+        onClose();
+      }, 1350);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
       setIsSubmitting(false);
-      onCompleted?.(targetInstId);
-      onClose();
-    } catch (err: any) {
-      setIsSubmitting(false);
-      setOnboardingError(`Configuration error: ${err?.message || err}`);
+      setOnboardingError(`Could not save setup: ${message}`);
     }
   };
 
-  // Sequential Wizard Screens (Steps 1–4 as requested + Step 5 Catalog & Global Save)
-  const steps = [
-    { title: '1. Institution Profile', icon: Building2 },
-    { title: '2. Academic Calendar', icon: Calendar },
-    { title: '3. Daily Operating Hours', icon: Clock },
-    { title: '4. Session & Break Policy', icon: Coffee },
-    { title: '5. Catalog & Persist', icon: Layers }
-  ];
+  const finishImmediately = () => {
+    if (completionTimerRef.current) {
+      window.clearTimeout(completionTimerRef.current);
+      completionTimerRef.current = null;
+    }
+    if (completedInstId) {
+      onCompleted?.(completedInstId);
+    }
+    onClose();
+  };
+
+  const currentMeta = STEP_META[activeStep];
+  const progressFraction = (activeStep + 1) / STEP_META.length;
+  const stepIcons = [Building2, Calendar, Clock, Coffee, Layers];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/55 backdrop-blur-xs">
-      {showImportWizard && (
-        <DataImportWizard
-          onClose={() => setShowImportWizard(false)}
-          onSuccess={() => {
-            setShowImportWizard(false);
-          }}
-        />
-      )}
+    <MotionConfig reducedMotion="user">
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.22, ease: CALM_EASE }}
+        className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-[#171717]/45 backdrop-blur-xs"
+      >
+        {showImportWizard && (
+          <DataImportWizard
+            onClose={() => setShowImportWizard(false)}
+            onSuccess={() => {
+              setShowImportWizard(false);
+            }}
+          />
+        )}
 
-      <div className="w-full max-w-4xl max-h-[92vh] flex flex-col bg-white border border-[#E4E2DA] rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-        {/* Header */}
-        <div className="px-6 py-4 bg-[#F7F6EF] border-b border-[#E4E2DA] flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-[#171717] text-white flex items-center justify-center shadow-xs">
-              <Building2 className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <h2 className="font-serif-editorial text-lg text-[#171717] font-semibold">
-                  University Configuration &amp; Onboarding Wizard
-                </h2>
-                <span className="text-[10px] font-mono-tabular font-bold px-2 py-0.5 rounded-full bg-[#B8EEEE] text-[#171717] border border-[#95DFDF]">
-                  Global Store Persistence
-                </span>
-              </div>
-              <p className="text-xs text-[#77766F] mt-0.5">
-                Configure 1) Institution Profile, 2) Academic Calendar, 3) Daily Operating Hours, and 4) Session &amp; Break Policies.
-              </p>
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-1.5 rounded-lg text-[#77766F] hover:text-[#171717] hover:bg-black/5 cursor-pointer"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        {/* Sequential Stepper Bar */}
-        <div className="px-6 py-2.5 bg-white border-b border-[#E4E2DA] overflow-x-auto">
-          <div className="flex items-center justify-between min-w-[640px] gap-2">
-            {steps.map((st, sIdx) => {
-              const Icon = st.icon;
-              const isActive = activeStep === sIdx;
-              const isPast = activeStep > sIdx;
-              return (
-                <button
-                  key={st.title}
-                  type="button"
-                  onClick={() => {
-                    setOnboardingError(null);
-                    setActiveStep(sIdx);
-                  }}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs transition-colors cursor-pointer shrink-0 ${
-                    isActive
-                      ? 'bg-[#171717] text-white font-semibold shadow-xs'
-                      : isPast
-                      ? 'bg-[#B7F77C]/30 text-[#171717] font-medium border border-[#98DF58]'
-                      : 'text-[#77766F] hover:text-[#171717] hover:bg-[#F7F6EF]'
-                  }`}
-                >
-                  <Icon className="w-3.5 h-3.5" />
-                  <span>{st.title}</span>
-                  {isPast && <Check className="w-3 h-3 text-[#2E7D32]" />}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Step Body */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-6">
-          {onboardingError && (
-            <div className="px-3.5 py-2.5 rounded-xl bg-[#FDE8E8] border border-[#F5B5B5] text-[#8B1E1E] text-xs font-medium flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 shrink-0" />
-              <span>{onboardingError}</span>
-            </div>
-          )}
-
-          {stepSavedToast && !onboardingError && (
-            <div className="px-3.5 py-2 rounded-xl bg-[#B7F77C]/30 border border-[#98DF58] text-[#171717] text-xs font-medium flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 text-[#2E7D32] shrink-0" />
-              <span>{stepSavedToast}</span>
-            </div>
-          )}
-
+        <motion.div
+          initial={{ opacity: 0, scale: 0.97, y: 12 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          transition={{ duration: 0.3, ease: CALM_EASE }}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Academy Configuration Wizard"
+          className="w-full max-w-5xl h-[min(88vh,740px)] flex flex-col lg:flex-row bg-white border border-[#E4E2DA] rounded-2xl shadow-2xl overflow-hidden"
+        >
           {/* =========================================================
-              SCREEN 1: Institution Profile Customization
+              LEFT CALM GUIDED STEP RAIL (Desktop)
              ========================================================= */}
-          {activeStep === 0 && (
-            <div className="space-y-5">
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 pb-3 border-b border-[#E4E2DA]">
-                <div>
-                  <h3 className="font-serif-editorial text-lg text-[#171717] font-semibold">
-                    Screen 1: Institution Profile Customization
-                  </h3>
-                  <p className="text-xs text-[#77766F] mt-0.5">
-                    Maps to <code>institutionalStore.saveProfileConfig()</code> &amp; <code>updateInstitutionProfile()</code>.
-                  </p>
-                </div>
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  <button
-                    type="button"
-                    onClick={() => applyInstitutionPreset('semester-5day')}
-                    className="px-2.5 py-1 rounded-lg bg-[#F7F6EF] hover:bg-[#EDEAE0] border border-[#E4E2DA] text-[10.5px] font-semibold text-[#171717] cursor-pointer"
-                  >
-                    5-Day Semester Preset
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => applyInstitutionPreset('trimester-6day')}
-                    className="px-2.5 py-1 rounded-lg bg-[#F7F6EF] hover:bg-[#EDEAE0] border border-[#E4E2DA] text-[10.5px] font-semibold text-[#171717] cursor-pointer"
-                  >
-                    6-Day Trimester Preset
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => applyInstitutionPreset('quarter-block')}
-                    className="px-2.5 py-1 rounded-lg bg-[#F7F6EF] hover:bg-[#EDEAE0] border border-[#E4E2DA] text-[10.5px] font-semibold text-[#171717] cursor-pointer"
-                  >
-                    Quarter (75m) Preset
-                  </button>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-[#171717]">
-                    University Full Name <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={name}
-                    onChange={e => setName(e.target.value)}
-                    placeholder="e.g. National Institute of Technology"
-                    className="input-field text-xs"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-[#171717]">
-                    University Acronym / Short Code <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={code}
-                    onChange={e => {
-                      const val = e.target.value.toUpperCase();
-                      setCode(val);
-                      setCampusCode(`${val || 'UNIV'}-MAIN-01`);
-                    }}
-                    placeholder="e.g. NIT, MIT, NUST"
-                    className="input-field text-xs font-mono-tabular uppercase"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-[#171717]">
-                    Main Campus Name
-                  </label>
-                  <input
-                    type="text"
-                    value={campusName}
-                    onChange={e => setCampusName(e.target.value)}
-                    placeholder="e.g. Downtown Innovation Campus"
-                    className="input-field text-xs"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-[#171717]">
-                    Campus Identifier Code
-                  </label>
-                  <input
-                    type="text"
-                    value={campusCode}
-                    onChange={e => setCampusCode(e.target.value.toUpperCase())}
-                    placeholder="e.g. AIST-MAIN-01"
-                    className="input-field text-xs font-mono-tabular uppercase"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-[#171717]">
-                    Institution Timezone
-                  </label>
-                  <select
-                    value={timezone}
-                    onChange={e => setTimezone(e.target.value)}
-                    className="input-field text-xs bg-white"
-                  >
-                    <option value="UTC">UTC (Coordinated Universal Time)</option>
-                    <option value="America/New_York">America/New_York (EST/EDT)</option>
-                    <option value="America/Chicago">America/Chicago (CST/CDT)</option>
-                    <option value="America/Los_Angeles">America/Los_Angeles (PST/PDT)</option>
-                    <option value="Europe/London">Europe/London (GMT/BST)</option>
-                    <option value="Europe/Berlin">Europe/Berlin (CET/CEST)</option>
-                    <option value="Asia/Dubai">Asia/Dubai (GST)</option>
-                    <option value="Asia/Karachi">Asia/Karachi (PKT)</option>
-                    <option value="Asia/Singapore">Asia/Singapore (SGT)</option>
-                    <option value="Australia/Sydney">Australia/Sydney (AEST)</option>
-                  </select>
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-[#171717]">
-                    Accreditation &amp; Governance Body
-                  </label>
-                  <input
-                    type="text"
-                    value={accreditation}
-                    onChange={e => setAccreditation(e.target.value)}
-                    placeholder="e.g. ABET, PEC, NCEAC, AACSB"
-                    className="input-field text-xs"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-[#171717]">
-                    Registrar / Administrator Full Name
-                  </label>
-                  <input
-                    type="text"
-                    value={registrarName}
-                    onChange={e => setRegistrarName(e.target.value)}
-                    placeholder="Registrar Full Name"
-                    className="input-field text-xs"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-[#171717]">
-                    Registrar Official Email
-                  </label>
-                  <input
-                    type="email"
-                    value={registrarEmail}
-                    onChange={e => setRegistrarEmail(e.target.value)}
-                    placeholder="registrar@university.edu"
-                    className="input-field text-xs"
-                  />
-                </div>
-              </div>
-
-              {/* University Timetable Management Policy */}
-              <div className="p-4 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="text-xs font-semibold text-[#171717]">
-                      University Timetable Management Policy
+          <aside className="hidden lg:flex lg:w-[272px] shrink-0 flex-col justify-between bg-[#F7F6EF] border-r border-[#E4E2DA] p-6">
+            <div className="space-y-6">
+              {/* Academy Brand Preview */}
+              <motion.div
+                initial={{ opacity: 0, y: -6 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3, ease: CALM_EASE }}
+                className="space-y-1.5 pb-5 border-b border-[#E4E2DA]"
+              >
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-[#171717] text-white flex items-center justify-center">
+                    <Building2 className="w-4 h-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-[11px] font-mono-tabular uppercase tracking-wider text-[#77766F]">
+                      Academy Setup
                     </div>
-                    <div className="text-[11px] text-[#77766F]">
-                      Choose whether your university schedules all departments in a single integrated operation or lets each department manage its own timetable.
+                    <div className="text-sm font-semibold text-[#171717] truncate">
+                      {code ? `${code} · ${name || 'University'}` : name || 'New University'}
                     </div>
                   </div>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setTimetableManagementPolicy('whole_university')}
-                    className={`p-3.5 rounded-xl border text-left transition-colors cursor-pointer ${
-                      timetableManagementPolicy === 'whole_university'
-                        ? 'bg-[#171717] text-white border-[#171717]'
-                        : 'bg-white text-[#171717] border-[#E4E2DA] hover:bg-[#EDEAE0]'
-                    }`}
-                  >
-                    <div className="text-xs font-semibold">
-                      Policy 1: Whole-University Timetable Management
-                    </div>
-                    <div
-                      className={`text-[11px] mt-1 leading-relaxed ${
-                        timetableManagementPolicy === 'whole_university'
-                          ? 'text-[#B8EEEE]'
-                          : 'text-[#77766F]'
-                      }`}
-                    >
-                      All departments scheduled together in one operation. Prevents cross-department shared faculty, classroom, and laboratory clashes.
-                    </div>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setTimetableManagementPolicy('department_wise')}
-                    className={`p-3.5 rounded-xl border text-left transition-colors cursor-pointer ${
-                      timetableManagementPolicy === 'department_wise'
-                        ? 'bg-[#171717] text-white border-[#171717]'
-                        : 'bg-white text-[#171717] border-[#E4E2DA] hover:bg-[#EDEAE0]'
-                    }`}
-                  >
-                    <div className="text-xs font-semibold">
-                      Policy 2: Department-wise Timetable Management
-                    </div>
-                    <div
-                      className={`text-[11px] mt-1 leading-relaxed ${
-                        timetableManagementPolicy === 'department_wise'
-                          ? 'text-[#B8EEEE]'
-                          : 'text-[#77766F]'
-                      }`}
-                    >
-                      Each department generates and manages its own timetable using department-scoped faculty, rooms, labs, batches, and sections.
-                    </div>
-                  </button>
-                </div>
-              </div>
+              </motion.div>
 
-              <div className="p-3.5 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] flex items-center justify-between">
-                <div>
-                  <div className="text-xs font-semibold text-[#171717]">
-                    Automated Hard-Constraint Conflict Sweep
-                  </div>
-                  <div className="text-[11px] text-[#77766F]">
-                    Automatically validate room, instructor, and cohort collisions whenever schedule settings change
-                  </div>
-                </div>
-                <input
-                  type="checkbox"
-                  checked={autoConflictSweep}
-                  onChange={e => setAutoConflictSweep(e.target.checked)}
-                  className="w-4 h-4 accent-[#171717]"
-                />
-              </div>
-            </div>
-          )}
+              {/* Vertical Stepper with Staggered Entrance */}
+              <motion.nav
+                aria-label="Setup Steps"
+                variants={stepperContainerVariants}
+                initial="hidden"
+                animate="visible"
+                className="space-y-1.5"
+              >
+                {STEP_META.map((st, idx) => {
+                  const Icon = stepIcons[idx];
+                  const isActive = activeStep === idx && !isCompleted;
+                  const isDone = isCompleted || (visitedSteps.has(idx) && idx < activeStep);
 
-          {/* =========================================================
-              SCREEN 2: Academic Calendar Structure (Semesters / Terms)
-             ========================================================= */}
-          {activeStep === 1 && (
-            <div className="space-y-5">
-              <div>
-                <h3 className="font-serif-editorial text-lg text-[#171717] font-semibold">
-                  Screen 2: Academic Calendar Structure (Semesters / Terms)
-                </h3>
-                <p className="text-xs text-[#77766F] mt-0.5">
-                  Maps directly to <code>institutionalStore.saveAcademicCalendarConfig()</code> &amp; <code>setTerms()</code>.
-                </p>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA]">
-                <div className="md:col-span-2 space-y-1.5">
-                  <label className="text-xs font-semibold text-[#171717]">
-                    Academic Calendar Structure Model
-                  </label>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                    {(
-                      [
-                        { id: 'semester', label: 'Semester (2/Yr)' },
-                        { id: 'trimester', label: 'Trimester (3/Yr)' },
-                        { id: 'quarter', label: 'Quarter (4/Yr)' },
-                        { id: 'custom', label: 'Custom Terms' }
-                      ] as Array<{ id: CalendarSystemType; label: string }>
-                    ).map(opt => (
-                      <button
-                        key={opt.id}
-                        type="button"
-                        onClick={() => handleSelectCalendarSystem(opt.id)}
-                        className={`px-2.5 py-2 rounded-lg text-xs font-semibold border transition-colors cursor-pointer ${
-                          calendarSystem === opt.id
-                            ? 'bg-[#171717] text-white border-[#171717]'
-                            : 'bg-white text-[#57564F] border-[#E4E2DA] hover:text-[#171717]'
-                        }`}
-                      >
-                        {opt.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-[#171717]">
-                    Academic Year Label
-                  </label>
-                  <input
-                    type="text"
-                    value={academicYear}
-                    onChange={e => setAcademicYear(e.target.value)}
-                    placeholder="2026–2027"
-                    className="input-field text-xs font-mono-tabular bg-white"
-                  />
-                </div>
-              </div>
-
-              {/* Terms List */}
-              <div className="space-y-2.5">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="text-xs font-semibold text-[#171717]">
-                    Configured Semesters &amp; Terms ({terms.length}) — Multiple Semesters May Be Active Simultaneously
-                  </span>
-                  <span className="text-[11px] text-[#77766F]">
-                    Active:{' '}
-                    <strong>
-                      {terms
-                        .filter(t => t.status === 'active')
-                        .map(t => t.name)
-                        .join(' + ') || 'None'}
-                    </strong>
-                  </span>
-                </div>
-
-                <div className="space-y-2">
-                  {terms.map((term, idx) => {
-                    const isCurrentActive = term.status === 'active';
-                    return (
-                      <div
-                        key={term.id}
-                        className={`p-3 rounded-xl border flex flex-wrap items-center justify-between gap-3 ${
-                          isCurrentActive
-                            ? 'bg-[#B7F77C]/20 border-[#98DF58]'
-                            : 'bg-white border-[#E4E2DA]'
-                        }`}
-                      >
-                        <div className="flex items-center gap-3 min-w-[200px]">
-                          <span className="px-2 py-1 rounded-md bg-[#171717] text-white text-[10px] font-mono-tabular font-bold">
-                            {term.code}
-                          </span>
-                          <div>
-                            <div className="text-xs font-semibold text-[#171717] flex items-center gap-2">
-                              <span>{term.name}</span>
-                              {term.academicYear && (
-                                <span className="text-[10px] font-mono-tabular text-[#77766F]">
-                                  ({term.academicYear})
-                                </span>
-                              )}
-                              {isCurrentActive ? (
-                                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[#171717] text-[#B7F77C]">
-                                  Active
-                                </span>
-                              ) : (
-                                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[#F7F6EF] text-[#77766F] border border-[#E4E2DA]">
-                                  Inactive / Draft
-                                </span>
-                              )}
-                            </div>
-                            <div className="text-[11px] text-[#77766F] font-mono-tabular">
-                              {term.startDate} → {term.endDate} · {term.weeksCount} instructional weeks
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => handleToggleTermActive(term.id)}
-                            className={`px-2.5 py-1 rounded-lg border text-[11px] font-semibold cursor-pointer transition-colors ${
-                              isCurrentActive
-                                ? 'bg-white hover:bg-[#F7F6EF] border-[#E4E2DA] text-[#171717]'
-                                : 'bg-[#171717] text-white border-[#171717]'
-                            }`}
-                          >
-                            {isCurrentActive ? 'Deactivate' : 'Activate'}
-                          </button>
-                          {terms.length > 1 && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const remaining = terms.filter((_, i) => i !== idx);
-                                if (!remaining.some(r => r.status === 'active') && remaining.length > 0) {
-                                  remaining[0].status = 'active';
-                                }
-                                setTerms(remaining);
-                              }}
-                              className="p-1.5 text-[#77766F] hover:text-red-600 cursor-pointer"
-                              title="Remove term"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Add Custom Term Form */}
-              <div className="p-3.5 rounded-xl border border-[#E4E2DA] bg-[#F7F6EF]/50 space-y-3">
-                <div className="text-xs font-semibold text-[#171717]">
-                  Add Academic Term / Semester / Intensive Session
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-6 gap-2.5">
-                  <input
-                    type="text"
-                    placeholder="Semester Name (e.g. Summer 2027)"
-                    value={newTermName}
-                    onChange={e => setNewTermName(e.target.value)}
-                    className="input-field h-9 text-xs bg-white sm:col-span-2"
-                  />
-                  <input
-                    type="text"
-                    placeholder="Code (SUM-27)"
-                    value={newTermCode}
-                    onChange={e => setNewTermCode(e.target.value.toUpperCase())}
-                    className="input-field h-9 text-xs font-mono-tabular uppercase bg-white"
-                  />
-                  <input
-                    type="text"
-                    placeholder="Year (2026–2027)"
-                    value={newTermAcademicYear}
-                    onChange={e => setNewTermAcademicYear(e.target.value)}
-                    className="input-field h-9 text-xs font-mono-tabular bg-white"
-                  />
-                  <input
-                    type="date"
-                    value={newTermStart}
-                    onChange={e => setNewTermStart(e.target.value)}
-                    className="input-field h-9 text-xs font-mono-tabular bg-white"
-                  />
-                  <div className="flex items-center gap-1.5">
-                    <input
-                      type="number"
-                      min={1}
-                      max={52}
-                      value={newTermWeeks}
-                      onChange={e => setNewTermWeeks(Number(e.target.value))}
-                      className="input-field h-9 text-xs font-mono-tabular bg-white w-16"
-                      title="Weeks count"
-                    />
-                    <button
+                  return (
+                    <motion.button
+                      key={st.id}
                       type="button"
-                      onClick={handleAddTerm}
-                      disabled={!newTermName.trim() || !newTermCode.trim()}
-                      className="btn-primary h-9 px-3 text-xs font-semibold shrink-0"
+                      variants={stepperItemVariants}
+                      whileHover={isCompleted ? undefined : { x: 2 }}
+                      whileTap={isCompleted ? undefined : { scale: 0.985 }}
+                      onClick={() => goToStep(idx)}
+                      disabled={isCompleted}
+                      className="relative w-full text-left px-3 py-2.5 rounded-xl flex items-center gap-3 cursor-pointer transition-colors disabled:cursor-default group"
                     >
-                      <Plus className="w-3.5 h-3.5" />
-                      <span>Add</span>
-                    </button>
-                  </div>
-                </div>
-                <label className="inline-flex items-center gap-2 text-xs text-[#57564F] cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={newTermActive}
-                    onChange={e => setNewTermActive(e.target.checked)}
-                    className="w-3.5 h-3.5 accent-[#171717]"
-                  />
-                  <span>Activate this semester immediately upon creation</span>
-                </label>
-              </div>
-            </div>
-          )}
+                      {isActive && (
+                        <motion.div
+                          layoutId="onboarding-rail-active"
+                          transition={{ type: 'spring', stiffness: 420, damping: 34 }}
+                          className="absolute inset-0 bg-white border border-[#E4E2DA] rounded-xl shadow-2xs"
+                        />
+                      )}
 
-          {/* =========================================================
-              SCREEN 3: Daily Operating Hours Configuration
-             ========================================================= */}
-          {activeStep === 2 && (
-            <div className="space-y-5">
-              <div>
-                <h3 className="font-serif-editorial text-lg text-[#171717] font-semibold">
-                  Screen 3: Daily Operating Hours Configuration
-                </h3>
-                <p className="text-xs text-[#77766F] mt-0.5">
-                  Maps directly to <code>institutionalStore.saveOperatingHoursConfig()</code> &amp; <code>updateTimeStructure()</code>.
-                </p>
-              </div>
-
-              {/* Working Days Selector */}
-              <div className="p-4 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] space-y-3">
-                <label className="text-xs font-semibold text-[#171717] block">
-                  University Working Days (Select Active Instructional Days)
-                </label>
-                <div className="flex flex-wrap gap-2">
-                  {(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as DayOfWeek[]).map(d => {
-                    const active = workingDays.includes(d);
-                    return (
-                      <button
-                        key={d}
-                        type="button"
-                        onClick={() => toggleDay(d)}
-                        className={`px-4 py-2 rounded-xl text-xs font-mono-tabular transition-colors cursor-pointer border ${
-                          active
-                            ? 'bg-[#171717] text-white border-[#171717] font-bold shadow-2xs'
-                            : 'bg-white text-[#77766F] border-[#E4E2DA] hover:text-[#171717]'
+                      <div
+                        className={`relative z-10 w-7 h-7 rounded-lg flex items-center justify-center text-xs font-mono-tabular transition-colors shrink-0 ${
+                          isActive
+                            ? 'bg-[#171717] text-white'
+                            : isDone
+                            ? 'bg-[#B8F2E6] text-[#171717]'
+                            : 'bg-[#EDEAE0] text-[#77766F] group-hover:text-[#171717]'
                         }`}
                       >
-                        {d} {active && '✓'}
-                      </button>
-                    );
-                  })}
-                </div>
-                <div className="text-[11px] text-[#57564F]">
-                  Configured operating week: <strong>{workingDays.join(', ')}</strong> ({workingDays.length} days per week)
-                </div>
-              </div>
-
-              {/* Daily Opening & Closing Times */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="p-4 rounded-xl border border-[#E4E2DA] bg-white space-y-2">
-                  <label className="text-xs font-semibold text-[#171717] block">
-                    Campus Daily Opening Time (First Slot Start)
-                  </label>
-                  <input
-                    type="time"
-                    value={dayStartTime}
-                    onChange={e => setDayStartTime(e.target.value)}
-                    className="input-field text-sm font-mono-tabular"
-                  />
-                  <p className="text-[11px] text-[#77766F]">
-                    No lecture or lab session will be scheduled prior to {dayStartTime}.
-                  </p>
-                </div>
-
-                <div className="p-4 rounded-xl border border-[#E4E2DA] bg-white space-y-2">
-                  <label className="text-xs font-semibold text-[#171717] block">
-                    Campus Daily Closing Time (Final Slot End)
-                  </label>
-                  <input
-                    type="time"
-                    value={dayEndTime}
-                    onChange={e => setDayEndTime(e.target.value)}
-                    className="input-field text-sm font-mono-tabular"
-                  />
-                  <p className="text-[11px] text-[#77766F]">
-                    All lectures and continuous laboratories must conclude by {dayEndTime}.
-                  </p>
-                </div>
-              </div>
-
-              {/* Friday / Jummah Prayer Schedule Policy */}
-              <div className="p-4 rounded-xl border border-[#E4E2DA] bg-[#F7F6EF]/60 space-y-3">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                  <div>
-                    <div className="text-xs font-semibold text-[#171717]">
-                      Friday &amp; Jummah Prayer Schedule
-                    </div>
-                    <div className="text-[11px] text-[#77766F]">
-                      Configure Friday prayer break, morning-only half-day, and optional shortened Friday class timings.
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-3 gap-1.5 shrink-0">
-                    {(
-                      [
-                        { id: 'jummah_break', label: 'Jummah Break' },
-                        { id: 'morning_only', label: 'Morning Only' },
-                        { id: 'standard', label: 'Standard' }
-                      ] as const
-                    ).map(opt => (
-                      <button
-                        key={opt.id}
-                        type="button"
-                        onClick={() => setFridayMode(opt.id)}
-                        className={`px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border transition-colors cursor-pointer ${
-                          fridayMode === opt.id
-                            ? 'bg-[#171717] text-white border-[#171717]'
-                            : 'bg-white text-[#57564F] border-[#E4E2DA] hover:text-[#171717]'
-                        }`}
-                      >
-                        {opt.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {fridayMode === 'jummah_break' && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-[#E4E2DA]">
-                    <div className="space-y-1">
-                      <label className="text-[11px] font-medium text-[#57564F] block">
-                        Jummah Break Starts
-                      </label>
-                      <input
-                        type="time"
-                        value={fridayBreakStartTime}
-                        onChange={e => setFridayBreakStartTime(e.target.value)}
-                        className="input-field h-8 w-full text-xs font-mono-tabular bg-white"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[11px] font-medium text-[#57564F] block">
-                        Friday Afternoon Resumes
-                      </label>
-                      <input
-                        type="time"
-                        value={fridayBreakEndTime}
-                        onChange={e => setFridayBreakEndTime(e.target.value)}
-                        className="input-field h-8 w-full text-xs font-mono-tabular bg-white"
-                      />
-                    </div>
-                  </div>
-                )}
-
-                {fridayMode === 'morning_only' && (
-                  <div className="flex items-center justify-between pt-2 border-t border-[#E4E2DA]">
-                    <span className="text-xs text-[#57564F]">
-                      Friday Classes Conclude Before Jummah At:
-                    </span>
-                    <input
-                      type="time"
-                      value={fridayClosingTime}
-                      onChange={e => setFridayClosingTime(e.target.value)}
-                      className="input-field h-8 w-32 text-xs font-mono-tabular bg-white"
-                    />
-                  </div>
-                )}
-
-                {fridayMode !== 'standard' && (
-                  <div className="pt-2 border-t border-[#E4E2DA] space-y-2.5">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <span className="text-[11px] font-semibold text-[#171717]">
-                        Shortened Friday Class Timings
-                      </span>
-                      <div className="flex flex-wrap gap-1">
-                        {(
-                          [
-                            { id: 'none', label: 'Same Length' },
-                            { id: 'before_jummah', label: 'Before Jummah' },
-                            ...(fridayMode === 'jummah_break'
-                              ? [{ id: 'after_jummah', label: 'After Jummah' }]
-                              : []),
-                            { id: 'all_day', label: 'All Friday' }
-                          ] as { id: FridayCompressionScope; label: string }[]
-                        ).map(scope => (
-                          <button
-                            key={scope.id}
-                            type="button"
-                            onClick={() => setFridayCompressionScope(scope.id)}
-                            className={`px-2 py-1 rounded-md text-[10px] font-semibold border cursor-pointer ${
-                              fridayCompressionScope === scope.id
-                                ? 'bg-[#171717] text-white border-[#171717]'
-                                : 'bg-white text-[#57564F] border-[#E4E2DA]'
-                            }`}
+                        {isDone ? (
+                          <motion.span
+                            initial={{ scale: 0.6, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            transition={{ duration: 0.22, ease: CALM_EASE }}
                           >
-                            {scope.label}
-                          </button>
-                        ))}
+                            <Check className="w-3.5 h-3.5 stroke-[2.5]" />
+                          </motion.span>
+                        ) : (
+                          <Icon className="w-3.5 h-3.5" />
+                        )}
                       </div>
-                    </div>
 
-                    {fridayCompressionScope !== 'none' && (
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="space-y-1">
-                          <label className="text-[11px] text-[#57564F] block">
-                            Friday Lecture Length (mins)
-                          </label>
-                          <input
-                            type="number"
-                            min={25}
-                            max={90}
-                            step={5}
-                            value={fridayPeriodLengthMinutes}
-                            onChange={e =>
-                              setFridayPeriodLengthMinutes(
-                                Math.max(25, Math.min(90, Number(e.target.value) || 45))
-                              )
-                            }
-                            className="input-field h-8 w-full text-xs font-mono-tabular bg-white"
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <label className="text-[11px] text-[#57564F] block">
-                            Friday Break Between Classes (mins)
-                          </label>
-                          <input
-                            type="number"
-                            min={0}
-                            max={20}
-                            step={5}
-                            value={fridayShortBreakMinutes}
-                            onChange={e =>
-                              setFridayShortBreakMinutes(
-                                Math.max(0, Math.min(20, Number(e.target.value) || 0))
-                              )
-                            }
-                            className="input-field h-8 w-full text-xs font-mono-tabular bg-white"
-                          />
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {/* Operating Hours Summary Banner */}
-              <div className="p-3.5 rounded-xl bg-[#B7F77C]/25 border border-[#98DF58] text-xs text-[#171717] flex items-center justify-between">
-                <span>
-                  <strong>Daily Operating Window:</strong> {computedPreview.operatingHoursLabel} across{' '}
-                  {workingDays.length} working days ({workingDays.join(', ')})
-                </span>
-                <span className="font-mono-tabular font-bold">
-                  {computedPreview.slots.length} Slots / Day
-                </span>
-              </div>
-            </div>
-          )}
-
-          {/* =========================================================
-              SCREEN 4: Session Duration & Break Policy Settings
-             ========================================================= */}
-          {activeStep === 3 && (
-            <div className="space-y-5">
-              <div>
-                <h3 className="font-serif-editorial text-lg text-[#171717] font-semibold">
-                  Screen 4: Session Duration &amp; Break Policy Settings
-                </h3>
-                <p className="text-xs text-[#77766F] mt-0.5">
-                  Maps directly to <code>institutionalStore.saveSessionAndBreakPolicyConfig()</code> &amp; <code>saveAcademicTimingConfig()</code>.
-                </p>
-              </div>
-
-              {/* 1. Lecture & Lab Session Durations */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA]">
-                <div className="space-y-2">
-                  <label className="text-xs font-semibold text-[#171717] flex items-center justify-between">
-                    <span>Regular Lecture Session Duration</span>
-                    <span className="font-mono-tabular text-[#171717] font-bold">
-                      {periodLengthMinutes} mins
-                    </span>
-                  </label>
-                  <div className="flex flex-wrap gap-1.5">
-                    {[45, 50, 60, 75, 90, 120].map(mins => (
-                      <button
-                        key={mins}
-                        type="button"
-                        onClick={() => setPeriodLengthMinutes(mins)}
-                        className={`px-2.5 py-1 rounded-lg text-xs font-mono-tabular border cursor-pointer ${
-                          periodLengthMinutes === mins
-                            ? 'bg-[#171717] text-white border-[#171717] font-semibold'
-                            : 'bg-white text-[#57564F] border-[#E4E2DA] hover:text-[#171717]'
-                        }`}
-                      >
-                        {mins}m
-                      </button>
-                    ))}
-                  </div>
-                  <div className="flex items-center gap-2 pt-1">
-                    <span className="text-[11px] text-[#77766F]">Custom duration (mins):</span>
-                    <input
-                      type="number"
-                      min={20}
-                      max={240}
-                      value={periodLengthMinutes}
-                      onChange={e => setPeriodLengthMinutes(Math.max(20, Number(e.target.value) || 50))}
-                      className="input-field h-8 w-24 text-xs font-mono-tabular bg-white"
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-xs font-semibold text-[#171717] flex items-center justify-between">
-                    <span>Continuous Laboratory Session Duration</span>
-                    <span className="font-mono-tabular text-[#171717] font-bold">
-                      {labDurationMinutes} mins ({computedPreview.labDurationHoursLabel})
-                    </span>
-                  </label>
-                  <div className="flex flex-wrap gap-1.5">
-                    {[100, 120, 150, 180, 240].map(mins => (
-                      <button
-                        key={mins}
-                        type="button"
-                        onClick={() => setLabDurationMinutes(mins)}
-                        className={`px-2.5 py-1 rounded-lg text-xs font-mono-tabular border cursor-pointer ${
-                          labDurationMinutes === mins
-                            ? 'bg-[#171717] text-white border-[#171717] font-semibold'
-                            : 'bg-white text-[#57564F] border-[#E4E2DA] hover:text-[#171717]'
-                        }`}
-                      >
-                        {mins}m ({(mins / 60).toFixed(mins % 60 === 0 ? 0 : 1)}h)
-                      </button>
-                    ))}
-                  </div>
-                  <div className="flex items-center gap-2 pt-1">
-                    <span className="text-[11px] text-[#77766F]">Custom lab (mins):</span>
-                    <input
-                      type="number"
-                      min={45}
-                      max={360}
-                      value={labDurationMinutes}
-                      onChange={e => setLabDurationMinutes(Math.max(45, Number(e.target.value) || 180))}
-                      className="input-field h-8 w-24 text-xs font-mono-tabular bg-white"
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-[11px] font-semibold text-[#171717]">
-                    Standard Theory Course Contact Hours / Week
-                  </label>
-                  <select
-                    value={defaultLectureHoursPerWeek}
-                    onChange={e => setDefaultLectureHoursPerWeek(Number(e.target.value))}
-                    className="input-field h-8 text-xs bg-white"
-                  >
-                    <option value={2}>2 Contact Hours / Week</option>
-                    <option value={3}>3 Contact Hours / Week (Standard)</option>
-                    <option value={4}>4 Contact Hours / Week</option>
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-[11px] font-semibold text-[#171717]">
-                    Standard Laboratory Course Contact Hours / Week
-                  </label>
-                  <select
-                    value={defaultLabHoursPerWeek}
-                    onChange={e => setDefaultLabHoursPerWeek(Number(e.target.value))}
-                    className="input-field h-8 text-xs bg-white"
-                  >
-                    <option value={2}>2 Lab Hours / Week</option>
-                    <option value={3}>3 Lab Hours / Week (Standard)</option>
-                    <option value={4}>4 Lab Hours / Week</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* 2. Short Inter-Class Break Policy */}
-              <div className="p-4 rounded-xl border border-[#E4E2DA] bg-white space-y-3">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="text-xs font-semibold text-[#171717]">
-                      Short Inter-Class Transition Break Policy
-                    </div>
-                    <div className="text-[11px] text-[#77766F]">
-                      Passing buffer between consecutive lecture slots
-                    </div>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={shortBreakEnabled}
-                    onChange={e => {
-                      setShortBreakEnabled(e.target.checked);
-                      if (!e.target.checked) setShortBreakMinutes(0);
-                      else if (shortBreakMinutes === 0) setShortBreakMinutes(10);
-                    }}
-                    className="w-4 h-4 accent-[#171717]"
-                  />
-                </div>
-
-                {shortBreakEnabled && (
-                  <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-[#E4E2DA]">
-                    <div className="flex items-center gap-2">
-                      <span className="text-[11px] text-[#77766F]">Break Minutes:</span>
-                      {[5, 10, 15, 20].map(m => (
-                        <button
-                          key={m}
-                          type="button"
-                          onClick={() => setShortBreakMinutes(m)}
-                          className={`px-2.5 py-1 rounded-lg text-xs font-mono-tabular border cursor-pointer ${
-                            shortBreakMinutes === m
-                              ? 'bg-[#171717] text-white border-[#171717]'
-                              : 'bg-[#F7F6EF] text-[#57564F] border-[#E4E2DA]'
+                      <div className="relative z-10 min-w-0">
+                        <div
+                          className={`text-xs font-semibold truncate ${
+                            isActive
+                              ? 'text-[#171717]'
+                              : isDone
+                              ? 'text-[#171717]'
+                              : 'text-[#57564F] group-hover:text-[#171717]'
                           }`}
                         >
-                          {m}m
-                        </button>
-                      ))}
-                    </div>
+                          {st.title}
+                        </div>
+                        <div className="text-[11px] text-[#77766F] truncate">{st.shortDesc}</div>
+                      </div>
+                    </motion.button>
+                  );
+                })}
+              </motion.nav>
+            </div>
 
-                    <label className="inline-flex items-center gap-2 text-[11px] text-[#57564F] cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={includeBreakAfterLastSlot}
-                        onChange={e => setIncludeBreakAfterLastSlot(e.target.checked)}
-                        className="w-3.5 h-3.5 accent-[#171717]"
-                      />
-                      <span>Include transition break after final period</span>
-                    </label>
-                  </div>
-                )}
+            {/* Calm Progress & Reassurance */}
+            <motion.div
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.35, delay: 0.25, ease: CALM_EASE }}
+              className="pt-5 border-t border-[#E4E2DA] space-y-2.5"
+            >
+              <div className="flex items-center justify-between text-[11px] font-mono-tabular text-[#57564F]">
+                <span>{isCompleted ? 'Completed' : `Step ${activeStep + 1} of ${STEP_META.length}`}</span>
+                <span>{isCompleted ? '100%' : `${Math.round(progressFraction * 100)}%`}</span>
               </div>
+              <div className="h-1.5 w-full bg-[#E4E2DA] rounded-sm overflow-hidden">
+                <motion.div
+                  className="h-full bg-[#171717] origin-left"
+                  initial={false}
+                  animate={{ scaleX: isCompleted ? 1 : progressFraction }}
+                  transition={{ duration: 0.38, ease: CALM_EASE }}
+                />
+              </div>
+              <p className="text-[11px] text-[#77766F] leading-relaxed">
+                Take your time. Every rule can be refined later in Academic Configuration.
+              </p>
+            </motion.div>
+          </aside>
 
-              {/* 3. Midday Lunch Break Policy */}
-              <div className="p-4 rounded-xl border border-[#E4E2DA] bg-white space-y-3">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="text-xs font-semibold text-[#171717]">
-                      University Midday / Lunch Break Policy
-                    </div>
-                    <div className="text-[11px] text-[#77766F]">
-                      Protected university-wide midday window where no lectures or labs can overlap
-                    </div>
+          {/* =========================================================
+              MOBILE TOP STEP STRIP (Below lg)
+             ========================================================= */}
+          <motion.div
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.28, ease: CALM_EASE }}
+            className="lg:hidden bg-[#F7F6EF] border-b border-[#E4E2DA] px-4 py-3 space-y-2.5 shrink-0"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="w-7 h-7 rounded-lg bg-[#171717] text-white flex items-center justify-center shrink-0">
+                  <Building2 className="w-3.5 h-3.5" />
+                </div>
+                <div className="min-w-0">
+                  <div className="text-xs font-semibold text-[#171717] truncate">
+                    {code ? `${code} · ${name || 'Academy Setup'}` : 'Academy Setup'}
                   </div>
-                  <input
-                    type="checkbox"
-                    checked={middayBreakEnabled}
-                    onChange={e => setMiddayBreakEnabled(e.target.checked)}
-                    className="w-4 h-4 accent-[#171717]"
-                  />
+                  <div className="text-[11px] font-mono-tabular text-[#77766F]">
+                    Step {activeStep + 1} of {STEP_META.length} · {currentMeta.title}
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={onClose}
+                aria-label="Close setup wizard"
+                className="p-1.5 rounded-lg text-[#77766F] hover:text-[#171717] hover:bg-black/5 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="h-1.5 w-full bg-[#E4E2DA] rounded-sm overflow-hidden">
+              <motion.div
+                className="h-full bg-[#171717] origin-left"
+                initial={false}
+                animate={{ scaleX: isCompleted ? 1 : progressFraction }}
+                transition={{ duration: 0.35, ease: CALM_EASE }}
+              />
+            </div>
+
+            <motion.div
+              variants={stepperContainerVariants}
+              initial="hidden"
+              animate="visible"
+              className="grid grid-cols-5 gap-1.5"
+            >
+              {STEP_META.map((st, idx) => {
+                const isActive = activeStep === idx && !isCompleted;
+                const isDone = isCompleted || (visitedSteps.has(idx) && idx < activeStep);
+                return (
+                  <motion.button
+                    key={st.id}
+                    type="button"
+                    variants={mobileStepperItemVariants}
+                    whileTap={{ scale: 0.94 }}
+                    onClick={() => goToStep(idx)}
+                    className={`h-7 rounded-lg text-[11px] font-mono-tabular font-semibold transition-colors cursor-pointer ${
+                      isActive
+                        ? 'bg-[#171717] text-white'
+                        : isDone
+                        ? 'bg-[#B8F2E6] text-[#171717]'
+                        : 'bg-white text-[#77766F] border border-[#E4E2DA]'
+                    }`}
+                  >
+                    {isDone ? '✓' : idx + 1}
+                  </motion.button>
+                );
+              })}
+            </motion.div>
+          </motion.div>
+
+          {/* =========================================================
+              RIGHT WORKSPACE PANE
+             ========================================================= */}
+          <div className="flex-1 flex flex-col min-w-0 min-h-0 bg-white">
+            {/* Completion Celebration State */}
+            {isCompleted ? (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.96 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ duration: 0.35, ease: CALM_EASE }}
+                className="flex-1 flex flex-col items-center justify-center text-center p-8 sm:p-12 space-y-5"
+              >
+                <div className="w-16 h-16 rounded-2xl bg-[#B8F2E6] border border-[#8FDCC9] flex items-center justify-center">
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="w-8 h-8 text-[#171717]"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={2.5}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <motion.path
+                      d="M5 13l4 4L19 7"
+                      initial={{ pathLength: 0 }}
+                      animate={{ pathLength: 1 }}
+                      transition={{ duration: 0.45, ease: CALM_EASE }}
+                    />
+                  </svg>
                 </div>
 
-                {middayBreakEnabled && (
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-[#E4E2DA]">
-                    <div className="space-y-1">
-                      <label className="text-[11px] text-[#77766F]">Break Mode</label>
-                      <select
-                        value={middayBreakMode}
-                        onChange={e => setMiddayBreakMode(e.target.value as 'fixed' | 'auto')}
-                        className="input-field h-8 text-xs bg-white"
-                      >
-                        <option value="fixed">Fixed Start Time</option>
-                        <option value="auto">Auto-Center Midday</option>
-                      </select>
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[11px] text-[#77766F]">Lunch Start Time</label>
-                      <input
-                        type="time"
-                        value={middayBreakStartTime}
-                        onChange={e => setMiddayBreakStartTime(e.target.value)}
-                        className="input-field h-8 text-xs font-mono-tabular bg-white"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[11px] text-[#77766F]">Lunch Duration</label>
-                      <select
-                        value={middayBreakDurationMinutes}
-                        onChange={e => setMiddayBreakDurationMinutes(Number(e.target.value))}
-                        className="input-field h-8 text-xs bg-white"
-                      >
-                        <option value={30}>30 Minutes</option>
-                        <option value={45}>45 Minutes</option>
-                        <option value={60}>60 Minutes (1 Hour)</option>
-                        <option value={75}>75 Minutes</option>
-                        <option value={90}>90 Minutes</option>
-                      </select>
-                    </div>
+                <div className="space-y-2 max-w-md">
+                  <div className="text-[11px] font-mono-tabular uppercase tracking-wider text-[#77766F]">
+                    Configuration Saved
                   </div>
-                )}
-              </div>
-
-              {/* 4. Additional Custom Institutional Breaks */}
-              <div className="p-3.5 rounded-xl border border-[#E4E2DA] bg-[#F7F6EF]/50 space-y-2.5">
-                <div className="text-xs font-semibold text-[#171717]">
-                  Additional Protected Break Windows ({customBreaks.length})
+                  <h2 className="font-serif-editorial text-2xl sm:text-3xl text-[#171717] font-semibold">
+                    {name || 'Your academy'} is ready
+                  </h2>
+                  <p className="text-xs sm:text-sm text-[#57564F] leading-relaxed">
+                    Saved {terms.length} academic {terms.length === 1 ? 'term' : 'terms'},{' '}
+                    {workingDays.length}-day weekly hours ({dayStartTime} – {dayEndTime}), and{' '}
+                    {computedPreview.slots.length} daily lecture periods.
+                  </p>
                 </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <input
-                    type="text"
-                    placeholder="Break Name (e.g. Convocation / Tea Break)"
-                    value={newBreakName}
-                    onChange={e => setNewBreakName(e.target.value)}
-                    className="input-field h-8 text-xs flex-1 min-w-[160px] bg-white"
-                  />
-                  <input
-                    type="time"
-                    value={newBreakStart}
-                    onChange={e => setNewBreakStart(e.target.value)}
-                    className="input-field h-8 w-24 text-xs font-mono-tabular bg-white"
-                  />
-                  <input
-                    type="time"
-                    value={newBreakEnd}
-                    onChange={e => setNewBreakEnd(e.target.value)}
-                    className="input-field h-8 w-24 text-xs font-mono-tabular bg-white"
-                  />
+
+                <button
+                  type="button"
+                  onClick={finishImmediately}
+                  className="btn-primary h-10 px-6 text-xs font-semibold"
+                >
+                  <span>Enter Workspace</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              </motion.div>
+            ) : (
+              <>
+                {/* Desktop Step Header with Synchronized Horizontal Slide */}
+                <header className="hidden lg:flex items-start justify-between gap-4 px-8 pt-6 pb-4 border-b border-[#E4E2DA] shrink-0 overflow-x-hidden">
+                  <div className="min-w-0 flex-1">
+                    <AnimatePresence mode="wait" custom={direction}>
+                      <motion.div
+                        key={`header-${activeStep}`}
+                        custom={direction}
+                        variants={stepHeaderSlideVariants}
+                        initial="enter"
+                        animate="center"
+                        exit="exit"
+                      >
+                        <div className="text-[11px] font-mono-tabular uppercase tracking-wider text-[#77766F]">
+                          Step {activeStep + 1} of {STEP_META.length} · {currentMeta.eyebrow}
+                        </div>
+                        <h2 className="font-serif-editorial text-2xl text-[#171717] font-semibold mt-0.5">
+                          {currentMeta.heading}
+                        </h2>
+                        <p className="text-xs text-[#77766F] mt-1">{currentMeta.subtitle}</p>
+                      </motion.div>
+                    </AnimatePresence>
+                  </div>
                   <button
                     type="button"
-                    onClick={handleAddCustomBreak}
-                    disabled={!newBreakName.trim()}
-                    className="btn-primary h-8 px-3 text-xs"
+                    onClick={onClose}
+                    aria-label="Close setup wizard"
+                    className="p-2 rounded-lg text-[#77766F] hover:text-[#171717] hover:bg-[#F7F6EF] transition-colors cursor-pointer shrink-0"
                   >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>Add Break</span>
+                    <X className="w-4 h-4" />
                   </button>
-                </div>
-                <div className="flex flex-wrap gap-1">
-                  {workingDays.map(d => (
-                    <button
-                      key={d}
-                      type="button"
-                      onClick={() => toggleNewBreakDay(d)}
-                      className={`px-2 py-0.5 rounded text-[10px] font-mono-tabular cursor-pointer ${
-                        newBreakDays.includes(d)
-                          ? 'bg-[#171717] text-white'
-                          : 'bg-white text-[#77766F] border border-[#E4E2DA]'
-                      }`}
-                    >
-                      {d}
-                    </button>
-                  ))}
-                </div>
-                {customBreaks.length > 0 && (
-                  <div className="space-y-1 pt-1">
-                    {customBreaks.map((cb, idx) => (
-                      <div
-                        key={cb.id}
-                        className="px-2.5 py-1.5 rounded-lg bg-white border border-[#E4E2DA] flex items-center justify-between text-xs"
+                </header>
+
+                {/* Step Scrollable Body */}
+                <div
+                  ref={bodyScrollRef}
+                  className="flex-1 overflow-y-auto overflow-x-hidden px-5 sm:px-8 py-6"
+                >
+                  <AnimatePresence mode="wait">
+                    {onboardingError && (
+                      <motion.div
+                        key="onboarding-error"
+                        initial={{ opacity: 0, y: -6 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -6 }}
+                        transition={{ duration: 0.2, ease: CALM_EASE }}
+                        className="mb-5 px-4 py-3 rounded-xl bg-[#FEF2F2] border border-[#F5B5B5] text-[#8B1E1E] text-xs font-medium flex items-center gap-2.5"
                       >
-                        <span>
-                          <strong>{cb.name}</strong> · {cb.startTime}–{cb.endTime} ({cb.days.join(', ')})
+                        <AlertCircle className="w-4 h-4 shrink-0" />
+                        <span>{onboardingError}</span>
+                      </motion.div>
+                    )}
+
+                    {stepSavedToast && !onboardingError && (
+                      <motion.div
+                        key="onboarding-toast"
+                        initial={{ opacity: 0, y: -6 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -6 }}
+                        transition={{ duration: 0.2, ease: CALM_EASE }}
+                        className="mb-5 px-4 py-2.5 rounded-xl bg-[#B8F2E6]/45 border border-[#8FDCC9] text-[#171717] text-xs font-medium flex items-center justify-between gap-2"
+                      >
+                        <span className="flex items-center gap-2">
+                          <Check className="w-3.5 h-3.5 text-[#1E5631] shrink-0" />
+                          <span>{stepSavedToast}</span>
                         </span>
                         <button
                           type="button"
-                          onClick={() => setCustomBreaks(customBreaks.filter((_, i) => i !== idx))}
-                          className="text-[#77766F] hover:text-red-600 cursor-pointer"
+                          onClick={() => setStepSavedToast(null)}
+                          className="text-[#57564F] hover:text-[#171717] cursor-pointer"
+                          aria-label="Dismiss notice"
                         >
-                          <Trash2 className="w-3.5 h-3.5" />
+                          <X className="w-3.5 h-3.5" />
                         </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
 
-              {/* Live Generated Period Slots Preview */}
-              <div className="p-3.5 rounded-xl bg-[#B7F77C]/25 border border-[#98DF58] space-y-2">
-                <div className="flex items-center justify-between text-xs text-[#171717]">
-                  <span className="font-semibold">
-                    Computed Schedule Grid ({computedPreview.slots.length} Lecture Slots ·{' '}
-                    {computedPreview.continuousLabBlocks.length} Continuous Lab Blocks)
-                  </span>
-                  <span className="font-mono-tabular text-[11px]">
-                    {computedPreview.summaryText}
-                  </span>
-                </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {computedPreview.slots.map(slot => (
-                    <span
-                      key={slot.slotNumber}
-                      className="px-2 py-1 rounded-md bg-white border border-[#98DF58] text-[10.5px] font-mono-tabular text-[#171717]"
+                  <AnimatePresence mode="wait" custom={direction}>
+                    <motion.div
+                      key={activeStep}
+                      custom={direction}
+                      variants={stepSlideVariants}
+                      initial="enter"
+                      animate="center"
+                      exit="exit"
+                      className="space-y-6"
                     >
-                      S{slot.slotNumber}: {slot.period}
-                    </span>
-                  ))}
+                      {/* =================================================
+                          STEP 1: IDENTITY & GOVERNANCE
+                         ================================================= */}
+                      {activeStep === 0 && (
+                        <>
+                          {/* Quick-Start Templates */}
+                          <div className="space-y-2.5">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-semibold text-[#171717]">
+                                Quick-Start Schedule Template
+                              </span>
+                              <span className="text-[11px] text-[#77766F]">
+                                Optional — fills calendar &amp; hours automatically
+                              </span>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                              {(
+                                [
+                                  {
+                                    id: 'semester-5day',
+                                    title: '5-Day Semester',
+                                    meta: 'Mon–Fri · 50m classes'
+                                  },
+                                  {
+                                    id: 'trimester-6day',
+                                    title: '6-Day Trimester',
+                                    meta: 'Mon–Sat · 60m classes'
+                                  },
+                                  {
+                                    id: 'quarter-block',
+                                    title: 'Quarter System',
+                                    meta: '4 Terms · 75m blocks'
+                                  }
+                                ] as Array<{ id: PresetKey; title: string; meta: string }>
+                              ).map(preset => {
+                                const active = selectedPreset === preset.id;
+                                return (
+                                  <motion.button
+                                    key={preset.id}
+                                    type="button"
+                                    whileTap={{ scale: 0.985 }}
+                                    onClick={() => applyInstitutionPreset(preset.id)}
+                                    className={`relative p-3.5 rounded-xl border text-left transition-colors cursor-pointer ${
+                                      active
+                                        ? 'bg-[#171717] text-white border-[#171717]'
+                                        : 'bg-[#F7F6EF]/70 text-[#171717] border-[#E4E2DA] hover:bg-[#F7F6EF] hover:border-[#CFCBC0]'
+                                    }`}
+                                  >
+                                    <div className="flex items-center justify-between gap-2">
+                                      <span className="text-xs font-semibold">{preset.title}</span>
+                                      {active && <Check className="w-3.5 h-3.5 text-[#B7F77C]" />}
+                                    </div>
+                                    <div
+                                      className={`text-[11px] mt-1 font-mono-tabular ${
+                                        active ? 'text-white/75' : 'text-[#77766F]'
+                                      }`}
+                                    >
+                                      {preset.meta}
+                                    </div>
+                                  </motion.button>
+                                );
+                              })}
+                            </div>
+                          </div>
+
+                          {/* Core University Identity */}
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div className="space-y-1.5">
+                              <label className="text-xs font-semibold text-[#171717] block">
+                                University Full Name <span className="text-red-600">*</span>
+                              </label>
+                              <input
+                                type="text"
+                                value={name}
+                                onChange={e => setName(e.target.value)}
+                                placeholder="e.g. National Institute of Technology"
+                                className="input-field h-10 text-xs"
+                              />
+                            </div>
+
+                            <div className="space-y-1.5">
+                              <label className="text-xs font-semibold text-[#171717] block">
+                                Acronym / Short Code <span className="text-red-600">*</span>
+                              </label>
+                              <input
+                                type="text"
+                                value={code}
+                                onChange={e => {
+                                  const val = e.target.value.toUpperCase();
+                                  setCode(val);
+                                  setCampusCode(`${val || 'UNIV'}-MAIN-01`);
+                                }}
+                                placeholder="e.g. NIT, MIT, NUST"
+                                className="input-field h-10 text-xs font-mono-tabular uppercase"
+                              />
+                            </div>
+
+                            <div className="space-y-1.5">
+                              <label className="text-xs font-semibold text-[#171717] block">
+                                Primary Campus Name
+                              </label>
+                              <input
+                                type="text"
+                                value={campusName}
+                                onChange={e => setCampusName(e.target.value)}
+                                placeholder="e.g. Main Campus"
+                                className="input-field h-10 text-xs"
+                              />
+                            </div>
+
+                            <div className="space-y-1.5">
+                              <label className="text-xs font-semibold text-[#171717] block">
+                                Campus Timezone
+                              </label>
+                              <select
+                                value={timezone}
+                                onChange={e => setTimezone(e.target.value)}
+                                className="input-field h-10 text-xs bg-white"
+                              >
+                                <option value="UTC">UTC (Coordinated Universal Time)</option>
+                                <option value="America/New_York">America/New_York (EST/EDT)</option>
+                                <option value="America/Chicago">America/Chicago (CST/CDT)</option>
+                                <option value="America/Los_Angeles">
+                                  America/Los_Angeles (PST/PDT)
+                                </option>
+                                <option value="Europe/London">Europe/London (GMT/BST)</option>
+                                <option value="Europe/Berlin">Europe/Berlin (CET/CEST)</option>
+                                <option value="Asia/Dubai">Asia/Dubai (GST)</option>
+                                <option value="Asia/Karachi">Asia/Karachi (PKT)</option>
+                                <option value="Asia/Kolkata">Asia/Kolkata (IST)</option>
+                                <option value="Asia/Singapore">Asia/Singapore (SGT)</option>
+                                <option value="Australia/Sydney">Australia/Sydney (AEST)</option>
+                              </select>
+                            </div>
+                          </div>
+
+                          {/* Collapsible Campus & Registrar Details */}
+                          <div className="border border-[#E4E2DA] rounded-xl overflow-hidden">
+                            <button
+                              type="button"
+                              onClick={() => setShowMoreIdentity(v => !v)}
+                              className="w-full px-4 py-3 bg-[#F7F6EF]/60 hover:bg-[#F7F6EF] flex items-center justify-between text-xs font-medium text-[#171717] transition-colors cursor-pointer"
+                            >
+                              <span>Campus code, accreditation &amp; registrar contact</span>
+                              <motion.span
+                                animate={{ rotate: showMoreIdentity ? 180 : 0 }}
+                                transition={{ duration: 0.2, ease: CALM_EASE }}
+                              >
+                                <ChevronDown className="w-4 h-4 text-[#77766F]" />
+                              </motion.span>
+                            </button>
+
+                            <AnimatePresence initial={false}>
+                              {showMoreIdentity && (
+                                <motion.div
+                                  initial={{ height: 0, opacity: 0 }}
+                                  animate={{ height: 'auto', opacity: 1 }}
+                                  exit={{ height: 0, opacity: 0 }}
+                                  transition={{ duration: 0.22, ease: CALM_EASE }}
+                                  className="overflow-hidden"
+                                >
+                                  <div className="p-4 pt-3 border-t border-[#E4E2DA] grid grid-cols-1 sm:grid-cols-2 gap-4 bg-white">
+                                    <div className="space-y-1.5">
+                                      <label className="text-xs font-medium text-[#57564F] block">
+                                        Campus Identifier Code
+                                      </label>
+                                      <input
+                                        type="text"
+                                        value={campusCode}
+                                        onChange={e => setCampusCode(e.target.value.toUpperCase())}
+                                        className="input-field h-9 text-xs font-mono-tabular uppercase"
+                                      />
+                                    </div>
+                                    <div className="space-y-1.5">
+                                      <label className="text-xs font-medium text-[#57564F] block">
+                                        Accreditation Body
+                                      </label>
+                                      <input
+                                        type="text"
+                                        value={accreditation}
+                                        onChange={e => setAccreditation(e.target.value)}
+                                        className="input-field h-9 text-xs"
+                                      />
+                                    </div>
+                                    <div className="space-y-1.5">
+                                      <label className="text-xs font-medium text-[#57564F] block">
+                                        Registrar / Lead Name
+                                      </label>
+                                      <input
+                                        type="text"
+                                        value={registrarName}
+                                        onChange={e => setRegistrarName(e.target.value)}
+                                        className="input-field h-9 text-xs"
+                                      />
+                                    </div>
+                                    <div className="space-y-1.5">
+                                      <label className="text-xs font-medium text-[#57564F] block">
+                                        Registrar Official Email
+                                      </label>
+                                      <input
+                                        type="email"
+                                        value={registrarEmail}
+                                        onChange={e => setRegistrarEmail(e.target.value)}
+                                        className="input-field h-9 text-xs"
+                                      />
+                                    </div>
+                                  </div>
+                                </motion.div>
+                              )}
+                            </AnimatePresence>
+                          </div>
+
+                          {/* Scheduling Policy */}
+                          <div className="space-y-2.5">
+                            <div className="text-xs font-semibold text-[#171717]">
+                              Scheduling Governance Model
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                              <button
+                                type="button"
+                                onClick={() => setTimetableManagementPolicy('whole_university')}
+                                className={`p-4 rounded-xl border text-left transition-colors cursor-pointer ${
+                                  timetableManagementPolicy === 'whole_university'
+                                    ? 'bg-[#171717] text-white border-[#171717]'
+                                    : 'bg-white text-[#171717] border-[#E4E2DA] hover:bg-[#F7F6EF]'
+                                }`}
+                              >
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="text-xs font-semibold">
+                                    Whole-University Matrix
+                                  </span>
+                                  {timetableManagementPolicy === 'whole_university' && (
+                                    <Check className="w-3.5 h-3.5 text-[#B7F77C]" />
+                                  )}
+                                </div>
+                                <p
+                                  className={`text-[11px] mt-1 leading-relaxed ${
+                                    timetableManagementPolicy === 'whole_university'
+                                      ? 'text-white/75'
+                                      : 'text-[#77766F]'
+                                  }`}
+                                >
+                                  Schedule all departments together to prevent shared room and
+                                  faculty collisions.
+                                </p>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => setTimetableManagementPolicy('department_wise')}
+                                className={`p-4 rounded-xl border text-left transition-colors cursor-pointer ${
+                                  timetableManagementPolicy === 'department_wise'
+                                    ? 'bg-[#171717] text-white border-[#171717]'
+                                    : 'bg-white text-[#171717] border-[#E4E2DA] hover:bg-[#F7F6EF]'
+                                }`}
+                              >
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="text-xs font-semibold">
+                                    Department-Wise Autonomy
+                                  </span>
+                                  {timetableManagementPolicy === 'department_wise' && (
+                                    <Check className="w-3.5 h-3.5 text-[#B7F77C]" />
+                                  )}
+                                </div>
+                                <p
+                                  className={`text-[11px] mt-1 leading-relaxed ${
+                                    timetableManagementPolicy === 'department_wise'
+                                      ? 'text-white/75'
+                                      : 'text-[#77766F]'
+                                  }`}
+                                >
+                                  Each department generates its own timetable with dedicated rooms
+                                  and faculty.
+                                </p>
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Conflict Sweep Toggle */}
+                          <div className="px-4 py-3.5 rounded-xl bg-[#F7F6EF]/70 border border-[#E4E2DA] flex items-center justify-between gap-4">
+                            <div>
+                              <div className="text-xs font-semibold text-[#171717]">
+                                Automatic Conflict Sweep
+                              </div>
+                              <div className="text-[11px] text-[#77766F]">
+                                Continuously check room, instructor, and cohort overlaps whenever
+                                settings change.
+                              </div>
+                            </div>
+                            <CalmSwitch
+                              checked={autoConflictSweep}
+                              onChange={setAutoConflictSweep}
+                              ariaLabel="Toggle automatic conflict sweep"
+                            />
+                          </div>
+                        </>
+                      )}
+
+                      {/* =================================================
+                          STEP 2: ACADEMIC CALENDAR
+                         ================================================= */}
+                      {activeStep === 1 && (
+                        <>
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+                            <div className="md:col-span-2 space-y-1.5">
+                              <label className="text-xs font-semibold text-[#171717] block">
+                                Calendar Rhythm
+                              </label>
+                              <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 p-1 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA]">
+                                {(
+                                  [
+                                    { id: 'semester', label: 'Semester (2)' },
+                                    { id: 'trimester', label: 'Trimester (3)' },
+                                    { id: 'quarter', label: 'Quarter (4)' },
+                                    { id: 'custom', label: 'Custom' }
+                                  ] as Array<{ id: CalendarSystemType; label: string }>
+                                ).map(opt => {
+                                  const selected = calendarSystem === opt.id;
+                                  return (
+                                    <button
+                                      key={opt.id}
+                                      type="button"
+                                      onClick={() => handleSelectCalendarSystem(opt.id)}
+                                      className={`relative h-8 rounded-lg text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
+                                        selected
+                                          ? 'text-white'
+                                          : 'text-[#57564F] hover:text-[#171717]'
+                                      }`}
+                                    >
+                                      {selected && (
+                                        <motion.span
+                                          layoutId="calendar-rhythm-indicator"
+                                          transition={{
+                                            type: 'spring',
+                                            stiffness: 450,
+                                            damping: 34
+                                          }}
+                                          className="absolute inset-0 bg-[#171717] rounded-lg"
+                                        />
+                                      )}
+                                      <span className="relative z-10">{opt.label}</span>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+
+                            <div className="space-y-1.5">
+                              <label className="text-xs font-semibold text-[#171717] block">
+                                Academic Year
+                              </label>
+                              <input
+                                type="text"
+                                value={academicYear}
+                                onChange={e => setAcademicYear(e.target.value)}
+                                placeholder="2026–2027"
+                                className="input-field h-10 text-xs font-mono-tabular"
+                              />
+                            </div>
+                          </div>
+
+                          {/* Terms List */}
+                          <div className="space-y-2.5">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <span className="text-xs font-semibold text-[#171717]">
+                                Configured Terms ({terms.length})
+                              </span>
+                              <span className="text-[11px] text-[#77766F]">
+                                Active:{' '}
+                                <strong className="text-[#171717]">
+                                  {terms
+                                    .filter(t => t.status === 'active')
+                                    .map(t => t.code)
+                                    .join(', ') || 'None'}
+                                </strong>
+                              </span>
+                            </div>
+
+                            <div className="space-y-2">
+                              <AnimatePresence initial={false}>
+                                {terms.map((term, idx) => {
+                                  const isCurrentActive = term.status === 'active';
+                                  return (
+                                    <motion.div
+                                      key={term.id}
+                                      layout
+                                      initial={{ opacity: 0, y: 8 }}
+                                      animate={{ opacity: 1, y: 0 }}
+                                      exit={{ opacity: 0, y: -8 }}
+                                      transition={{ duration: 0.2, ease: CALM_EASE }}
+                                      className={`p-3.5 rounded-xl border flex flex-wrap items-center justify-between gap-3 transition-colors ${
+                                        isCurrentActive
+                                          ? 'bg-[#B8F2E6]/25 border-[#8FDCC9]'
+                                          : 'bg-white border-[#E4E2DA]'
+                                      }`}
+                                    >
+                                      <div className="flex items-center gap-3 min-w-[210px]">
+                                        <span className="px-2.5 py-1 rounded-lg bg-[#171717] text-white text-[11px] font-mono-tabular font-semibold">
+                                          {term.code}
+                                        </span>
+                                        <div>
+                                          <div className="text-xs font-semibold text-[#171717] flex items-center gap-2 flex-wrap">
+                                            <span>{term.name}</span>
+                                            <span className="text-[11px] font-normal text-[#57564F] inline-flex items-center gap-1.5">
+                                              <span
+                                                className={`w-1.5 h-1.5 rounded-full ${
+                                                  isCurrentActive ? 'bg-[#1E7A4C]' : 'bg-[#9E9D96]'
+                                                }`}
+                                              />
+                                              {isCurrentActive ? 'Active' : 'Draft'}
+                                            </span>
+                                          </div>
+                                          <div className="text-[11px] text-[#77766F] font-mono-tabular mt-0.5">
+                                            {term.startDate} to {term.endDate} · {term.weeksCount}{' '}
+                                            weeks
+                                          </div>
+                                        </div>
+                                      </div>
+
+                                      <div className="flex items-center gap-2">
+                                        <button
+                                          type="button"
+                                          onClick={() => handleToggleTermActive(term.id)}
+                                          className={`px-3 py-1.5 rounded-lg border text-[11px] font-semibold cursor-pointer transition-colors ${
+                                            isCurrentActive
+                                              ? 'bg-white hover:bg-[#F7F6EF] border-[#E4E2DA] text-[#171717]'
+                                              : 'bg-[#171717] hover:bg-[#2E2E2E] text-white border-[#171717]'
+                                          }`}
+                                        >
+                                          {isCurrentActive ? 'Set as Draft' : 'Set Active'}
+                                        </button>
+                                        {terms.length > 1 && (
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              const remaining = terms.filter((_, i) => i !== idx);
+                                              if (
+                                                !remaining.some(r => r.status === 'active') &&
+                                                remaining.length > 0
+                                              ) {
+                                                remaining[0].status = 'active';
+                                              }
+                                              setTerms(remaining);
+                                            }}
+                                            className="p-1.5 rounded-lg text-[#77766F] hover:text-red-600 hover:bg-red-50 transition-colors cursor-pointer"
+                                            aria-label={`Remove ${term.name}`}
+                                          >
+                                            <Trash2 className="w-3.5 h-3.5" />
+                                          </button>
+                                        )}
+                                      </div>
+                                    </motion.div>
+                                  );
+                                })}
+                              </AnimatePresence>
+                            </div>
+                          </div>
+
+                          {/* Collapsible Add Term Drawer */}
+                          <div className="border border-[#E4E2DA] rounded-xl overflow-hidden">
+                            <button
+                              type="button"
+                              onClick={() => setShowAddTermDrawer(v => !v)}
+                              className="w-full px-4 py-3 bg-[#F7F6EF]/60 hover:bg-[#F7F6EF] flex items-center justify-between text-xs font-semibold text-[#171717] transition-colors cursor-pointer"
+                            >
+                              <span className="inline-flex items-center gap-2">
+                                <Plus className="w-3.5 h-3.5" />
+                                <span>Add another semester or summer session</span>
+                              </span>
+                              <motion.span
+                                animate={{ rotate: showAddTermDrawer ? 180 : 0 }}
+                                transition={{ duration: 0.2, ease: CALM_EASE }}
+                              >
+                                <ChevronDown className="w-4 h-4 text-[#77766F]" />
+                              </motion.span>
+                            </button>
+
+                            <AnimatePresence initial={false}>
+                              {showAddTermDrawer && (
+                                <motion.div
+                                  initial={{ height: 0, opacity: 0 }}
+                                  animate={{ height: 'auto', opacity: 1 }}
+                                  exit={{ height: 0, opacity: 0 }}
+                                  transition={{ duration: 0.22, ease: CALM_EASE }}
+                                  className="overflow-hidden"
+                                >
+                                  <div className="p-4 border-t border-[#E4E2DA] space-y-3 bg-white">
+                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                      <input
+                                        type="text"
+                                        placeholder="Term Name (e.g. Summer 2027)"
+                                        value={newTermName}
+                                        onChange={e => setNewTermName(e.target.value)}
+                                        className="input-field h-9 text-xs"
+                                      />
+                                      <input
+                                        type="text"
+                                        placeholder="Code (SUM-27)"
+                                        value={newTermCode}
+                                        onChange={e =>
+                                          setNewTermCode(e.target.value.toUpperCase())
+                                        }
+                                        className="input-field h-9 text-xs font-mono-tabular uppercase"
+                                      />
+                                      <input
+                                        type="text"
+                                        placeholder="Academic Year"
+                                        value={newTermAcademicYear}
+                                        onChange={e => setNewTermAcademicYear(e.target.value)}
+                                        className="input-field h-9 text-xs font-mono-tabular"
+                                      />
+                                    </div>
+                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-center">
+                                      <input
+                                        type="date"
+                                        value={newTermStart}
+                                        onChange={e => setNewTermStart(e.target.value)}
+                                        className="input-field h-9 text-xs font-mono-tabular"
+                                      />
+                                      <input
+                                        type="date"
+                                        value={newTermEnd}
+                                        onChange={e => setNewTermEnd(e.target.value)}
+                                        className="input-field h-9 text-xs font-mono-tabular"
+                                      />
+                                      <div className="flex items-center gap-2">
+                                        <input
+                                          type="number"
+                                          min={1}
+                                          max={52}
+                                          value={newTermWeeks}
+                                          onChange={e => setNewTermWeeks(Number(e.target.value))}
+                                          className="input-field h-9 text-xs font-mono-tabular w-20"
+                                          title="Weeks"
+                                        />
+                                        <span className="text-[11px] text-[#77766F] shrink-0">
+                                          wks
+                                        </span>
+                                        <button
+                                          type="button"
+                                          onClick={handleAddTerm}
+                                          disabled={!newTermName.trim() || !newTermCode.trim()}
+                                          className="btn-primary h-9 px-3.5 text-xs ml-auto shrink-0"
+                                        >
+                                          Add Term
+                                        </button>
+                                      </div>
+                                    </div>
+                                    <div className="flex items-center justify-between pt-1">
+                                      <span className="text-xs text-[#57564F]">
+                                        Activate this term immediately
+                                      </span>
+                                      <CalmSwitch
+                                        checked={newTermActive}
+                                        onChange={setNewTermActive}
+                                        ariaLabel="Activate new term immediately"
+                                      />
+                                    </div>
+                                  </div>
+                                </motion.div>
+                              )}
+                            </AnimatePresence>
+                          </div>
+                        </>
+                      )}
+
+                      {/* =================================================
+                          STEP 3: WEEKLY OPERATING HOURS
+                         ================================================= */}
+                      {activeStep === 2 && (
+                        <>
+                          {/* Working Days Selector */}
+                          <div className="space-y-2.5">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-semibold text-[#171717]">
+                                Instructional Weekdays
+                              </span>
+                              <span className="text-[11px] font-mono-tabular text-[#77766F]">
+                                {workingDays.length} days selected
+                              </span>
+                            </div>
+
+                            <div className="grid grid-cols-7 gap-1.5 sm:gap-2">
+                              {(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as DayOfWeek[]).map(
+                                d => {
+                                  const active = workingDays.includes(d);
+                                  return (
+                                    <motion.button
+                                      key={d}
+                                      type="button"
+                                      whileTap={{ scale: 0.94 }}
+                                      onClick={() => toggleDay(d)}
+                                      className={`h-11 rounded-xl text-xs font-mono-tabular transition-colors cursor-pointer border flex flex-col items-center justify-center ${
+                                        active
+                                          ? 'bg-[#171717] text-white border-[#171717] font-semibold'
+                                          : 'bg-white text-[#77766F] border-[#E4E2DA] hover:text-[#171717] hover:bg-[#F7F6EF]'
+                                      }`}
+                                    >
+                                      <span>{d}</span>
+                                    </motion.button>
+                                  );
+                                }
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Daily Campus Opening & Closing */}
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div className="p-4 rounded-xl border border-[#E4E2DA] bg-white space-y-2">
+                              <label className="text-xs font-semibold text-[#171717] block">
+                                Daily Opening Time
+                              </label>
+                              <input
+                                type="time"
+                                value={dayStartTime}
+                                onChange={e => setDayStartTime(e.target.value)}
+                                className="input-field h-10 text-sm font-mono-tabular"
+                              />
+                              <p className="text-[11px] text-[#77766F]">
+                                Earliest time classes or labs can begin.
+                              </p>
+                            </div>
+
+                            <div className="p-4 rounded-xl border border-[#E4E2DA] bg-white space-y-2">
+                              <label className="text-xs font-semibold text-[#171717] block">
+                                Daily Closing Time
+                              </label>
+                              <input
+                                type="time"
+                                value={dayEndTime}
+                                onChange={e => setDayEndTime(e.target.value)}
+                                className="input-field h-10 text-sm font-mono-tabular"
+                              />
+                              <p className="text-[11px] text-[#77766F]">
+                                All lectures and lab blocks conclude by this time.
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Calm Visual Day Span Strip */}
+                          <div className="p-4 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] space-y-2.5">
+                            <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                              <span className="font-semibold text-[#171717]">
+                                Daily Operating Span ·{' '}
+                                <span className="font-mono-tabular">
+                                  {formatDurationSpan(dayStartTime, dayEndTime)}
+                                </span>
+                              </span>
+                              <span className="font-mono-tabular text-[11px] text-[#171717] font-semibold">
+                                {computedPreview.slots.length} teaching periods / day
+                              </span>
+                            </div>
+
+                            <div className="h-2.5 w-full bg-[#E4E2DA] rounded-sm overflow-hidden flex items-center">
+                              <motion.div
+                                layout
+                                transition={{ duration: 0.3, ease: CALM_EASE }}
+                                className="h-full bg-[#B8EEEE] border-r border-[#171717]/20"
+                                style={{
+                                  width: `${Math.min(
+                                    100,
+                                    Math.max(
+                                      18,
+                                      ((parseMinutesSafe(dayEndTime) -
+                                        parseMinutesSafe(dayStartTime)) /
+                                        720) *
+                                        100
+                                    )
+                                  )}%`
+                                }}
+                              />
+                            </div>
+                            <div className="flex items-center justify-between text-[11px] font-mono-tabular text-[#77766F]">
+                              <span>Opens {dayStartTime}</span>
+                              <span>{computedPreview.operatingHoursLabel}</span>
+                              <span>Closes {dayEndTime}</span>
+                            </div>
+                          </div>
+
+                          {/* Friday & Jummah Policy */}
+                          <div className="p-4 rounded-xl border border-[#E4E2DA] bg-white space-y-3.5">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                              <div>
+                                <div className="text-xs font-semibold text-[#171717]">
+                                  Friday Schedule Policy
+                                </div>
+                                <div className="text-[11px] text-[#77766F]">
+                                  Reserve a Jummah prayer window, close early, or match regular
+                                  days.
+                                </div>
+                              </div>
+
+                              <div className="grid grid-cols-3 gap-1 p-1 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] shrink-0">
+                                {(
+                                  [
+                                    { id: 'jummah_break', label: 'Jummah Break' },
+                                    { id: 'morning_only', label: 'Morning Only' },
+                                    { id: 'standard', label: 'Standard' }
+                                  ] as const
+                                ).map(opt => {
+                                  const selected = fridayMode === opt.id;
+                                  return (
+                                    <button
+                                      key={opt.id}
+                                      type="button"
+                                      onClick={() => setFridayMode(opt.id)}
+                                      className={`relative px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer whitespace-nowrap ${
+                                        selected
+                                          ? 'text-white'
+                                          : 'text-[#57564F] hover:text-[#171717]'
+                                      }`}
+                                    >
+                                      {selected && (
+                                        <motion.span
+                                          layoutId="friday-mode-indicator"
+                                          transition={{
+                                            type: 'spring',
+                                            stiffness: 450,
+                                            damping: 34
+                                          }}
+                                          className="absolute inset-0 bg-[#171717] rounded-lg"
+                                        />
+                                      )}
+                                      <span className="relative z-10">{opt.label}</span>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+
+                            <AnimatePresence initial={false}>
+                              {fridayMode === 'jummah_break' && (
+                                <motion.div
+                                  initial={{ opacity: 0, y: -6 }}
+                                  animate={{ opacity: 1, y: 0 }}
+                                  exit={{ opacity: 0, y: -6 }}
+                                  transition={{ duration: 0.2, ease: CALM_EASE }}
+                                  className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-3 border-t border-[#E4E2DA]"
+                                >
+                                  <div className="space-y-1">
+                                    <label className="text-[11px] font-medium text-[#57564F] block">
+                                      Prayer Break Starts
+                                    </label>
+                                    <input
+                                      type="time"
+                                      value={fridayBreakStartTime}
+                                      onChange={e => setFridayBreakStartTime(e.target.value)}
+                                      className="input-field h-9 text-xs font-mono-tabular"
+                                    />
+                                  </div>
+                                  <div className="space-y-1">
+                                    <label className="text-[11px] font-medium text-[#57564F] block">
+                                      Afternoon Classes Resume
+                                    </label>
+                                    <input
+                                      type="time"
+                                      value={fridayBreakEndTime}
+                                      onChange={e => setFridayBreakEndTime(e.target.value)}
+                                      className="input-field h-9 text-xs font-mono-tabular"
+                                    />
+                                  </div>
+                                </motion.div>
+                              )}
+
+                              {fridayMode === 'morning_only' && (
+                                <motion.div
+                                  initial={{ opacity: 0, y: -6 }}
+                                  animate={{ opacity: 1, y: 0 }}
+                                  exit={{ opacity: 0, y: -6 }}
+                                  transition={{ duration: 0.2, ease: CALM_EASE }}
+                                  className="flex items-center justify-between pt-3 border-t border-[#E4E2DA]"
+                                >
+                                  <span className="text-xs text-[#57564F]">
+                                    Friday Classes Conclude At
+                                  </span>
+                                  <input
+                                    type="time"
+                                    value={fridayClosingTime}
+                                    onChange={e => setFridayClosingTime(e.target.value)}
+                                    className="input-field h-9 w-32 text-xs font-mono-tabular"
+                                  />
+                                </motion.div>
+                              )}
+                            </AnimatePresence>
+
+                            {fridayMode !== 'standard' && (
+                              <div className="pt-2 border-t border-[#E4E2DA]">
+                                <button
+                                  type="button"
+                                  onClick={() => setShowFridayCompression(v => !v)}
+                                  className="text-[11px] font-medium text-[#57564F] hover:text-[#171717] inline-flex items-center gap-1.5 cursor-pointer"
+                                >
+                                  <SlidersHorizontal className="w-3 h-3" />
+                                  <span>
+                                    {showFridayCompression
+                                      ? 'Hide Friday period compression options'
+                                      : 'Customize shortened Friday lecture durations'}
+                                  </span>
+                                </button>
+
+                                <AnimatePresence initial={false}>
+                                  {showFridayCompression && (
+                                    <motion.div
+                                      initial={{ height: 0, opacity: 0 }}
+                                      animate={{ height: 'auto', opacity: 1 }}
+                                      exit={{ height: 0, opacity: 0 }}
+                                      transition={{ duration: 0.2, ease: CALM_EASE }}
+                                      className="overflow-hidden"
+                                    >
+                                      <div className="pt-3 space-y-3">
+                                        <div className="flex flex-wrap gap-1.5">
+                                          {(
+                                            [
+                                              { id: 'none', label: 'Same Length' },
+                                              { id: 'before_jummah', label: 'Before Jummah' },
+                                              ...(fridayMode === 'jummah_break'
+                                                ? [{ id: 'after_jummah', label: 'After Jummah' }]
+                                                : []),
+                                              { id: 'all_day', label: 'All Friday' }
+                                            ] as { id: FridayCompressionScope; label: string }[]
+                                          ).map(scope => (
+                                            <button
+                                              key={scope.id}
+                                              type="button"
+                                              onClick={() => setFridayCompressionScope(scope.id)}
+                                              className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold border cursor-pointer transition-colors ${
+                                                fridayCompressionScope === scope.id
+                                                  ? 'bg-[#171717] text-white border-[#171717]'
+                                                  : 'bg-[#F7F6EF] text-[#57564F] border-[#E4E2DA] hover:text-[#171717]'
+                                              }`}
+                                            >
+                                              {scope.label}
+                                            </button>
+                                          ))}
+                                        </div>
+
+                                        {fridayCompressionScope !== 'none' && (
+                                          <div className="grid grid-cols-2 gap-3">
+                                            <div className="space-y-1">
+                                              <label className="text-[11px] text-[#57564F] block">
+                                                Friday Lecture (mins)
+                                              </label>
+                                              <input
+                                                type="number"
+                                                min={25}
+                                                max={90}
+                                                step={5}
+                                                value={fridayPeriodLengthMinutes}
+                                                onChange={e =>
+                                                  setFridayPeriodLengthMinutes(
+                                                    Math.max(
+                                                      25,
+                                                      Math.min(90, Number(e.target.value) || 45)
+                                                    )
+                                                  )
+                                                }
+                                                className="input-field h-8 text-xs font-mono-tabular"
+                                              />
+                                            </div>
+                                            <div className="space-y-1">
+                                              <label className="text-[11px] text-[#57564F] block">
+                                                Friday Transition (mins)
+                                              </label>
+                                              <input
+                                                type="number"
+                                                min={0}
+                                                max={20}
+                                                step={5}
+                                                value={fridayShortBreakMinutes}
+                                                onChange={e =>
+                                                  setFridayShortBreakMinutes(
+                                                    Math.max(
+                                                      0,
+                                                      Math.min(20, Number(e.target.value) || 0)
+                                                    )
+                                                  )
+                                                }
+                                                className="input-field h-8 text-xs font-mono-tabular"
+                                              />
+                                            </div>
+                                          </div>
+                                        )}
+                                      </div>
+                                    </motion.div>
+                                  )}
+                                </AnimatePresence>
+                              </div>
+                            )}
+                          </div>
+                        </>
+                      )}
+
+                      {/* =================================================
+                          STEP 4: CLASS PACING & BREAKS
+                         ================================================= */}
+                      {activeStep === 3 && (
+                        <>
+                          {/* Lecture & Lab Durations */}
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="p-4 rounded-xl bg-[#F7F6EF]/70 border border-[#E4E2DA] space-y-3">
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs font-semibold text-[#171717]">
+                                  Lecture Duration
+                                </span>
+                                <span className="text-xs font-mono-tabular font-bold text-[#171717]">
+                                  {periodLengthMinutes} min
+                                </span>
+                              </div>
+                              <div className="grid grid-cols-3 gap-1.5">
+                                {[45, 50, 60, 75, 90, 120].map(mins => (
+                                  <button
+                                    key={mins}
+                                    type="button"
+                                    onClick={() => setPeriodLengthMinutes(mins)}
+                                    className={`h-8 rounded-lg text-xs font-mono-tabular border cursor-pointer transition-colors ${
+                                      periodLengthMinutes === mins
+                                        ? 'bg-[#171717] text-white border-[#171717] font-semibold'
+                                        : 'bg-white text-[#57564F] border-[#E4E2DA] hover:text-[#171717]'
+                                    }`}
+                                  >
+                                    {mins}m
+                                  </button>
+                                ))}
+                              </div>
+                              <div className="flex items-center justify-between gap-2 pt-1">
+                                <span className="text-[11px] text-[#77766F]">Custom length</span>
+                                <input
+                                  type="number"
+                                  min={20}
+                                  max={240}
+                                  value={periodLengthMinutes}
+                                  onChange={e =>
+                                    setPeriodLengthMinutes(
+                                      Math.max(20, Number(e.target.value) || 50)
+                                    )
+                                  }
+                                  className="input-field h-8 w-24 text-xs font-mono-tabular bg-white"
+                                />
+                              </div>
+                            </div>
+
+                            <div className="p-4 rounded-xl bg-[#F7F6EF]/70 border border-[#E4E2DA] space-y-3">
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs font-semibold text-[#171717]">
+                                  Continuous Lab Block
+                                </span>
+                                <span className="text-xs font-mono-tabular font-bold text-[#171717]">
+                                  {computedPreview.labDurationHoursLabel} ({labDurationMinutes}m)
+                                </span>
+                              </div>
+                              <div className="grid grid-cols-3 gap-1.5">
+                                {[100, 120, 150, 180, 240].map(mins => (
+                                  <button
+                                    key={mins}
+                                    type="button"
+                                    onClick={() => setLabDurationMinutes(mins)}
+                                    className={`h-8 rounded-lg text-xs font-mono-tabular border cursor-pointer transition-colors ${
+                                      labDurationMinutes === mins
+                                        ? 'bg-[#171717] text-white border-[#171717] font-semibold'
+                                        : 'bg-white text-[#57564F] border-[#E4E2DA] hover:text-[#171717]'
+                                    }`}
+                                  >
+                                    {(mins / 60).toFixed(mins % 60 === 0 ? 0 : 1)}h
+                                  </button>
+                                ))}
+                              </div>
+                              <div className="flex items-center justify-between gap-2 pt-1">
+                                <span className="text-[11px] text-[#77766F]">Weekly defaults</span>
+                                <div className="flex items-center gap-1.5">
+                                  <select
+                                    value={defaultLectureHoursPerWeek}
+                                    onChange={e =>
+                                      setDefaultLectureHoursPerWeek(Number(e.target.value))
+                                    }
+                                    className="input-field h-8 text-[11px] bg-white w-24"
+                                    title="Default weekly theory contact hours"
+                                  >
+                                    <option value={2}>2h Lec</option>
+                                    <option value={3}>3h Lec</option>
+                                    <option value={4}>4h Lec</option>
+                                  </select>
+                                  <select
+                                    value={defaultLabHoursPerWeek}
+                                    onChange={e =>
+                                      setDefaultLabHoursPerWeek(Number(e.target.value))
+                                    }
+                                    className="input-field h-8 text-[11px] bg-white w-24"
+                                    title="Default weekly lab contact hours"
+                                  >
+                                    <option value={2}>2h Lab</option>
+                                    <option value={3}>3h Lab</option>
+                                    <option value={4}>4h Lab</option>
+                                  </select>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Inter-Class Break Toggle */}
+                          <div className="p-4 rounded-xl border border-[#E4E2DA] bg-white space-y-3">
+                            <div className="flex items-center justify-between gap-4">
+                              <div>
+                                <div className="text-xs font-semibold text-[#171717]">
+                                  Short Break Between Classes
+                                </div>
+                                <div className="text-[11px] text-[#77766F]">
+                                  Gives students and faculty passing time between consecutive
+                                  sessions.
+                                </div>
+                              </div>
+                              <CalmSwitch
+                                checked={shortBreakEnabled}
+                                onChange={next => {
+                                  setShortBreakEnabled(next);
+                                  if (!next) setShortBreakMinutes(0);
+                                  else if (shortBreakMinutes === 0) setShortBreakMinutes(10);
+                                }}
+                                ariaLabel="Toggle short break between classes"
+                              />
+                            </div>
+
+                            <AnimatePresence initial={false}>
+                              {shortBreakEnabled && (
+                                <motion.div
+                                  initial={{ height: 0, opacity: 0 }}
+                                  animate={{ height: 'auto', opacity: 1 }}
+                                  exit={{ height: 0, opacity: 0 }}
+                                  transition={{ duration: 0.2, ease: CALM_EASE }}
+                                  className="overflow-hidden"
+                                >
+                                  <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-[#E4E2DA]">
+                                    <div className="flex items-center gap-1.5">
+                                      {[5, 10, 15, 20].map(m => (
+                                        <button
+                                          key={m}
+                                          type="button"
+                                          onClick={() => setShortBreakMinutes(m)}
+                                          className={`px-3 py-1 rounded-lg text-xs font-mono-tabular border cursor-pointer transition-colors ${
+                                            shortBreakMinutes === m
+                                              ? 'bg-[#171717] text-white border-[#171717] font-semibold'
+                                              : 'bg-[#F7F6EF] text-[#57564F] border-[#E4E2DA] hover:text-[#171717]'
+                                          }`}
+                                        >
+                                          {m}m
+                                        </button>
+                                      ))}
+                                    </div>
+
+                                    <label className="inline-flex items-center gap-2 text-[11px] text-[#57564F] cursor-pointer">
+                                      <input
+                                        type="checkbox"
+                                        checked={includeBreakAfterLastSlot}
+                                        onChange={e =>
+                                          setIncludeBreakAfterLastSlot(e.target.checked)
+                                        }
+                                        className="w-3.5 h-3.5 accent-[#171717]"
+                                      />
+                                      <span>Include buffer after final period</span>
+                                    </label>
+                                  </div>
+                                </motion.div>
+                              )}
+                            </AnimatePresence>
+                          </div>
+
+                          {/* Midday / Lunch Break Toggle */}
+                          <div className="p-4 rounded-xl border border-[#E4E2DA] bg-white space-y-3">
+                            <div className="flex items-center justify-between gap-4">
+                              <div>
+                                <div className="text-xs font-semibold text-[#171717]">
+                                  Protected Midday / Lunch Window
+                                </div>
+                                <div className="text-[11px] text-[#77766F]">
+                                  Keeps a campus-wide midday pause free of lectures and labs.
+                                </div>
+                              </div>
+                              <CalmSwitch
+                                checked={middayBreakEnabled}
+                                onChange={setMiddayBreakEnabled}
+                                ariaLabel="Toggle midday lunch window"
+                              />
+                            </div>
+
+                            <AnimatePresence initial={false}>
+                              {middayBreakEnabled && (
+                                <motion.div
+                                  initial={{ height: 0, opacity: 0 }}
+                                  animate={{ height: 'auto', opacity: 1 }}
+                                  exit={{ height: 0, opacity: 0 }}
+                                  transition={{ duration: 0.2, ease: CALM_EASE }}
+                                  className="overflow-hidden"
+                                >
+                                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-3 border-t border-[#E4E2DA]">
+                                    <div className="space-y-1">
+                                      <label className="text-[11px] text-[#57564F] block">
+                                        Placement
+                                      </label>
+                                      <select
+                                        value={middayBreakMode}
+                                        onChange={e =>
+                                          setMiddayBreakMode(e.target.value as 'fixed' | 'auto')
+                                        }
+                                        className="input-field h-9 text-xs bg-white"
+                                      >
+                                        <option value="fixed">Fixed Start Time</option>
+                                        <option value="auto">Auto-Center Midday</option>
+                                      </select>
+                                    </div>
+                                    <div className="space-y-1">
+                                      <label className="text-[11px] text-[#57564F] block">
+                                        Start Time
+                                      </label>
+                                      <input
+                                        type="time"
+                                        value={middayBreakStartTime}
+                                        onChange={e => setMiddayBreakStartTime(e.target.value)}
+                                        className="input-field h-9 text-xs font-mono-tabular"
+                                      />
+                                    </div>
+                                    <div className="space-y-1">
+                                      <label className="text-[11px] text-[#57564F] block">
+                                        Duration
+                                      </label>
+                                      <select
+                                        value={middayBreakDurationMinutes}
+                                        onChange={e =>
+                                          setMiddayBreakDurationMinutes(Number(e.target.value))
+                                        }
+                                        className="input-field h-9 text-xs bg-white"
+                                      >
+                                        <option value={30}>30 Minutes</option>
+                                        <option value={45}>45 Minutes</option>
+                                        <option value={60}>60 Minutes</option>
+                                        <option value={75}>75 Minutes</option>
+                                        <option value={90}>90 Minutes</option>
+                                      </select>
+                                    </div>
+                                  </div>
+                                </motion.div>
+                              )}
+                            </AnimatePresence>
+                          </div>
+
+                          {/* Optional Additional Breaks */}
+                          <div className="border border-[#E4E2DA] rounded-xl overflow-hidden">
+                            <button
+                              type="button"
+                              onClick={() => setShowCustomBreaksDrawer(v => !v)}
+                              className="w-full px-4 py-3 bg-[#F7F6EF]/60 hover:bg-[#F7F6EF] flex items-center justify-between text-xs font-medium text-[#171717] transition-colors cursor-pointer"
+                            >
+                              <span className="inline-flex items-center gap-2">
+                                <Plus className="w-3.5 h-3.5" />
+                                <span>
+                                  Additional protected breaks{' '}
+                                  {customBreaks.length > 0 ? `(${customBreaks.length})` : '(optional)'}
+                                </span>
+                              </span>
+                              <motion.span
+                                animate={{ rotate: showCustomBreaksDrawer ? 180 : 0 }}
+                                transition={{ duration: 0.2, ease: CALM_EASE }}
+                              >
+                                <ChevronDown className="w-4 h-4 text-[#77766F]" />
+                              </motion.span>
+                            </button>
+
+                            <AnimatePresence initial={false}>
+                              {showCustomBreaksDrawer && (
+                                <motion.div
+                                  initial={{ height: 0, opacity: 0 }}
+                                  animate={{ height: 'auto', opacity: 1 }}
+                                  exit={{ height: 0, opacity: 0 }}
+                                  transition={{ duration: 0.2, ease: CALM_EASE }}
+                                  className="overflow-hidden"
+                                >
+                                  <div className="p-4 border-t border-[#E4E2DA] space-y-3 bg-white">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <input
+                                        type="text"
+                                        placeholder="Break label (e.g. Assembly / Tea)"
+                                        value={newBreakName}
+                                        onChange={e => setNewBreakName(e.target.value)}
+                                        className="input-field h-9 text-xs flex-1 min-w-[160px]"
+                                      />
+                                      <input
+                                        type="time"
+                                        value={newBreakStart}
+                                        onChange={e => setNewBreakStart(e.target.value)}
+                                        className="input-field h-9 w-28 text-xs font-mono-tabular"
+                                      />
+                                      <input
+                                        type="time"
+                                        value={newBreakEnd}
+                                        onChange={e => setNewBreakEnd(e.target.value)}
+                                        className="input-field h-9 w-28 text-xs font-mono-tabular"
+                                      />
+                                      <button
+                                        type="button"
+                                        onClick={handleAddCustomBreak}
+                                        disabled={!newBreakName.trim()}
+                                        className="btn-primary h-9 px-3 text-xs shrink-0"
+                                      >
+                                        Add
+                                      </button>
+                                    </div>
+
+                                    <div className="flex flex-wrap gap-1.5">
+                                      {workingDays.map(d => (
+                                        <button
+                                          key={d}
+                                          type="button"
+                                          onClick={() => toggleNewBreakDay(d)}
+                                          className={`px-2.5 py-1 rounded-md text-[11px] font-mono-tabular cursor-pointer border ${
+                                            newBreakDays.includes(d)
+                                              ? 'bg-[#171717] text-white border-[#171717]'
+                                              : 'bg-[#F7F6EF] text-[#77766F] border-[#E4E2DA]'
+                                          }`}
+                                        >
+                                          {d}
+                                        </button>
+                                      ))}
+                                    </div>
+
+                                    {customBreaks.length > 0 && (
+                                      <div className="space-y-1.5 pt-1">
+                                        {customBreaks.map((cb, idx) => (
+                                          <div
+                                            key={cb.id}
+                                            className="px-3 py-2 rounded-lg bg-[#F7F6EF] border border-[#E4E2DA] flex items-center justify-between text-xs"
+                                          >
+                                            <span>
+                                              <strong>{cb.name}</strong> ·{' '}
+                                              <span className="font-mono-tabular">
+                                                {cb.startTime}–{cb.endTime}
+                                              </span>{' '}
+                                              ({cb.days.join(', ')})
+                                            </span>
+                                            <button
+                                              type="button"
+                                              onClick={() =>
+                                                setCustomBreaks(
+                                                  customBreaks.filter((_, i) => i !== idx)
+                                                )
+                                              }
+                                              className="text-[#77766F] hover:text-red-600 cursor-pointer"
+                                            >
+                                              <Trash2 className="w-3.5 h-3.5" />
+                                            </button>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
+                                </motion.div>
+                              )}
+                            </AnimatePresence>
+                          </div>
+
+                          {/* Live Calm Daily Rhythm Preview */}
+                          <div className="p-4 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] space-y-2.5">
+                            <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                              <span className="font-semibold text-[#171717]">
+                                Live Daily Rhythm Preview
+                              </span>
+                              <span className="font-mono-tabular text-[11px] text-[#57564F]">
+                                {computedPreview.slots.length} lecture slots ·{' '}
+                                {computedPreview.continuousLabBlocks.length} lab blocks
+                              </span>
+                            </div>
+
+                            <div className="flex flex-wrap gap-1.5">
+                              {computedPreview.slots.map(slot => (
+                                <motion.div
+                                  key={slot.slotNumber}
+                                  layout
+                                  initial={{ opacity: 0, scale: 0.95 }}
+                                  animate={{ opacity: 1, scale: 1 }}
+                                  transition={{ duration: 0.18, ease: CALM_EASE }}
+                                  className="px-2.5 py-1.5 rounded-lg bg-white border border-[#E4E2DA] text-[11px] font-mono-tabular text-[#171717]"
+                                >
+                                  <span className="text-[#77766F] mr-1">P{slot.slotNumber}</span>
+                                  <span>{slot.period}</span>
+                                </motion.div>
+                              ))}
+                              {computedPreview.middayBreak.enabled && (
+                                <div className="px-2.5 py-1.5 rounded-lg bg-[#B8F2E6]/50 border border-[#8FDCC9] text-[11px] font-mono-tabular text-[#171717]">
+                                  Midday · {computedPreview.middayBreak.timeRangeLabel}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </>
+                      )}
+
+                      {/* =================================================
+                          STEP 5: STARTER CATALOG & LAUNCH
+                         ================================================= */}
+                      {activeStep === 4 && (
+                        <>
+                          {/* Clean Interactive 4-Tile Configuration Summary */}
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+                            {[
+                              {
+                                step: 0,
+                                label: 'Identity',
+                                value: `${name || 'University'} (${code || 'UNIV'})`,
+                                sub: `${campusName} · ${timezone}`
+                              },
+                              {
+                                step: 1,
+                                label: 'Calendar',
+                                value: `${academicYear} · ${terms.length} Terms`,
+                                sub: `Active: ${activeTermObj?.code || 'None'}`
+                              },
+                              {
+                                step: 2,
+                                label: 'Weekly Hours',
+                                value: `${dayStartTime} – ${dayEndTime}`,
+                                sub: `${workingDays.length} days (${workingDays.join(', ')})`
+                              },
+                              {
+                                step: 3,
+                                label: 'Class Pacing',
+                                value: `${periodLengthMinutes}m Lec · ${computedPreview.labDurationHoursLabel} Lab`,
+                                sub: `${
+                                  shortBreakEnabled ? `${shortBreakMinutes}m break` : 'No short break'
+                                } · ${
+                                  middayBreakEnabled
+                                    ? `${middayBreakDurationMinutes}m lunch`
+                                    : 'No lunch'
+                                }`
+                              }
+                            ].map(item => (
+                              <div
+                                key={item.label}
+                                className="p-3.5 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] flex flex-col justify-between gap-2"
+                              >
+                                <div>
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span className="text-[11px] font-mono-tabular uppercase tracking-wide text-[#77766F]">
+                                      {item.label}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => goToStep(item.step)}
+                                      className="text-[11px] font-semibold text-[#171717] underline hover:opacity-75 cursor-pointer"
+                                    >
+                                      Edit
+                                    </button>
+                                  </div>
+                                  <div className="text-xs font-semibold text-[#171717] mt-1 truncate">
+                                    {item.value}
+                                  </div>
+                                  <div className="text-[11px] text-[#57564F] truncate mt-0.5">
+                                    {item.sub}
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+
+                          {/* Optional Tabbed Starter Catalog */}
+                          <div className="border border-[#E4E2DA] rounded-xl overflow-hidden bg-white">
+                            <div className="px-4 py-3 bg-[#F7F6EF]/70 border-b border-[#E4E2DA] flex flex-wrap items-center justify-between gap-3">
+                              <div>
+                                <div className="text-xs font-semibold text-[#171717]">
+                                  Starter Academic Catalog (Optional)
+                                </div>
+                                <div className="text-[11px] text-[#77766F]">
+                                  Add a few starter records now, import CSV spreadsheets, or skip
+                                  and set up later.
+                                </div>
+                              </div>
+
+                              <button
+                                type="button"
+                                onClick={() => setShowImportWizard(true)}
+                                className="btn-secondary h-8 px-3 text-xs shrink-0"
+                              >
+                                <Upload className="w-3.5 h-3.5" />
+                                <span>Import CSV / Excel</span>
+                              </button>
+                            </div>
+
+                            {/* Segmented Catalog Tabs */}
+                            <div className="px-4 pt-3 border-b border-[#E4E2DA] flex items-center gap-1 overflow-x-auto">
+                              {(
+                                [
+                                  {
+                                    id: 'departments',
+                                    label: 'Departments',
+                                    count: departments.length,
+                                    icon: Layers
+                                  },
+                                  {
+                                    id: 'rooms',
+                                    label: 'Rooms & Labs',
+                                    count: rooms.length,
+                                    icon: DoorOpen
+                                  },
+                                  {
+                                    id: 'courses',
+                                    label: 'Courses',
+                                    count: courses.length,
+                                    icon: BookOpen
+                                  },
+                                  {
+                                    id: 'instructors',
+                                    label: 'Faculty',
+                                    count: instructors.length,
+                                    icon: Users
+                                  }
+                                ] as Array<{
+                                  id: CatalogTab;
+                                  label: string;
+                                  count: number;
+                                  icon: typeof Layers;
+                                }>
+                              ).map(tab => {
+                                const TabIcon = tab.icon;
+                                const active = activeCatalogTab === tab.id;
+                                return (
+                                  <button
+                                    key={tab.id}
+                                    type="button"
+                                    onClick={() => setActiveCatalogTab(tab.id)}
+                                    className={`relative px-3 pb-2.5 pt-1 text-xs font-medium inline-flex items-center gap-1.5 cursor-pointer whitespace-nowrap transition-colors ${
+                                      active
+                                        ? 'text-[#171717] font-semibold'
+                                        : 'text-[#77766F] hover:text-[#171717]'
+                                    }`}
+                                  >
+                                    <TabIcon className="w-3.5 h-3.5" />
+                                    <span>{tab.label}</span>
+                                    <span className="font-mono-tabular text-[11px] text-[#77766F]">
+                                      · {tab.count}
+                                    </span>
+                                    {active && (
+                                      <motion.span
+                                        layoutId="catalog-tab-underline"
+                                        transition={{
+                                          type: 'spring',
+                                          stiffness: 460,
+                                          damping: 34
+                                        }}
+                                        className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#171717]"
+                                      />
+                                    )}
+                                  </button>
+                                );
+                              })}
+                            </div>
+
+                            {/* Active Catalog Tab Content */}
+                            <div className="p-4">
+                              <AnimatePresence mode="wait">
+                                {activeCatalogTab === 'departments' && (
+                                  <motion.div
+                                    key="tab-departments"
+                                    initial={{ opacity: 0, y: 6 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    exit={{ opacity: 0, y: -6 }}
+                                    transition={{ duration: 0.18, ease: CALM_EASE }}
+                                    className="space-y-3"
+                                  >
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <input
+                                        type="text"
+                                        placeholder="Department Name (e.g. Computer Science)"
+                                        value={newDeptName}
+                                        onChange={e => setNewDeptName(e.target.value)}
+                                        className="input-field h-9 text-xs flex-1 min-w-[200px]"
+                                      />
+                                      <input
+                                        type="text"
+                                        placeholder="Code (CS)"
+                                        value={newDeptCode}
+                                        onChange={e => setNewDeptCode(e.target.value.toUpperCase())}
+                                        className="input-field h-9 text-xs w-24 font-mono-tabular uppercase"
+                                      />
+                                      <button
+                                        type="button"
+                                        onClick={handleAddDept}
+                                        disabled={!newDeptName.trim() || !newDeptCode.trim()}
+                                        className="btn-primary h-9 px-3.5 text-xs shrink-0"
+                                      >
+                                        <Plus className="w-3.5 h-3.5" />
+                                        <span>Add Department</span>
+                                      </button>
+                                    </div>
+
+                                    {departments.length === 0 ? (
+                                      <p className="text-xs text-[#77766F] py-3 text-center">
+                                        No departments added yet. Add one above or skip to configure
+                                        later.
+                                      </p>
+                                    ) : (
+                                      <div className="divide-y divide-[#E4E2DA] border border-[#E4E2DA] rounded-lg">
+                                        {departments.map((d, idx) => (
+                                          <div
+                                            key={`${d.code}-${idx}`}
+                                            className="px-3 py-2 flex items-center justify-between text-xs"
+                                          >
+                                            <span>
+                                              <span className="font-mono-tabular font-semibold mr-2">
+                                                {d.code}
+                                              </span>
+                                              {d.name}
+                                            </span>
+                                            <button
+                                              type="button"
+                                              onClick={() =>
+                                                setDepartments(
+                                                  departments.filter((_, i) => i !== idx)
+                                                )
+                                              }
+                                              className="text-[#77766F] hover:text-red-600 cursor-pointer"
+                                            >
+                                              <Trash2 className="w-3.5 h-3.5" />
+                                            </button>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </motion.div>
+                                )}
+
+                                {activeCatalogTab === 'rooms' && (
+                                  <motion.div
+                                    key="tab-rooms"
+                                    initial={{ opacity: 0, y: 6 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    exit={{ opacity: 0, y: -6 }}
+                                    transition={{ duration: 0.18, ease: CALM_EASE }}
+                                    className="space-y-3"
+                                  >
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <input
+                                        type="text"
+                                        placeholder="Room Code (e.g. HALL-101)"
+                                        value={newRoomCode}
+                                        onChange={e => setNewRoomCode(e.target.value.toUpperCase())}
+                                        className="input-field h-9 text-xs flex-1 min-w-[160px] font-mono-tabular uppercase"
+                                      />
+                                      <input
+                                        type="number"
+                                        min={5}
+                                        max={500}
+                                        value={newRoomCap}
+                                        onChange={e => setNewRoomCap(Number(e.target.value))}
+                                        className="input-field h-9 text-xs w-20 font-mono-tabular"
+                                        title="Seating capacity"
+                                      />
+                                      <select
+                                        value={newRoomType}
+                                        onChange={e =>
+                                          setNewRoomType(e.target.value as 'lecture' | 'lab')
+                                        }
+                                        className="input-field h-9 text-xs w-28 bg-white"
+                                      >
+                                        <option value="lecture">Lecture</option>
+                                        <option value="lab">Lab</option>
+                                      </select>
+                                      <button
+                                        type="button"
+                                        onClick={handleAddRoom}
+                                        disabled={!newRoomCode.trim()}
+                                        className="btn-primary h-9 px-3.5 text-xs shrink-0"
+                                      >
+                                        <Plus className="w-3.5 h-3.5" />
+                                        <span>Add Room</span>
+                                      </button>
+                                    </div>
+
+                                    {rooms.length === 0 ? (
+                                      <p className="text-xs text-[#77766F] py-3 text-center">
+                                        No rooms added yet. Add halls or labs above, or import via
+                                        CSV.
+                                      </p>
+                                    ) : (
+                                      <div className="divide-y divide-[#E4E2DA] border border-[#E4E2DA] rounded-lg">
+                                        {rooms.map((r, idx) => (
+                                          <div
+                                            key={`${r.code}-${idx}`}
+                                            className="px-3 py-2 flex items-center justify-between text-xs"
+                                          >
+                                            <span>
+                                              <span className="font-mono-tabular font-semibold mr-2">
+                                                {r.code}
+                                              </span>
+                                              {r.type === 'lab' ? 'Laboratory' : 'Lecture Hall'} ·{' '}
+                                              <span className="font-mono-tabular">
+                                                {r.capacity} seats
+                                              </span>
+                                            </span>
+                                            <button
+                                              type="button"
+                                              onClick={() =>
+                                                setRooms(rooms.filter((_, i) => i !== idx))
+                                              }
+                                              className="text-[#77766F] hover:text-red-600 cursor-pointer"
+                                            >
+                                              <Trash2 className="w-3.5 h-3.5" />
+                                            </button>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </motion.div>
+                                )}
+
+                                {activeCatalogTab === 'courses' && (
+                                  <motion.div
+                                    key="tab-courses"
+                                    initial={{ opacity: 0, y: 6 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    exit={{ opacity: 0, y: -6 }}
+                                    transition={{ duration: 0.18, ease: CALM_EASE }}
+                                    className="space-y-3"
+                                  >
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <input
+                                        type="text"
+                                        placeholder="Code (CS-101)"
+                                        value={newCourseCode}
+                                        onChange={e =>
+                                          setNewCourseCode(e.target.value.toUpperCase())
+                                        }
+                                        className="input-field h-9 text-xs w-28 font-mono-tabular uppercase"
+                                      />
+                                      <input
+                                        type="text"
+                                        placeholder="Course Title"
+                                        value={newCourseTitle}
+                                        onChange={e => setNewCourseTitle(e.target.value)}
+                                        className="input-field h-9 text-xs flex-1 min-w-[180px]"
+                                      />
+                                      <label className="text-xs text-[#57564F] inline-flex items-center gap-1.5 px-2 cursor-pointer">
+                                        <input
+                                          type="checkbox"
+                                          checked={newCourseIsLab}
+                                          onChange={e => setNewCourseIsLab(e.target.checked)}
+                                          className="w-3.5 h-3.5 accent-[#171717]"
+                                        />
+                                        <span>Lab</span>
+                                      </label>
+                                      <button
+                                        type="button"
+                                        onClick={handleAddCourse}
+                                        disabled={!newCourseCode.trim() || !newCourseTitle.trim()}
+                                        className="btn-primary h-9 px-3.5 text-xs shrink-0"
+                                      >
+                                        <Plus className="w-3.5 h-3.5" />
+                                        <span>Add Course</span>
+                                      </button>
+                                    </div>
+
+                                    {courses.length === 0 ? (
+                                      <p className="text-xs text-[#77766F] py-3 text-center">
+                                        No courses added yet. Add courses above or set them up in
+                                        your workspace.
+                                      </p>
+                                    ) : (
+                                      <div className="divide-y divide-[#E4E2DA] border border-[#E4E2DA] rounded-lg">
+                                        {courses.map((c, idx) => (
+                                          <div
+                                            key={`${c.code}-${idx}`}
+                                            className="px-3 py-2 flex items-center justify-between text-xs"
+                                          >
+                                            <span>
+                                              <span className="font-mono-tabular font-semibold mr-2">
+                                                {c.code}
+                                              </span>
+                                              {c.title} ·{' '}
+                                              <span className="text-[#77766F]">
+                                                {c.isLab ? 'Lab' : 'Lecture'} ({c.cr} cr)
+                                              </span>
+                                            </span>
+                                            <button
+                                              type="button"
+                                              onClick={() =>
+                                                setCourses(courses.filter((_, i) => i !== idx))
+                                              }
+                                              className="text-[#77766F] hover:text-red-600 cursor-pointer"
+                                            >
+                                              <Trash2 className="w-3.5 h-3.5" />
+                                            </button>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </motion.div>
+                                )}
+
+                                {activeCatalogTab === 'instructors' && (
+                                  <motion.div
+                                    key="tab-instructors"
+                                    initial={{ opacity: 0, y: 6 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    exit={{ opacity: 0, y: -6 }}
+                                    transition={{ duration: 0.18, ease: CALM_EASE }}
+                                    className="space-y-3"
+                                  >
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <input
+                                        type="text"
+                                        placeholder="Faculty Member Name"
+                                        value={newInstName}
+                                        onChange={e => setNewInstName(e.target.value)}
+                                        className="input-field h-9 text-xs flex-1 min-w-[160px]"
+                                      />
+                                      <input
+                                        type="email"
+                                        placeholder="faculty@university.edu"
+                                        value={newInstEmail}
+                                        onChange={e => setNewInstEmail(e.target.value)}
+                                        className="input-field h-9 text-xs flex-1 min-w-[180px]"
+                                      />
+                                      <button
+                                        type="button"
+                                        onClick={handleAddInstructor}
+                                        disabled={!newInstName.trim() || !newInstEmail.trim()}
+                                        className="btn-primary h-9 px-3.5 text-xs shrink-0"
+                                      >
+                                        <Plus className="w-3.5 h-3.5" />
+                                        <span>Add Faculty</span>
+                                      </button>
+                                    </div>
+
+                                    {instructors.length === 0 ? (
+                                      <p className="text-xs text-[#77766F] py-3 text-center">
+                                        No faculty members added yet. Add instructors above or invite
+                                        them later.
+                                      </p>
+                                    ) : (
+                                      <div className="divide-y divide-[#E4E2DA] border border-[#E4E2DA] rounded-lg">
+                                        {instructors.map((inst, idx) => (
+                                          <div
+                                            key={`${inst.email}-${idx}`}
+                                            className="px-3 py-2 flex items-center justify-between text-xs"
+                                          >
+                                            <span>
+                                              <strong className="font-semibold">{inst.name}</strong>{' '}
+                                              · <span className="text-[#77766F]">{inst.email}</span>
+                                            </span>
+                                            <button
+                                              type="button"
+                                              onClick={() =>
+                                                setInstructors(
+                                                  instructors.filter((_, i) => i !== idx)
+                                                )
+                                              }
+                                              className="text-[#77766F] hover:text-red-600 cursor-pointer"
+                                            >
+                                              <Trash2 className="w-3.5 h-3.5" />
+                                            </button>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </motion.div>
+                                )}
+                              </AnimatePresence>
+                            </div>
+                          </div>
+                        </>
+                      )}
+                    </motion.div>
+                  </AnimatePresence>
                 </div>
-              </div>
-            </div>
-          )}
 
-          {/* =========================================================
-              SCREEN 5: Academic Catalog & Global Store Persistence
-             ========================================================= */}
-          {activeStep === 4 && (
-            <div className="space-y-5">
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 pb-3 border-b border-[#E4E2DA]">
-                <div>
-                  <h3 className="font-serif-editorial text-lg text-[#171717] font-semibold">
-                    Screen 5: Academic Catalog &amp; Global Store Persistence
-                  </h3>
-                  <p className="text-xs text-[#77766F] mt-0.5">
-                    Review your 4 core configuration layers, optionally customize or CSV-import departments/rooms/courses, and persist globally to <code>institutionalStore</code>.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setShowImportWizard(true)}
-                  className="btn-secondary h-8 px-3 text-xs inline-flex items-center gap-1.5 shrink-0"
-                >
-                  <Upload className="w-3.5 h-3.5" />
-                  <span>Bulk CSV / Excel Import</span>
-                </button>
-              </div>
+                {/* Calm Sticky Footer */}
+                <footer className="px-5 sm:px-8 py-4 bg-[#F7F6EF]/75 border-t border-[#E4E2DA] flex items-center justify-between gap-3 shrink-0">
+                  <button
+                    type="button"
+                    disabled={activeStep === 0}
+                    onClick={handlePreviousStep}
+                    className="btn-secondary h-9 px-4 text-xs font-semibold"
+                  >
+                    <ArrowLeft className="w-3.5 h-3.5" />
+                    <span>Back</span>
+                  </button>
 
-              {/* 4-Step Configuration Audit Summary Cards */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                <div className="p-3 rounded-xl border border-[#E4E2DA] bg-[#F7F6EF]">
-                  <div className="text-[10.5px] font-semibold text-[#77766F]">
-                    1. Institution Profile
+                  <div className="flex items-center gap-2.5">
+                    {activeStep < STEP_META.length - 1 ? (
+                      <motion.button
+                        type="button"
+                        whileTap={{ scale: 0.98 }}
+                        onClick={handleAdvanceStep}
+                        className="btn-primary h-9 px-5 text-xs font-semibold"
+                      >
+                        <span>{isEditingExisting ? 'Save & Continue' : 'Continue'}</span>
+                        <ArrowRight className="w-3.5 h-3.5" />
+                      </motion.button>
+                    ) : (
+                      <motion.button
+                        type="button"
+                        whileTap={{ scale: 0.98 }}
+                        disabled={isSubmitting}
+                        onClick={() => void handleFinalizeOnboarding()}
+                        className="btn-primary h-10 px-6 text-xs font-semibold"
+                      >
+                        <Sparkles className="w-3.5 h-3.5" />
+                        <span>
+                          {isSubmitting ? 'Saving Workspace...' : 'Complete Setup & Launch'}
+                        </span>
+                      </motion.button>
+                    )}
                   </div>
-                  <div className="font-semibold text-xs text-[#171717] mt-0.5 truncate">
-                    {name || 'Unnamed'} ({code || 'UNIV'})
-                  </div>
-                  <div className="text-[10.5px] text-[#57564F] truncate">
-                    {campusName} · {timezone}
-                  </div>
-                </div>
-
-                <div className="p-3 rounded-xl border border-[#E4E2DA] bg-[#F7F6EF]">
-                  <div className="text-[10.5px] font-semibold text-[#77766F]">
-                    2. Academic Calendar
-                  </div>
-                  <div className="font-mono-tabular font-bold text-xs text-[#171717] mt-0.5">
-                    {academicYear} · {terms.length} Terms
-                  </div>
-                  <div className="text-[10.5px] text-[#57564F] truncate">
-                    Active: {activeTermObj?.code} ({activeTermObj?.weeksCount}w)
-                  </div>
-                </div>
-
-                <div className="p-3 rounded-xl border border-[#E4E2DA] bg-[#F7F6EF]">
-                  <div className="text-[10.5px] font-semibold text-[#77766F]">
-                    3. Operating Hours
-                  </div>
-                  <div className="font-mono-tabular font-bold text-xs text-[#171717] mt-0.5">
-                    {dayStartTime} – {dayEndTime}
-                  </div>
-                  <div className="text-[10.5px] text-[#57564F] truncate">
-                    {workingDays.length} Days ({workingDays.join(', ')})
-                  </div>
-                </div>
-
-                <div className="p-3 rounded-xl border border-[#E4E2DA] bg-[#F7F6EF]">
-                  <div className="text-[10.5px] font-semibold text-[#77766F]">
-                    4. Durations &amp; Breaks
-                  </div>
-                  <div className="font-mono-tabular font-bold text-xs text-[#171717] mt-0.5">
-                    {periodLengthMinutes}m Lecture · {computedPreview.labDurationHoursLabel} Lab
-                  </div>
-                  <div className="text-[10.5px] text-[#57564F] truncate">
-                    {shortBreakEnabled ? `${shortBreakMinutes}m Short` : '0m Short'} ·{' '}
-                    {middayBreakEnabled ? `${middayBreakDurationMinutes}m Lunch` : 'No Lunch'}
-                  </div>
-                </div>
-              </div>
-
-              {/* Quick Catalog Editors (Departments, Rooms, Courses, Faculty) */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Departments & Rooms */}
-                <div className="p-3.5 rounded-xl border border-[#E4E2DA] bg-white space-y-3">
-                  <div className="text-xs font-semibold text-[#171717]">
-                    Departments ({departments.length}) &amp; Rooms ({rooms.length})
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <input
-                      type="text"
-                      placeholder="Dept Name"
-                      value={newDeptName}
-                      onChange={e => setNewDeptName(e.target.value)}
-                      className="input-field h-8 text-xs flex-1"
-                    />
-                    <input
-                      type="text"
-                      placeholder="Code"
-                      value={newDeptCode}
-                      onChange={e => setNewDeptCode(e.target.value)}
-                      className="input-field h-8 text-xs w-18 font-mono-tabular uppercase"
-                    />
-                    <button
-                      type="button"
-                      onClick={handleAddDept}
-                      disabled={!newDeptName.trim() || !newDeptCode.trim()}
-                      className="btn-secondary h-8 px-2.5 text-xs"
-                    >
-                      + Dept
-                    </button>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <input
-                      type="text"
-                      placeholder="Room Code (HALL-101)"
-                      value={newRoomCode}
-                      onChange={e => setNewRoomCode(e.target.value)}
-                      className="input-field h-8 text-xs flex-1 font-mono-tabular"
-                    />
-                    <input
-                      type="number"
-                      value={newRoomCap}
-                      onChange={e => setNewRoomCap(Number(e.target.value))}
-                      className="input-field h-8 text-xs w-16 font-mono-tabular"
-                    />
-                    <select
-                      value={newRoomType}
-                      onChange={e => setNewRoomType(e.target.value as 'lecture' | 'lab')}
-                      className="input-field h-8 text-xs w-24 bg-white"
-                    >
-                      <option value="lecture">Lecture</option>
-                      <option value="lab">Lab</option>
-                    </select>
-                    <button
-                      type="button"
-                      onClick={handleAddRoom}
-                      disabled={!newRoomCode.trim()}
-                      className="btn-secondary h-8 px-2.5 text-xs"
-                    >
-                      + Room
-                    </button>
-                  </div>
-                </div>
-
-                {/* Courses & Faculty */}
-                <div className="p-3.5 rounded-xl border border-[#E4E2DA] bg-white space-y-3">
-                  <div className="text-xs font-semibold text-[#171717]">
-                    Courses ({courses.length}) &amp; Instructors ({instructors.length})
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <input
-                      type="text"
-                      placeholder="Code"
-                      value={newCourseCode}
-                      onChange={e => setNewCourseCode(e.target.value)}
-                      className="input-field h-8 text-xs w-20 font-mono-tabular uppercase"
-                    />
-                    <input
-                      type="text"
-                      placeholder="Course Title"
-                      value={newCourseTitle}
-                      onChange={e => setNewCourseTitle(e.target.value)}
-                      className="input-field h-8 text-xs flex-1"
-                    />
-                    <label className="text-[10.5px] flex items-center gap-1 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={newCourseIsLab}
-                        onChange={e => setNewCourseIsLab(e.target.checked)}
-                      />
-                      Lab
-                    </label>
-                    <button
-                      type="button"
-                      onClick={handleAddCourse}
-                      disabled={!newCourseCode.trim() || !newCourseTitle.trim()}
-                      className="btn-secondary h-8 px-2.5 text-xs"
-                    >
-                      + Course
-                    </button>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <input
-                      type="text"
-                      placeholder="Instructor Name"
-                      value={newInstName}
-                      onChange={e => setNewInstName(e.target.value)}
-                      className="input-field h-8 text-xs flex-1"
-                    />
-                    <input
-                      type="email"
-                      placeholder="email@univ.edu"
-                      value={newInstEmail}
-                      onChange={e => setNewInstEmail(e.target.value)}
-                      className="input-field h-8 text-xs flex-1"
-                    />
-                    <button
-                      type="button"
-                      onClick={handleAddInstructor}
-                      disabled={!newInstName.trim() || !newInstEmail.trim()}
-                      className="btn-secondary h-8 px-2.5 text-xs"
-                    >
-                      + Faculty
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              <div className="p-4 rounded-xl bg-[#B7F77C]/30 border border-[#98DF58] text-xs text-[#171717] flex items-start gap-2.5">
-                <CheckCircle2 className="w-4 h-4 text-[#2E7D32] shrink-0 mt-0.5" />
-                <div>
-                  <strong>Direct Global Store Persistence:</strong> Clicking{' '}
-                  <strong>Save &amp; Persist Configuration</strong> commits your Institution Profile,{' '}
-                  {terms.length} Academic Calendar Terms, {workingDays.length}-Day Operating Hours,{' '}
-                  {periodLengthMinutes}m Lecture / {computedPreview.labDurationHoursLabel} Lab Session Durations, and Break Policies directly to <code>institutionalStore</code> and synthesizes the active timetable.
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Footer Navigation */}
-        <div className="px-6 py-4 bg-[#F7F6EF] border-t border-[#E4E2DA] flex items-center justify-between">
-          <button
-            type="button"
-            disabled={activeStep === 0}
-            onClick={() => {
-              setOnboardingError(null);
-              setStepSavedToast(null);
-              setActiveStep(Math.max(0, activeStep - 1));
-            }}
-            className="btn-secondary h-9 px-4 text-xs font-semibold inline-flex items-center gap-1.5"
-          >
-            <ArrowLeft className="w-3.5 h-3.5" />
-            <span>Previous Screen</span>
-          </button>
-
-          <div className="flex items-center gap-2">
-            {activeStep < steps.length - 1 ? (
-              <button
-                type="button"
-                onClick={handleAdvanceStep}
-                className="btn-primary h-9 px-5 text-xs font-semibold inline-flex items-center gap-1.5"
-              >
-                <span>Save &amp; Continue</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </button>
-            ) : (
-              <button
-                type="button"
-                disabled={isSubmitting}
-                onClick={handleFinalizeOnboarding}
-                className="btn-primary h-10 px-6 text-xs font-bold inline-flex items-center gap-2 shadow-xs"
-              >
-                <Sparkles className="w-4 h-4" />
-                <span>
-                  {isSubmitting
-                    ? 'Persisting to Store...'
-                    : 'Save & Persist Configuration'}
-                </span>
-              </button>
+                </footer>
+              </>
             )}
           </div>
-        </div>
-      </div>
-    </div>
+        </motion.div>
+      </motion.div>
+    </MotionConfig>
   );
 };

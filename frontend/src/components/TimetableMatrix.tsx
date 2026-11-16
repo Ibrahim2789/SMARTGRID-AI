@@ -75,6 +75,8 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
 }) => {
   const store = useInstitutionalData();
   const { scheduleData } = buildMatrixSchedule(store);
+  const hasGeneratedTimetable =
+    store.scenarios.length > 0 || store.sections.some(s => Boolean(s.assignedSlot));
 
   const userRole = getNormalizedUserRole(currentUser);
   const isAdmin = !currentUser || userRole === 'admin';
@@ -102,6 +104,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
     isFaculty ? 'instructor' : 'cohort'
   );
   const [selectedDeptId, setSelectedDeptId] = useState<string>('all');
+  const [selectedBatchFilter, setSelectedBatchFilter] = useState<string>('all');
   const [selectedCohortId, setSelectedCohortId] = useState<string>(() => {
     if (isStudent) return matchedStudentCohort?.id || '';
     if (isBr) return defaultBrCohort?.id || '';
@@ -230,25 +233,57 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
     institutionalStore.setSelectedClassGroupId(groupId);
   };
 
-  // Filter classes/sections strictly by role and selected department
+  const getGroupBatch = (g: { batchCode?: string; code: string }) =>
+    (g.batchCode || g.code.split('-')[0] || '').trim().toUpperCase();
+  const getGroupSection = (g: { section?: string; code: string }) =>
+    (g.section || g.code.split('-')[2] || 'A').trim().toUpperCase();
+  const groupMatchesDept = (g: { departmentCode?: string; programId: string; code: string }, deptId: string) => {
+    if (deptId === 'all') return true;
+    const deptObj = store.departments.find(d => d.id === deptId);
+    const prog = store.programs.find(p => p.id === g.programId);
+    return (
+      prog?.departmentId === deptId ||
+      (Boolean(deptObj?.code) &&
+        (g.departmentCode || g.code.split('-')[1] || '').toUpperCase() === deptObj!.code.toUpperCase())
+    );
+  };
+
+  const availableBatchCodes = Array.from(
+    new Set(
+      store.studentGroups
+        .filter(g => groupMatchesDept(g, selectedDeptId))
+        .map(g => getGroupBatch(g))
+        .filter(Boolean)
+    )
+  ).sort((a, b) => b.localeCompare(a));
+
+  // Filter classes/sections strictly by role, selected department/field, and selected batch
   const departmentFilteredGroups = isStudent
     ? matchedStudentCohort
       ? [matchedStudentCohort]
       : []
     : isBr
     ? brBatchCohorts
-    : store.studentGroups.filter(g => {
-        if (selectedDeptId === 'all') return true;
-        const prog = store.programs.find(p => p.id === g.programId);
-        return prog?.departmentId === selectedDeptId;
-      });
+    : store.studentGroups
+        .filter(g => {
+          if (!groupMatchesDept(g, selectedDeptId)) return false;
+          if (selectedBatchFilter !== 'all' && getGroupBatch(g) !== selectedBatchFilter) {
+            return false;
+          }
+          return true;
+        })
+        .sort((a, b) => a.code.localeCompare(b.code));
 
   const activeGroupIndex = departmentFilteredGroups.findIndex(g => g.id === effectiveCohortId);
   const activeGroupObj = isStudent
     ? matchedStudentCohort
     : isBr
     ? brBatchCohorts.find(g => g.id === effectiveCohortId) || defaultBrCohort || null
-    : store.studentGroups.find(g => g.id === effectiveCohortId) || store.studentGroups[0] || null;
+    : departmentFilteredGroups.find(g => g.id === effectiveCohortId) ||
+      store.studentGroups.find(g => g.id === effectiveCohortId) ||
+      departmentFilteredGroups[0] ||
+      store.studentGroups[0] ||
+      null;
 
   const handlePrevCohort = () => {
     if (departmentFilteredGroups.length <= 1) return;
@@ -449,7 +484,12 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
 
   const filterClass = (cls: ClassItem) => {
     if (effectivePerspective === 'cohort') {
-      if (!effectiveCohortId || cls.studentGroupId !== effectiveCohortId) return false;
+      if (
+        !effectiveCohortId ||
+        (cls.studentGroupId !== effectiveCohortId && !cls.sharedGroupIds?.includes(effectiveCohortId))
+      ) {
+        return false;
+      }
     } else if (effectivePerspective === 'instructor') {
       if (!effectiveInstructorId || cls.instructorId !== effectiveInstructorId) return false;
     } else if (effectivePerspective === 'room') {
@@ -780,7 +820,12 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
   // Compute stats for the currently viewed Class/Section (or full view)
   const activeFilteredSections = store.sections.filter(s => {
     if (!s.assignedSlot) return false;
-    if (effectivePerspective === 'cohort') return Boolean(effectiveCohortId) && s.studentGroupId === effectiveCohortId;
+    if (effectivePerspective === 'cohort') {
+      return (
+        Boolean(effectiveCohortId) &&
+        (s.studentGroupId === effectiveCohortId || Boolean(s.sharedGroupIds?.includes(effectiveCohortId!)))
+      );
+    }
     if (effectivePerspective === 'instructor') return Boolean(effectiveInstructorId) && s.instructorId === effectiveInstructorId;
     if (effectivePerspective === 'room') return s.assignedSlot.roomId === selectedRoomId;
     if (selectedDeptId !== 'all') {
@@ -858,6 +903,70 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
     });
   });
 
+  if (!hasGeneratedTimetable) {
+    return (
+      <div className="space-y-4">
+        <header className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-3 border-b border-[#E4E2DA]">
+          <div>
+            <h1 className="font-serif-editorial text-2xl sm:text-3xl text-[#171717] tracking-tight">
+              Timetables
+            </h1>
+            <p className="text-xs text-[#77766F] mt-1">
+              {store.institutionProfile?.name || 'University'} · Schedule Matrix
+            </p>
+          </div>
+        </header>
+
+        <div className="sf-card-white p-10 sm:p-14 text-center space-y-5">
+          <div className="w-12 h-12 rounded-2xl bg-[#F7F6EF] border border-[#E4E2DA] flex items-center justify-center mx-auto text-[#171717]">
+            <Layers className="w-6 h-6" />
+          </div>
+          <div className="space-y-2 max-w-lg mx-auto">
+            <h2 className="font-serif-editorial text-2xl text-[#171717]">
+              No Timetable Generated Yet
+            </h2>
+            <p className="text-xs sm:text-sm text-[#77766F] leading-relaxed">
+              {isAdmin
+                ? 'Your academic catalog and campus rules can be imported or configured first. A timetable will only appear here once you generate it.'
+                : 'Your university timetable has not been generated or published by the administration yet.'}
+            </p>
+          </div>
+
+          {isAdmin && (
+            <>
+              <div className="text-xs font-mono-tabular text-[#57564F]">
+                {store.departments.length} Departments · {store.rooms.length} Rooms ·{' '}
+                {store.courses.length} Courses · {store.instructors.length} Faculty ·{' '}
+                {store.studentGroups.length} Cohorts
+              </div>
+              <div className="flex flex-wrap items-center justify-center gap-3 pt-1">
+                {onNavigate && (
+                  <button
+                    type="button"
+                    onClick={() => onNavigate('generate')}
+                    className="btn-primary h-10 px-5 text-xs font-semibold"
+                  >
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>Go to Generate Timetable</span>
+                  </button>
+                )}
+                {onNavigate && (
+                  <button
+                    type="button"
+                    onClick={() => onNavigate('setup')}
+                    className="btn-secondary h-10 px-4 text-xs font-semibold"
+                  >
+                    <span>Configure Catalog</span>
+                  </button>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
 
@@ -874,7 +983,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
               : isFaculty
               ? `My Teaching Timetable: ${currentInstructorObj?.name || currentUser?.name || 'Faculty'}`
               : effectivePerspective === 'cohort' && activeGroupObj
-              ? `Class Timetable: ${activeGroupObj.code}`
+              ? `Section Timetable: ${getGroupBatch(activeGroupObj)} · ${activeGroupObj.departmentCode || activeGroupObj.code.split('-')[1] || ''} · Section ${getGroupSection(activeGroupObj)}`
               : effectivePerspective === 'instructor' && currentInstructorObj
               ? `Faculty Timetable: ${currentInstructorObj.name}`
               : effectivePerspective === 'room' && currentRoomObj
@@ -1088,14 +1197,22 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
               <div className="inline-flex flex-wrap items-center p-1 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] shrink-0">
                 <button
                   type="button"
-                  onClick={() => setSelectedDeptId('all')}
+                  onClick={() => {
+                    setSelectedDeptId('all');
+                    if (effectivePerspective === 'cohort') {
+                      const firstMatch = store.studentGroups.find(
+                        g => selectedBatchFilter === 'all' || getGroupBatch(g) === selectedBatchFilter
+                      );
+                      if (firstMatch) handleSelectCohort(firstMatch.id);
+                    }
+                  }}
                   className={`h-7 px-2.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
                     selectedDeptId === 'all'
                       ? 'bg-white text-[#171717] border border-[#E4E2DA]'
                       : 'text-[#77766F] hover:text-[#171717] border border-transparent'
                   }`}
                 >
-                  All Depts
+                  All Fields
                 </button>
                 {store.departments.map(dept => (
                   <button
@@ -1103,12 +1220,19 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
                     type="button"
                     onClick={() => {
                       setSelectedDeptId(dept.id);
-                      const firstInDept = store.studentGroups.find(g => {
-                        const p = store.programs.find(pr => pr.id === g.programId);
-                        return p?.departmentId === dept.id;
-                      });
-                      if (firstInDept && effectivePerspective === 'cohort') {
-                        handleSelectCohort(firstInDept.id);
+                      if (effectivePerspective === 'cohort') {
+                        const firstInDept = store.studentGroups.find(
+                          g =>
+                            groupMatchesDept(g, dept.id) &&
+                            (selectedBatchFilter === 'all' || getGroupBatch(g) === selectedBatchFilter)
+                        );
+                        const fallbackInDept = store.studentGroups.find(g => groupMatchesDept(g, dept.id));
+                        if (firstInDept) {
+                          handleSelectCohort(firstInDept.id);
+                        } else if (fallbackInDept) {
+                          setSelectedBatchFilter('all');
+                          handleSelectCohort(fallbackInDept.id);
+                        }
                       }
                     }}
                     className={`h-7 px-2.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
@@ -1123,24 +1247,49 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
               </div>
             )}
 
+            {isAdmin && effectivePerspective === 'cohort' && availableBatchCodes.length > 0 && (
+              <select
+                value={selectedBatchFilter}
+                onChange={e => {
+                  const nextBatch = e.target.value;
+                  setSelectedBatchFilter(nextBatch);
+                  const firstMatch = store.studentGroups.find(
+                    g =>
+                      groupMatchesDept(g, selectedDeptId) &&
+                      (nextBatch === 'all' || getGroupBatch(g) === nextBatch)
+                  );
+                  if (firstMatch) handleSelectCohort(firstMatch.id);
+                }}
+                className="input-field h-8 w-[130px] text-xs font-semibold bg-[#F7F6EF] border-[#E4E2DA] text-[#171717] py-1 px-2.5 shrink-0"
+                title="Filter by Batch (e.g. 2K24)"
+              >
+                <option value="all">All Batches</option>
+                {availableBatchCodes.map(batch => (
+                  <option key={batch} value={batch}>
+                    Batch {batch}
+                  </option>
+                ))}
+              </select>
+            )}
+
             {isAdmin && effectivePerspective === 'cohort' && (
-              <div className="inline-flex items-center gap-1.5 min-w-0">
+              <div className="inline-flex flex-wrap items-center gap-1.5 min-w-0">
                 <button
                   type="button"
                   onClick={handlePrevCohort}
                   className="w-8 h-8 rounded-lg bg-[#F7F6EF] hover:bg-[#EDEAE0] border border-[#E4E2DA] flex items-center justify-center text-[#171717] cursor-pointer shrink-0"
-                  title="Previous Class/Section"
+                  title="Previous Section"
                 >
                   <ChevronLeft className="w-4 h-4" />
                 </button>
                 <select
                   value={effectiveCohortId}
                   onChange={e => handleSelectCohort(e.target.value)}
-                  className="input-field h-8 w-[240px] text-xs font-semibold bg-white border-[#E4E2DA] text-[#171717] py-1 px-2.5 truncate"
+                  className="input-field h-8 w-[225px] text-xs font-semibold bg-white border-[#E4E2DA] text-[#171717] py-1 px-2.5 truncate"
                 >
                   {departmentFilteredGroups.map(g => (
                     <option key={g.id} value={g.id}>
-                      {g.code} — {g.name}
+                      {g.code} — Sec {getGroupSection(g)}
                     </option>
                   ))}
                 </select>
@@ -1148,10 +1297,34 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
                   type="button"
                   onClick={handleNextCohort}
                   className="w-8 h-8 rounded-lg bg-[#F7F6EF] hover:bg-[#EDEAE0] border border-[#E4E2DA] flex items-center justify-center text-[#171717] cursor-pointer shrink-0"
-                  title="Next Class/Section"
+                  title="Next Section"
                 >
                   <ChevronRight className="w-4 h-4" />
                 </button>
+
+                {/* Quick Section Tabs (Sec A | Sec B | Sec C) when viewing a Batch/Field or up to 6 sections */}
+                {departmentFilteredGroups.length > 1 && departmentFilteredGroups.length <= 6 && (
+                  <div className="inline-flex items-center p-0.5 rounded-lg bg-[#F7F6EF] border border-[#E4E2DA]">
+                    {departmentFilteredGroups.map(g => {
+                      const isSel = g.id === effectiveCohortId;
+                      return (
+                        <button
+                          key={g.id}
+                          type="button"
+                          onClick={() => handleSelectCohort(g.id)}
+                          className={`h-7 px-2.5 rounded-md text-xs font-mono-tabular font-semibold transition-colors cursor-pointer ${
+                            isSel
+                              ? 'bg-[#171717] text-white'
+                              : 'text-[#57564F] hover:text-[#171717]'
+                          }`}
+                          title={`View separate timetable for ${g.code}`}
+                        >
+                          Sec {getGroupSection(g)}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             )}
 

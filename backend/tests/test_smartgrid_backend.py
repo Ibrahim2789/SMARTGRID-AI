@@ -329,6 +329,40 @@ class SmartGridBackendTests(unittest.TestCase):
         self.assertGreaterEqual(proposal["stabilityPercentage"], 75.0)
         self.assertGreaterEqual(proposal["changedSessionsCount"], 1)
 
+    def test_08_supabase_service_role_key_handling(self) -> None:
+        import os
+        from unittest.mock import patch
+        from app.core.config import settings
+        from app.database.supabase import SupabaseRestClient, get_supabase_client
+
+        jwt_key = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoic2VydmljZV9yb2xlIn0.sig"
+        jwt_client = SupabaseRestClient("https://demo.supabase.co", jwt_key)
+        jwt_headers = jwt_client._headers()
+        self.assertEqual(jwt_headers["apikey"], jwt_key)
+        self.assertEqual(jwt_headers["Authorization"], f"Bearer {jwt_key}")
+
+        opaque_key = "sb_secret_test_value_123456"
+        opaque_client = SupabaseRestClient("https://demo.supabase.co", opaque_key)
+        opaque_headers = opaque_client._headers()
+        self.assertEqual(opaque_headers["apikey"], opaque_key)
+        self.assertNotIn("Authorization", opaque_headers)
+
+        with patch.dict(
+            os.environ,
+            {
+                "SUPABASE_URL": "https://demo.supabase.co",
+                "SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiJ9.anon.sig",
+                "SUPABASE_SERVICE_ROLE_KEY": f'"{opaque_key}"',
+            },
+            clear=False,
+        ):
+            self.assertTrue(settings.has_valid_service_role_key)
+            self.assertEqual(settings.effective_supabase_key, opaque_key)
+            client = get_supabase_client()
+            self.assertIsNotNone(client)
+            assert client is not None
+            self.assertEqual(client.api_key, opaque_key)
+
 
 if __name__ == "__main__":
     unittest.main()

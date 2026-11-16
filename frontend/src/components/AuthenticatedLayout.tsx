@@ -1517,7 +1517,7 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
 
           {/* Global Workspace Search Component */}
           {isAdminRole && (
-            <div className="flex-1 max-w-md mx-auto flex justify-center">
+            <div className="flex-1 max-w-md mx-auto flex justify-center w-full">
               <GlobalSearch onNavigate={onNavigate} onOpenSetupStep={openSetup} />
             </div>
           )}

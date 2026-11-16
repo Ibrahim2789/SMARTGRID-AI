@@ -21,6 +21,7 @@ export interface ClassItem {
   instructorId?: string;
   cohort: string;
   studentGroupId?: string;
+  sharedGroupIds?: string[];
   departmentId?: string;
   departmentName?: string;
   sectionNumber?: string;

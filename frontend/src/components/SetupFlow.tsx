@@ -9,6 +9,7 @@ import {
   Department,
   DayOfWeek,
   RoomType,
+  StaffRole,
   computeAcademicScheduleConfig
 } from '../types/institutional';
 import {
@@ -122,17 +123,19 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
 
   const [courseSearch, setCourseSearch] = useState('');
   const [courseDeptFilter, setCourseDeptFilter] = useState<string>('ALL');
-  const [courseTypeFilter, setCourseTypeFilter] = useState<'ALL' | 'lecture' | 'lab'>('ALL');
+  const [courseTypeFilter, setCourseTypeFilter] = useState<'ALL' | 'lecture' | 'lab' | 'elective'>('ALL');
   const [courseSortKey, setCourseSortKey] = useState<'code' | 'title' | 'type' | 'sections'>('code');
   const [courseSortAsc, setCourseSortAsc] = useState(true);
 
   const [instSearch, setInstSearch] = useState('');
   const [instDeptFilter, setInstDeptFilter] = useState<string>('ALL');
+  const [instRoleFilter, setInstRoleFilter] = useState<'ALL' | StaffRole>('ALL');
   const [instStatusFilter, setInstStatusFilter] = useState<'ALL' | 'available' | 'restricted'>('ALL');
   const [instSortKey, setInstSortKey] = useState<'name' | 'dept' | 'load'>('name');
   const [instSortAsc, setInstSortAsc] = useState(true);
 
   const [groupSearch, setGroupSearch] = useState('');
+  const [groupBatchFilter, setGroupBatchFilter] = useState<string>('ALL');
   const [groupDeptFilter, setGroupDeptFilter] = useState<string>('ALL');
   const [groupYearFilter, setGroupYearFilter] = useState<string>('ALL');
   const [groupSortKey, setGroupSortKey] = useState<'code' | 'dept' | 'semester' | 'size'>('code');
@@ -150,10 +153,12 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
   const [sectionPage, setSectionPage] = useState(1);
 
   // Forms
+  const [newSubDeptInput, setNewSubDeptInput] = useState('');
   const [deptForm, setDeptForm] = useState({
     code: '',
     name: '',
-    school: 'School of Engineering & Sciences'
+    school: 'School of Engineering & Sciences',
+    subDepartments: [] as string[]
   });
 
   const [roomForm, setRoomForm] = useState({
@@ -168,31 +173,42 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
     code: '',
     title: '',
     departmentId: store.departments[0]?.id || 'dept-cs',
-    creditHours: 4,
-    weeklyContactHours: 4,
+    lectureCredits: 3,
+    labCredits: 0,
+    isElective: false,
+    electivePoolName: '',
     requiredRoomType: 'lecture' as RoomType
   });
 
   const [instructorForm, setInstructorForm] = useState({
     name: '',
     title: 'Associate Professor',
+    staffRole: 'faculty' as StaffRole,
     departmentId: store.departments[0]?.id || 'dept-cs',
+    subDepartment: '',
+    qualifiedCourseIds: [] as string[],
     maxWeeklyHours: 12
   });
 
   const [groupForm, setGroupForm] = useState({
     name: '',
     code: '',
+    batchCode: '2K24',
     departmentCode: store.departments[0]?.code || 'BSCS',
+    section: 'A',
+    sectionsInput: 'A, B, C',
     semester: 1,
     year: 1,
-    size: 40
+    size: 40,
+    sharedCourseIds: [] as string[]
   });
 
   const [sectionForm, setSectionForm] = useState({
     courseId: store.courses[0]?.id || '',
     instructorId: store.instructors[0]?.id || '',
     studentGroupId: store.studentGroups[0]?.id || '',
+    sessionType: 'Lecture' as 'Lecture' | 'Lab',
+    sharedGroupIds: [] as string[],
     expectedEnrollment: 35
   });
 
@@ -312,7 +328,7 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
     if (type === 'rooms') {
       csvContent += 'code,building,capacity,type,equipment\nHALL-101,Turing Hall,60,lecture,Projector\n';
     } else if (type === 'courses') {
-      csvContent += 'code,title,creditHours,weeklyHours,roomType\nCS-101,Introduction to CS,4,4,lecture\n';
+      csvContent += 'code,title,lectureCredits,labCredits,weeklyHours,subDepartment,isElective,roomType\nCS-101,Introduction to CS,3,1,6,AI & Data Systems,no,lecture\n';
     }
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
@@ -327,19 +343,22 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
   // --- Step 0: Department Actions ---
   const handleOpenAddDept = (dept?: Department) => {
     setValidationError(null);
+    setNewSubDeptInput('');
     if (dept) {
       setEditingItem(dept);
       setDeptForm({
         code: dept.code,
         name: dept.name,
-        school: dept.school || 'School of Engineering & Sciences'
+        school: dept.school || 'School of Engineering & Sciences',
+        subDepartments: [...(dept.subDepartments || [])]
       });
     } else {
       setEditingItem(null);
       setDeptForm({
         code: '',
         name: '',
-        school: 'School of Engineering & Sciences'
+        school: 'School of Engineering & Sciences',
+        subDepartments: []
       });
     }
     setSideDrawerOpen(true);
@@ -354,11 +373,19 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
     const cleanCode = deptForm.code.trim().toUpperCase();
     const cleanName = deptForm.name.trim();
     const cleanSchool = deptForm.school.trim();
+    const pendingSub = newSubDeptInput.trim();
+    const cleanSubs = Array.from(
+      new Set([
+        ...deptForm.subDepartments.map(s => s.trim()).filter(Boolean),
+        ...(pendingSub ? [pendingSub] : [])
+      ])
+    );
     if (editingItem) {
       institutionalStore.updateDepartment(editingItem.id, {
         code: cleanCode,
         name: cleanName,
-        school: cleanSchool
+        school: cleanSchool,
+        subDepartments: cleanSubs
       });
       showToast(`Updated department ${cleanCode}.`);
     } else {
@@ -367,6 +394,7 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
         code: cleanCode,
         name: cleanName,
         school: cleanSchool,
+        subDepartments: cleanSubs,
         colorHex: '#171717'
       });
       showToast(`Added department ${cleanName}.`);
@@ -467,12 +495,29 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
     setValidationError(null);
     if (course) {
       setEditingItem(course);
+      const isPureLab = course.requiredRoomType === 'lab' || course.code.endsWith('-L');
+      const inferredLabCr =
+        course.labCredits ??
+        (course.labHours && course.labHours > 0
+          ? Math.max(1, Math.round(course.labHours / 3))
+          : isPureLab
+            ? course.creditHours || 1
+            : 0);
+      const inferredLecCr =
+        course.lectureCredits ??
+        (course.lectureHours && course.lectureHours > 0
+          ? course.lectureHours
+          : isPureLab
+            ? 0
+            : Math.max(0, (course.creditHours || 3) - inferredLabCr));
       setCourseForm({
         code: course.code,
         title: course.title,
         departmentId: course.departmentId || store.departments[0]?.id || 'dept-cs',
-        creditHours: course.creditHours,
-        weeklyContactHours: course.weeklyContactHours,
+        lectureCredits: inferredLecCr,
+        labCredits: inferredLabCr,
+        isElective: Boolean(course.isElective),
+        electivePoolName: course.electivePoolName || '',
         requiredRoomType: course.requiredRoomType
       });
     } else {
@@ -481,8 +526,10 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
         code: '',
         title: '',
         departmentId: store.departments[0]?.id || 'dept-cs',
-        creditHours: 4,
-        weeklyContactHours: 4,
+        lectureCredits: 3,
+        labCredits: 0,
+        isElective: false,
+        electivePoolName: '',
         requiredRoomType: 'lecture'
       });
     }
@@ -496,8 +543,28 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
       return;
     }
 
+    const lecCr = Math.max(0, Number(courseForm.lectureCredits) || 0);
+    const labCr = Math.max(0, Number(courseForm.labCredits) || 0);
+    const totalCr = lecCr + labCr;
+    if (totalCr <= 0) {
+      setValidationError('Specify at least 1 Lecture Credit or 1 Lab Credit.');
+      return;
+    }
+
+    // Standard academic rule: 1 Lecture credit = 1h/week; 1 Lab credit = 3 continuous hrs/week
+    const lecHours = lecCr * 1;
+    const labHours = labCr * 3;
+    const weeklyContactHours = lecHours + labHours;
+    const effectiveRoomType: RoomType =
+      labCr > 0 && lecCr === 0
+        ? 'lab'
+        : courseForm.requiredRoomType === 'lab' && lecCr > 0
+          ? 'lecture'
+          : courseForm.requiredRoomType;
+
     const cleanCode = courseForm.code.trim().toUpperCase();
     const cleanTitle = courseForm.title.trim();
+    const cleanPool = courseForm.isElective ? courseForm.electivePoolName.trim() || undefined : undefined;
     const courseId = editingItem ? editingItem.id : `course-${Date.now()}`;
     const deptCode =
       store.departments.find(d => d.id === courseForm.departmentId)?.code || 'BSCS';
@@ -507,24 +574,34 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
         code: cleanCode,
         title: cleanTitle,
         departmentId: courseForm.departmentId,
-        creditHours: Number(courseForm.creditHours),
-        weeklyContactHours: Number(courseForm.weeklyContactHours),
-        requiredRoomType: courseForm.requiredRoomType
+        creditHours: totalCr,
+        lectureCredits: lecCr,
+        labCredits: labCr,
+        lectureHours: lecHours,
+        labHours: labHours,
+        weeklyContactHours,
+        isElective: courseForm.isElective,
+        electivePoolName: cleanPool,
+        requiredRoomType: effectiveRoomType
       });
-      showToast(`Updated course ${cleanCode}.`);
+      showToast(`Updated course ${cleanCode} (${lecCr}+${labCr} Cr · ${weeklyContactHours}h/wk).`);
     } else {
       institutionalStore.addCourse({
         id: courseId,
         departmentId: courseForm.departmentId,
         code: cleanCode,
         title: cleanTitle,
-        creditHours: Number(courseForm.creditHours),
-        weeklyContactHours: Number(courseForm.weeklyContactHours),
-        lectureHours: Number(courseForm.weeklyContactHours),
-        labHours: courseForm.requiredRoomType === 'lab' ? Number(courseForm.weeklyContactHours) : 0,
-        requiredRoomType: courseForm.requiredRoomType
+        creditHours: totalCr,
+        lectureCredits: lecCr,
+        labCredits: labCr,
+        weeklyContactHours,
+        lectureHours: lecHours,
+        labHours: labHours,
+        isElective: courseForm.isElective,
+        electivePoolName: cleanPool,
+        requiredRoomType: effectiveRoomType
       });
-      showToast(`Added course ${cleanCode} — ${cleanTitle}.`);
+      showToast(`Added course ${cleanCode} — ${cleanTitle} (${weeklyContactHours}h/wk).`);
     }
     if (currentUser?.token) {
       void createCourseBackend(currentUser, {
@@ -533,25 +610,28 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
         code: cleanCode,
         title: cleanTitle,
         departmentCode: deptCode,
-        type: courseForm.requiredRoomType === 'lab' ? 'Lab' : 'Theory',
-        creditHours: Number(courseForm.creditHours),
-        hoursPerWeek: Number(courseForm.weeklyContactHours),
-        requiredRoomType: courseForm.requiredRoomType
+        type: labCr > 0 && lecCr === 0 ? 'Lab' : 'Theory',
+        creditHours: totalCr,
+        hoursPerWeek: weeklyContactHours,
+        requiredRoomType: effectiveRoomType
       }).catch(() => {});
       void institutionalStore.syncToBackend(currentUser);
     }
     setSideDrawerOpen(false);
   };
 
-  // --- Step 3: Instructor Actions ---
+  // --- Step 3: Instructor & Lab Engineer Actions ---
   const handleOpenAddInstructor = (inst?: Instructor) => {
     setValidationError(null);
     if (inst) {
       setEditingItem(inst);
       setInstructorForm({
         name: inst.name,
-        title: inst.title || 'Professor',
+        title: inst.title || (inst.staffRole === 'lab_engineer' ? 'Lab Engineer' : 'Professor'),
+        staffRole: inst.staffRole || 'faculty',
         departmentId: inst.departmentId,
+        subDepartment: inst.subDepartment || '',
+        qualifiedCourseIds: [...(inst.qualifiedCourseIds || [])],
         maxWeeklyHours: inst.maxWeeklyHours
       });
     } else {
@@ -559,7 +639,10 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
       setInstructorForm({
         name: '',
         title: 'Associate Professor',
+        staffRole: 'faculty',
         departmentId: store.departments[0]?.id || 'dept-cs',
+        subDepartment: '',
+        qualifiedCourseIds: [],
         maxWeeklyHours: 12
       });
     }
@@ -569,7 +652,7 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
   const handleSaveInstructor = (e: React.FormEvent) => {
     e.preventDefault();
     if (!instructorForm.name.trim()) {
-      setValidationError('Instructor name is required.');
+      setValidationError('Staff member name is required.');
       return;
     }
 
@@ -582,28 +665,40 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
     const emailVal = editingItem?.email || `${cleanName.toLowerCase().replace(/[^a-z0-9]/g, '.')}@${instDomain}`;
     const deptCode =
       store.departments.find(d => d.id === instructorForm.departmentId)?.code || 'BSCS';
+    const defaultTitle =
+      instructorForm.title.trim() ||
+      (instructorForm.staffRole === 'lab_engineer' ? 'Lab Engineer' : 'Faculty Member');
+    const cleanSubDept = instructorForm.subDepartment.trim() || undefined;
 
     if (editingItem) {
       institutionalStore.updateInstructor(editingItem.id, {
         name: cleanName,
-        title: instructorForm.title.trim(),
+        title: defaultTitle,
+        staffRole: instructorForm.staffRole,
         departmentId: instructorForm.departmentId,
+        subDepartment: cleanSubDept,
+        qualifiedCourseIds: instructorForm.qualifiedCourseIds,
         maxWeeklyHours: Number(instructorForm.maxWeeklyHours)
       });
-      showToast(`Updated faculty profile for ${cleanName}.`);
+      showToast(`Updated profile for ${cleanName}.`);
     } else {
       institutionalStore.addInstructor({
         id: instId,
         departmentId: instructorForm.departmentId,
+        subDepartment: cleanSubDept,
+        staffRole: instructorForm.staffRole,
+        qualifiedCourseIds: instructorForm.qualifiedCourseIds,
         name: cleanName,
         email: emailVal,
-        title: instructorForm.title.trim() || 'Faculty Member',
+        title: defaultTitle,
         maxWeeklyHours: Number(instructorForm.maxWeeklyHours),
         maxConsecutiveHours: 3,
         preferredDays: ['Mon', 'Wed', 'Fri'],
         unavailableSlots: []
       });
-      showToast(`Added faculty instructor ${cleanName}.`);
+      showToast(
+        `Added ${instructorForm.staffRole === 'lab_engineer' ? 'Lab Engineer' : 'Faculty'} ${cleanName}.`
+      );
     }
     if (currentUser?.token) {
       void createInstructorBackend(currentUser, {
@@ -612,7 +707,7 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
         name: cleanName,
         email: emailVal,
         departmentCode: deptCode,
-        designation: instructorForm.title.trim() || 'Professor',
+        designation: defaultTitle,
         maxWeeklyHours: Number(instructorForm.maxWeeklyHours)
       }).catch(() => {});
       void institutionalStore.syncToBackend(currentUser);
@@ -620,28 +715,40 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
     setSideDrawerOpen(false);
   };
 
-  // --- Step 4: Student Group Actions ---
+  // --- Step 4: Student Group Actions (Batch -> Field -> Sections A, B, C) ---
   const handleOpenAddGroup = (grp?: StudentGroup) => {
     setValidationError(null);
     if (grp) {
       setEditingItem(grp);
+      const parts = grp.code.split('-');
+      const batch = grp.batchCode || parts[0] || `2K${26 - Math.max(0, grp.year - 1)}`;
+      const deptCode = grp.departmentCode || parts[1] || store.departments[0]?.code || 'BSCS';
+      const sec = grp.section || parts[2] || 'A';
       setGroupForm({
         name: grp.name,
         code: grp.code,
-        departmentCode: grp.departmentCode || grp.code.split('-')[1] || 'BSCS',
+        batchCode: batch,
+        departmentCode: deptCode,
+        section: sec,
+        sectionsInput: sec,
         semester: grp.semester || grp.year * 2 - 1 || 1,
         year: grp.year,
-        size: grp.size
+        size: grp.size,
+        sharedCourseIds: [...(grp.sharedCourseIds || [])]
       });
     } else {
       setEditingItem(null);
       setGroupForm({
         name: '',
         code: '',
+        batchCode: '2K24',
         departmentCode: store.departments[0]?.code || 'BSCS',
+        section: 'A',
+        sectionsInput: 'A, B, C',
         semester: 1,
         year: 1,
-        size: 40
+        size: 40,
+        sharedCourseIds: []
       });
     }
     setSideDrawerOpen(true);
@@ -649,50 +756,117 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
 
   const handleSaveGroup = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!groupForm.code.trim()) {
-      setValidationError('Cohort code is required.');
-      return;
-    }
-    const cleanCode = groupForm.code.trim();
-    const cleanName = groupForm.name.trim() || cleanCode;
+    const cleanBatch = groupForm.batchCode.trim().toUpperCase();
+    const cleanDept = groupForm.departmentCode.trim().toUpperCase();
+
     if (editingItem) {
+      const cleanSection = groupForm.section.trim().toUpperCase() || 'A';
+      const cleanCode =
+        groupForm.code.trim().toUpperCase() ||
+        [cleanBatch, cleanDept, cleanSection].filter(Boolean).join('-');
+      if (!cleanCode) {
+        setValidationError('Batch and section code are required.');
+        return;
+      }
+      const cleanName = groupForm.name.trim() || `${cleanBatch} ${cleanDept} Section ${cleanSection}`.trim();
       institutionalStore.updateStudentGroup(editingItem.id, {
         name: cleanName,
         code: cleanCode,
-        departmentCode: groupForm.departmentCode,
+        batchCode: cleanBatch || cleanCode.split('-')[0],
+        departmentCode: cleanDept,
+        section: cleanSection,
         semester: Number(groupForm.semester),
-        year: Number(groupForm.year),
-        size: Number(groupForm.size)
-      });
-      showToast(`Updated student cohort ${cleanCode}.`);
-    } else {
-      const matchedDept = store.departments.find(d => d.code === groupForm.departmentCode);
-      const matchedProg =
-        store.programs.find(p => p.departmentId === matchedDept?.id) || store.programs[0];
-      institutionalStore.addStudentGroup({
-        id: `cohort-${Date.now()}`,
-        programId: matchedProg?.id || 'prog-bsc-cs',
-        departmentCode: groupForm.departmentCode,
-        semester: Number(groupForm.semester),
-        name: cleanName,
-        code: cleanCode,
         year: Number(groupForm.year),
         size: Number(groupForm.size),
-        sharedCourseIds: []
+        sharedCourseIds: groupForm.sharedCourseIds
       });
-      showToast(`Added student cohort ${cleanCode}.`);
+      showToast(`Updated section ${cleanCode}.`);
+      if (currentUser?.token) {
+        void createBatchAdmin(currentUser, {
+          code: cleanCode,
+          name: cleanName,
+          departmentCode: cleanDept,
+          year: Number(groupForm.year),
+          semester: Number(groupForm.semester),
+          studentCount: Number(groupForm.size)
+        }).catch(() => {});
+        void institutionalStore.syncToBackend(currentUser);
+      }
+      setSideDrawerOpen(false);
+      return;
     }
-    if (currentUser?.token) {
-      void createBatchAdmin(currentUser, {
-        code: cleanCode,
-        name: cleanName,
-        departmentCode: groupForm.departmentCode,
-        year: Number(groupForm.year),
+
+    if (!cleanBatch || !cleanDept) {
+      setValidationError('Batch (e.g. 2K24) and Field / Department (e.g. BSCS) are required.');
+      return;
+    }
+
+    const parsedSections = Array.from(
+      new Set(
+        (groupForm.sectionsInput || 'A')
+          .split(/[,;\s/]+/)
+          .map(s => s.trim().toUpperCase())
+          .filter(Boolean)
+      )
+    );
+    const sectionsToCreate = parsedSections.length > 0 ? parsedSections : ['A'];
+
+    const matchedDept = store.departments.find(d => d.code.toUpperCase() === cleanDept);
+    const matchedProg =
+      store.programs.find(p => p.departmentId === matchedDept?.id) || store.programs[0];
+    const existingCodes = new Set(store.studentGroups.map(g => g.code.toUpperCase()));
+
+    const createdCodes: string[] = [];
+    const baseTimestamp = Date.now();
+    sectionsToCreate.forEach((sec, idx) => {
+      const fullCode = `${cleanBatch}-${cleanDept}-${sec}`;
+      if (existingCodes.has(fullCode)) return;
+      existingCodes.add(fullCode);
+      const cleanName = groupForm.name.trim()
+        ? sectionsToCreate.length > 1
+          ? `${groupForm.name.trim()} · Section ${sec}`
+          : groupForm.name.trim()
+        : `${cleanBatch} ${cleanDept} Section ${sec}`;
+
+      institutionalStore.addStudentGroup({
+        id: `cohort-${baseTimestamp}-${idx}`,
+        programId: matchedProg?.id || 'prog-bsc-cs',
+        batchCode: cleanBatch,
+        departmentCode: cleanDept,
+        section: sec,
         semester: Number(groupForm.semester),
-        studentCount: Number(groupForm.size)
-      }).catch(() => {});
+        name: cleanName,
+        code: fullCode,
+        year: Number(groupForm.year),
+        size: Number(groupForm.size),
+        sharedCourseIds: groupForm.sharedCourseIds
+      });
+      createdCodes.push(fullCode);
+
+      if (currentUser?.token) {
+        void createBatchAdmin(currentUser, {
+          code: fullCode,
+          name: cleanName,
+          departmentCode: cleanDept,
+          year: Number(groupForm.year),
+          semester: Number(groupForm.semester),
+          studentCount: Number(groupForm.size)
+        }).catch(() => {});
+      }
+    });
+
+    if (createdCodes.length === 0) {
+      setValidationError(`All requested sections for ${cleanBatch}-${cleanDept} already exist.`);
+      return;
+    }
+
+    if (currentUser?.token) {
       void institutionalStore.syncToBackend(currentUser);
     }
+
+    showToast(
+      `Created ${createdCodes.length} independent section${createdCodes.length > 1 ? 's' : ''}: ${createdCodes.join(', ')}. Each section gets its own timetable.`
+    );
     setSideDrawerOpen(false);
   };
 
@@ -703,18 +877,31 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
     const studentGroupId = sectionForm.studentGroupId || store.studentGroups[0]?.id;
     if (!courseId || !instructorId || !studentGroupId) return;
 
+    const isLab = sectionForm.sessionType === 'Lab';
+    const extraCohorts = sectionForm.sharedGroupIds.filter(id => id !== studentGroupId);
+    const totalExpected =
+      (store.studentGroups.find(g => g.id === studentGroupId)?.size || 35) +
+      extraCohorts.reduce((acc, gid) => acc + (store.studentGroups.find(g => g.id === gid)?.size || 0), 0);
+
     institutionalStore.addSection({
       id: `sec-${Date.now()}`,
       courseId,
       termId: activeTerm?.id || 'term-spring-2026',
       sectionNumber: `0${store.sections.filter(s => s.courseId === courseId).length + 1}`,
-      expectedEnrollment: Number(sectionForm.expectedEnrollment) || 35,
+      sessionType: isLab ? 'Lab' : 'Lecture',
+      spanSlots: isLab ? 3 : 1,
+      expectedEnrollment: totalExpected || Number(sectionForm.expectedEnrollment) || 35,
       instructorId,
-      studentGroupId
+      studentGroupId,
+      sharedGroupIds: extraCohorts.length > 0 ? extraCohorts : undefined
     });
     const course = store.courses.find(c => c.id === courseId);
     const group = store.studentGroups.find(g => g.id === studentGroupId);
-    showToast(`Added section for ${course?.code} (${group?.code}).`);
+    showToast(
+      `Added ${isLab ? 'Lab (3h)' : 'Lecture (1h)'} section for ${course?.code} (${group?.code}${
+        extraCohorts.length > 0 ? ` +${extraCohorts.length} shared` : ''
+      }).`
+    );
   };
 
   // --- Filtered & Sorted Datasets for Horizontal Tables ---
@@ -725,7 +912,8 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
         !q ||
         d.code.toLowerCase().includes(q) ||
         d.name.toLowerCase().includes(q) ||
-        (d.school || '').toLowerCase().includes(q)
+        (d.school || '').toLowerCase().includes(q) ||
+        (d.subDepartments || []).some(sub => sub.toLowerCase().includes(q))
     );
   }, [store.departments, deptSearch]);
 
@@ -755,12 +943,21 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
     const q = courseSearch.trim().toLowerCase();
     const list = store.courses.filter(c => {
       if (courseDeptFilter !== 'ALL' && c.departmentId !== courseDeptFilter) return false;
-      if (courseTypeFilter === 'lab' && c.requiredRoomType !== 'lab') return false;
-      if (courseTypeFilter === 'lecture' && c.requiredRoomType === 'lab') return false;
+      const hasLab =
+        c.requiredRoomType === 'lab' ||
+        c.code.endsWith('-L') ||
+        (c.labCredits && c.labCredits > 0) ||
+        (c.labHours && c.labHours > 0);
+      const hasLecture =
+        (c.lectureCredits !== undefined ? c.lectureCredits > 0 : c.requiredRoomType !== 'lab');
+      if (courseTypeFilter === 'lab' && !hasLab) return false;
+      if (courseTypeFilter === 'lecture' && !hasLecture) return false;
+      if (courseTypeFilter === 'elective' && !c.isElective) return false;
       if (!q) return true;
       return (
         c.code.toLowerCase().includes(q) ||
         c.title.toLowerCase().includes(q) ||
+        (c.electivePoolName || '').toLowerCase().includes(q) ||
         c.requiredRoomType.toLowerCase().includes(q)
       );
     });
@@ -790,14 +987,21 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
     const q = instSearch.trim().toLowerCase();
     const list = store.instructors.filter(inst => {
       if (instDeptFilter !== 'ALL' && inst.departmentId !== instDeptFilter) return false;
+      const effectiveRole: StaffRole = inst.staffRole || 'faculty';
+      if (instRoleFilter !== 'ALL' && effectiveRole !== instRoleFilter) return false;
       if (instStatusFilter === 'available' && inst.unavailableSlots.length > 0) return false;
       if (instStatusFilter === 'restricted' && inst.unavailableSlots.length === 0) return false;
       if (!q) return true;
       const dept = store.departments.find(d => d.id === inst.departmentId);
+      const qualifiedCodes = (inst.qualifiedCourseIds || [])
+        .map(cid => store.courses.find(c => c.id === cid)?.code || '')
+        .join(' ');
       return (
         inst.name.toLowerCase().includes(q) ||
         inst.email.toLowerCase().includes(q) ||
         (inst.title || '').toLowerCase().includes(q) ||
+        (inst.subDepartment || '').toLowerCase().includes(q) ||
+        qualifiedCodes.toLowerCase().includes(q) ||
         (dept?.code || '').toLowerCase().includes(q) ||
         (dept?.name || '').toLowerCase().includes(q)
       );
@@ -819,20 +1023,35 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
   }, [
     store.instructors,
     store.departments,
+    store.courses,
     store.sections,
     instSearch,
     instDeptFilter,
+    instRoleFilter,
     instStatusFilter,
     instSortKey,
     instSortAsc
   ]);
+
+  const availableBatchCodes = useMemo(() => {
+    const set = new Set<string>();
+    store.studentGroups.forEach(g => {
+      const batch = (g.batchCode || g.code.split('-')[0] || '').trim().toUpperCase();
+      if (batch) set.add(batch);
+    });
+    return Array.from(set).sort((a, b) => b.localeCompare(a));
+  }, [store.studentGroups]);
 
   const filteredGroups = useMemo(() => {
     const q = groupSearch.trim().toLowerCase();
     const list = store.studentGroups.filter(g => {
       const prog = store.programs.find(p => p.id === g.programId);
       const dept = store.departments.find(d => d.id === prog?.departmentId);
-      const deptCode = g.departmentCode || dept?.code || g.code.split('-')[1] || 'ACAD';
+      const parts = g.code.split('-');
+      const batchCode = (g.batchCode || parts[0] || '').toUpperCase();
+      const deptCode = g.departmentCode || dept?.code || parts[1] || 'ACAD';
+      const secCode = (g.section || parts[2] || '').toUpperCase();
+      if (groupBatchFilter !== 'ALL' && batchCode !== groupBatchFilter) return false;
       if (groupDeptFilter !== 'ALL' && deptCode !== groupDeptFilter && dept?.id !== groupDeptFilter) {
         return false;
       }
@@ -841,6 +1060,8 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
       return (
         g.code.toLowerCase().includes(q) ||
         g.name.toLowerCase().includes(q) ||
+        batchCode.toLowerCase().includes(q) ||
+        secCode.toLowerCase().includes(q) ||
         deptCode.toLowerCase().includes(q)
       );
     });
@@ -863,6 +1084,7 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
     store.programs,
     store.departments,
     groupSearch,
+    groupBatchFilter,
     groupDeptFilter,
     groupYearFilter,
     groupSortKey,
@@ -879,11 +1101,15 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
       const course = store.courses.find(c => c.id === sec.courseId);
       const inst = store.instructors.find(i => i.id === sec.instructorId);
       const grp = store.studentGroups.find(g => g.id === sec.studentGroupId);
+      const sharedCodes = (sec.sharedGroupIds || [])
+        .map(gid => store.studentGroups.find(g => g.id === gid)?.code || '')
+        .join(' ');
       return (
         (course?.code || '').toLowerCase().includes(q) ||
         (course?.title || '').toLowerCase().includes(q) ||
         (inst?.name || '').toLowerCase().includes(q) ||
-        (grp?.code || '').toLowerCase().includes(q)
+        (grp?.code || '').toLowerCase().includes(q) ||
+        sharedCodes.toLowerCase().includes(q)
       );
     });
   }, [store.sections, store.courses, store.instructors, store.studentGroups, sectionSearch, sectionTypeFilter]);
@@ -1080,10 +1306,10 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
                   <thead>
                     <tr className="bg-[#F7F6EF] text-[#57564F] border-b border-[#E4E2DA]">
                       <th className="py-3 px-4 font-semibold w-28">Code</th>
-                      <th className="py-3 px-4 font-semibold">Department Name</th>
+                      <th className="py-3 px-4 font-semibold">Department Name &amp; Teacher Sub-Departments</th>
                       <th className="py-3 px-4 font-semibold hidden md:table-cell">Academic School</th>
                       <th className="py-3 px-4 font-semibold text-right font-mono-tabular">Courses</th>
-                      <th className="py-3 px-4 font-semibold text-right font-mono-tabular">Faculty</th>
+                      <th className="py-3 px-4 font-semibold text-right font-mono-tabular">Staff</th>
                       <th className="py-3 px-4 font-semibold text-right font-mono-tabular">Sections</th>
                       <th className="py-3 px-4 font-semibold text-right w-28">Actions</th>
                     </tr>
@@ -1104,7 +1330,14 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
                           <td className="py-3 px-4 font-mono-tabular font-bold text-[#171717]">
                             {dept.code}
                           </td>
-                          <td className="py-3 px-4 font-semibold text-[#171717]">{dept.name}</td>
+                          <td className="py-3 px-4">
+                            <div className="font-semibold text-[#171717]">{dept.name}</div>
+                            <div className="text-[11px] text-[#77766F] mt-0.5">
+                              {dept.subDepartments && dept.subDepartments.length > 0
+                                ? `Teacher divisions (staff only): ${dept.subDepartments.join(' · ')}`
+                                : 'No internal teacher sub-departments'}
+                            </div>
+                          </td>
                           <td className="py-3 px-4 text-[#77766F] hidden md:table-cell">
                             {dept.school || 'School of Engineering & Computing'}
                           </td>
@@ -1534,8 +1767,9 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
                   {(
                     [
                       { id: 'ALL', label: 'All Types' },
-                      { id: 'lecture', label: 'Lecture' },
-                      { id: 'lab', label: 'Lab' }
+                      { id: 'lecture', label: 'Lectures' },
+                      { id: 'lab', label: 'Labs (3h)' },
+                      { id: 'elective', label: 'Electives' }
                     ] as const
                   ).map(t => (
                     <button
@@ -1576,11 +1810,11 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
                           }}
                           className="inline-flex items-center gap-1 hover:text-[#171717] cursor-pointer"
                         >
-                          <span>Course Code &amp; Name</span>
+                          <span>Course Code &amp; Credits (1:1 Lec / 1:3 Lab)</span>
                           <ArrowUpDown className="w-3 h-3" />
                         </button>
                       </th>
-                      <th className="py-3 px-4 font-semibold">Assigned Instructor</th>
+                      <th className="py-3 px-4 font-semibold">Eligible Faculty / Lab Eng.</th>
                       <th className="py-3 px-4 font-semibold">
                         <button
                           type="button"
@@ -1593,7 +1827,7 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
                           }}
                           className="inline-flex items-center gap-1 hover:text-[#171717] cursor-pointer"
                         >
-                          <span>Semester / Section</span>
+                          <span>Sections / Cohorts</span>
                           <ArrowUpDown className="w-3 h-3" />
                         </button>
                       </th>
@@ -1609,7 +1843,7 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
                           }}
                           className="inline-flex items-center gap-1 hover:text-[#171717] cursor-pointer"
                         >
-                          <span>Course Type</span>
+                          <span>Format</span>
                           <ArrowUpDown className="w-3 h-3" />
                         </button>
                       </th>
@@ -1622,16 +1856,35 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
                       .map(course => {
                         const dept = store.departments.find(d => d.id === course.departmentId);
                         const courseSections = store.sections.filter(s => s.courseId === course.id);
+                        const qualifiedStaff = store.instructors.filter(i =>
+                          i.qualifiedCourseIds?.includes(course.id)
+                        );
                         const primaryInst =
                           store.instructors.find(i => i.id === courseSections[0]?.instructorId) ||
-                          store.instructors.find(i => i.departmentId === course.departmentId);
+                          qualifiedStaff[0];
                         const primaryGroup = store.studentGroups.find(
                           g => g.id === courseSections[0]?.studentGroupId
                         );
-                        const isLab =
+                        const isPureLab =
                           course.requiredRoomType === 'lab' ||
                           course.code.endsWith('-L') ||
-                          (course.labHours && course.labHours > 0);
+                          ((course.labCredits ?? 0) > 0 && (course.lectureCredits ?? 0) === 0);
+                        const lecCr =
+                          course.lectureCredits ??
+                          (isPureLab ? 0 : Math.max(0, course.creditHours - (course.labCredits || 0)));
+                        const labCr =
+                          course.labCredits ??
+                          (course.labHours && course.labHours > 0
+                            ? Math.max(1, Math.round(course.labHours / 3))
+                            : isPureLab
+                              ? course.creditHours || 1
+                              : 0);
+                        const creditSplitLabel =
+                          lecCr > 0 && labCr > 0
+                            ? `${lecCr} Lec + ${labCr} Lab Cr (${lecCr}h + ${labCr * 3}h Lab)`
+                            : labCr > 0
+                              ? `${labCr} Lab Cr (${labCr * 3}h/wk Lab)`
+                              : `${course.creditHours} Lec Cr (${course.weeklyContactHours}h/wk)`;
 
                         return (
                           <tr key={course.id} className="hover:bg-[#F7F6EF]/70 transition-colors">
@@ -1645,15 +1898,19 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
                                 </span>
                               </div>
                               <div className="text-[11px] text-[#77766F] mt-0.5">
-                                {dept?.name || 'Academic Department'} · {course.creditHours} Cr ·{' '}
-                                {course.weeklyContactHours} hrs/wk
+                                {dept?.code || 'DEPT'} · {creditSplitLabel}
                               </div>
                             </td>
                             <td className="py-3 px-4 text-[#171717]">
                               {primaryInst ? (
-                                <span>{primaryInst.name}</span>
+                                <span>
+                                  {primaryInst.name}
+                                  {qualifiedStaff.length > 1 ? (
+                                    <span className="text-[#77766F]"> (+{qualifiedStaff.length - 1} eligible)</span>
+                                  ) : null}
+                                </span>
                               ) : (
-                                <span className="text-[#77766F]">Department Faculty</span>
+                                <span className="text-[#77766F]">Department Staff</span>
                               )}
                             </td>
                             <td className="py-3 px-4 font-mono-tabular text-[#57564F]">
@@ -1672,9 +1929,18 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
                               )}
                             </td>
                             <td className="py-3 px-4">
-                              <span className="font-medium text-[#171717]">
-                                {isLab ? 'Lab' : 'Lecture'}
-                              </span>
+                              <div className="font-medium text-[#171717]">
+                                {lecCr > 0 && labCr > 0
+                                  ? 'Lecture + Lab'
+                                  : isPureLab
+                                    ? 'Lab (3h/cr)'
+                                    : 'Lecture (1h/cr)'}
+                              </div>
+                              <div className="text-[11px] text-[#77766F]">
+                                {course.isElective
+                                  ? `Elective${course.electivePoolName ? ` · ${course.electivePoolName}` : ''}`
+                                  : 'Core Curriculum'}
+                              </div>
                             </td>
                             <td className="py-3 px-4 text-right">
                               <div className="inline-flex items-center justify-end gap-1">
@@ -1782,9 +2048,35 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
                 <div className="inline-flex items-center gap-1">
                   {(
                     [
+                      { id: 'ALL', label: 'All Staff' },
+                      { id: 'faculty', label: 'Faculty' },
+                      { id: 'lab_engineer', label: 'Lab Engineers' }
+                    ] as const
+                  ).map(r => (
+                    <button
+                      key={r.id}
+                      type="button"
+                      onClick={() => {
+                        setInstRoleFilter(r.id);
+                        setInstructorPage(1);
+                      }}
+                      className={`h-8 px-3 rounded-lg text-xs font-medium border transition-colors cursor-pointer ${
+                        instRoleFilter === r.id
+                          ? 'bg-[#171717] text-white border-[#171717]'
+                          : 'bg-[#F7F6EF] text-[#57564F] border-[#E4E2DA] hover:text-[#171717]'
+                      }`}
+                    >
+                      {r.label}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="inline-flex items-center gap-1">
+                  {(
+                    [
                       { id: 'ALL', label: 'All Statuses' },
-                      { id: 'available', label: 'Fully Available' },
-                      { id: 'restricted', label: 'Has Blocked Slots' }
+                      { id: 'available', label: 'Available' },
+                      { id: 'restricted', label: 'Blocked Slots' }
                     ] as const
                   ).map(st => (
                     <button
@@ -1825,7 +2117,7 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
                           }}
                           className="inline-flex items-center gap-1 hover:text-[#171717] cursor-pointer"
                         >
-                          <span>Instructor Name</span>
+                          <span>Staff Name &amp; Role</span>
                           <ArrowUpDown className="w-3 h-3" />
                         </button>
                       </th>
@@ -1841,11 +2133,12 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
                           }}
                           className="inline-flex items-center gap-1 hover:text-[#171717] cursor-pointer"
                         >
-                          <span>Department</span>
+                          <span>Dept &amp; Sub-Dept</span>
                           <ArrowUpDown className="w-3 h-3" />
                         </button>
                       </th>
-                      <th className="py-3 px-4 font-semibold">Availability Status</th>
+                      <th className="py-3 px-4 font-semibold">Qualified Subjects</th>
+                      <th className="py-3 px-4 font-semibold">Availability</th>
                       <th className="py-3 px-4 font-semibold text-right">
                         <button
                           type="button"
@@ -1858,7 +2151,7 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
                           }}
                           className="inline-flex items-center gap-1 hover:text-[#171717] cursor-pointer"
                         >
-                          <span>Assigned Teaching Load</span>
+                          <span>Assigned Load</span>
                           <ArrowUpDown className="w-3 h-3" />
                         </button>
                       </th>
@@ -1876,22 +2169,47 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
                             acc + (s.sessionType === 'Lab' || (s.spanSlots && s.spanSlots > 1) ? 3 : 1),
                           0
                         );
+                        const isLabEng = inst.staffRole === 'lab_engineer';
+                        const qualifiedCodes = (inst.qualifiedCourseIds || [])
+                          .map(cid => store.courses.find(c => c.id === cid)?.code)
+                          .filter(Boolean);
 
                         return (
                           <tr key={inst.id} className="hover:bg-[#F7F6EF]/70 transition-colors">
                             <td className="py-3 px-4">
-                              <div className="font-semibold text-[#171717]">{inst.name}</div>
+                              <div className="font-semibold text-[#171717]">
+                                {inst.name}
+                                <span className="ml-2 text-[11px] font-medium text-[#57564F]">
+                                  · {isLabEng ? 'Lab Engineer' : 'Faculty'}
+                                </span>
+                              </div>
                               <div className="text-[11px] text-[#77766F]">
-                                {inst.title || 'Faculty'} · {inst.email}
+                                {inst.title || (isLabEng ? 'Lab Engineer' : 'Faculty')} · {inst.email}
                               </div>
                             </td>
                             <td className="py-3 px-4 text-[#171717]">
-                              <span className="font-mono-tabular font-semibold mr-1.5">
+                              <div className="font-mono-tabular font-semibold">
                                 {dept?.code || 'DEPT'}
-                              </span>
-                              <span className="text-[#77766F] hidden sm:inline">
+                                {inst.subDepartment ? (
+                                  <span className="font-sans font-normal text-[#57564F]">
+                                    {' '}
+                                    · {inst.subDepartment}
+                                  </span>
+                                ) : null}
+                              </div>
+                              <div className="text-[11px] text-[#77766F] hidden sm:block">
                                 {dept?.name}
-                              </span>
+                              </div>
+                            </td>
+                            <td className="py-3 px-4 font-mono-tabular text-[#57564F]">
+                              {qualifiedCodes.length > 0 ? (
+                                <span>
+                                  {qualifiedCodes.slice(0, 3).join(', ')}
+                                  {qualifiedCodes.length > 3 ? ` +${qualifiedCodes.length - 3}` : ''}
+                                </span>
+                              ) : (
+                                <span className="font-sans text-[#77766F]">All dept subjects</span>
+                              )}
                             </td>
                             <td className="py-3 px-4">
                               {inst.unavailableSlots.length === 0 ? (
@@ -1971,13 +2289,18 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
         {activeStep === 4 && (
           <div className="sf-card-white p-6 space-y-5">
             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-[#E4E2DA] pb-4">
-              <h2 className="font-serif-editorial text-2xl text-[#171717]">
-                Batches and Sections ({filteredGroups.length})
-              </h2>
+              <div>
+                <h2 className="font-serif-editorial text-2xl text-[#171717]">
+                  Batches, Fields &amp; Sections ({filteredGroups.length})
+                </h2>
+                <p className="text-xs text-[#77766F] mt-0.5">
+                  Organize students by Batch (e.g. 2K24) → Field (e.g. BSCS) → Sections (A, B, C). Each section receives its own separate timetable.
+                </p>
+              </div>
               <div className="flex flex-wrap items-center gap-2">
                 <button onClick={() => handleOpenAddGroup()} className="btn-primary text-xs h-9">
                   <Plus className="w-3.5 h-3.5" />
-                  <span>Add Batch Section</span>
+                  <span>Add Batch / Sections</span>
                 </button>
               </div>
             </div>
@@ -1988,7 +2311,7 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
                 <Search className="w-3.5 h-3.5 text-[#77766F] shrink-0" />
                 <input
                   type="text"
-                  placeholder="Search by batch year (2K24), department (BSCS), or section..."
+                  placeholder="Search by batch (2K24), field (BSCS), or section (A, B, C)..."
                   value={groupSearch}
                   onChange={e => {
                     setGroupSearch(e.target.value);
@@ -2009,6 +2332,22 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
 
               <div className="flex flex-wrap items-center gap-2">
                 <select
+                  value={groupBatchFilter}
+                  onChange={e => {
+                    setGroupBatchFilter(e.target.value);
+                    setGroupPage(1);
+                  }}
+                  className="h-8 px-3 rounded-lg border border-[#E4E2DA] bg-[#F7F6EF] text-xs font-medium text-[#171717]"
+                >
+                  <option value="ALL">All Batches</option>
+                  {availableBatchCodes.map(b => (
+                    <option key={b} value={b}>
+                      Batch {b}
+                    </option>
+                  ))}
+                </select>
+
+                <select
                   value={groupDeptFilter}
                   onChange={e => {
                     setGroupDeptFilter(e.target.value);
@@ -2016,7 +2355,7 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
                   }}
                   className="h-8 px-3 rounded-lg border border-[#E4E2DA] bg-[#F7F6EF] text-xs font-medium text-[#171717]"
                 >
-                  <option value="ALL">All Departments</option>
+                  <option value="ALL">All Fields / Depts</option>
                   {store.departments.map(d => (
                     <option key={d.id} value={d.code}>
                       {d.code} — {d.name}
@@ -2059,7 +2398,7 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
                           }}
                           className="inline-flex items-center gap-1 hover:text-[#171717] cursor-pointer"
                         >
-                          <span>Batch Name / Year</span>
+                          <span>Batch &amp; Year</span>
                           <ArrowUpDown className="w-3 h-3" />
                         </button>
                       </th>
@@ -2075,7 +2414,7 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
                           }}
                           className="inline-flex items-center gap-1 hover:text-[#171717] cursor-pointer"
                         >
-                          <span>Department</span>
+                          <span>Field / Dept</span>
                           <ArrowUpDown className="w-3 h-3" />
                         </button>
                       </th>
@@ -2124,11 +2463,16 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
                         const parts = grp.code.split('-');
                         const batchPrefix = grp.batchCode || parts[0] || `Year ${grp.year}`;
                         const deptCode = grp.departmentCode || dept?.code || parts[1] || 'ACAD';
-                        const sectionSuffix = parts[2] || 'A';
+                        const sectionSuffix = grp.section || parts[2] || 'A';
                         const semLabel = grp.semester
                           ? `Semester ${grp.semester}`
                           : `Semester ${Math.max(1, grp.year * 2 - 1)}`;
-                        const secCount = store.sections.filter(s => s.studentGroupId === grp.id).length;
+                        const secCount = store.sections.filter(
+                          s => s.studentGroupId === grp.id || s.sharedGroupIds?.includes(grp.id)
+                        ).length;
+                        const enrolledElectives = (grp.sharedCourseIds || [])
+                          .map(cid => store.courses.find(c => c.id === cid)?.code)
+                          .filter(Boolean);
 
                         return (
                           <tr key={grp.id} className="hover:bg-[#F7F6EF]/70 transition-colors">
@@ -2136,7 +2480,12 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
                               <div className="font-mono-tabular font-bold text-[#171717]">
                                 {batchPrefix} · Year {grp.year}
                               </div>
-                              <div className="text-[11px] text-[#77766F]">{grp.name}</div>
+                              <div className="text-[11px] text-[#77766F]">
+                                {grp.name}
+                                {enrolledElectives.length > 0
+                                  ? ` · Electives: ${enrolledElectives.join(', ')}`
+                                  : ''}
+                              </div>
                             </td>
                             <td className="py-3 px-4 text-[#171717]">
                               <span className="font-mono-tabular font-semibold mr-1.5">
@@ -2160,7 +2509,7 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
                                 {grp.size}
                               </span>
                               <span className="text-[#77766F] ml-1">
-                                ({secCount} courses)
+                                ({secCount} sec{enrolledElectives.length > 0 ? ` · ${enrolledElectives.length} elec` : ''})
                               </span>
                             </td>
                             <td className="py-3 px-4 text-right">
@@ -2294,39 +2643,73 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
             {/* Quick Section Creator */}
             <form
               onSubmit={handleAddSectionInline}
-              className="pb-4 border-b border-[#E4E2DA]"
+              className="pb-4 border-b border-[#E4E2DA] space-y-3"
             >
-              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 items-end">
+              <div className="grid grid-cols-1 sm:grid-cols-5 gap-3 items-end">
                 <div>
                   <label className="block text-[11px] font-medium text-[#77766F] mb-1">Course</label>
                   <select
                     value={sectionForm.courseId || store.courses[0]?.id || ''}
-                    onChange={e => setSectionForm({ ...sectionForm, courseId: e.target.value })}
+                    onChange={e => {
+                      const cid = e.target.value;
+                      const pickedCourse = store.courses.find(c => c.id === cid);
+                      const prefersLab =
+                        pickedCourse?.requiredRoomType === 'lab' ||
+                        ((pickedCourse?.labCredits ?? 0) > 0 && (pickedCourse?.lectureCredits ?? 0) === 0);
+                      setSectionForm({
+                        ...sectionForm,
+                        courseId: cid,
+                        sessionType: prefersLab ? 'Lab' : 'Lecture'
+                      });
+                    }}
                     className="input-field text-xs h-9"
                   >
                     {store.courses.map(c => (
                       <option key={c.id} value={c.id}>
-                        {c.code} — {c.title}
+                        {c.code} — {c.title}{c.isElective ? ' (Elective)' : ''}
                       </option>
                     ))}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-[11px] font-medium text-[#77766F] mb-1">Instructor</label>
+                  <label className="block text-[11px] font-medium text-[#77766F] mb-1">Session Type</label>
+                  <select
+                    value={sectionForm.sessionType}
+                    onChange={e =>
+                      setSectionForm({
+                        ...sectionForm,
+                        sessionType: e.target.value as 'Lecture' | 'Lab'
+                      })
+                    }
+                    className="input-field text-xs h-9"
+                  >
+                    <option value="Lecture">Lecture (1h slot · Faculty)</option>
+                    <option value="Lab">Lab (3h continuous · Lab Eng.)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[11px] font-medium text-[#77766F] mb-1">
+                    {sectionForm.sessionType === 'Lab' ? 'Lab Engineer / Staff' : 'Faculty Instructor'}
+                  </label>
                   <select
                     value={sectionForm.instructorId || store.instructors[0]?.id || ''}
                     onChange={e => setSectionForm({ ...sectionForm, instructorId: e.target.value })}
                     className="input-field text-xs h-9"
                   >
-                    {store.instructors.map(i => (
-                      <option key={i.id} value={i.id}>
-                        {i.name}
-                      </option>
-                    ))}
+                    {store.instructors.map(i => {
+                      const activeCourseId = sectionForm.courseId || store.courses[0]?.id;
+                      const isQualified = activeCourseId ? i.qualifiedCourseIds?.includes(activeCourseId) : false;
+                      const roleTag = i.staffRole === 'lab_engineer' ? 'Lab Eng.' : 'Faculty';
+                      return (
+                        <option key={i.id} value={i.id}>
+                          {i.name} ({roleTag}{isQualified ? ' · Qualified' : ''})
+                        </option>
+                      );
+                    })}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-[11px] font-medium text-[#77766F] mb-1">Batch Section</label>
+                  <label className="block text-[11px] font-medium text-[#77766F] mb-1">Primary Cohort</label>
                   <select
                     value={sectionForm.studentGroupId || store.studentGroups[0]?.id || ''}
                     onChange={e => setSectionForm({ ...sectionForm, studentGroupId: e.target.value })}
@@ -2345,6 +2728,37 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
                   </button>
                 </div>
               </div>
+
+              {store.studentGroups.length > 1 && (
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] text-[#57564F]">
+                  <span className="font-medium text-[#77766F]">
+                    Combine additional cohorts (optional, for shared electives):
+                  </span>
+                  {store.studentGroups
+                    .filter(g => g.id !== (sectionForm.studentGroupId || store.studentGroups[0]?.id))
+                    .map(g => {
+                      const checked = sectionForm.sharedGroupIds.includes(g.id);
+                      return (
+                        <label key={g.id} className="inline-flex items-center gap-1.5 cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={e => {
+                              setSectionForm(prev => ({
+                                ...prev,
+                                sharedGroupIds: e.target.checked
+                                  ? [...prev.sharedGroupIds, g.id]
+                                  : prev.sharedGroupIds.filter(id => id !== g.id)
+                              }));
+                            }}
+                            className="accent-[#171717]"
+                          />
+                          <span className="font-mono-tabular">{g.code}</span>
+                        </label>
+                      );
+                    })}
+                </div>
+              )}
             </form>
 
             {/* Search & Filter */}
@@ -2391,7 +2805,7 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
                   <thead className="bg-[#F7F6EF] text-[#57564F] border-b border-[#E4E2DA]">
                     <tr>
                       <th className="py-3 px-4 font-semibold">Course Code &amp; Title</th>
-                      <th className="py-3 px-4 font-semibold">Assigned Instructor</th>
+                      <th className="py-3 px-4 font-semibold">Assigned Staff</th>
                       <th className="py-3 px-4 font-semibold">Batch &amp; Section</th>
                       <th className="py-3 px-4 font-semibold">Type</th>
                       <th className="py-3 px-4 font-semibold">Assigned Timetable Slot</th>
@@ -2405,6 +2819,9 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
                         const course = store.courses.find(c => c.id === sec.courseId);
                         const inst = store.instructors.find(i => i.id === sec.instructorId);
                         const grp = store.studentGroups.find(g => g.id === sec.studentGroupId);
+                        const extraCohortCodes = (sec.sharedGroupIds || [])
+                          .map(gid => store.studentGroups.find(g => g.id === gid)?.code)
+                          .filter(Boolean);
                         const room = store.rooms.find(r => r.id === sec.assignedSlot?.roomId);
                         const isLab = sec.sessionType === 'Lab' || (sec.spanSlots && sec.spanSlots > 1);
                         return (
@@ -2414,13 +2831,26 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
                                 {course?.code}
                               </span>
                               <span>{course?.title}</span>
+                              {course?.isElective ? (
+                                <span className="ml-2 text-[11px] font-normal text-[#77766F]">
+                                  · Elective
+                                </span>
+                              ) : null}
                             </td>
-                            <td className="py-2.5 px-4 text-[#171717]">{inst?.name}</td>
+                            <td className="py-2.5 px-4 text-[#171717]">
+                              <div>{inst?.name}</div>
+                              <div className="text-[11px] text-[#77766F]">
+                                {inst?.staffRole === 'lab_engineer' ? 'Lab Engineer' : 'Faculty'}
+                              </div>
+                            </td>
                             <td className="py-2.5 px-4 font-mono-tabular text-[#171717]">
                               {grp?.code}
+                              {extraCohortCodes.length > 0 ? (
+                                <span className="text-[#57564F]"> + {extraCohortCodes.join(', ')}</span>
+                              ) : null}
                             </td>
                             <td className="py-2.5 px-4 text-[#57564F]">
-                              {isLab ? 'Lab (3h)' : 'Lecture'}
+                              {isLab ? 'Lab (3h continuous)' : 'Lecture (1h)'}
                             </td>
                             <td className="py-2.5 px-4 font-mono-tabular text-xs">
                               {sec.assignedSlot ? (
@@ -2765,6 +3195,75 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
                       className="input-field"
                     />
                   </div>
+
+                  {/* Internal Sub-Departments inside this Department (Teachers Only) */}
+                  <div className="pt-2 border-t border-[#E4E2DA] space-y-2">
+                    <label className="block text-xs font-semibold text-[#171717]">
+                      Teacher Sub-Departments / Wings (Staff Only)
+                    </label>
+                    <p className="text-[11px] text-[#77766F]">
+                      Organizes faculty and lab engineers inside this department for administration. Has no effect on courses or timetable scheduling.
+                    </p>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        placeholder="e.g. AI & Data Systems"
+                        value={newSubDeptInput}
+                        onChange={e => setNewSubDeptInput(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            const val = newSubDeptInput.trim();
+                            if (val && !deptForm.subDepartments.includes(val)) {
+                              setDeptForm(prev => ({
+                                ...prev,
+                                subDepartments: [...prev.subDepartments, val]
+                              }));
+                              setNewSubDeptInput('');
+                            }
+                          }
+                        }}
+                        className="input-field text-xs flex-1"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const val = newSubDeptInput.trim();
+                          if (val && !deptForm.subDepartments.includes(val)) {
+                            setDeptForm(prev => ({
+                              ...prev,
+                              subDepartments: [...prev.subDepartments, val]
+                            }));
+                            setNewSubDeptInput('');
+                          }
+                        }}
+                        className="btn-secondary text-xs h-9 px-3 shrink-0"
+                      >
+                        Add
+                      </button>
+                    </div>
+                    {deptForm.subDepartments.length > 0 && (
+                      <div className="border border-[#E4E2DA] rounded-xl divide-y divide-[#E4E2DA] bg-[#F7F6EF]/50">
+                        {deptForm.subDepartments.map(sub => (
+                          <div key={sub} className="flex items-center justify-between px-3 py-2 text-xs">
+                            <span className="font-medium text-[#171717]">{sub}</span>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setDeptForm(prev => ({
+                                  ...prev,
+                                  subDepartments: prev.subDepartments.filter(s => s !== sub)
+                                }))
+                              }
+                              className="text-[#77766F] hover:text-[#8B1E1E] cursor-pointer"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </form>
               )}
 
@@ -2855,50 +3354,108 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
                     <label className="block text-xs font-semibold text-[#171717] mb-1.5">Department</label>
                     <select
                       value={courseForm.departmentId}
-                      onChange={e => setCourseForm({ ...courseForm, departmentId: e.target.value })}
+                      onChange={e =>
+                        setCourseForm({ ...courseForm, departmentId: e.target.value })
+                      }
                       className="input-field"
                     >
                       {store.departments.map(d => (
                         <option key={d.id} value={d.id}>
-                          {d.name} ({d.code})
+                          {d.code} — {d.name}
                         </option>
                       ))}
                     </select>
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-xs font-semibold text-[#171717] mb-1.5">Credits</label>
-                      <input
-                        type="number"
-                        min="1"
-                        value={courseForm.creditHours}
-                        onChange={e => setCourseForm({ ...courseForm, creditHours: Number(e.target.value) })}
-                        className="input-field font-mono-tabular"
-                      />
+
+                  {/* Lecture Credits (1:1) & Lab Credits (1:3 continuous) */}
+                  <div className="p-3.5 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] space-y-3">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-semibold text-[#171717] mb-1">
+                          Lecture Credits (1 cr = 1h)
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          max="6"
+                          value={courseForm.lectureCredits}
+                          onChange={e =>
+                            setCourseForm({ ...courseForm, lectureCredits: Math.max(0, Number(e.target.value)) })
+                          }
+                          className="input-field font-mono-tabular bg-white"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-[#171717] mb-1">
+                          Lab Credits (1 cr = 3h Lab)
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          max="3"
+                          value={courseForm.labCredits}
+                          onChange={e =>
+                            setCourseForm({ ...courseForm, labCredits: Math.max(0, Number(e.target.value)) })
+                          }
+                          className="input-field font-mono-tabular bg-white"
+                        />
+                      </div>
                     </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-[#171717] mb-1.5">Weekly Hours</label>
-                      <input
-                        type="number"
-                        min="1"
-                        value={courseForm.weeklyContactHours}
-                        onChange={e => setCourseForm({ ...courseForm, weeklyContactHours: Number(e.target.value) })}
-                        className="input-field font-mono-tabular"
-                      />
+                    <div className="text-[11px] font-mono-tabular text-[#57564F] flex items-center justify-between pt-1 border-t border-[#E4E2DA]">
+                      <span>
+                        Total Credits: <strong className="text-[#171717]">{courseForm.lectureCredits + courseForm.labCredits} Cr</strong>
+                      </span>
+                      <span>
+                        Weekly Hours:{' '}
+                        <strong className="text-[#171717]">
+                          {courseForm.lectureCredits * 1 + courseForm.labCredits * 3}h/wk
+                        </strong>{' '}
+                        ({courseForm.lectureCredits}h Lec + {courseForm.labCredits * 3}h Lab)
+                      </span>
                     </div>
                   </div>
+
                   <div>
-                    <label className="block text-xs font-semibold text-[#171717] mb-1.5">Course Type</label>
+                    <label className="block text-xs font-semibold text-[#171717] mb-1.5">
+                      Primary Lecture Space
+                    </label>
                     <select
                       value={courseForm.requiredRoomType}
                       onChange={e => setCourseForm({ ...courseForm, requiredRoomType: e.target.value as RoomType })}
                       className="input-field"
                     >
-                      <option value="lecture">Lecture</option>
-                      <option value="lab">Laboratory</option>
-                      <option value="seminar">Seminar</option>
+                      <option value="lecture">Lecture Hall</option>
+                      <option value="lab">Laboratory Only</option>
+                      <option value="seminar">Seminar Room</option>
                       <option value="studio">Design Studio</option>
                     </select>
+                  </div>
+
+                  {/* Core vs Elective */}
+                  <div className="pt-2 border-t border-[#E4E2DA] space-y-2.5">
+                    <label className="flex items-center gap-2.5 text-xs font-semibold text-[#171717] cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={courseForm.isElective}
+                        onChange={e => setCourseForm({ ...courseForm, isElective: e.target.checked })}
+                        className="accent-[#171717]"
+                      />
+                      <span>Elective Subject (only scheduled for enrolled student cohorts)</span>
+                    </label>
+                    {courseForm.isElective && (
+                      <div>
+                        <label className="block text-[11px] font-medium text-[#77766F] mb-1">
+                          Elective Track / Pool Name (Optional)
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="e.g. Senior Technical Electives"
+                          value={courseForm.electivePoolName}
+                          onChange={e => setCourseForm({ ...courseForm, electivePoolName: e.target.value })}
+                          className="input-field text-xs"
+                        />
+                      </div>
+                    )}
                   </div>
                 </form>
               )}
@@ -2906,7 +3463,7 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
               {activeStep === 3 && (
                 <form id="drawerForm" onSubmit={handleSaveInstructor} className="space-y-4 pt-4">
                   <div>
-                    <label className="block text-xs font-semibold text-[#171717] mb-1.5">Instructor Full Name</label>
+                    <label className="block text-xs font-semibold text-[#171717] mb-1.5">Staff Full Name</label>
                     <input
                       type="text"
                       required
@@ -2915,28 +3472,88 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
                       className="input-field"
                     />
                   </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-[#171717] mb-1.5">Academic Title</label>
-                    <input
-                      type="text"
-                      value={instructorForm.title}
-                      onChange={e => setInstructorForm({ ...instructorForm, title: e.target.value })}
-                      className="input-field"
-                    />
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-[#171717] mb-1.5">Staff Role</label>
+                      <select
+                        value={instructorForm.staffRole}
+                        onChange={e => {
+                          const role = e.target.value as StaffRole;
+                          setInstructorForm(prev => ({
+                            ...prev,
+                            staffRole: role,
+                            title:
+                              role === 'lab_engineer' && prev.title === 'Associate Professor'
+                                ? 'Lab Engineer'
+                                : role === 'faculty' && prev.title === 'Lab Engineer'
+                                  ? 'Lecturer'
+                                  : prev.title
+                          }));
+                        }}
+                        className="input-field"
+                      >
+                        <option value="faculty">Faculty (Lectures)</option>
+                        <option value="lab_engineer">Lab Engineer (3h Labs)</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-[#171717] mb-1.5">Academic Title</label>
+                      <input
+                        type="text"
+                        value={instructorForm.title}
+                        onChange={e => setInstructorForm({ ...instructorForm, title: e.target.value })}
+                        className="input-field"
+                      />
+                    </div>
                   </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-[#171717] mb-1.5">Department</label>
-                    <select
-                      value={instructorForm.departmentId}
-                      onChange={e => setInstructorForm({ ...instructorForm, departmentId: e.target.value })}
-                      className="input-field"
-                    >
-                      {store.departments.map(d => (
-                        <option key={d.id} value={d.id}>
-                          {d.name} ({d.code})
-                        </option>
-                      ))}
-                    </select>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-[#171717] mb-1.5">Department</label>
+                      <select
+                        value={instructorForm.departmentId}
+                        onChange={e =>
+                          setInstructorForm({ ...instructorForm, departmentId: e.target.value, subDepartment: '' })
+                        }
+                        className="input-field"
+                      >
+                        {store.departments.map(d => (
+                          <option key={d.id} value={d.id}>
+                            {d.code} — {d.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-[#171717] mb-1.5">
+                        Teacher Sub-Dept (Staff Only)
+                      </label>
+                      {(() => {
+                        const deptSubs =
+                          store.departments.find(d => d.id === instructorForm.departmentId)?.subDepartments || [];
+                        return deptSubs.length > 0 ? (
+                          <select
+                            value={instructorForm.subDepartment}
+                            onChange={e => setInstructorForm({ ...instructorForm, subDepartment: e.target.value })}
+                            className="input-field"
+                          >
+                            <option value="">General Department</option>
+                            {deptSubs.map(sub => (
+                              <option key={sub} value={sub}>
+                                {sub}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <input
+                            type="text"
+                            placeholder="e.g. Software Systems"
+                            value={instructorForm.subDepartment}
+                            onChange={e => setInstructorForm({ ...instructorForm, subDepartment: e.target.value })}
+                            className="input-field"
+                          />
+                        );
+                      })()}
+                    </div>
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-[#171717] mb-1.5">Max Weekly Hours</label>
@@ -2948,36 +3565,109 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
                       className="input-field font-mono-tabular"
                     />
                   </div>
+
+                  {/* Qualified / Eligible Subjects Picker */}
+                  <div className="pt-2 border-t border-[#E4E2DA] space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-semibold text-[#171717]">
+                        Qualified Subjects ({instructorForm.qualifiedCourseIds.length})
+                      </label>
+                      {instructorForm.qualifiedCourseIds.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setInstructorForm(prev => ({ ...prev, qualifiedCourseIds: [] }))}
+                          className="text-[11px] text-[#77766F] hover:text-[#171717] cursor-pointer"
+                        >
+                          Clear all
+                        </button>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-[#77766F]">
+                      Select specific subjects this {instructorForm.staffRole === 'lab_engineer' ? 'lab engineer can supervise' : 'teacher can instruct'}. Internal sub-departments only organize staff and do not restrict subjects or timetables.
+                    </p>
+                    <div className="max-h-48 overflow-y-auto border border-[#E4E2DA] rounded-xl divide-y divide-[#E4E2DA] bg-[#F7F6EF]/40">
+                      {store.courses
+                        .filter(c => !instructorForm.departmentId || c.departmentId === instructorForm.departmentId || instructorForm.qualifiedCourseIds.includes(c.id))
+                        .map(c => {
+                          const checked = instructorForm.qualifiedCourseIds.includes(c.id);
+                          return (
+                            <label
+                              key={c.id}
+                              className="flex items-center justify-between gap-2 px-3 py-2 text-xs hover:bg-white cursor-pointer"
+                            >
+                              <div className="flex items-center gap-2 min-w-0">
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={e => {
+                                    setInstructorForm(prev => ({
+                                      ...prev,
+                                      qualifiedCourseIds: e.target.checked
+                                        ? [...prev.qualifiedCourseIds, c.id]
+                                        : prev.qualifiedCourseIds.filter(id => id !== c.id)
+                                    }));
+                                  }}
+                                  className="accent-[#171717] shrink-0"
+                                />
+                                <span className="font-mono-tabular font-semibold text-[#171717] shrink-0">
+                                  {c.code}
+                                </span>
+                                <span className="text-[#57564F] truncate">{c.title}</span>
+                              </div>
+                            </label>
+                          );
+                        })}
+                      {store.courses.length === 0 && (
+                        <div className="p-3 text-[11px] text-[#77766F] text-center">
+                          Add courses in Step 2 first to assign qualifications.
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </form>
               )}
 
               {activeStep === 4 && (
                 <form id="drawerForm" onSubmit={handleSaveGroup} className="space-y-4 pt-4">
-                  <div>
-                    <label className="block text-xs font-semibold text-[#171717] mb-1.5">Section Code (e.g. 2K24-BSCS-A)</label>
-                    <input
-                      type="text"
-                      required
-                      value={groupForm.code}
-                      onChange={e => setGroupForm({ ...groupForm, code: e.target.value })}
-                      className="input-field font-mono-tabular"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-[#171717] mb-1.5">Batch / Section Name</label>
-                    <input
-                      type="text"
-                      value={groupForm.name}
-                      onChange={e => setGroupForm({ ...groupForm, name: e.target.value })}
-                      className="input-field"
-                    />
-                  </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-xs font-semibold text-[#171717] mb-1.5">Department</label>
+                      <label className="block text-xs font-semibold text-[#171717] mb-1.5">
+                        Batch (e.g. 2K24)
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="2K24"
+                        value={groupForm.batchCode}
+                        onChange={e => {
+                          const nextBatch = e.target.value.toUpperCase();
+                          setGroupForm(prev => ({
+                            ...prev,
+                            batchCode: nextBatch,
+                            code: editingItem
+                              ? `${nextBatch}-${prev.departmentCode}-${prev.section || 'A'}`
+                              : prev.code
+                          }));
+                        }}
+                        className="input-field font-mono-tabular uppercase"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-[#171717] mb-1.5">
+                        Field / Department
+                      </label>
                       <select
                         value={groupForm.departmentCode}
-                        onChange={e => setGroupForm({ ...groupForm, departmentCode: e.target.value })}
+                        onChange={e => {
+                          const nextDept = e.target.value;
+                          setGroupForm(prev => ({
+                            ...prev,
+                            departmentCode: nextDept,
+                            code: editingItem
+                              ? `${prev.batchCode}-${nextDept}-${prev.section || 'A'}`
+                              : prev.code
+                          }));
+                        }}
                         className="input-field"
                       >
                         {store.departments.map(d => (
@@ -2987,6 +3677,110 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
                         ))}
                       </select>
                     </div>
+                  </div>
+
+                  {!editingItem ? (
+                    <div className="p-3.5 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-semibold text-[#171717]">
+                          Sections to Create (e.g. A, B, C)
+                        </label>
+                        <div className="inline-flex items-center gap-1">
+                          {['A', 'B', 'C', 'D', 'E', 'F'].map(letter => {
+                            const activeList = groupForm.sectionsInput
+                              .split(/[,;\s/]+/)
+                              .map(s => s.trim().toUpperCase())
+                              .filter(Boolean);
+                            const isActive = activeList.includes(letter);
+                            return (
+                              <button
+                                key={letter}
+                                type="button"
+                                onClick={() => {
+                                  const next = isActive
+                                    ? activeList.filter(x => x !== letter)
+                                    : [...activeList, letter].sort();
+                                  setGroupForm(prev => ({
+                                    ...prev,
+                                    sectionsInput: next.join(', ')
+                                  }));
+                                }}
+                                className={`w-6 h-6 rounded text-[11px] font-mono-tabular font-bold border transition-colors cursor-pointer ${
+                                  isActive
+                                    ? 'bg-[#171717] text-white border-[#171717]'
+                                    : 'bg-white text-[#57564F] border-[#E4E2DA] hover:text-[#171717]'
+                                }`}
+                              >
+                                {letter}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                      <input
+                        type="text"
+                        required
+                        placeholder="A, B, C"
+                        value={groupForm.sectionsInput}
+                        onChange={e => setGroupForm({ ...groupForm, sectionsInput: e.target.value.toUpperCase() })}
+                        className="input-field font-mono-tabular bg-white text-xs uppercase"
+                      />
+                      <p className="text-[11px] text-[#77766F] font-mono-tabular">
+                        Will create:{' '}
+                        {(groupForm.sectionsInput || 'A')
+                          .split(/[,;\s/]+/)
+                          .map(s => s.trim().toUpperCase())
+                          .filter(Boolean)
+                          .map(sec => `${groupForm.batchCode || '2K24'}-${groupForm.departmentCode || 'BSCS'}-${sec}`)
+                          .join(' · ') || '—'}{' '}
+                        (each section gets its own timetable)
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-semibold text-[#171717] mb-1.5">Section</label>
+                        <input
+                          type="text"
+                          required
+                          value={groupForm.section}
+                          onChange={e => {
+                            const nextSec = e.target.value.toUpperCase();
+                            setGroupForm(prev => ({
+                              ...prev,
+                              section: nextSec,
+                              code: `${prev.batchCode}-${prev.departmentCode}-${nextSec || 'A'}`
+                            }));
+                          }}
+                          className="input-field font-mono-tabular uppercase"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-[#171717] mb-1.5">Full Code</label>
+                        <input
+                          type="text"
+                          required
+                          value={groupForm.code}
+                          onChange={e => setGroupForm({ ...groupForm, code: e.target.value.toUpperCase() })}
+                          className="input-field font-mono-tabular uppercase"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="block text-xs font-semibold text-[#171717] mb-1.5">
+                      Display Name (Optional)
+                    </label>
+                    <input
+                      type="text"
+                      placeholder={`e.g. ${groupForm.batchCode || '2K24'} ${groupForm.departmentCode || 'BSCS'}`}
+                      value={groupForm.name}
+                      onChange={e => setGroupForm({ ...groupForm, name: e.target.value })}
+                      className="input-field"
+                    />
+                  </div>
+                  <div className="grid grid-cols-3 gap-3">
                     <div>
                       <label className="block text-xs font-semibold text-[#171717] mb-1.5">Semester</label>
                       <input
@@ -2998,8 +3792,6 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
                         className="input-field font-mono-tabular"
                       />
                     </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="block text-xs font-semibold text-[#171717] mb-1.5">Year Level</label>
                       <input
@@ -3012,7 +3804,7 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-semibold text-[#171717] mb-1.5">Student Count</label>
+                      <label className="block text-xs font-semibold text-[#171717] mb-1.5">Students / Sec</label>
                       <input
                         type="number"
                         min="1"
@@ -3020,6 +3812,61 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
                         onChange={e => setGroupForm({ ...groupForm, size: Number(e.target.value) })}
                         className="input-field font-mono-tabular"
                       />
+                    </div>
+                  </div>
+
+                  {/* Student Cohort Elective Enrollment */}
+                  <div className="pt-2 border-t border-[#E4E2DA] space-y-2">
+                    <label className="block text-xs font-semibold text-[#171717]">
+                      Enrolled Elective Courses ({groupForm.sharedCourseIds.length})
+                    </label>
+                    <p className="text-[11px] text-[#77766F]">
+                      Select elective subjects this batch is taking. Multiple batches picking the same elective are merged into one clash-free shared class.
+                    </p>
+                    <div className="max-h-44 overflow-y-auto border border-[#E4E2DA] rounded-xl divide-y divide-[#E4E2DA] bg-[#F7F6EF]/40">
+                      {(() => {
+                        const electiveCourses = store.courses.filter(c => c.isElective);
+                        const displayCourses = electiveCourses.length > 0 ? electiveCourses : store.courses;
+                        if (displayCourses.length === 0) {
+                          return (
+                            <div className="p-3 text-[11px] text-[#77766F] text-center">
+                              No courses configured yet.
+                            </div>
+                          );
+                        }
+                        return displayCourses.map(c => {
+                          const checked = groupForm.sharedCourseIds.includes(c.id);
+                          return (
+                            <label
+                              key={c.id}
+                              className="flex items-center justify-between gap-2 px-3 py-2 text-xs hover:bg-white cursor-pointer"
+                            >
+                              <div className="flex items-center gap-2 min-w-0">
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={e => {
+                                    setGroupForm(prev => ({
+                                      ...prev,
+                                      sharedCourseIds: e.target.checked
+                                        ? [...prev.sharedCourseIds, c.id]
+                                        : prev.sharedCourseIds.filter(id => id !== c.id)
+                                    }));
+                                  }}
+                                  className="accent-[#171717] shrink-0"
+                                />
+                                <span className="font-mono-tabular font-semibold text-[#171717] shrink-0">
+                                  {c.code}
+                                </span>
+                                <span className="text-[#57564F] truncate">{c.title}</span>
+                              </div>
+                              <span className="text-[11px] text-[#77766F] shrink-0">
+                                {c.isElective ? c.electivePoolName || 'Elective' : 'Course'}
+                              </span>
+                            </label>
+                          );
+                        });
+                      })()}
                     </div>
                   </div>
                 </form>

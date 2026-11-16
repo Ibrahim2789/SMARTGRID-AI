@@ -109,7 +109,11 @@ export const StudentDashboardPage: React.FC<StudentDashboardPageProps> = ({
   const matchedCohort = resolveUserCohort(syncedUser, store.studentGroups);
 
   const cohortSections = matchedCohort
-    ? store.sections.filter(s => s.studentGroupId === matchedCohort.id && s.assignedSlot)
+    ? store.sections.filter(
+        s =>
+          (s.studentGroupId === matchedCohort.id || Boolean(s.sharedGroupIds?.includes(matchedCohort.id))) &&
+          s.assignedSlot
+      )
     : [];
 
   const cohortLecturesCount = cohortSections.filter(s => s.sessionType !== 'Lab').length;
@@ -128,7 +132,10 @@ export const StudentDashboardPage: React.FC<StudentDashboardPageProps> = ({
     await exportTimetableToGoogleSheetsWorkbook({
       store,
       scheduleData,
-      filterClass: c => (matchedCohort ? c.studentGroupId === matchedCohort.id : false),
+      filterClass: c =>
+        matchedCohort
+          ? c.studentGroupId === matchedCohort.id || Boolean(c.sharedGroupIds?.includes(matchedCohort.id))
+          : false,
       scope: 'filtered',
       scopeLabel: matchedCohort?.name || syncedUser.batchCode || 'Student_Schedule',
       studentOrUserName: syncedUser.name

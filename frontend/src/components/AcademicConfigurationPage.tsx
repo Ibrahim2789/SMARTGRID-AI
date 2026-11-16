@@ -380,7 +380,9 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
 
     setTimingValidationErrors([]);
     showToast(
-      `Saved successfully (${result.summaryText}). Synced ${result.placedCount} sessions.`,
+      result.placedCount && result.placedCount > 0
+        ? `Saved successfully (${result.summaryText}). Synced ${result.placedCount} sessions.`
+        : `Saved successfully (${result.summaryText}).`,
       true
     );
   };
@@ -395,7 +397,9 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
     }
     void institutionalStore.syncToBackend(currentUser as any);
     showToast(
-      `Reset to defaults (${res.summaryText}). Synced ${res.placedCount} sessions.`,
+      res.placedCount > 0
+        ? `Reset to defaults (${res.summaryText}). Synced ${res.placedCount} sessions.`
+        : `Reset to defaults (${res.summaryText}).`,
       true
     );
   };

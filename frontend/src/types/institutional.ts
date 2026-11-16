@@ -64,6 +64,7 @@ export interface Department extends BaseEntity {
   code: string;
   school: string;
   colorHex: string;
+  subDepartments?: string[]; // Internal divisions/tracks inside this department (where teachers/lab engineers are assigned)
 }
 
 export interface Program extends BaseEntity {
@@ -78,13 +79,18 @@ export interface Program extends BaseEntity {
 export interface Course extends BaseEntity {
   id: string;
   departmentId: string;
+  subDepartment?: string; // Optional internal department track/unit
   code: string;
   title: string;
   creditHours: number;
+  lectureCredits?: number; // 1 credit hour = 1 lecture contact hour/week
+  labCredits?: number; // 1 credit hour = 3 continuous lab contact hours/week
   weeklyContactHours: number;
   lectureHours: number;
   labHours: number;
   requiredRoomType: RoomType;
+  isElective?: boolean;
+  electivePoolName?: string;
   description?: string;
 }
 
@@ -108,6 +114,7 @@ export interface Section extends BaseEntity {
   expectedEnrollment: number;
   instructorId: string;
   studentGroupId: string;
+  sharedGroupIds?: string[]; // Additional cohorts attending a shared/elective section
   sessionType?: SessionKind; // 'Lecture' | 'Lab'
   spanSlots?: number; // 1 for Lecture, 3 for Lab
   assignedSlot?: SectionSlotAssignment;
@@ -267,9 +274,14 @@ export interface InstructorUnavailableSlot {
   reason?: string;
 }
 
+export type StaffRole = 'faculty' | 'lab_engineer';
+
 export interface Instructor extends BaseEntity {
   id: string;
   departmentId: string;
+  subDepartment?: string; // Internal division/track inside their department
+  staffRole?: StaffRole; // 'faculty' for lectures (1cr=1hr), 'lab_engineer' for 3hr labs (1cr=3hr)
+  qualifiedCourseIds?: string[]; // Courses this instructor/lab engineer is qualified to teach/supervise
   name: string;
   email: string;
   title: string;

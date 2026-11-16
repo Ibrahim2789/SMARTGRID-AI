@@ -70,13 +70,19 @@ export function buildMatrixSchedule(store: InstitutionalDataStore): {
     const room = store.rooms.find(r => r.id === roomId);
     const instructor = store.instructors.find(i => i.id === sec.instructorId);
     const group = store.studentGroups.find(g => g.id === sec.studentGroupId);
+    const sharedGroups = (sec.sharedGroupIds || [])
+      .map(id => store.studentGroups.find(g => g.id === id))
+      .filter((g): g is NonNullable<typeof g> => Boolean(g));
     const dept = store.departments.find(d => d.id === course?.departmentId);
 
     const code = course?.code || 'CRS-101';
     const title = course?.title || 'Academic Seminar';
     const roomCode = room?.code || 'Hall A1';
     const profName = instructor?.name || 'Staff Faculty';
-    const cohortCode = group?.code || 'All-STEM';
+    const cohortCode =
+      sharedGroups.length > 0
+        ? `${group?.code || 'Cohort'} + ${sharedGroups.map(g => g.code).join(', ')}`
+        : group?.code || 'All-STEM';
 
     const isLab =
       sec.sessionType === 'Lab' ||
@@ -148,6 +154,7 @@ export function buildMatrixSchedule(store: InstitutionalDataStore): {
       instructorId: instructor?.id,
       cohort: cohortCode,
       studentGroupId: group?.id,
+      sharedGroupIds: sec.sharedGroupIds,
       departmentId: dept?.id,
       departmentName: dept?.name || 'General Sciences',
       sectionNumber: sec.sectionNumber,
