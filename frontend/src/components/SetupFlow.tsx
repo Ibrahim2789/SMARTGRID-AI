@@ -35,18 +35,29 @@ import {
   ChevronUp
 } from 'lucide-react';
 import { showAppPopup } from './ToastPopupHost';
+import {
+  AuthenticatedVotingUser,
+  createDepartmentBackend,
+  createClassroomBackend,
+  createCourseBackend,
+  createInstructorBackend,
+  createBatchAdmin,
+  fetchStudentsBackend,
+  BackendStudentDirectoryDTO
+} from '../services/votingApi';
 
 interface SetupFlowProps {
   initialStep?: number;
   onStepChange?: (stepIdx: number) => void;
   onNavigate: (route: RouteType) => void;
-  currentUser?: { name: string; role: string; email: string; institution?: string } | null;
+  currentUser?: AuthenticatedVotingUser | null;
 }
 
 export const SetupFlow: React.FC<SetupFlowProps> = ({
   initialStep = 2,
   onStepChange,
-  onNavigate
+  onNavigate,
+  currentUser
 }) => {
   const store = useInstitutionalData();
   const computedTiming = computeAcademicScheduleConfig(store.timeStructure);
@@ -78,10 +89,29 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
   const [maxConsecutiveClasses, setMaxConsecutiveClasses] = useState<number>(3);
   const [maxDailyWorkloadHours, setMaxDailyWorkloadHours] = useState<number>(6);
 
-  // Sample data management state
-  const isSampleLoaded = institutionalStore.isSampleDataLoaded();
-  const sampleCounts = institutionalStore.getSampleCounts();
-  const [showRemoveConfirm, setShowRemoveConfirm] = useState(false);
+  // Registered Students directory from GET /api/students
+  const [registeredStudents, setRegisteredStudents] = useState<BackendStudentDirectoryDTO[]>([]);
+  const [loadingStudents, setLoadingStudents] = useState(false);
+
+  useEffect(() => {
+    if (activeStep !== 4 || !currentUser?.token) return;
+    let cancelled = false;
+    setLoadingStudents(true);
+    const uniId = store.institutionProfile?.id || institutionalStore.getCurrentInstitutionId();
+    fetchStudentsBackend(currentUser, uniId)
+      .then(rows => {
+        if (!cancelled) setRegisteredStudents(rows);
+      })
+      .catch(() => {
+        if (!cancelled) setRegisteredStudents([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingStudents(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeStep, currentUser, store.institutionProfile?.id]);
 
   // Search, Filter & Sort states per step
   const [deptSearch, setDeptSearch] = useState('');
@@ -174,21 +204,6 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
     });
   };
 
-  const handleLoadSample = () => {
-    institutionalStore.loadSampleData();
-    showToast('Loaded multi-department university dataset.');
-  };
-
-  const handleConfirmRemoveSample = () => {
-    institutionalStore.removeSampleData();
-    setShowRemoveConfirm(false);
-    setRoomPage(1);
-    setCoursePage(1);
-    setInstructorPage(1);
-    setGroupPage(1);
-    setSectionPage(1);
-    showToast('Removed sample dataset and restored base institutional records.');
-  };
 
   const renderPagination = (currentPage: number, totalItems: number, setPage: (p: number) => void) => {
     const totalPages = Math.ceil(totalItems / PAGE_SIZE) || 1;
@@ -336,22 +351,34 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
       setValidationError('Department code and name are required.');
       return;
     }
+    const cleanCode = deptForm.code.trim().toUpperCase();
+    const cleanName = deptForm.name.trim();
+    const cleanSchool = deptForm.school.trim();
     if (editingItem) {
       institutionalStore.updateDepartment(editingItem.id, {
-        code: deptForm.code.trim().toUpperCase(),
-        name: deptForm.name.trim(),
-        school: deptForm.school.trim()
+        code: cleanCode,
+        name: cleanName,
+        school: cleanSchool
       });
-      showToast(`Updated department ${deptForm.code.toUpperCase()}.`);
+      showToast(`Updated department ${cleanCode}.`);
     } else {
       institutionalStore.addDepartment({
         id: `dept-${Date.now()}`,
-        code: deptForm.code.trim().toUpperCase(),
-        name: deptForm.name.trim(),
-        school: deptForm.school.trim(),
+        code: cleanCode,
+        name: cleanName,
+        school: cleanSchool,
         colorHex: '#171717'
       });
-      showToast(`Added department ${deptForm.name.trim()}.`);
+      showToast(`Added department ${cleanName}.`);
+    }
+    if (currentUser?.token) {
+      void createDepartmentBackend(currentUser, {
+        universityId: store.institutionProfile?.id || institutionalStore.getCurrentInstitutionId(),
+        code: cleanCode,
+        name: cleanName,
+        facultyGroup: cleanSchool
+      }).catch(() => {});
+      void institutionalStore.syncToBackend(currentUser);
     }
     setSideDrawerOpen(false);
   };
@@ -391,28 +418,46 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
       setValidationError('Room capacity must be greater than zero.');
       return;
     }
+    const cleanCode = roomForm.code.trim();
+    const cleanName = roomForm.buildingName.trim() || cleanCode;
+    const eqList = roomForm.equipment.split(',').map(s => s.trim()).filter(Boolean);
+    const roomId = editingItem ? editingItem.id : `room-${Date.now()}`;
+
     if (editingItem) {
       institutionalStore.updateRoom(editingItem.id, {
-        code: roomForm.code.trim(),
-        name: roomForm.buildingName.trim() || roomForm.code.trim(),
+        code: cleanCode,
+        name: cleanName,
         capacity: Number(roomForm.capacity),
         type: roomForm.type,
-        equipment: roomForm.equipment.split(',').map(s => s.trim()).filter(Boolean)
+        equipment: eqList
       });
-      showToast(`Updated room ${roomForm.code.trim()}.`);
+      showToast(`Updated room ${cleanCode}.`);
     } else {
       institutionalStore.addRoom({
-        id: `room-${Date.now()}`,
+        id: roomId,
         buildingId: 'bld-turing',
-        code: roomForm.code.trim(),
-        name: roomForm.buildingName.trim() || roomForm.code.trim(),
+        code: cleanCode,
+        name: cleanName,
         capacity: Number(roomForm.capacity),
         type: roomForm.type,
-        equipment: roomForm.equipment.split(',').map(s => s.trim()).filter(Boolean),
+        equipment: eqList,
         isAccessible: true,
         isAvailable: true
       });
-      showToast(`Added room ${roomForm.code.trim()} (${roomForm.capacity} seats).`);
+      showToast(`Added room ${cleanCode} (${roomForm.capacity} seats).`);
+    }
+    if (currentUser?.token) {
+      void createClassroomBackend(currentUser, {
+        id: roomId,
+        universityId: store.institutionProfile?.id || institutionalStore.getCurrentInstitutionId(),
+        code: cleanCode,
+        name: cleanName,
+        capacity: Number(roomForm.capacity),
+        type: roomForm.type,
+        equipment: eqList,
+        isAvailable: true
+      }).catch(() => {});
+      void institutionalStore.syncToBackend(currentUser);
     }
     setSideDrawerOpen(false);
   };
@@ -451,29 +496,49 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
       return;
     }
 
+    const cleanCode = courseForm.code.trim().toUpperCase();
+    const cleanTitle = courseForm.title.trim();
+    const courseId = editingItem ? editingItem.id : `course-${Date.now()}`;
+    const deptCode =
+      store.departments.find(d => d.id === courseForm.departmentId)?.code || 'BSCS';
+
     if (editingItem) {
       institutionalStore.updateCourse(editingItem.id, {
-        code: courseForm.code.trim().toUpperCase(),
-        title: courseForm.title.trim(),
+        code: cleanCode,
+        title: cleanTitle,
         departmentId: courseForm.departmentId,
         creditHours: Number(courseForm.creditHours),
         weeklyContactHours: Number(courseForm.weeklyContactHours),
         requiredRoomType: courseForm.requiredRoomType
       });
-      showToast(`Updated course ${courseForm.code.trim().toUpperCase()}.`);
+      showToast(`Updated course ${cleanCode}.`);
     } else {
       institutionalStore.addCourse({
-        id: `course-${Date.now()}`,
+        id: courseId,
         departmentId: courseForm.departmentId,
-        code: courseForm.code.trim().toUpperCase(),
-        title: courseForm.title.trim(),
+        code: cleanCode,
+        title: cleanTitle,
         creditHours: Number(courseForm.creditHours),
         weeklyContactHours: Number(courseForm.weeklyContactHours),
         lectureHours: Number(courseForm.weeklyContactHours),
         labHours: courseForm.requiredRoomType === 'lab' ? Number(courseForm.weeklyContactHours) : 0,
         requiredRoomType: courseForm.requiredRoomType
       });
-      showToast(`Added course ${courseForm.code.trim().toUpperCase()} — ${courseForm.title.trim()}.`);
+      showToast(`Added course ${cleanCode} — ${cleanTitle}.`);
+    }
+    if (currentUser?.token) {
+      void createCourseBackend(currentUser, {
+        id: courseId,
+        universityId: store.institutionProfile?.id || institutionalStore.getCurrentInstitutionId(),
+        code: cleanCode,
+        title: cleanTitle,
+        departmentCode: deptCode,
+        type: courseForm.requiredRoomType === 'lab' ? 'Lab' : 'Theory',
+        creditHours: Number(courseForm.creditHours),
+        hoursPerWeek: Number(courseForm.weeklyContactHours),
+        requiredRoomType: courseForm.requiredRoomType
+      }).catch(() => {});
+      void institutionalStore.syncToBackend(currentUser);
     }
     setSideDrawerOpen(false);
   };
@@ -508,27 +573,49 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
       return;
     }
 
+    const cleanName = instructorForm.name.trim();
+    const instId = editingItem ? editingItem.id : `inst-${Date.now()}`;
+    const instDomain =
+      store.institutionProfile?.registrarEmail?.split('@')[1] ||
+      currentUser?.email?.split('@')[1] ||
+      'university.edu';
+    const emailVal = editingItem?.email || `${cleanName.toLowerCase().replace(/[^a-z0-9]/g, '.')}@${instDomain}`;
+    const deptCode =
+      store.departments.find(d => d.id === instructorForm.departmentId)?.code || 'BSCS';
+
     if (editingItem) {
       institutionalStore.updateInstructor(editingItem.id, {
-        name: instructorForm.name.trim(),
+        name: cleanName,
         title: instructorForm.title.trim(),
         departmentId: instructorForm.departmentId,
         maxWeeklyHours: Number(instructorForm.maxWeeklyHours)
       });
-      showToast(`Updated faculty profile for ${instructorForm.name.trim()}.`);
+      showToast(`Updated faculty profile for ${cleanName}.`);
     } else {
       institutionalStore.addInstructor({
-        id: `inst-${Date.now()}`,
+        id: instId,
         departmentId: instructorForm.departmentId,
-        name: instructorForm.name.trim(),
-        email: `${instructorForm.name.toLowerCase().replace(/[^a-z0-9]/g, '.')}@westernpoly.edu`,
+        name: cleanName,
+        email: emailVal,
         title: instructorForm.title.trim() || 'Faculty Member',
         maxWeeklyHours: Number(instructorForm.maxWeeklyHours),
         maxConsecutiveHours: 3,
         preferredDays: ['Mon', 'Wed', 'Fri'],
         unavailableSlots: []
       });
-      showToast(`Added faculty instructor ${instructorForm.name.trim()}.`);
+      showToast(`Added faculty instructor ${cleanName}.`);
+    }
+    if (currentUser?.token) {
+      void createInstructorBackend(currentUser, {
+        id: instId,
+        universityId: store.institutionProfile?.id || institutionalStore.getCurrentInstitutionId(),
+        name: cleanName,
+        email: emailVal,
+        departmentCode: deptCode,
+        designation: instructorForm.title.trim() || 'Professor',
+        maxWeeklyHours: Number(instructorForm.maxWeeklyHours)
+      }).catch(() => {});
+      void institutionalStore.syncToBackend(currentUser);
     }
     setSideDrawerOpen(false);
   };
@@ -566,16 +653,18 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
       setValidationError('Cohort code is required.');
       return;
     }
+    const cleanCode = groupForm.code.trim();
+    const cleanName = groupForm.name.trim() || cleanCode;
     if (editingItem) {
       institutionalStore.updateStudentGroup(editingItem.id, {
-        name: groupForm.name.trim() || groupForm.code.trim(),
-        code: groupForm.code.trim(),
+        name: cleanName,
+        code: cleanCode,
         departmentCode: groupForm.departmentCode,
         semester: Number(groupForm.semester),
         year: Number(groupForm.year),
         size: Number(groupForm.size)
       });
-      showToast(`Updated student cohort ${groupForm.code.trim()}.`);
+      showToast(`Updated student cohort ${cleanCode}.`);
     } else {
       const matchedDept = store.departments.find(d => d.code === groupForm.departmentCode);
       const matchedProg =
@@ -585,13 +674,24 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
         programId: matchedProg?.id || 'prog-bsc-cs',
         departmentCode: groupForm.departmentCode,
         semester: Number(groupForm.semester),
-        name: groupForm.name.trim() || groupForm.code.trim(),
-        code: groupForm.code.trim(),
+        name: cleanName,
+        code: cleanCode,
         year: Number(groupForm.year),
         size: Number(groupForm.size),
         sharedCourseIds: []
       });
-      showToast(`Added student cohort ${groupForm.code.trim()}.`);
+      showToast(`Added student cohort ${cleanCode}.`);
+    }
+    if (currentUser?.token) {
+      void createBatchAdmin(currentUser, {
+        code: cleanCode,
+        name: cleanName,
+        departmentCode: groupForm.departmentCode,
+        year: Number(groupForm.year),
+        semester: Number(groupForm.semester),
+        studentCount: Number(groupForm.size)
+      }).catch(() => {});
+      void institutionalStore.syncToBackend(currentUser);
     }
     setSideDrawerOpen(false);
   };
@@ -825,23 +925,6 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5 shrink-0">
-          {isSampleLoaded ? (
-            <button
-              type="button"
-              onClick={() => setShowRemoveConfirm(true)}
-              className="btn-secondary text-xs h-9"
-            >
-              <span>Remove Sample Data</span>
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={handleLoadSample}
-              className="btn-secondary text-xs h-9"
-            >
-              <span>Load Sample Dataset</span>
-            </button>
-          )}
           <button
             type="button"
             onClick={() => onNavigate('generate')}
@@ -960,41 +1043,6 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
         </div>
       )}
 
-      {/* Confirm Remove Sample Modal */}
-      {showRemoveConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4">
-          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 space-y-4 border border-[#E4E2DA]">
-            <div className="flex items-center justify-between">
-              <h3 className="font-serif-editorial text-xl text-[#171717]">Remove sample dataset?</h3>
-              <button
-                onClick={() => setShowRemoveConfirm(false)}
-                className="text-[#77766F] hover:text-[#171717] p-1 cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <p className="text-xs text-[#77766F]">
-              This removes the sample dataset ({sampleCounts.rooms} rooms, {sampleCounts.courses} courses, {sampleCounts.instructors} instructors) while keeping any custom records you added.
-            </p>
-            <div className="flex justify-end gap-2.5 pt-3 border-t border-[#E4E2DA]">
-              <button
-                type="button"
-                onClick={() => setShowRemoveConfirm(false)}
-                className="btn-secondary text-xs h-9"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleConfirmRemoveSample}
-                className="btn-primary text-xs h-9"
-              >
-                Confirm Removal
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* =========================================================
           2. HORIZONTAL ROW-BASED DATA TABLES
@@ -2155,6 +2203,53 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
                 </table>
               </div>
               {renderPagination(groupPage, filteredGroups.length, setGroupPage)}
+            </div>
+
+            {/* Registered Students Directory (GET /api/students) */}
+            <div className="pt-4 border-t border-[#E4E2DA] space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="font-serif-editorial text-lg text-[#171717]">
+                  Enrolled Student &amp; BR Accounts ({registeredStudents.length})
+                </h3>
+                <span className="text-xs text-[#77766F] font-mono-tabular">
+                  {loadingStudents ? 'Loading directory...' : 'Synced from Supabase users'}
+                </span>
+              </div>
+
+              {registeredStudents.length > 0 && (
+                <div className="border border-[#E4E2DA] rounded-xl overflow-hidden bg-white">
+                  <div className="overflow-x-auto max-h-56">
+                    <table className="w-full text-left text-xs border-collapse">
+                      <thead className="bg-[#F7F6EF] text-[#57564F] border-b border-[#E4E2DA]">
+                        <tr>
+                          <th className="py-2 px-4 font-semibold">Student Name</th>
+                          <th className="py-2 px-4 font-semibold">Email</th>
+                          <th className="py-2 px-4 font-semibold">Reg. Number</th>
+                          <th className="py-2 px-4 font-semibold">Section</th>
+                          <th className="py-2 px-4 font-semibold">Role</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-[#E4E2DA]">
+                        {registeredStudents.slice(0, 12).map(st => (
+                          <tr key={st.id} className="hover:bg-[#F7F6EF]/60">
+                            <td className="py-2 px-4 font-medium text-[#171717]">{st.name}</td>
+                            <td className="py-2 px-4 text-[#57564F]">{st.email}</td>
+                            <td className="py-2 px-4 font-mono-tabular text-[#57564F]">
+                              {st.registration_number || '—'}
+                            </td>
+                            <td className="py-2 px-4 font-mono-tabular text-[#57564F]">
+                              {st.section || '—'}
+                            </td>
+                            <td className="py-2 px-4 uppercase font-mono-tabular text-[11px] font-semibold text-[#171717]">
+                              {st.role}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="pt-4 border-t border-[#E4E2DA] flex justify-between">

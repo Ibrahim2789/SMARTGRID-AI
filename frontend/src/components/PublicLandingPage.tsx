@@ -127,7 +127,7 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({ onOpenAuth
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [selectedClass, setSelectedClass] = useState<ClassItem | null>(null);
-  const [isExportingSample, setIsExportingSample] = useState(false);
+  const [isExportingPreview, setIsExportingPreview] = useState(false);
 
   // Scroll-aware animated navbar & active section tracking state
   const [isScrolled, setIsScrolled] = useState(false);
@@ -238,46 +238,49 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({ onOpenAuth
     return () => window.clearInterval(interval);
   }, [prefersReducedMotion]);
 
-  // Featured class sections for the realistic live timetable preview
-  const featuredSections = [
-    store.studentGroups.find(g => g.code === '2K24-BEE-A'),
-    store.studentGroups.find(g => g.code === '2K25-BSCS-A'),
-    store.studentGroups.find(g => g.code === '2K24-BESE-A'),
-    store.studentGroups.find(g => g.code === '2K25-BCE-A')
-  ].filter(Boolean) as typeof store.studentGroups;
+  const availableGroups = useMemo(() => store.studentGroups, [store.studentGroups]);
 
-  const fallbackGroups =
-    featuredSections.length > 0 ? featuredSections : store.studentGroups.slice(0, 4);
+  const deptCodes = useMemo(() => {
+    const codes = new Set<string>();
+    store.departments.forEach(d => {
+      if (d.code) codes.add(d.code);
+    });
+    return ['ALL', ...Array.from(codes).slice(0, 4)];
+  }, [store.departments]);
 
-  const [activeDemoGroupId, setActiveDemoGroupId] = useState<string>(
-    fallbackGroups[0]?.id || store.studentGroups[0]?.id || ''
+  const [activePreviewGroupId, setActivePreviewGroupId] = useState<string>(
+    availableGroups[0]?.id || ''
   );
-  const [demoDeptFilter, setDemoDeptFilter] = useState<'ALL' | 'BEE' | 'BSCS' | 'BESE' | 'BCE'>('ALL');
+  const [previewDeptFilter, setPreviewDeptFilter] = useState<string>('ALL');
 
-  const visibleDemoGroups = useMemo(() => {
-    if (demoDeptFilter === 'ALL') {
-      return fallbackGroups;
+  const visiblePreviewGroups = useMemo(() => {
+    if (previewDeptFilter === 'ALL') {
+      return availableGroups.slice(0, 4);
     }
-    const matching = store.studentGroups.filter(g => g.code.includes(`-${demoDeptFilter}-`));
-    return matching.length > 0 ? matching.slice(0, 4) : fallbackGroups;
-  }, [demoDeptFilter, fallbackGroups, store.studentGroups]);
+    const matching = availableGroups.filter(
+      g => g.departmentCode === previewDeptFilter || g.code.includes(`-${previewDeptFilter}-`)
+    );
+    return matching.length > 0 ? matching.slice(0, 4) : availableGroups.slice(0, 4);
+  }, [previewDeptFilter, availableGroups]);
 
-  const handleSelectDept = (dept: 'ALL' | 'BEE' | 'BSCS' | 'BESE' | 'BCE') => {
-    setDemoDeptFilter(dept);
+  const handleSelectDept = (dept: string) => {
+    setPreviewDeptFilter(dept);
     if (dept === 'ALL') {
-      if (!fallbackGroups.some(g => g.id === activeDemoGroupId)) {
-        setActiveDemoGroupId(fallbackGroups[0]?.id || '');
+      if (!availableGroups.some(g => g.id === activePreviewGroupId)) {
+        setActivePreviewGroupId(availableGroups[0]?.id || '');
       }
     } else {
-      const matching = store.studentGroups.filter(g => g.code.includes(`-${dept}-`));
-      if (matching.length > 0 && !matching.some(g => g.id === activeDemoGroupId)) {
-        setActiveDemoGroupId(matching[0].id);
+      const matching = availableGroups.filter(
+        g => g.departmentCode === dept || g.code.includes(`-${dept}-`)
+      );
+      if (matching.length > 0 && !matching.some(g => g.id === activePreviewGroupId)) {
+        setActivePreviewGroupId(matching[0].id);
       }
     }
   };
 
-  const activeDemoGroup =
-    store.studentGroups.find(g => g.id === activeDemoGroupId) || store.studentGroups[0];
+  const activePreviewGroup =
+    availableGroups.find(g => g.id === activePreviewGroupId) || availableGroups[0];
 
   const scrollToId = (id: string) => {
     setMobileMenuOpen(false);
@@ -292,20 +295,20 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({ onOpenAuth
     }
   };
 
-  const handleDownloadSampleSheets = async () => {
-    if (!activeDemoGroup) return;
+  const handleDownloadPreviewSheets = async () => {
+    if (!activePreviewGroup) return;
     try {
-      setIsExportingSample(true);
+      setIsExportingPreview(true);
       await exportTimetableToGoogleSheetsWorkbook({
         store,
         scheduleData,
-        filterClass: cls => cls.studentGroupId === activeDemoGroup.id,
+        filterClass: cls => cls.studentGroupId === activePreviewGroup.id,
         scope: 'filtered',
-        scopeLabel: `Class_${activeDemoGroup.code}`,
-        studentOrUserName: 'University Timetable Preview'
+        scopeLabel: `Class_${activePreviewGroup.code}`,
+        studentOrUserName: store.institutionProfile?.name || 'University Timetable'
       });
     } finally {
-      setIsExportingSample(false);
+      setIsExportingPreview(false);
     }
   };
 
@@ -326,7 +329,7 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({ onOpenAuth
       if (skippedCells.has(cellKey)) return;
 
       const classesAtStart = (scheduleData[slotMeta.period]?.[day] || []).filter(
-        c => c.studentGroupId === activeDemoGroup?.id
+        c => c.studentGroupId === activePreviewGroup?.id
       );
       const labItem = classesAtStart.find(c => c.sessionType === 'Lab' || c.spanSlots === 3);
 
@@ -589,63 +592,96 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({ onOpenAuth
               <div className="px-4 sm:px-6 py-3.5 bg-[#F7F6EF] border-b border-[#E4E2DA] flex flex-col lg:flex-row lg:items-center justify-between gap-3">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-xs font-semibold text-[#171717]">
-                    {activeDemoGroup?.code} — {activeDemoGroup?.name}
+                    {activePreviewGroup
+                      ? `${activePreviewGroup.code} — ${activePreviewGroup.name}`
+                      : 'University Timetable Matrix · Ready for Configuration'}
                   </span>
                 </div>
 
                 {/* Department Filter & Section Switcher */}
-                <div className="flex flex-wrap items-center gap-2">
-                  <div className="inline-flex items-center p-0.5 rounded-lg bg-[#EDEAE0] border border-[#E4E2DA] text-[11px] font-mono-tabular">
-                    {(['ALL', 'BEE', 'BSCS', 'BESE', 'BCE'] as const).map(deptKey => {
-                      const isDeptActive = demoDeptFilter === deptKey;
-                      return (
-                        <button
-                          key={deptKey}
-                          type="button"
-                          onClick={() => handleSelectDept(deptKey)}
-                          className={`px-2.5 py-1 rounded-md font-medium transition-colors cursor-pointer whitespace-nowrap ${
-                            isDeptActive
-                              ? 'bg-[#171717] text-white font-semibold'
-                              : 'text-[#57564F] hover:text-[#171717]'
-                          }`}
-                        >
-                          {deptKey}
-                        </button>
-                      );
-                    })}
-                  </div>
+                {activePreviewGroup ? (
+                  <div className="flex flex-wrap items-center gap-2">
+                    {deptCodes.length > 1 && (
+                      <div className="inline-flex items-center p-0.5 rounded-lg bg-[#EDEAE0] border border-[#E4E2DA] text-[11px] font-mono-tabular">
+                        {deptCodes.map(deptKey => {
+                          const isDeptActive = previewDeptFilter === deptKey;
+                          return (
+                            <button
+                              key={deptKey}
+                              type="button"
+                              onClick={() => handleSelectDept(deptKey)}
+                              className={`px-2.5 py-1 rounded-md font-medium transition-colors cursor-pointer whitespace-nowrap ${
+                                isDeptActive
+                                  ? 'bg-[#171717] text-white font-semibold'
+                                  : 'text-[#57564F] hover:text-[#171717]'
+                              }`}
+                            >
+                              {deptKey}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
 
-                  <div className="flex flex-wrap items-center gap-1">
-                    {visibleDemoGroups.map(grp => {
-                      const active = grp.id === activeDemoGroup?.id;
-                      return (
-                        <button
-                          key={grp.id}
-                          type="button"
-                          onClick={() => setActiveDemoGroupId(grp.id)}
-                          className={`px-2.5 py-1 rounded-lg text-[11px] font-mono-tabular transition-colors cursor-pointer whitespace-nowrap ${
-                            active
-                              ? 'bg-[#171717] text-white font-semibold border border-[#171717]'
-                              : 'bg-white text-[#57564F] border border-[#E4E2DA] hover:text-[#171717]'
-                          }`}
-                        >
-                          {grp.code}
-                        </button>
-                      );
-                    })}
-                  </div>
+                    <div className="flex flex-wrap items-center gap-1">
+                      {visiblePreviewGroups.map(grp => {
+                        const active = grp.id === activePreviewGroup.id;
+                        return (
+                          <button
+                            key={grp.id}
+                            type="button"
+                            onClick={() => setActivePreviewGroupId(grp.id)}
+                            className={`px-2.5 py-1 rounded-lg text-[11px] font-mono-tabular transition-colors cursor-pointer whitespace-nowrap ${
+                              active
+                                ? 'bg-[#171717] text-white font-semibold border border-[#171717]'
+                                : 'bg-white text-[#57564F] border border-[#E4E2DA] hover:text-[#171717]'
+                            }`}
+                          >
+                            {grp.code}
+                          </button>
+                        );
+                      })}
+                    </div>
 
+                    <button
+                      type="button"
+                      onClick={handleDownloadPreviewSheets}
+                      disabled={isExportingPreview}
+                      className="h-7 px-2.5 rounded-lg bg-white hover:bg-[#EDEAE0] border border-[#E4E2DA] text-[#171717] text-[11px] font-semibold inline-flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap"
+                    >
+                      <FileSpreadsheet className="w-3.5 h-3.5" />
+                      <span>{isExportingPreview ? 'Exporting...' : 'Export'}</span>
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => onOpenAuth('signup')}
+                      className="h-7 px-3 rounded-lg bg-[#171717] hover:bg-[#2d2d2d] text-white text-[11px] font-semibold inline-flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap"
+                    >
+                      <span>Onboard University</span>
+                      <ArrowRight className="w-3 h-3" />
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {!activePreviewGroup && (
+                <div className="px-4 sm:px-6 py-4 bg-[#B8EEEE]/20 border-b border-[#E4E2DA] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="text-xs text-[#57564F]">
+                    <span className="font-semibold text-[#171717]">Clean Workspace Ready:</span>{' '}
+                    Register your university workspace or sign in to populate departments, classrooms, faculty, and generate your conflict-free timetable.
+                  </div>
                   <button
                     type="button"
-                    onClick={handleDownloadSampleSheets}
-                    disabled={isExportingSample}
-                    className="h-7 px-2.5 rounded-lg bg-white hover:bg-[#EDEAE0] border border-[#E4E2DA] text-[#171717] text-[11px] font-semibold inline-flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap"
+                    onClick={() => onOpenAuth('signin')}
+                    className="text-xs font-semibold text-[#171717] underline hover:no-underline cursor-pointer shrink-0 self-start sm:self-auto"
                   >
-                    <FileSpreadsheet className="w-3.5 h-3.5" />
-                    <span>{isExportingSample ? 'Exporting...' : 'Export'}</span>
+                    Sign In to Workspace
                   </button>
                 </div>
-              </div>
+              )}
 
               {/* 5-Day Timetable Matrix */}
               <div className="p-3 sm:p-5 overflow-x-auto">
@@ -753,7 +789,7 @@ export const PublicLandingPage: React.FC<PublicLandingPageProps> = ({ onOpenAuth
                               }
 
                               const cellClasses = (scheduleData[time]?.[day] || []).filter(
-                                c => c.studentGroupId === activeDemoGroup?.id
+                                c => c.studentGroupId === activePreviewGroup?.id
                               );
                               const item = cellClasses[0];
 

@@ -33,7 +33,7 @@ import {
 } from 'lucide-react';
 import { ClassDetailsModal, ClassItem } from './ClassDetailsModal';
 import { jsPDF } from 'jspdf';
-import { AuthenticatedVotingUser } from '../services/votingApi';
+import { AuthenticatedVotingUser, solveOptimizationApi, getStoredUser } from '../services/votingApi';
 import { showAppPopup } from './ToastPopupHost';
 import {
   getNormalizedUserRole,
@@ -287,17 +287,45 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const handleRunSweep = () => {
+  const handleRunSweep = async () => {
     setIsSweeping(true);
-    setTimeout(() => {
-      const res = institutionalStore.runTimetableSolver();
-      setIsSweeping(false);
+    try {
+      const user = currentUser || getStoredUser();
+      const res = await solveOptimizationApi({ algorithm: 'hybrid_dsatur_ga_sa', universityId: store.institutionProfile?.id || user?.institutionId }, user);
+      if (res.assignments && Object.keys(res.assignments).length > 0) {
+        institutionalStore.applyBackendOptimizationResult({
+          assignments: res.assignments,
+          strategyName: 'Python Hybrid AI Re-Optimization',
+          algorithm: 'hybrid_dsatur_ga_sa',
+          fitness: {
+            totalScore: res.metrics.totalScore,
+            studentSatisfaction: res.metrics.studentSatisfaction,
+            instructorSatisfaction: res.metrics.instructorSatisfaction,
+            roomUtilization: res.metrics.roomUtilization,
+            fairnessScore: res.metrics.fairnessScore
+          },
+          conflictCount: res.metrics.conflictCount
+        });
+        void institutionalStore.syncToBackend(user || undefined);
+        showAppPopup({
+          title: 'Timetable Re-Optimized (Python Hybrid AI)',
+          message: `${res.metrics.placedCount} sessions synchronized with ${res.metrics.conflictCount} hard conflicts.`,
+          variant: 'success'
+        });
+      } else {
+        throw new Error('No assignments returned.');
+      }
+    } catch {
+      const localRes = institutionalStore.runTimetableSolver();
+      void institutionalStore.syncToBackend(currentUser || undefined);
       showAppPopup({
-        title: 'Timetable Re-Optimized',
-        message: `${res.placedCount} sessions (${computedTiming.periodLengthMinutes}m lectures & ${computedTiming.labDurationHoursLabel} continuous labs) synchronized across ${computedTiming.operatingHoursLabel} with 0 hard overlaps.`,
+        title: 'Timetable Re-Optimized (Local Solver)',
+        message: `${localRes.placedCount} sessions synchronized with 0 hard overlaps.`,
         variant: 'success'
       });
-    }, 450);
+    } finally {
+      setIsSweeping(false);
+    }
   };
 
   // Interactive Drag-and-Drop and Slot Swap Logic (Admin-only)
@@ -362,6 +390,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
         timeSlot: targetPeriod,
         roomId: draggedClassItem.roomId || store.rooms[0]?.id || ''
       });
+      void institutionalStore.syncToBackend(currentUser || undefined);
       showAppPopup({
         title: 'Session Moved',
         message: `Moved ${draggedClassItem.code} to ${targetDay} · ${targetPeriod} with zero conflicts.`,
@@ -379,6 +408,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
     if (!swapDialogData) return;
     const { itemA, itemB } = swapDialogData;
     const res = institutionalStore.swapSectionSlots(itemA.id, itemB.id);
+    void institutionalStore.syncToBackend(currentUser || undefined);
     setSwapDialogData(null);
     showAppPopup({
       title: 'Sessions Swapped',
@@ -395,6 +425,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
       timeSlot: targetPeriod,
       roomId: targetRoomId || store.rooms[0]?.id || ''
     });
+    void institutionalStore.syncToBackend(currentUser || undefined);
     setConflictDialogData(null);
     showAppPopup({
       title: 'Session Moved (Override)',
@@ -407,6 +438,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
     if (!conflictDialogData || !conflictDialogData.conflictingItem) return;
     const { sourceItem, conflictingItem } = conflictDialogData;
     institutionalStore.swapSectionSlots(sourceItem.id, conflictingItem.id);
+    void institutionalStore.syncToBackend(currentUser || undefined);
     setConflictDialogData(null);
     showAppPopup({
       title: 'Sessions Swapped',

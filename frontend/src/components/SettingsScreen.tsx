@@ -46,16 +46,14 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   const isAdmin = isUserAdminRole(currentUser?.role || 'Registrar');
 
   // --- Institution Profile State ---
-  const [name, setName] = useState(profile?.name || 'University of Engineering & Computing');
-  const [campusCode, setCampusCode] = useState(profile?.campusCode || 'UEC-MAIN-01');
-  const [accreditation, setAccreditation] = useState(
-    profile?.accreditation || 'PEC & NCEAC Accredited Programs (BEE, BCE, BESE, BSCS)'
-  );
+  const [name, setName] = useState(profile?.name || currentUser?.institution || '');
+  const [campusCode, setCampusCode] = useState(profile?.campusCode || '');
+  const [accreditation, setAccreditation] = useState(profile?.accreditation || '');
   const [registrarName, setRegistrarName] = useState(
-    profile?.registrarName || 'Dr. Katherine Reynolds'
+    profile?.registrarName || currentUser?.name || ''
   );
   const [registrarEmail, setRegistrarEmail] = useState(
-    profile?.registrarEmail || 'registrar@university.edu'
+    profile?.registrarEmail || currentUser?.email || ''
   );
   const [autoConflictSweep, setAutoConflictSweep] = useState(profile?.autoConflictSweep ?? true);
 
@@ -84,6 +82,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
       registrarEmail: registrarEmail.trim(),
       autoConflictSweep
     });
+    void institutionalStore.syncToBackend(currentUser as any);
     showToast('Saved institutional profile and workspace settings.');
   };
 
@@ -104,11 +103,10 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   const handleConfirmReset = () => {
     if (!isAdmin) return;
     institutionalStore.resetToDefaults();
+    void institutionalStore.syncToBackend(currentUser as any);
     setShowResetConfirm(false);
-    showToast('All institutional master records restored to factory baseline.');
+    showToast('Workspace data cleared back to a clean baseline.');
   };
-
-  const isSampleLoaded = institutionalStore.isSampleDataLoaded();
 
   const filteredLogs = store.auditLogs.filter(log => {
     if (logActionFilter !== 'all' && log.action !== logActionFilter) return false;
@@ -171,23 +169,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
               </p>
             </div>
           </div>
-          {onSwitchUser && (
-            <button
-              type="button"
-              onClick={() =>
-                onSwitchUser({
-                  name: 'Dr. Katherine Reynolds',
-                  role: 'Registrar',
-                  email: 'k.reynolds@westernpoly.edu',
-                  institution: name
-                })
-              }
-              className="btn-primary text-xs h-9 px-3.5 shrink-0"
-            >
-              <ShieldCheck className="w-3.5 h-3.5" />
-              <span>Switch to Registrar (Admin)</span>
-            </button>
-          )}
+
         </div>
       )}
 
@@ -207,7 +189,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
               </button>
             </div>
             <p className="text-xs text-[#77766F] leading-relaxed">
-              This will restore all rooms, courses, faculty, cohorts, academic timings, and timetable builds back to the clean factory seed baseline.
+              This will clear all rooms, courses, faculty, cohorts, academic timings, and timetable builds back to a clean blank baseline.
             </p>
             <div className="flex justify-end gap-2.5 pt-3 border-t border-[#E4E2DA]">
               <button
@@ -367,41 +349,12 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
             <h3 className="font-serif-editorial text-xl text-[#171717] border-b border-[#E4E2DA] pb-3">
               Data &amp; Baseline
             </h3>
-
             <div className="divide-y divide-[#E4E2DA]">
-              <div className="py-3 first:pt-0 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div>
-                  <div className="text-xs font-semibold text-[#171717]">
-                    Sample University Dataset
-                  </div>
-                  <div className="text-[11px] text-[#77766F]">
-                    {isSampleLoaded ? 'Loaded in current workspace' : 'Load multi-department test records'}
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  disabled={!isAdmin}
-                  onClick={() => {
-                    if (isSampleLoaded) {
-                      institutionalStore.removeSampleData();
-                      showToast('Removed multi-department sample dataset.');
-                    } else {
-                      institutionalStore.loadSampleData();
-                      showToast('Loaded multi-department university sample dataset.');
-                    }
-                  }}
-                  className="btn-secondary text-xs h-8 px-3 shrink-0 disabled:opacity-50"
-                >
-                  <Database className="w-3.5 h-3.5" />
-                  <span>{isSampleLoaded ? 'Remove Sample' : 'Load Sample'}</span>
-                </button>
-              </div>
-
               <div className="py-3 last:pb-0 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
-                  <div className="text-xs font-semibold text-[#171717]">Factory Baseline</div>
+                  <div className="text-xs font-semibold text-[#171717]">Clean Workspace Reset</div>
                   <div className="text-[11px] text-[#77766F]">
-                    Restore default rooms, courses, instructors, and schedules
+                    Clear all rooms, courses, instructors, and generated schedules
                   </div>
                 </div>
                 <button
@@ -411,7 +364,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                   className="btn-secondary text-xs h-8 px-3 shrink-0 disabled:opacity-50"
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
-                  <span>Reset Defaults</span>
+                  <span>Reset Workspace</span>
                 </button>
               </div>
             </div>

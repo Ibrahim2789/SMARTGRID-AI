@@ -14,7 +14,7 @@ router = APIRouter(tags=["analytics"])
 @router.get("/api/analytics/overview")
 def get_analytics_overview(request: Request) -> Dict[str, Any]:
     auth_user = require_auth_user(request)
-    uni_id = get_query_param(request, "universityId", "") or auth_user.get("institutionId") or "inst-western-poly"
+    uni_id = get_query_param(request, "universityId", "") or auth_user.get("institutionId") or ""
     client = require_supabase_client()
 
     try:
@@ -62,7 +62,7 @@ def get_analytics_overview(request: Request) -> Dict[str, Any]:
 @router.get("/api/notifications")
 def list_notifications(request: Request) -> Dict[str, Any]:
     auth_user = require_auth_user(request)
-    uni_id = auth_user.get("institutionId") or "inst-western-poly"
+    uni_id = auth_user.get("institutionId") or ""
     user_id = auth_user.get("userId")
     role = auth_user.get("role")
     client = require_supabase_client()

@@ -17,7 +17,7 @@ router = APIRouter(tags=["catalog"])
 @router.get("/api/departments")
 def list_departments(request: Request) -> Dict[str, Any]:
     auth_user = require_auth_user(request)
-    uni_id = get_query_param(request, "universityId", "") or auth_user.get("institutionId") or "inst-western-poly"
+    uni_id = get_query_param(request, "universityId", "") or auth_user.get("institutionId") or ""
     client = require_supabase_client()
     try:
         rows = client.select("departments", filters={"institution_id": f"eq.{uni_id}"}, order="code.asc")
@@ -39,7 +39,7 @@ def list_departments(request: Request) -> Dict[str, Any]:
 async def create_department(request: Request) -> Dict[str, Any]:
     auth_user = require_auth_user(request, allowed_roles=["admin"])
     body = await parse_json_body(request)
-    uni_id = body.get("universityId") or auth_user.get("institutionId") or "inst-western-poly"
+    uni_id = body.get("universityId") or auth_user.get("institutionId") or ""
     code = str(body.get("code") or "").strip().upper()
     name = str(body.get("name") or "").strip()
     if not code or not name:
@@ -72,7 +72,7 @@ async def create_department(request: Request) -> Dict[str, Any]:
 @router.get("/api/courses")
 def list_courses(request: Request) -> Dict[str, Any]:
     auth_user = require_auth_user(request)
-    uni_id = get_query_param(request, "universityId", "") or auth_user.get("institutionId") or "inst-western-poly"
+    uni_id = get_query_param(request, "universityId", "") or auth_user.get("institutionId") or ""
     client = require_supabase_client()
     try:
         rows = client.select("courses", filters={"institution_id": f"eq.{uni_id}"}, order="code.asc")
@@ -117,7 +117,7 @@ def list_courses(request: Request) -> Dict[str, Any]:
 async def create_course(request: Request) -> Dict[str, Any]:
     auth_user = require_auth_user(request, allowed_roles=["admin"])
     body = await parse_json_body(request)
-    uni_id = body.get("universityId") or auth_user.get("institutionId") or "inst-western-poly"
+    uni_id = body.get("universityId") or auth_user.get("institutionId") or ""
     code = str(body.get("code") or "").strip().upper()
     title = str(body.get("title") or body.get("name") or "").strip()
     dept_code = str(body.get("departmentCode") or "BSCS").strip().upper()
@@ -198,7 +198,7 @@ async def create_course(request: Request) -> Dict[str, Any]:
 @router.get("/api/instructors")
 def list_instructors(request: Request) -> Dict[str, Any]:
     auth_user = require_auth_user(request)
-    uni_id = get_query_param(request, "universityId", "") or auth_user.get("institutionId") or "inst-western-poly"
+    uni_id = get_query_param(request, "universityId", "") or auth_user.get("institutionId") or ""
     client = require_supabase_client()
     try:
         rows = client.select("instructors", filters={"institution_id": f"eq.{uni_id}"}, order="name.asc")
@@ -237,7 +237,7 @@ def list_instructors(request: Request) -> Dict[str, Any]:
 async def create_instructor(request: Request) -> Dict[str, Any]:
     auth_user = require_auth_user(request, allowed_roles=["admin"])
     body = await parse_json_body(request)
-    uni_id = body.get("universityId") or auth_user.get("institutionId") or "inst-western-poly"
+    uni_id = body.get("universityId") or auth_user.get("institutionId") or ""
     name = str(body.get("name") or "").strip()
     dept_code = str(body.get("departmentCode") or "BSCS").strip().upper()
     if not name:
@@ -288,7 +288,7 @@ async def create_instructor(request: Request) -> Dict[str, Any]:
 @router.get("/api/classrooms")
 def list_classrooms(request: Request) -> Dict[str, Any]:
     auth_user = require_auth_user(request)
-    uni_id = get_query_param(request, "universityId", "") or auth_user.get("institutionId") or "inst-western-poly"
+    uni_id = get_query_param(request, "universityId", "") or auth_user.get("institutionId") or ""
     client = require_supabase_client()
     try:
         classrooms = client.select("classrooms", filters={"institution_id": f"eq.{uni_id}"}, order="name.asc")
@@ -332,7 +332,7 @@ def list_classrooms(request: Request) -> Dict[str, Any]:
 async def create_classroom(request: Request) -> Dict[str, Any]:
     auth_user = require_auth_user(request, allowed_roles=["admin"])
     body = await parse_json_body(request)
-    uni_id = body.get("universityId") or auth_user.get("institutionId") or "inst-western-poly"
+    uni_id = body.get("universityId") or auth_user.get("institutionId") or ""
     name = str(body.get("name") or "").strip()
     if not name:
         raise HTTPException(status_code=400, detail={"error": "Classroom name is required."})
@@ -412,7 +412,7 @@ async def create_classroom(request: Request) -> Dict[str, Any]:
 @router.get("/api/students")
 def list_students(request: Request) -> Dict[str, Any]:
     auth_user = require_auth_user(request)
-    uni_id = get_query_param(request, "universityId", "") or auth_user.get("institutionId") or "inst-western-poly"
+    uni_id = get_query_param(request, "universityId", "") or auth_user.get("institutionId") or ""
     batch_id = get_query_param(request, "batchId", "")
     client = require_supabase_client()
 

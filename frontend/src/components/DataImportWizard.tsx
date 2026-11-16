@@ -72,7 +72,7 @@ const CATEGORY_SCHEMAS: Record<
       { key: 'name', label: 'Full Name', sample: 'Dr. Alan Turing', synonyms: ['name', 'instructor_name', 'faculty_name', 'full_name', 'professor', 'teacher'] }
     ],
     optionalFields: [
-      { key: 'email', label: 'Email Address', sample: 'a.turing@univ.edu', synonyms: ['email', 'email_address', 'mail', 'institutional_email'] },
+      { key: 'email', label: 'Email Address', sample: 'faculty@university.edu', synonyms: ['email', 'email_address', 'mail', 'institutional_email'] },
       { key: 'title', label: 'Academic Title / Designation', sample: 'Associate Professor', synonyms: ['title', 'designation', 'rank', 'position', 'role'] },
       { key: 'department', label: 'Department Code / Name', sample: 'CS', synonyms: ['department', 'dept', 'dept_code', 'department_name'] },
       { key: 'maxWeeklyHours', label: 'Max Weekly Teaching Hours', sample: '12', synonyms: ['max_weekly_hours', 'max_hours', 'weekly_cap', 'workload_cap', 'max_teaching_hours'] }

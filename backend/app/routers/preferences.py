@@ -28,7 +28,7 @@ def _normalize_time_window(raw: Any) -> str:
 @router.get("/api/preferences/student")
 def get_student_preferences(request: Request) -> Dict[str, Any]:
     auth_user = require_auth_user(request)
-    uni_id = auth_user.get("institutionId") or "inst-western-poly"
+    uni_id = auth_user.get("institutionId") or ""
     client = require_supabase_client()
     try:
         if auth_user.get("role") == "admin":
@@ -57,7 +57,7 @@ def get_student_preferences(request: Request) -> Dict[str, Any]:
 async def save_student_preference(request: Request) -> Dict[str, Any]:
     auth_user = require_auth_user(request, allowed_roles=["student", "br", "admin"])
     body = await parse_json_body(request)
-    uni_id = auth_user.get("institutionId") or "inst-western-poly"
+    uni_id = auth_user.get("institutionId") or ""
     student_id = (
         body.get("studentUserId")
         if auth_user.get("role") == "admin" and body.get("studentUserId")
@@ -103,7 +103,7 @@ async def save_student_preference(request: Request) -> Dict[str, Any]:
 @router.get("/api/preferences/instructor")
 def get_instructor_preferences(request: Request) -> Dict[str, Any]:
     auth_user = require_auth_user(request)
-    uni_id = auth_user.get("institutionId") or "inst-western-poly"
+    uni_id = auth_user.get("institutionId") or ""
     client = require_supabase_client()
     try:
         rows = client.select("instructor_preferences", filters={"institution_id": f"eq.{uni_id}"})
@@ -125,8 +125,8 @@ def get_instructor_preferences(request: Request) -> Dict[str, Any]:
 async def save_instructor_preference(request: Request) -> Dict[str, Any]:
     auth_user = require_auth_user(request, allowed_roles=["faculty", "admin"])
     body = await parse_json_body(request)
-    uni_id = auth_user.get("institutionId") or "inst-western-poly"
-    requested_inst_id = str(body.get("instructorId") or auth_user.get("userId") or "inst-turing").strip()
+    uni_id = auth_user.get("institutionId") or ""
+    requested_inst_id = str(body.get("instructorId") or auth_user.get("userId") or "").strip()
     current_iso = now_iso()
 
     client = require_supabase_client()

@@ -108,49 +108,7 @@ export const SmartGridNav: React.FC<SmartGridNavProps> = ({
     return activeRoute === id;
   };
 
-  const isApex = storeSnapshot.institutionProfile?.id === 'inst-apex-tech';
 
-  const presetPersonas = isApex
-    ? [
-        {
-          name: 'Dr. Marcus Vance',
-          role: 'Admin',
-          email: 'admin@apextech.edu',
-          institution: 'Apex Institute of Science & Tech'
-        },
-        {
-          name: 'Prof. Elena Rostova',
-          role: 'Faculty',
-          email: 'e.rostova@apextech.edu',
-          institution: 'Apex Institute of Science & Tech'
-        },
-        {
-          name: 'Alex Rivera (BME Y2)',
-          role: 'Student',
-          email: 'student.alex@apextech.edu',
-          institution: 'Apex Institute of Science & Tech'
-        }
-      ]
-    : [
-        {
-          name: 'Dr. Katherine Reynolds',
-          role: 'Registrar',
-          email: 'k.reynolds@westernpoly.edu',
-          institution: 'Western Polytechnic'
-        },
-        {
-          name: 'Prof. Alan Turing',
-          role: 'Faculty',
-          email: 'a.turing@westernpoly.edu',
-          institution: 'Western Polytechnic'
-        },
-        {
-          name: 'Maya Lin (CS Y1)',
-          role: 'Student',
-          email: 'm.lin@westernpoly.edu',
-          institution: 'Western Polytechnic'
-        }
-      ];
 
   return (
     <header className="sticky top-0 z-40 w-full bg-[#F7F6EF]/95 backdrop-blur-md border-b border-[#E4E2DA]">
@@ -228,55 +186,22 @@ export const SmartGridNav: React.FC<SmartGridNavProps> = ({
         <div className="flex items-center gap-2.5">
           {currentUser ? (
             <>
-              <div className="relative hidden sm:block">
-                <button
-                  onClick={() => setRoleMenuOpen(!roleMenuOpen)}
-                  className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-[#E4E2DA] bg-white hover:bg-[#EDEAE0] transition-colors cursor-pointer text-left"
-                  title="Switch active user role (Registrar, Faculty, or Student)"
-                >
-                  <div className="w-6 h-6 rounded-full bg-[#F2D8FA] text-[#171717] font-semibold text-xs flex items-center justify-center shrink-0">
-                    {currentUser.name
-                      .split(' ')
-                      .map(n => n[0])
-                      .join('')
-                      .slice(0, 2)}
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-[#E4E2DA] bg-white text-left">
+                <div className="w-6 h-6 rounded-full bg-[#F2D8FA] text-[#171717] font-semibold text-xs flex items-center justify-center shrink-0">
+                  {currentUser.name
+                    .split(' ')
+                    .map(n => n[0])
+                    .join('')
+                    .slice(0, 2)}
+                </div>
+                <div className="hidden md:block">
+                  <div className="text-xs font-semibold text-[#171717] leading-tight">
+                    {currentUser.name}
                   </div>
-                  <div className="hidden md:block">
-                    <div className="text-xs font-semibold text-[#171717] leading-tight">
-                      {currentUser.name}
-                    </div>
-                    <div className="text-[11px] text-[#77766F] leading-tight flex items-center gap-1">
-                      <span>{currentUser.role}</span>
-                    </div>
+                  <div className="text-[11px] text-[#77766F] leading-tight flex items-center gap-1">
+                    <span>{currentUser.role}</span>
                   </div>
-                  <ChevronDown className="w-3.5 h-3.5 text-[#77766F]" />
-                </button>
-
-                {roleMenuOpen && (
-                  <div className="absolute right-0 mt-1.5 w-60 bg-white border border-[#E4E2DA] rounded-xl shadow-lg py-1.5 z-50">
-                    <div className="px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-[#77766F] border-b border-[#E4E2DA]">
-                      Switch Active Persona
-                    </div>
-                    {presetPersonas.map(persona => (
-                      <button
-                        key={persona.email}
-                        onClick={() => {
-                          onSwitchUser?.(persona);
-                          setRoleMenuOpen(false);
-                        }}
-                        className="w-full text-left px-3 py-2 hover:bg-[#F7F6EF] flex items-center justify-between cursor-pointer"
-                      >
-                        <div>
-                          <div className="text-xs font-semibold text-[#171717]">{persona.name}</div>
-                          <div className="text-[11px] text-[#77766F]">{persona.role}</div>
-                        </div>
-                        {currentUser.role === persona.role && (
-                          <UserCheck className="w-3.5 h-3.5 text-[#171717]" />
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                )}
+                </div>
               </div>
 
               {onSignOut && (

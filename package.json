@@ -9,7 +9,6 @@
     "start": "tsx server.ts",
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
-    "seed": "tsx scripts/seed-sample-data.ts",
     "lint": "tsc --noEmit"
   },
   "dependencies": {

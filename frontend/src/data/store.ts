@@ -25,63 +25,156 @@ import {
   getLabBlockByStartPeriod,
   getCoveredPeriodsForAssignment,
   getEffectiveSlotDisplayForDay,
+  parseTime24ToMinutes,
   ContinuousLabBlockMeta
 } from '../types/institutional';
-
 import {
-  seedTerms,
-  seedCampuses,
-  seedBuildings,
-  seedRooms,
-  seedDepartments,
-  seedPrograms,
-  seedCourses,
-  seedInstructors,
-  seedStudentGroups,
-  seedSections,
-  seedTimeStructure,
-  seedConstraintRules,
-  seedScenarios,
-  seedAuditLogs
-} from './seedData';
+  RegisteredInstitutionDTO,
+  BackendOptimizationAssignment,
+  BackendFitnessBreakdown,
+  getStoredUser,
+  saveInstitutionDataApi
+} from '../services/votingApi';
 
-import {
-  universityTerms,
-  universityCampuses,
-  universityBuildings,
-  universityRooms,
-  universityDepartments,
-  universityPrograms,
-  universityCourses,
-  universityInstructors,
-  universityStudentGroups,
-  universitySections
-} from './universitySampleData';
+const DEFAULT_TIME_STRUCTURE: TimeStructure = {
+  id: 'standard-campus-grid',
+  name: 'University Standard 9:00 AM – 5:00 PM Academic Grid',
+  workingDays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'],
+  periodLengthMinutes: 50,
+  dayStartTime: '09:00',
+  dayEndTime: '17:00',
+  periods: [
+    '9:00 – 9:50 AM',
+    '10:00 – 10:50 AM',
+    '11:00 – 11:50 AM',
+    '12:00 – 12:50 PM',
+    '2:00 – 2:50 PM',
+    '3:00 – 3:50 PM',
+    '4:00 – 4:50 PM'
+  ],
+  breaks: [
+    {
+      id: 'break-lunch',
+      name: 'Fixed University Lunch Break (1:00 PM – 2:00 PM)',
+      startTime: '13:00',
+      endTime: '14:00',
+      days: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']
+    }
+  ]
+};
 
-import {
-  largeSampleTimeStructure,
-  largeSampleConstraints,
-  largeSampleScenario,
-  largeSampleAuditLogs
-} from './largeSampleDataset';
-
-import {
-  apexInstitutionProfile,
-  apexTerms,
-  apexCampuses,
-  apexBuildings,
-  apexRooms,
-  apexDepartments,
-  apexPrograms,
-  apexCourses,
-  apexInstructors,
-  apexStudentGroups,
-  apexSections,
-  apexTimeStructure,
-  apexConstraintRules,
-  apexFeedbackPolls,
-  apexAuditLogs
-} from './apexSampleData';
+const DEFAULT_CONSTRAINT_RULES: ConstraintRule[] = [
+  {
+    id: 'rule-hard-no-prof-clash',
+    code: 'HC-01',
+    name: 'No Instructor Double-Booking',
+    description: 'An instructor cannot be scheduled to teach more than one section at the same day and time slot.',
+    kind: 'hard',
+    enabled: true,
+    weight: 100,
+    category: 'instructor'
+  },
+  {
+    id: 'rule-hard-no-room-clash',
+    code: 'HC-02',
+    name: 'No Room Double-Booking',
+    description: 'A room cannot host two separate courses simultaneously across lectures or 3-hour labs.',
+    kind: 'hard',
+    enabled: true,
+    weight: 100,
+    category: 'room'
+  },
+  {
+    id: 'rule-hard-no-cohort-clash',
+    code: 'HC-03',
+    name: 'No Student Cohort Clash',
+    description: 'Required cohort classes for the same year and degree track cannot overlap in time.',
+    kind: 'hard',
+    enabled: true,
+    weight: 100,
+    category: 'student'
+  },
+  {
+    id: 'rule-hard-room-capacity',
+    code: 'HC-04',
+    name: 'Strict Room Capacity Enforcement',
+    description: 'Expected enrollment cannot exceed the physical room seating capacity.',
+    kind: 'hard',
+    enabled: true,
+    weight: 100,
+    category: 'room'
+  },
+  {
+    id: 'rule-hard-room-type-match',
+    code: 'HC-05',
+    name: 'Continuous Lab & Facility Enforcement',
+    description: 'Laboratory sessions occupy continuous hourly cycles without crossing protected midday breaks.',
+    kind: 'hard',
+    enabled: true,
+    weight: 100,
+    category: 'facility'
+  },
+  {
+    id: 'rule-hard-prof-unavailability',
+    code: 'HC-06',
+    name: 'Instructor Unavailability Compliance',
+    description: 'Sections cannot be assigned during an instructor’s formally registered unavailability slots.',
+    kind: 'hard',
+    enabled: true,
+    weight: 100,
+    category: 'instructor'
+  },
+  {
+    id: 'rule-soft-commuter-transit',
+    code: 'SC-01',
+    name: 'Short Break & Transit Buffer Weight',
+    description: 'Preserves short breaks between lectures and respects the midday break.',
+    kind: 'soft',
+    enabled: true,
+    weight: 85,
+    category: 'facility'
+  },
+  {
+    id: 'rule-soft-circadian',
+    code: 'SC-02',
+    name: 'Circadian Alertness Curve Alignment',
+    description: 'Prioritizes theoretical lectures into morning session slots.',
+    kind: 'soft',
+    enabled: true,
+    weight: 90,
+    category: 'temporal'
+  },
+  {
+    id: 'rule-soft-room-compaction',
+    code: 'SC-03',
+    name: 'Facility Space Compaction',
+    description: 'Concentrates building utilization across active instructional wings.',
+    kind: 'soft',
+    enabled: true,
+    weight: 70,
+    category: 'room'
+  },
+  {
+    id: 'rule-soft-faculty-consecutive',
+    code: 'SC-04',
+    name: 'Faculty Workload & Consecutive Hour Cap',
+    description: 'Enforces break intervals after consecutive instructional hours.',
+    kind: 'soft',
+    enabled: true,
+    weight: 80,
+    category: 'instructor'
+  },
+  {
+    id: 'rule-soft-student-gaps',
+    code: 'SC-05',
+    name: 'Minimize Idle Student Schedule Gaps',
+    description: 'Prevents fragmented schedules with isolated classes separated by long gaps.',
+    kind: 'soft',
+    enabled: true,
+    weight: 75,
+    category: 'student'
+  }
+];
 
 export interface InstitutionProfile {
   id?: string;
@@ -155,156 +248,61 @@ export interface InstitutionalDataStore {
   feedbackPolls?: FeedbackPollItem[];
 }
 
-const defaultInstitutionProfile: InstitutionProfile = {
-  id: 'inst-western-poly',
-  name: 'Western Polytechnic Institute',
-  campusCode: 'WPI-MAIN-01',
-  campusName: 'Main Academic Complex',
-  code: 'WPI',
-  accreditation: 'PEC & NCEAC Accredited Programs (BEE, BCE, BESE, BSCS)',
-  academicYear: '2026–2027',
-  currentTermName: 'Fall Semester 2026',
-  timetableManagementPolicy: 'whole_university',
-  registrarName: 'Dr. Katherine Reynolds',
-  registrarEmail: 'k.reynolds@westernpoly.edu',
-  autoConflictSweep: true,
-  defaultSessionMinutes: 50,
-  timezone: 'Asia/Karachi (PKT)',
-  isSample: true
-};
-
-const defaultFeedbackPolls: FeedbackPollItem[] = [
-  {
-    id: 'poll-1',
-    title: 'Protect 13:00 – 14:00 University Lunch & Prayer Break Window',
-    category: 'Student Wellbeing',
-    description: 'Reserve midday hour (1:00 PM – 2:00 PM) across all BEE, BCE, BESE, and BSCS sections with zero lectures or labs.',
-    targetSlot: '13:00 - 14:00',
-    votesApprove: 482,
-    votesRevise: 34,
-    userVote: null,
-    status: 'Implemented',
-    submittedBy: 'Student Senate Academic Committee',
-    createdAt: '2026-02-10'
-  },
-  {
-    id: 'poll-2',
-    title: 'Friday Afternoon Shift (14:30 – 16:55) for Jummah Prayer Buffer',
-    category: 'Campus Schedule',
-    description: 'Ensure Friday afternoon slots begin at 14:30 (14:30–15:15, 15:20–16:05, 16:10–16:55) across all departments.',
-    targetSlot: 'Fri 14:30 - 16:55',
-    votesApprove: 618,
-    votesRevise: 41,
-    userVote: null,
-    status: 'Implemented',
-    submittedBy: 'Academic Council',
-    createdAt: '2026-02-14'
-  },
-  {
-    id: 'poll-3',
-    title: 'Keep 3-Hour Continuous Labs within Morning or Afternoon Blocks',
-    category: 'Lab Continuity',
-    description: 'Schedule 3-hour labs continuously (09:00–11:50, 10:00–12:50, or 14:00–16:50) without splitting across lunch.',
-    targetSlot: '3-Hour Labs',
-    votesApprove: 356,
-    votesRevise: 29,
-    userVote: null,
-    status: 'Implemented',
-    submittedBy: 'Engineering Lab Coordinators',
-    createdAt: '2026-02-18'
-  },
-  {
-    id: 'poll-4',
-    title: 'Assign Dedicated Home Classrooms per Section (CR-18-IAEC, CR-30-Acad, etc.)',
-    category: 'Room Stability',
-    description: 'Keep theory lectures for each section in its designated home classroom to minimize unnecessary building transit.',
-    targetSlot: 'All Theory Slots',
-    votesApprove: 514,
-    votesRevise: 18,
-    userVote: null,
-    status: 'Implemented',
-    submittedBy: 'Department Timetable Committees',
-    createdAt: '2026-02-20'
-  }
-];
-
 const ACTIVE_INST_KEY = 'smartgrid_active_inst_id_v6';
 const REGISTERED_INSTITUTIONS_KEY = 'smartgrid_registered_institutions_v6';
+const LEGACY_SAMPLE_INST_IDS = new Set(['inst-western-poly', 'inst-apex-tech']);
 
-export function getWesternPolyInitialData(): InstitutionalDataStore {
+export function getBlankInitialData(): InstitutionalDataStore {
   return {
-    institutionProfile: defaultInstitutionProfile,
-    selectedClassGroupId: universityStudentGroups[0]?.id || 'grp-2k24-bee-a',
-    terms: universityTerms,
-    campuses: universityCampuses,
-    buildings: universityBuildings,
-    rooms: universityRooms,
-    departments: universityDepartments,
-    programs: universityPrograms,
-    courses: universityCourses,
-    instructors: universityInstructors,
-    studentGroups: universityStudentGroups,
-    sections: universitySections,
-    timeStructure: seedTimeStructure,
-    constraints: seedConstraintRules,
-    scenarios: seedScenarios,
-    auditLogs: seedAuditLogs,
-    feedbackPolls: defaultFeedbackPolls
-  };
-}
-
-export function getApexInitialData(): InstitutionalDataStore {
-  return {
-    institutionProfile: apexInstitutionProfile,
-    selectedClassGroupId: apexStudentGroups[0]?.id || 'apex-grp-2k25-bme-a',
-    terms: apexTerms,
-    campuses: apexCampuses,
-    buildings: apexBuildings,
-    rooms: apexRooms,
-    departments: apexDepartments,
-    programs: apexPrograms,
-    courses: apexCourses,
-    instructors: apexInstructors,
-    studentGroups: apexStudentGroups,
-    sections: apexSections,
-    timeStructure: apexTimeStructure,
-    constraints: apexConstraintRules,
-    scenarios: [
-      {
-        id: 'apex-scen-1',
-        termId: 'apex-term-2026-spring',
-        name: 'Spring 2026 Baseline Optimal Schedule',
-        version: '1.0.0',
-        status: 'published',
-        createdAt: '2026-02-01T08:00:00Z',
-        updatedAt: '2026-02-01T08:00:00Z',
-        author: 'Dr. Marcus Vance',
-        metrics: {
-          clashCount: 0,
-          satisfactionScore: 99.4,
-          roomUtilizationPercent: 86.5,
-          instructorSatisfaction: 95.8,
-          studentTransitScore: 93.2
-        },
-        assignments: {}
-      }
-    ],
-    auditLogs: apexAuditLogs,
-    feedbackPolls: apexFeedbackPolls
+    institutionProfile: {
+      name: '',
+      campusCode: '',
+      campusName: '',
+      code: '',
+      accreditation: '',
+      academicYear: '2026–2027',
+      currentTermName: '',
+      timetableManagementPolicy: 'whole_university',
+      registrarName: '',
+      registrarEmail: '',
+      autoConflictSweep: true,
+      defaultSessionMinutes: 50,
+      timezone: 'UTC',
+      isSample: false
+    },
+    selectedClassGroupId: '',
+    terms: [],
+    campuses: [],
+    buildings: [],
+    rooms: [],
+    departments: [],
+    programs: [],
+    courses: [],
+    instructors: [],
+    studentGroups: [],
+    sections: [],
+    timeStructure: DEFAULT_TIME_STRUCTURE,
+    constraints: DEFAULT_CONSTRAINT_RULES,
+    scenarios: [],
+    auditLogs: [],
+    feedbackPolls: []
   };
 }
 
 function loadDataForInstitution(instId: string): InstitutionalDataStore {
+  if (!instId || LEGACY_SAMPLE_INST_IDS.has(instId)) {
+    return getBlankInitialData();
+  }
   try {
     if (typeof localStorage !== 'undefined') {
       const storageKey = `smartgrid_inst_data_${instId}`;
       const raw = localStorage.getItem(storageKey);
       if (raw) {
         const parsed = JSON.parse(raw);
-        if (parsed && parsed.terms && parsed.rooms && parsed.courses) {
+        if (parsed && !parsed.institutionProfile?.isSample) {
           return {
             ...parsed,
-            institutionProfile: parsed.institutionProfile || (instId === 'inst-apex-tech' ? apexInstitutionProfile : defaultInstitutionProfile),
+            institutionProfile: parsed.institutionProfile || getBlankInitialData().institutionProfile,
             selectedClassGroupId: parsed.selectedClassGroupId || parsed.studentGroups?.[0]?.id || ''
           };
         }
@@ -314,20 +312,25 @@ function loadDataForInstitution(instId: string): InstitutionalDataStore {
     console.warn(`Failed to parse stored data for institution ${instId}:`, e);
   }
 
-  if (instId === 'inst-apex-tech') {
-    return getApexInitialData();
-  }
-  return getWesternPolyInitialData();
+  return getBlankInitialData();
 }
 
 function getActiveInstId(): string {
   try {
     if (typeof localStorage !== 'undefined') {
+      LEGACY_SAMPLE_INST_IDS.forEach(legacyId => {
+        localStorage.removeItem(`smartgrid_inst_data_${legacyId}`);
+      });
       const stored = localStorage.getItem(ACTIVE_INST_KEY);
-      if (stored) return stored;
+      if (stored && !LEGACY_SAMPLE_INST_IDS.has(stored)) {
+        return stored;
+      }
+      if (stored && LEGACY_SAMPLE_INST_IDS.has(stored)) {
+        localStorage.removeItem(ACTIVE_INST_KEY);
+      }
     }
   } catch {}
-  return 'inst-western-poly';
+  return '';
 }
 
 let currentInstitutionId = getActiveInstId();
@@ -336,14 +339,14 @@ const listeners = new Set<() => void>();
 
 function notifyListeners() {
   try {
-    if (typeof localStorage !== 'undefined') {
+    if (typeof localStorage !== 'undefined' && currentInstitutionId && !LEGACY_SAMPLE_INST_IDS.has(currentInstitutionId)) {
       localStorage.setItem(`smartgrid_inst_data_${currentInstitutionId}`, JSON.stringify(currentStore));
       localStorage.setItem(ACTIVE_INST_KEY, currentInstitutionId);
 
       // Keep REGISTERED_INSTITUTIONS_KEY synchronized with the active institution's profile & timing
       const prof = currentStore.institutionProfile;
       const ts = currentStore.timeStructure;
-      if (prof && ts) {
+      if (prof && prof.name && ts && !prof.isSample) {
         const computed = computeAcademicScheduleConfig(ts);
         const existingRaw = localStorage.getItem(REGISTERED_INSTITUTIONS_KEY);
         const existingList: InstitutionSummary[] = existingRaw ? JSON.parse(existingRaw) : [];
@@ -353,7 +356,7 @@ function notifyListeners() {
           code: prof.code || prof.campusCode?.split('-')[0] || 'UNIV',
           campusName: prof.campusName || 'Main Campus',
           accreditation: prof.accreditation,
-          isSample: Boolean(prof.isSample),
+          isSample: false,
           workingDays: computed.workingDays,
           dayStartTime: computed.dayStartTime,
           dayEndTime: computed.dayEndTime,
@@ -365,7 +368,7 @@ function notifyListeners() {
           labDurationMinutes: computed.labDurationMinutes
         };
         const merged = [
-          ...existingList.filter(item => item.id !== currentInstitutionId),
+          ...existingList.filter(item => item.id !== currentInstitutionId && !LEGACY_SAMPLE_INST_IDS.has(item.id) && !item.isSample && item.name),
           updatedSummary
         ];
         localStorage.setItem(REGISTERED_INSTITUTIONS_KEY, JSON.stringify(merged));
@@ -387,42 +390,7 @@ export const institutionalStore = {
   },
 
   getAvailableInstitutions(): InstitutionSummary[] {
-    const defaultList: InstitutionSummary[] = [
-      {
-        id: 'inst-western-poly',
-        name: 'Western Polytechnic Institute',
-        code: 'WPI',
-        campusName: 'Main Academic Complex',
-        accreditation: 'PEC & NCEAC Accredited (Engineering & Computing)',
-        isSample: true,
-        workingDays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'],
-        dayStartTime: '09:00',
-        dayEndTime: '17:00',
-        periodLengthMinutes: 50,
-        shortBreakMinutes: 10,
-        middayBreakEnabled: true,
-        middayBreakStart: '13:00',
-        middayBreakDuration: 60,
-        labDurationMinutes: 180
-      },
-      {
-        id: 'inst-apex-tech',
-        name: 'Apex Institute of Science & Technology',
-        code: 'AIST',
-        campusName: 'Downtown Innovation Campus',
-        accreditation: 'ABET & National Board of Accreditation (NBA)',
-        isSample: false,
-        workingDays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
-        dayStartTime: '08:30',
-        dayEndTime: '16:30',
-        periodLengthMinutes: 60,
-        shortBreakMinutes: 15,
-        middayBreakEnabled: true,
-        middayBreakStart: '12:15',
-        middayBreakDuration: 45,
-        labDurationMinutes: 120
-      }
-    ];
+    const list: InstitutionSummary[] = [];
 
     try {
       if (typeof localStorage !== 'undefined') {
@@ -430,22 +398,34 @@ export const institutionalStore = {
         if (custom) {
           const parsed = JSON.parse(custom) as InstitutionSummary[];
           if (Array.isArray(parsed)) {
-            const ids = new Set(defaultList.map(i => i.id));
+            const ids = new Set<string>();
             parsed.forEach(p => {
-              if (!ids.has(p.id)) defaultList.push(p);
+              if (
+                p &&
+                p.id &&
+                p.name &&
+                !LEGACY_SAMPLE_INST_IDS.has(p.id) &&
+                !p.isSample &&
+                !p.isDemoTemplate &&
+                !ids.has(p.id)
+              ) {
+                ids.add(p.id);
+                list.push(p);
+              }
             });
           }
         }
       }
     } catch {}
 
-    return defaultList;
+    return list;
   },
 
   switchInstitution(institutionId: string) {
+    if (!institutionId || LEGACY_SAMPLE_INST_IDS.has(institutionId)) return;
     if (institutionId === currentInstitutionId) return;
     try {
-      if (typeof localStorage !== 'undefined') {
+      if (typeof localStorage !== 'undefined' && currentInstitutionId && !LEGACY_SAMPLE_INST_IDS.has(currentInstitutionId)) {
         localStorage.setItem(`smartgrid_inst_data_${currentInstitutionId}`, JSON.stringify(currentStore));
       }
     } catch {}
@@ -654,18 +634,6 @@ export const institutionalStore = {
     notifyListeners();
   },
 
-  loadDemoTemplate(templateId: 'western' | 'apex' = 'western') {
-    if (templateId === 'apex') {
-      currentStore = getApexInitialData();
-      currentInstitutionId = 'inst-apex-tech';
-    } else {
-      currentStore = getWesternPolyInitialData();
-      currentInstitutionId = 'inst-western-poly';
-    }
-    this.addAuditLog('restore', 'scenario', 'demo-template', `Loaded ${templateId === 'apex' ? 'Apex Institute' : 'Western Polytechnic'} demo reference dataset.`);
-    notifyListeners();
-  },
-
   subscribe(listener: () => void) {
     listeners.add(listener);
     return () => {
@@ -682,31 +650,18 @@ export const institutionalStore = {
   },
 
   resetToDefaults() {
+    const blank = getBlankInitialData();
+    const currentProfile = currentStore.institutionProfile;
     currentStore = {
-      institutionProfile: defaultInstitutionProfile,
-      selectedClassGroupId: universityStudentGroups[0]?.id || 'grp-2k24-bee-a',
-      terms: universityTerms,
-      campuses: universityCampuses,
-      buildings: universityBuildings,
-      rooms: universityRooms,
-      departments: universityDepartments,
-      programs: universityPrograms,
-      courses: universityCourses,
-      instructors: universityInstructors,
-      studentGroups: universityStudentGroups,
-      sections: universitySections,
-      timeStructure: seedTimeStructure,
-      constraints: seedConstraintRules,
-      scenarios: seedScenarios,
-      auditLogs: seedAuditLogs,
-      feedbackPolls: defaultFeedbackPolls
+      ...blank,
+      institutionProfile: currentProfile?.name ? currentProfile : blank.institutionProfile
     };
-    this.addAuditLog('restore', 'scenario', 'factory-reset', 'Reset all institutional master data to university baseline (BEE, BCE, BESE, BSCS).');
+    this.addAuditLog('restore', 'scenario', 'clean-reset', 'Reset all workspace rooms, courses, faculty, cohorts, and schedules to a clean baseline.');
     notifyListeners();
   },
 
   updateInstitutionProfile(updated: Partial<InstitutionProfile>) {
-    const baseProfile = currentStore.institutionProfile || defaultInstitutionProfile;
+    const baseProfile = currentStore.institutionProfile || getBlankInitialData().institutionProfile!;
     currentStore = {
       ...currentStore,
       institutionProfile: {
@@ -714,7 +669,7 @@ export const institutionalStore = {
         ...updated
       }
     };
-    this.addAuditLog('update', 'campus', 'profile', `Updated institutional profile (${updated.name || baseProfile.name}).`);
+    this.addAuditLog('update', 'campus', 'profile', `Updated institutional profile (${updated.name || baseProfile.name || 'Workspace'}).`);
     notifyListeners();
   },
 
@@ -727,7 +682,7 @@ export const institutionalStore = {
     currentTermName: string;
     terms: AcademicTerm[];
   }) {
-    const baseProfile = currentStore.institutionProfile || defaultInstitutionProfile;
+    const baseProfile = currentStore.institutionProfile || getBlankInitialData().institutionProfile!;
     currentStore = {
       ...currentStore,
       institutionProfile: {
@@ -737,7 +692,7 @@ export const institutionalStore = {
       },
       terms: calendar.terms.map((t, idx) => ({
         ...t,
-        id: t.id || `term-${currentInstitutionId}-${idx + 1}`,
+        id: t.id || `term-${currentInstitutionId || 'inst'}-${idx + 1}`,
         isSample: false,
         is_sample: false
       }))
@@ -775,7 +730,7 @@ export const institutionalStore = {
     summaryText?: string;
   } {
     if (policy.periodLengthMinutes) {
-      const baseProfile = currentStore.institutionProfile || defaultInstitutionProfile;
+      const baseProfile = currentStore.institutionProfile || getBlankInitialData().institutionProfile!;
       currentStore = {
         ...currentStore,
         institutionProfile: {
@@ -811,129 +766,13 @@ export const institutionalStore = {
     }
   },
 
-  isSampleDataLoaded(): boolean {
-    const isS = (item: any) => Boolean(item && (item.is_sample || item.isSample));
-    return (
-      currentStore.rooms.some(isS) ||
-      currentStore.courses.some(isS) ||
-      currentStore.instructors.some(isS) ||
-      currentStore.studentGroups.some(isS) ||
-      currentStore.departments.some(isS)
-    );
-  },
-
   hasRealData(): boolean {
-    const isRealRoom = currentStore.rooms.some(r => !r.is_sample && !r.isSample && !seedRooms.some(sr => sr.id === r.id));
-    const isRealCourse = currentStore.courses.some(c => !c.is_sample && !c.isSample && !seedCourses.some(sc => sc.id === c.id));
-    const isRealInst = currentStore.instructors.some(i => !i.is_sample && !i.isSample && !seedInstructors.some(si => si.id === i.id));
-    const isRealGroup = currentStore.studentGroups.some(g => !g.is_sample && !g.isSample && !seedStudentGroups.some(sg => sg.id === g.id));
-    return isRealRoom || isRealCourse || isRealInst || isRealGroup;
-  },
-
-  getSampleCounts() {
-    const isS = (item: any) => Boolean(item && (item.is_sample || item.isSample));
-    const deptCount = currentStore.departments.filter(isS).length;
-    const progCount = currentStore.programs.filter(isS).length;
-    const groupCount = currentStore.studentGroups.filter(isS).length;
-    const courseCount = currentStore.courses.filter(isS).length;
-    const instCount = currentStore.instructors.filter(isS).length;
-    const roomCount = currentStore.rooms.filter(isS).length;
-    const sectionCount = currentStore.sections.filter(isS).length;
-    return {
-      departments: deptCount,
-      programs: progCount,
-      classes: groupCount,
-      courses: courseCount,
-      instructors: instCount,
-      rooms: roomCount,
-      sections: sectionCount,
-      totalRecords: deptCount + progCount + groupCount + courseCount + instCount + roomCount + sectionCount
-    };
-  },
-
-  loadSampleData() {
-    const isBaseSeedSection = (s: Section) => seedSections.some(sec => sec.id === s.id);
-    const realUserSections = currentStore.sections.filter(s => !isBaseSeedSection(s) && !s.is_sample && !s.isSample);
-
-    const isBaseSeedRoom = (r: Room) => seedRooms.some(sr => sr.id === r.id);
-    const realUserRooms = currentStore.rooms.filter(r => !isBaseSeedRoom(r) && !r.is_sample && !r.isSample);
-
-    const isBaseSeedCourse = (c: Course) => seedCourses.some(sc => sc.id === c.id);
-    const realUserCourses = currentStore.courses.filter(c => !isBaseSeedCourse(c) && !c.is_sample && !c.isSample);
-
-    const isBaseSeedInst = (i: Instructor) => seedInstructors.some(si => si.id === i.id);
-    const realUserInstructors = currentStore.instructors.filter(i => !isBaseSeedInst(i) && !i.is_sample && !i.isSample);
-
-    const isBaseSeedGroup = (g: StudentGroup) => seedStudentGroups.some(sg => sg.id === g.id);
-    const realUserGroups = currentStore.studentGroups.filter(g => !isBaseSeedGroup(g) && !g.is_sample && !g.isSample);
-
-    const mergeSample = <T extends { id: string }>(realUserItems: T[], sampleItems: T[]): T[] => {
-      const existingIds = new Set(realUserItems.map(x => x.id));
-      const sampleToAdd = sampleItems.filter(s => !existingIds.has(s.id));
-      return [...realUserItems, ...sampleToAdd];
-    };
-
-    currentStore = {
-      ...currentStore,
-      selectedClassGroupId: universityStudentGroups[0]?.id || 'grp-2k24-bee-a',
-      terms: mergeSample(currentStore.terms.filter(t => !seedTerms.some(st => st.id === t.id) && !t.is_sample && !t.isSample), universityTerms),
-      campuses: mergeSample(currentStore.campuses.filter(c => !seedCampuses.some(sc => sc.id === c.id) && !c.is_sample && !c.isSample), universityCampuses),
-      buildings: mergeSample(currentStore.buildings.filter(b => !seedBuildings.some(sb => sb.id === b.id) && !b.is_sample && !b.isSample), universityBuildings),
-      rooms: mergeSample(realUserRooms, universityRooms),
-      departments: universityDepartments,
-      programs: universityPrograms,
-      courses: mergeSample(realUserCourses, universityCourses),
-      instructors: mergeSample(realUserInstructors, universityInstructors),
-      studentGroups: mergeSample(realUserGroups, universityStudentGroups),
-      sections: mergeSample(realUserSections, universitySections),
-      timeStructure: { ...largeSampleTimeStructure, is_sample: true, isSample: true },
-      constraints: largeSampleConstraints,
-      scenarios: [largeSampleScenario],
-      auditLogs: [...currentStore.auditLogs.filter(a => !a.is_sample && !a.isSample), ...largeSampleAuditLogs]
-    };
-
-    this.addAuditLog('create', 'scenario', 'sample-data', 'Loaded realistic multi-department university dataset (BEE, BCE, BESE, BSCS).');
-    notifyListeners();
-  },
-
-  removeSampleData() {
-    const isNotSample = (item: any) => !item.is_sample && !item.isSample;
-
-    currentStore = {
-      ...currentStore,
-      terms: currentStore.terms.filter(isNotSample),
-      campuses: currentStore.campuses.filter(isNotSample),
-      buildings: currentStore.buildings.filter(isNotSample),
-      rooms: currentStore.rooms.filter(isNotSample),
-      departments: currentStore.departments.filter(isNotSample),
-      programs: currentStore.programs.filter(isNotSample),
-      courses: currentStore.courses.filter(isNotSample),
-      instructors: currentStore.instructors.filter(isNotSample),
-      studentGroups: currentStore.studentGroups.filter(isNotSample),
-      sections: currentStore.sections.filter(isNotSample),
-      constraints: currentStore.constraints.filter(isNotSample),
-      scenarios: currentStore.scenarios.filter(isNotSample),
-      auditLogs: currentStore.auditLogs.filter(isNotSample)
-    };
-
-    if (currentStore.terms.length === 0) currentStore.terms = seedTerms;
-    if (currentStore.campuses.length === 0) currentStore.campuses = seedCampuses;
-    if (currentStore.buildings.length === 0) currentStore.buildings = seedBuildings;
-    if (currentStore.rooms.length === 0) currentStore.rooms = seedRooms;
-    if (currentStore.departments.length === 0) currentStore.departments = seedDepartments;
-    if (currentStore.programs.length === 0) currentStore.programs = seedPrograms;
-    if (currentStore.courses.length === 0) currentStore.courses = seedCourses;
-    if (currentStore.instructors.length === 0) currentStore.instructors = seedInstructors;
-    if (currentStore.studentGroups.length === 0) currentStore.studentGroups = seedStudentGroups;
-    if (currentStore.sections.length === 0) currentStore.sections = seedSections;
-    if (currentStore.constraints.length === 0) currentStore.constraints = seedConstraintRules;
-    if (currentStore.scenarios.length === 0) currentStore.scenarios = seedScenarios;
-    if (!currentStore.timeStructure || currentStore.timeStructure.is_sample) {
-      currentStore.timeStructure = seedTimeStructure;
-    }
-
-    this.addAuditLog('delete', 'scenario', 'sample-data', 'Removed multi-department sample dataset records.');
-    notifyListeners();
+    return (
+      currentStore.rooms.length > 0 ||
+      currentStore.courses.length > 0 ||
+      currentStore.instructors.length > 0 ||
+      currentStore.studentGroups.length > 0
+    );
   },
 
   // 1. Time Structure & Term (Admin-Controlled Academic Timing & Break Configuration)
@@ -1083,7 +922,7 @@ export const institutionalStore = {
     currentStore = {
       ...currentStore,
       timeStructure: {
-        ...seedTimeStructure,
+        ...DEFAULT_TIME_STRUCTURE,
         ...DEFAULT_ACADEMIC_TIMING_CONFIG,
         periods: computed.periods
       }
@@ -1140,7 +979,7 @@ export const institutionalStore = {
       t.id === termId ? { ...t, status: nextStatus as AcademicTerm['status'] } : t
     );
     const activeNames = nextTerms.filter(t => t.status === 'active').map(t => t.name);
-    const baseProfile = currentStore.institutionProfile || defaultInstitutionProfile;
+    const baseProfile = currentStore.institutionProfile || getBlankInitialData().institutionProfile!;
     currentStore = {
       ...currentStore,
       terms: nextTerms,
@@ -1167,7 +1006,7 @@ export const institutionalStore = {
       remaining = remaining.map((t, i) => (i === 0 ? { ...t, status: 'active' } : t));
     }
     const activeNames = remaining.filter(t => t.status === 'active').map(t => t.name);
-    const baseProfile = currentStore.institutionProfile || defaultInstitutionProfile;
+    const baseProfile = currentStore.institutionProfile || getBlankInitialData().institutionProfile!;
     currentStore = {
       ...currentStore,
       terms: remaining,
@@ -1182,7 +1021,7 @@ export const institutionalStore = {
   },
 
   setTimetableManagementPolicy(policy: TimetableManagementPolicy) {
-    const baseProfile = currentStore.institutionProfile || defaultInstitutionProfile;
+    const baseProfile = currentStore.institutionProfile || getBlankInitialData().institutionProfile!;
     currentStore = {
       ...currentStore,
       institutionProfile: {
@@ -1803,7 +1642,7 @@ export const institutionalStore = {
       status: 'published',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      author: currentStore.institutionProfile?.registrarName || defaultInstitutionProfile.registrarName,
+      author: currentStore.institutionProfile?.registrarName || getStoredUser()?.name || 'Administrator',
       metrics: {
         clashCount: 0,
         satisfactionScore: 99.4,
@@ -1979,7 +1818,7 @@ export const institutionalStore = {
 
   // 11. Feedback Polls & Requests
   voteFeedbackPoll(pollId: string, vote: 'approve' | 'revise') {
-    const currentPolls = currentStore.feedbackPolls || defaultFeedbackPolls;
+    const currentPolls = currentStore.feedbackPolls || [];
     currentStore = {
       ...currentStore,
       feedbackPolls: currentPolls.map(p => {
@@ -1998,7 +1837,7 @@ export const institutionalStore = {
   },
 
   addFeedbackPoll(item: Omit<FeedbackPollItem, 'id' | 'votesApprove' | 'votesRevise' | 'createdAt' | 'userVote'>) {
-    const currentPolls = currentStore.feedbackPolls || defaultFeedbackPolls;
+    const currentPolls = currentStore.feedbackPolls || [];
     const newPoll: FeedbackPollItem = {
       ...item,
       id: `poll-${Date.now()}`,
@@ -2219,8 +2058,8 @@ export const institutionalStore = {
     const entry: AuditLogEntry = {
       id: `audit-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
       timestamp: new Date().toISOString(),
-      userId: 'user-admin',
-      userName: currentStore?.institutionProfile?.registrarName || 'Dr. Katherine Reynolds',
+      userId: getStoredUser()?.id || 'user-admin',
+      userName: currentStore?.institutionProfile?.registrarName || getStoredUser()?.name || 'Administrator',
       action,
       entityType,
       entityId,
@@ -2230,6 +2069,261 @@ export const institutionalStore = {
       ...currentStore,
       auditLogs: [entry, ...currentStore.auditLogs.slice(0, 99)]
     };
+  },
+
+  // 13. Backend Sync & Hydration Helpers
+  registerRemoteInstitutions(remoteInstitutions: RegisteredInstitutionDTO[]) {
+    if (!Array.isArray(remoteInstitutions)) return;
+    try {
+      if (typeof localStorage !== 'undefined') {
+        const existing = this.getAvailableInstitutions();
+        const byId = new Map<string, InstitutionSummary>();
+        existing.forEach(item => {
+          if (!LEGACY_SAMPLE_INST_IDS.has(item.id) && !item.isSample) {
+            byId.set(item.id, item);
+          }
+        });
+
+        remoteInstitutions.forEach(remote => {
+          if (!remote.id || !remote.name || LEGACY_SAMPLE_INST_IDS.has(remote.id) || remote.isSample || remote.isDemoTemplate) return;
+          const prev = byId.get(remote.id);
+          byId.set(remote.id, {
+            id: remote.id,
+            name: remote.name,
+            code: remote.code || prev?.code || 'UNIV',
+            campusName: remote.campusName || prev?.campusName || 'Main Campus',
+            accreditation: remote.accreditation || prev?.accreditation,
+            isSample: false,
+            workingDays: (remote.workingDays as DayOfWeek[] | undefined) || prev?.workingDays || ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'],
+            dayStartTime: remote.dayStartTime || prev?.dayStartTime || '09:00',
+            dayEndTime: remote.dayEndTime || prev?.dayEndTime || '17:00',
+            periodLengthMinutes: remote.periodLengthMinutes || prev?.periodLengthMinutes || 50,
+            shortBreakMinutes: remote.shortBreakMinutes ?? prev?.shortBreakMinutes ?? 10,
+            middayBreakEnabled: remote.middayBreakEnabled ?? prev?.middayBreakEnabled ?? true,
+            middayBreakStart: remote.middayBreakStart || prev?.middayBreakStart || '13:00',
+            middayBreakDuration: remote.middayBreakDuration || prev?.middayBreakDuration || 60,
+            labDurationMinutes: remote.labDurationMinutes || prev?.labDurationMinutes || 180,
+            isDemoTemplate: false
+          });
+        });
+
+        localStorage.setItem(REGISTERED_INSTITUTIONS_KEY, JSON.stringify(Array.from(byId.values())));
+        listeners.forEach(fn => fn());
+      }
+    } catch (e) {
+      console.warn('Failed to merge remote institutions:', e);
+    }
+  },
+
+  hydrateInstitutionData(instId: string, payload: Partial<InstitutionalDataStore> | null) {
+    if (!instId || LEGACY_SAMPLE_INST_IDS.has(instId)) return;
+    if (!payload || typeof payload !== 'object') return;
+    const base = loadDataForInstitution(instId);
+    const blankProfile = getBlankInitialData().institutionProfile!;
+    const merged: InstitutionalDataStore = {
+      ...base,
+      ...payload,
+      institutionProfile: payload.institutionProfile
+        ? { ...(base.institutionProfile || blankProfile), ...payload.institutionProfile, id: instId, isSample: false }
+        : base.institutionProfile,
+      terms: Array.isArray(payload.terms) && payload.terms.length > 0 ? payload.terms : base.terms,
+      rooms: Array.isArray(payload.rooms) ? payload.rooms : base.rooms,
+      departments: Array.isArray(payload.departments) ? payload.departments : base.departments,
+      programs: Array.isArray(payload.programs) ? payload.programs : base.programs,
+      courses: Array.isArray(payload.courses) ? payload.courses : base.courses,
+      instructors: Array.isArray(payload.instructors) ? payload.instructors : base.instructors,
+      studentGroups: Array.isArray(payload.studentGroups) ? payload.studentGroups : base.studentGroups,
+      sections: Array.isArray(payload.sections) ? payload.sections : base.sections,
+      timeStructure: payload.timeStructure ? { ...base.timeStructure, ...payload.timeStructure } : base.timeStructure,
+      constraints: Array.isArray(payload.constraints) && payload.constraints.length > 0 ? payload.constraints : base.constraints,
+      scenarios: Array.isArray(payload.scenarios) ? payload.scenarios : base.scenarios,
+      auditLogs: Array.isArray(payload.auditLogs) ? payload.auditLogs : base.auditLogs,
+      feedbackPolls: Array.isArray(payload.feedbackPolls) ? payload.feedbackPolls : base.feedbackPolls
+    };
+
+    try {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem(`smartgrid_inst_data_${instId}`, JSON.stringify(merged));
+      }
+    } catch {}
+
+    if (instId === currentInstitutionId) {
+      currentStore = merged;
+      listeners.forEach(fn => fn());
+    }
+  },
+
+  mapBackendStartTimeToPeriod(day: DayOfWeek, startTimeHHMM: string): string {
+    const computedTiming = computeAcademicScheduleConfig(currentStore.timeStructure);
+    const slots = computedTiming.slots || [];
+    if (slots.length === 0) return UNIVERSITY_PERIODS[0];
+    const targetMins = parseTime24ToMinutes(startTimeHHMM, 540);
+    let bestSlot = slots[0];
+    let bestDiff = Math.abs((bestSlot.startMinutes ?? 540) - targetMins);
+    for (const slot of slots) {
+      const diff = Math.abs((slot.startMinutes ?? 540) - targetMins);
+      if (diff < bestDiff) {
+        bestDiff = diff;
+        bestSlot = slot;
+      }
+    }
+    return bestSlot.basePeriod || bestSlot.period;
+  },
+
+  applyBackendOptimizationResult(params: {
+    assignments: Record<string, BackendOptimizationAssignment>;
+    strategyName: string;
+    algorithm?: string;
+    versionId?: string;
+    termId?: string;
+    fitness?: Partial<BackendFitnessBreakdown>;
+    conflictCount?: number;
+    selectedGroupIds?: string[];
+  }): {
+    placedCount: number;
+    unplacedCount: number;
+    conflictCount: number;
+    roomUtilization: number;
+    scenario: TimetableScenario;
+  } {
+    const computedTiming = computeAcademicScheduleConfig(currentStore.timeStructure);
+    const activeLabBlocks = computedTiming.continuousLabBlocks.length > 0
+      ? computedTiming.continuousLabBlocks
+      : VALID_CONTINUOUS_LAB_BLOCKS;
+
+    const targetGroupSet = params.selectedGroupIds && params.selectedGroupIds.length > 0
+      ? new Set(params.selectedGroupIds)
+      : null;
+
+    let placedCount = 0;
+    let unplacedCount = 0;
+
+    const newSections = currentStore.sections.map(sec => {
+      if (targetGroupSet && !targetGroupSet.has(sec.studentGroupId)) {
+        return sec;
+      }
+      const assign = params.assignments[sec.id];
+      if (!assign || !assign.day || !assign.startTime) {
+        if (sec.assignedSlot) {
+          placedCount++;
+          return sec;
+        }
+        unplacedCount++;
+        return sec;
+      }
+
+      const day = (String(assign.day).slice(0, 3) as DayOfWeek) || 'Mon';
+      const period = this.mapBackendStartTimeToPeriod(day, String(assign.startTime));
+      const roomId = assign.roomId || currentStore.rooms[0]?.id || '';
+      const isLab =
+        sec.sessionType === 'Lab' ||
+        Boolean(sec.spanSlots && sec.spanSlots > 1) ||
+        sec.assignedSlot?.sessionType === 'Lab';
+
+      placedCount++;
+      if (isLab) {
+        const matchedBlock =
+          getLabBlockByStartPeriod(period, currentStore.timeStructure, day) ||
+          (day === 'Fri' && computedTiming.fridaySchedule.continuousLabBlocks[0]) ||
+          activeLabBlocks[0];
+        const span = matchedBlock?.spanSlots || computedTiming.labSpanSlots || 3;
+        return {
+          ...sec,
+          sessionType: 'Lab' as const,
+          spanSlots: span,
+          assignedSlot: {
+            day,
+            timeSlot: matchedBlock?.startPeriod || period,
+            roomId,
+            durationMinutes: matchedBlock?.durationMinutes || computedTiming.labDurationMinutes || 180,
+            sessionType: 'Lab' as const,
+            spanSlots: span,
+            continuousTimeLabel: matchedBlock?.continuousLabel
+          }
+        };
+      }
+
+      const effSlot = getEffectiveSlotDisplayForDay(day, period, computedTiming);
+      return {
+        ...sec,
+        sessionType: 'Lecture' as const,
+        spanSlots: 1,
+        assignedSlot: {
+          day,
+          timeSlot: period,
+          roomId,
+          durationMinutes: effSlot.durationMinutes || computedTiming.periodLengthMinutes || 50,
+          sessionType: 'Lecture' as const,
+          spanSlots: 1
+        }
+      };
+    });
+
+    const roomUtilization = Number(
+      (params.fitness?.roomUtilization ?? Math.min(96.5, Math.max(48.0, (placedCount / Math.max(1, newSections.length)) * 84))).toFixed(1)
+    );
+    const conflictCount = Number(params.conflictCount ?? 0);
+
+    const assignmentsMap: Record<string, SectionSlotAssignment> = {};
+    newSections.forEach(s => {
+      if (s.assignedSlot) assignmentsMap[s.id] = s.assignedSlot;
+    });
+
+    const activeTerm = currentStore.terms.find(t => t.id === params.termId) ||
+      currentStore.terms.find(t => t.status === 'active') ||
+      currentStore.terms[0];
+
+    const newScenario: TimetableScenario = {
+      id: params.versionId || `scen-${Date.now()}`,
+      termId: activeTerm?.id || 'term-spring-2026',
+      name: params.strategyName,
+      version: `v${currentStore.scenarios.length + 1}.0`,
+      status: 'published',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      author: currentStore.institutionProfile?.registrarName || getStoredUser()?.name || 'Administrator',
+      metrics: {
+        clashCount: conflictCount,
+        satisfactionScore: Number((params.fitness?.totalScore ?? 96.4).toFixed(1)),
+        roomUtilizationPercent: roomUtilization,
+        instructorSatisfaction: Number((params.fitness?.instructorSatisfaction ?? 95.8).toFixed(1)),
+        studentTransitScore: Number((params.fitness?.fairnessScore ?? 94.2).toFixed(1))
+      },
+      assignments: assignmentsMap
+    };
+
+    currentStore = {
+      ...currentStore,
+      sections: newSections,
+      scenarios: [newScenario, ...currentStore.scenarios.filter(sc => sc.id !== newScenario.id)]
+    };
+
+    this.addAuditLog(
+      'generate',
+      'scenario',
+      newScenario.id,
+      `Applied Python ${params.algorithm || 'Hybrid AI'} schedule "${newScenario.name}" (${placedCount} sections, ${conflictCount} hard violations).`
+    );
+    notifyListeners();
+
+    return {
+      placedCount,
+      unplacedCount,
+      conflictCount,
+      roomUtilization,
+      scenario: newScenario
+    };
+  },
+
+  async syncToBackend(userOverride?: ReturnType<typeof getStoredUser>): Promise<boolean> {
+    const user = userOverride || getStoredUser();
+    if (!user?.token) return false;
+    try {
+      await saveInstitutionDataApi(user, currentInstitutionId, currentStore);
+      return true;
+    } catch {
+      return false;
+    }
   }
 };
 

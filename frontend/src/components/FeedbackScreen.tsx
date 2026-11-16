@@ -32,11 +32,12 @@ import { showAppPopup } from './ToastPopupHost';
 
 interface FeedbackScreenProps {
   onNavigate: (route: RouteType) => void;
+  currentUser?: any;
 }
 
 type InsightTab = 'analytics' | 'optimization' | 'history';
 
-export const FeedbackScreen: React.FC<FeedbackScreenProps> = ({ onNavigate }) => {
+export const FeedbackScreen: React.FC<FeedbackScreenProps> = ({ onNavigate, currentUser }) => {
   const store = useInstitutionalData();
   const computedTiming = computeAcademicScheduleConfig(store.timeStructure);
   const { scheduleData, conflicts } = buildMatrixSchedule(store);

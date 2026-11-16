@@ -7,7 +7,12 @@ import {
   TimetableManagementPolicy
 } from '../types/institutional';
 import { exportTimetableToGoogleSheetsWorkbook } from '../utils/googleSheetsExport';
-import { solveOptimizationApi } from '../services/votingApi';
+import {
+  AuthenticatedVotingUser,
+  solveOptimizationApi,
+  compareOptimizationAlgorithmsBackend,
+  BackendAlgorithmBenchmarkItem
+} from '../services/votingApi';
 import { showAppPopup } from './ToastPopupHost';
 import {
   Play,
@@ -37,7 +42,7 @@ interface GenerateScreenProps {
   onNavigate: (route: RouteType) => void;
   onOpenAuth?: (mode?: 'signin' | 'signup') => void;
   onSignOut?: () => void;
-  currentUser?: { name: string; role: string; institution?: string } | null;
+  currentUser?: AuthenticatedVotingUser | null;
   hideNav?: boolean;
 }
 
@@ -97,10 +102,14 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
   const [showAdvancedDrawer, setShowAdvancedDrawer] = useState<boolean>(false);
 
   // 4. Solver Engine & Execution State
-  const [solverEngineMode, setSolverEngineMode] = useState<'local' | 'backend_cpsat'>('local');
-  const [backendStrategy, setBackendStrategy] = useState<'cpsat' | 'genetic' | 'hybrid'>('hybrid');
+  const [solverEngineMode, setSolverEngineMode] = useState<'local' | 'backend_cpsat'>('backend_cpsat');
+  const [backendStrategy, setBackendStrategy] = useState<
+    'hybrid_dsatur_ga_sa' | 'dsatur_only' | 'ga_only' | 'ga_sa'
+  >('hybrid_dsatur_ga_sa');
   const [scenarioName, setScenarioName] = useState<string>('');
   const [forceRescheduleAll, setForceRescheduleAll] = useState<boolean>(true);
+  const [isComparingAlgos, setIsComparingAlgos] = useState(false);
+  const [benchmarkResults, setBenchmarkResults] = useState<BackendAlgorithmBenchmarkItem[] | null>(null);
 
   const [isGenerating, setIsGenerating] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -243,6 +252,45 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
           } Schedule`
         : `${selectedSemestersLabel} — Custom Cohort Schedule`);
 
+    const buildBackendPayload = () => ({
+      universityId: store.institutionProfile?.id || institutionalStore.getCurrentInstitutionId(),
+      versionName: `${defaultRunTitle}`,
+      algorithm: backendStrategy,
+      courses: scopedCourses.map(c => ({
+        id: c.id,
+        code: c.code,
+        title: c.title,
+        type: c.requiredRoomType === 'lab' || c.labHours > 0 ? 'Lab' : 'Theory',
+        credits: c.creditHours || 3,
+        credit_hours: c.creditHours || 3,
+        requiredEquipment: []
+      })),
+      classrooms: store.rooms.map(r => ({
+        id: r.id,
+        code: r.code,
+        name: r.name,
+        capacity: r.capacity,
+        type: r.type,
+        equipment: r.equipment,
+        isAvailable: r.isAvailable
+      })),
+      studentGroups: scopedGroups.map(g => ({
+        id: g.id,
+        code: g.code,
+        name: g.name,
+        size: g.size
+      })),
+      sections: scopedSections.map(s => ({
+        id: s.id,
+        courseId: s.courseId,
+        instructorId: s.instructorId,
+        studentGroupId: s.studentGroupId,
+        sectionCode: s.sectionNumber || 'A',
+        sessionType: s.sessionType === 'Lab' ? 'Lab' : 'Theory',
+        enrollment: s.expectedEnrollment || 45
+      }))
+    });
+
     if (solverEngineMode === 'backend_cpsat') {
       setTimeout(() => {
         setProgress(42);
@@ -251,39 +299,43 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
         );
       }, 250);
 
-      solveOptimizationApi({
-        institutionId: store.institutionProfile?.id || 'inst-western-poly',
-        termId: selectedTermsList[0]?.id || store.terms[0]?.id || 'term-1',
-        strategy: backendStrategy,
-        timeLimitSeconds: 8,
-        populationSize: 40,
-        generations: 60,
-        workingDays: computedTiming.workingDays,
-        periods: computedTiming.periods,
-        continuousLabBlocks: computedTiming.continuousLabBlocks,
-        labSpanSlots: computedTiming.labSpanSlots,
-        rooms: store.rooms,
-        courses: store.courses,
-        instructors: store.instructors,
-        studentGroups: scopedGroups,
-        sections: scopedSections,
-        constraints: store.constraints
-      })
+      solveOptimizationApi(buildBackendPayload(), currentUser)
         .then(apiRes => {
           setProgress(88);
           setSolverStepText(
             `Applying ${apiRes.metrics.placedCount} conflict-free assignments (${apiRes.metrics.solverEngine})...`
           );
 
-          const res = institutionalStore.runTimetableSolver({
-            termId: selectedTermsList[0]?.id,
-            termIds: selectedTermIds,
-            policyMode: scopeMode === 'department_wise' ? 'department_wise' : 'whole_university',
-            departmentId: scopeMode === 'department_wise' ? selectedDeptId : undefined,
-            selectedGroupIds: targetGroupIds,
-            strategyName: `${defaultRunTitle} (${backendStrategy.toUpperCase()})`,
-            forceRescheduleAll
-          });
+          const hasAssignments =
+            apiRes.assignments && Object.keys(apiRes.assignments).length > 0;
+          const res = hasAssignments
+            ? institutionalStore.applyBackendOptimizationResult({
+                assignments: apiRes.assignments!,
+                strategyName: `${defaultRunTitle} (${backendStrategy})`,
+                algorithm: backendStrategy,
+                versionId: apiRes.timetableVersionId,
+                termId: selectedTermsList[0]?.id,
+                fitness: {
+                  totalScore: apiRes.metrics.totalScore,
+                  studentSatisfaction: apiRes.metrics.studentSatisfaction,
+                  instructorSatisfaction: apiRes.metrics.instructorSatisfaction,
+                  roomUtilization: apiRes.metrics.roomUtilization,
+                  fairnessScore: apiRes.metrics.fairnessScore
+                },
+                conflictCount: apiRes.metrics.conflictCount,
+                selectedGroupIds: targetGroupIds
+              })
+            : institutionalStore.runTimetableSolver({
+                termId: selectedTermsList[0]?.id,
+                termIds: selectedTermIds,
+                policyMode: scopeMode === 'department_wise' ? 'department_wise' : 'whole_university',
+                departmentId: scopeMode === 'department_wise' ? selectedDeptId : undefined,
+                selectedGroupIds: targetGroupIds,
+                strategyName: `${defaultRunTitle} (${backendStrategy})`,
+                forceRescheduleAll
+              });
+
+          void institutionalStore.syncToBackend(currentUser);
 
           setTimeout(() => {
             setProgress(100);
@@ -292,7 +344,7 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
             setLastSolverStats({
               placedCount: res.placedCount,
               unplacedCount: res.unplacedCount,
-              conflictCount: 0,
+              conflictCount: res.conflictCount,
               roomUtilization: res.roomUtilization,
               scenarioName: res.scenario.name,
               engineLabel: apiRes.metrics.solverEngine,
@@ -307,8 +359,8 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
                   : `Custom Scope (${scopedGroups.length} Sections)`
             });
             showAppPopup({
-              title: 'Timetable Generated',
-              message: `Placed ${res.placedCount} sessions across ${selectedSemestersLabel} (${res.roomUtilization}% room utilization).`,
+              title: 'Hybrid AI Timetable Generated',
+              message: `Placed ${res.placedCount} sessions across ${selectedSemestersLabel} (${res.roomUtilization}% utilization · ${res.conflictCount} hard conflicts).`,
               variant: 'success',
               actions: [
                 {
@@ -318,7 +370,7 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
                 }
               ]
             });
-          }, 250);
+          }, 220);
         })
         .catch(() => {
           const res = institutionalStore.runTimetableSolver({
@@ -422,6 +474,71 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
         ]
       });
     }, 950);
+  };
+
+  const handleRunAlgorithmBenchmark = async () => {
+    if (!currentUser?.token) {
+      showAppPopup({
+        title: 'Sign-In Required',
+        message: 'Sign in with an active institutional session to benchmark backend optimization algorithms.',
+        variant: 'info'
+      });
+      return;
+    }
+    setIsComparingAlgos(true);
+    try {
+      const res = await compareOptimizationAlgorithmsBackend(currentUser, {
+        universityId: store.institutionProfile?.id || institutionalStore.getCurrentInstitutionId(),
+        courses: scopedCourses.map(c => ({
+          id: c.id,
+          code: c.code,
+          title: c.title,
+          type: c.requiredRoomType === 'lab' || c.labHours > 0 ? 'Lab' : 'Theory',
+          credits: c.creditHours || 3,
+          credit_hours: c.creditHours || 3,
+          requiredEquipment: []
+        })),
+        classrooms: store.rooms.map(r => ({
+          id: r.id,
+          code: r.code,
+          name: r.name,
+          capacity: r.capacity,
+          type: r.type,
+          equipment: r.equipment,
+          isAvailable: r.isAvailable
+        })),
+        studentGroups: scopedGroups.map(g => ({
+          id: g.id,
+          code: g.code,
+          name: g.name,
+          size: g.size
+        })),
+        sections: scopedSections.map(s => ({
+          id: s.id,
+          courseId: s.courseId,
+          instructorId: s.instructorId,
+          studentGroupId: s.studentGroupId,
+          sectionCode: s.sectionNumber || 'A',
+          sessionType: s.sessionType === 'Lab' ? 'Lab' : 'Theory',
+          enrollment: s.expectedEnrollment || 45
+        }))
+      });
+      const list = Array.isArray(res.comparison) ? res.comparison : [];
+      setBenchmarkResults(list);
+      showAppPopup({
+        title: 'Algorithm Benchmark Complete',
+        message: `Compared ${list.length} optimization pipelines across ${scopedSections.length} sections.`,
+        variant: 'success'
+      });
+    } catch (err) {
+      showAppPopup({
+        title: 'Benchmark Unavailable',
+        message: err instanceof Error ? err.message : 'Unable to reach Python optimization benchmark endpoint.',
+        variant: 'error'
+      });
+    } finally {
+      setIsComparingAlgos(false);
+    }
   };
 
   const handleQuickExportGoogleSheets = async () => {
@@ -938,7 +1055,7 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
               </div>
 
               {/* Solver Engine Mode */}
-              <div className="space-y-2">
+              <div className="space-y-2.5">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-semibold text-[#171717] flex items-center gap-1.5">
                     <Cpu className="w-3.5 h-3.5" />
@@ -946,22 +1063,11 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
                   </span>
                   <span className="text-[11px] font-mono-tabular text-[#77766F]">
                     {solverEngineMode === 'backend_cpsat'
-                      ? `Python ${backendStrategy.toUpperCase()}`
+                      ? `Python ${backendStrategy}`
                       : 'Instant Local Solver'}
                   </span>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setSolverEngineMode('local')}
-                    className={`h-9 px-3 rounded-lg border text-xs font-semibold transition-colors cursor-pointer ${
-                      solverEngineMode === 'local'
-                        ? 'bg-[#171717] text-white border-[#171717]'
-                        : 'bg-white text-[#171717] border-[#E4E2DA]'
-                    }`}
-                  >
-                    Instant Combinatorial Solver
-                  </button>
                   <button
                     type="button"
                     onClick={() => setSolverEngineMode('backend_cpsat')}
@@ -971,9 +1077,90 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
                         : 'bg-white text-[#171717] border-[#E4E2DA]'
                     }`}
                   >
-                    Python CP-SAT / Genetic Hybrid
+                    Python Hybrid AI (DSatur + GA + SA)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSolverEngineMode('local')}
+                    className={`h-9 px-3 rounded-lg border text-xs font-semibold transition-colors cursor-pointer ${
+                      solverEngineMode === 'local'
+                        ? 'bg-[#171717] text-white border-[#171717]'
+                        : 'bg-white text-[#171717] border-[#E4E2DA]'
+                    }`}
+                  >
+                    Instant Local Solver
                   </button>
                 </div>
+
+                {solverEngineMode === 'backend_cpsat' && (
+                  <div className="pt-1 flex flex-col sm:flex-row sm:items-center gap-2">
+                    <select
+                      value={backendStrategy}
+                      onChange={e =>
+                        setBackendStrategy(
+                          e.target.value as
+                            | 'hybrid_dsatur_ga_sa'
+                            | 'dsatur_only'
+                            | 'ga_only'
+                            | 'ga_sa'
+                        )
+                      }
+                      className="input-field h-9 text-xs flex-1"
+                    >
+                      <option value="hybrid_dsatur_ga_sa">
+                        Hybrid Pipeline (DSatur + Genetic Algorithm + Simulated Annealing)
+                      </option>
+                      <option value="dsatur_only">DSatur Graph Coloring Baseline</option>
+                      <option value="ga_only">Genetic Algorithm Only</option>
+                      <option value="ga_sa">Genetic Algorithm + Simulated Annealing</option>
+                    </select>
+                    <button
+                      type="button"
+                      onClick={handleRunAlgorithmBenchmark}
+                      disabled={isComparingAlgos}
+                      className="btn-secondary h-9 px-3 text-xs shrink-0"
+                    >
+                      {isComparingAlgos ? 'Benchmarking...' : 'Compare Algorithms'}
+                    </button>
+                  </div>
+                )}
+
+                {benchmarkResults && benchmarkResults.length > 0 && (
+                  <div className="mt-2 overflow-x-auto rounded-xl border border-[#E4E2DA]">
+                    <table className="w-full text-left border-collapse text-[11px]">
+                      <thead>
+                        <tr className="bg-[#F7F6EF] border-b border-[#E4E2DA] text-[#77766F] font-semibold">
+                          <th className="py-2 px-3">Pipeline</th>
+                          <th className="py-2 px-3">Fitness</th>
+                          <th className="py-2 px-3">Violations</th>
+                          <th className="py-2 px-3">Student</th>
+                          <th className="py-2 px-3">Room Util</th>
+                          <th className="py-2 px-3">Time</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-[#E4E2DA] bg-white font-mono-tabular">
+                        {benchmarkResults.map(row => (
+                          <tr key={row.algorithm}>
+                            <td className="py-2 px-3 font-sans font-semibold text-[#171717]">
+                              {row.label || row.algorithm}
+                            </td>
+                            <td className="py-2 px-3 font-semibold text-[#171717]">
+                              {Number(row.fitness?.totalScore ?? 0).toFixed(1)}
+                            </td>
+                            <td className="py-2 px-3">{row.hardConstraintViolations}</td>
+                            <td className="py-2 px-3">
+                              {Number(row.fitness?.studentSatisfaction ?? 0).toFixed(1)}%
+                            </td>
+                            <td className="py-2 px-3">
+                              {Number(row.fitness?.roomUtilization ?? 0).toFixed(1)}%
+                            </td>
+                            <td className="py-2 px-3">{row.executionTimeMs}ms</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
 
               {/* Soft Constraint Sliders */}

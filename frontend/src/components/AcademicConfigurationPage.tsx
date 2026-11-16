@@ -33,6 +33,7 @@ import {
 import { DataImportWizard } from './DataImportWizard';
 import { UniversityOnboardingModal } from './UniversityOnboardingModal';
 import { showAppPopup } from './ToastPopupHost';
+import { updateUniversitySettingsBackend } from '../services/votingApi';
 
 interface AcademicConfigurationPageProps {
   onNavigate: (route: RouteType) => void;
@@ -41,6 +42,8 @@ interface AcademicConfigurationPageProps {
     role: string;
     email: string;
     institution?: string;
+    token?: string;
+    institutionId?: string;
   } | null;
   onSwitchUser?: (user: {
     name: string;
@@ -126,7 +129,7 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
   const profile = store.institutionProfile;
   const ts = store.timeStructure;
   const institutionName =
-    profile?.name || currentUser?.institution || 'University of Engineering & Computing';
+    profile?.name || currentUser?.institution || 'University Workspace';
 
   const isAdmin = isUserAdminRole(currentUser?.role || 'Registrar');
 
@@ -369,6 +372,12 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
       return;
     }
 
+    const targetInstId = store.institutionProfile?.id || (currentUser as any)?.institutionId || '';
+    if (currentUser?.token && targetInstId) {
+      void updateUniversitySettingsBackend(currentUser as any, targetInstId, draftTimingConfig).catch(() => {});
+    }
+    void institutionalStore.syncToBackend(currentUser as any);
+
     setTimingValidationErrors([]);
     showToast(
       `Saved successfully (${result.summaryText}). Synced ${result.placedCount} sessions.`,
@@ -380,6 +389,11 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
     if (!isAdmin) return;
     setTimingValidationErrors([]);
     const res = institutionalStore.resetAcademicTimingConfig();
+    const targetInstId = store.institutionProfile?.id || (currentUser as any)?.institutionId || '';
+    if (currentUser?.token && targetInstId) {
+      void updateUniversitySettingsBackend(currentUser as any, targetInstId, DEFAULT_ACADEMIC_TIMING_CONFIG).catch(() => {});
+    }
+    void institutionalStore.syncToBackend(currentUser as any);
     showToast(
       `Reset to defaults (${res.summaryText}). Synced ${res.placedCount} sessions.`,
       true
@@ -452,23 +466,6 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
           </div>
 
           <div className="flex flex-wrap items-center gap-3 pt-2">
-            {onSwitchUser && (
-              <button
-                type="button"
-                onClick={() =>
-                  onSwitchUser({
-                    name: 'Dr. Katherine Reynolds',
-                    role: 'Registrar',
-                    email: 'k.reynolds@westernpoly.edu',
-                    institution: institutionName
-                  })
-                }
-                className="btn-primary text-xs h-10 px-4"
-              >
-                <ShieldCheck className="w-4 h-4" />
-                <span>Switch to Registrar (Administrator)</span>
-              </button>
-            )}
             <button
               type="button"
               onClick={() => onNavigate('home')}

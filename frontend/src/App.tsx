@@ -23,7 +23,10 @@ import {
   verifyBackendSession,
   clearStoredUser,
   markSessionActive,
-  isCurrentlySignedOut
+  isCurrentlySignedOut,
+  fetchInstitutionsApi,
+  fetchInstitutionDataApi,
+  fetchTimetablesBackend
 } from './services/votingApi';
 import { institutionalStore } from './data/store';
 import { resolveUserCohort } from './utils/userTimetableScope';
@@ -223,6 +226,47 @@ export default function App() {
     }
   }, []);
 
+  // Hydrate institution list + institution snapshot from Supabase backend cleanly
+  const hydrateBackendWorkspace = useCallback(async (user: AuthenticatedVotingUser | null) => {
+    const instId = user?.institutionId || institutionalStore.getCurrentInstitutionId();
+    try {
+      const remoteInsts = await fetchInstitutionsApi();
+      if (remoteInsts.length > 0) {
+        institutionalStore.registerRemoteInstitutions(
+          remoteInsts.map(r => ({
+            ...r,
+            campusName: r.campusName || 'Main Campus'
+          }))
+        );
+      }
+      const snapshot = await fetchInstitutionDataApi(instId);
+      if (snapshot) {
+        institutionalStore.hydrateInstitutionData(instId, snapshot);
+      } else if (user?.token) {
+        const versions = await fetchTimetablesBackend(user, instId).catch(() => []);
+        const published = versions.find(v => v.status === 'published') || versions[0];
+        if (published && published.entries && !Array.isArray(published.entries)) {
+          const entriesObj = published.entries;
+          if (Object.keys(entriesObj).length > 0) {
+            institutionalStore.applyBackendOptimizationResult({
+              assignments: entriesObj,
+              strategyName: published.name || published.version_name || 'Published Backend Schedule',
+              algorithm: published.algorithm_used,
+              versionId: published.id,
+              fitness: published.metrics,
+              conflictCount: published.hard_violations_count
+            });
+          }
+        }
+      }
+    } catch {
+      // Graceful local fallback when backend is offline or RLS blocks read
+    }
+    if (user) {
+      syncUserCohortInStore(user);
+    }
+  }, [syncUserCohortInStore]);
+
   // Verify stored token against trusted backend on initial mount
   useEffect(() => {
     if (!currentUser?.token) return;
@@ -240,6 +284,7 @@ export default function App() {
         }
         handleSyncAuthenticatedUser(verifiedUser);
         syncUserCohortInStore(verifiedUser);
+        void hydrateBackendWorkspace(verifiedUser);
         setCurrentRoute(prev => {
           const safeRoute = enforceRoleRoute(prev, verifiedUser);
           if (safeRoute !== prev) {
@@ -294,6 +339,7 @@ export default function App() {
     }
     persistUser(user);
     syncUserCohortInStore(user);
+    void hydrateBackendWorkspace(user);
     setShowAuthPage(false);
     if (options?.launchOnboardingModal && options.institutionId) {
       setPendingOnboarding({
@@ -315,6 +361,7 @@ export default function App() {
     }
     persistUser(user);
     syncUserCohortInStore(user);
+    void hydrateBackendWorkspace(user);
     const safeRoute = enforceRoleRoute(currentRoute, user);
     setCurrentRoute(safeRoute);
     window.location.hash = safeRoute;
@@ -413,7 +460,7 @@ export default function App() {
       )}
 
       {isAdmin && effectiveRoute === 'feedback' && (
-        <FeedbackScreen onNavigate={handleNavigate} />
+        <FeedbackScreen onNavigate={handleNavigate} currentUser={currentUser} />
       )}
 
       {isAdmin && effectiveRoute === 'academic-config' && (

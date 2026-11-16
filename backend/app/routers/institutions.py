@@ -91,38 +91,6 @@ async def register_institution(request: Request) -> Dict[str, Any]:
             },
         )
 
-        batch1_id = f"batch-{clean_code.lower()}-cs-1"
-        batch2_id = f"batch-{clean_code.lower()}-se-1"
-        client.insert(
-            "batches",
-            [
-                {
-                    "id": batch1_id,
-                    "code": f"{clean_code}-2026-CS",
-                    "name": f"Computer Science — Cohort 2026 ({clean_code})",
-                    "department_code": "CS",
-                    "year": 1,
-                    "semester": 1,
-                    "student_count": 60,
-                    "institution_id": inst_id,
-                    "created_at": current_iso,
-                },
-                {
-                    "id": batch2_id,
-                    "code": f"{clean_code}-2025-SE",
-                    "name": f"Software & Systems Engineering — Cohort 2025 ({clean_code})",
-                    "department_code": "SE",
-                    "year": 2,
-                    "semester": 3,
-                    "student_count": 55,
-                    "institution_id": inst_id,
-                    "created_at": current_iso,
-                },
-            ],
-            ignore_duplicates=True,
-            on_conflict="id",
-        )
-
         client.insert(
             "users",
             {

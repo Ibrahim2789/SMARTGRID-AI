@@ -34,41 +34,6 @@ interface AuthPageProps {
   onCancel: () => void;
 }
 
-const DEFAULT_FALLBACK_BATCHES: PublicBatchOption[] = [
-  {
-    id: 'batch-2k25-bscs',
-    code: '2K25-BSCS',
-    name: 'BS Computer Science — Batch 2K25',
-    departmentCode: 'BSCS',
-    year: 2,
-    semester: 3
-  },
-  {
-    id: 'batch-2k24-bese',
-    code: '2K24-BESE',
-    name: 'BE Software Engineering — Batch 2K24',
-    departmentCode: 'BESE',
-    year: 3,
-    semester: 5
-  },
-  {
-    id: 'batch-2k24-bee',
-    code: '2K24-BEE',
-    name: 'BE Electrical Engineering — Batch 2K24',
-    departmentCode: 'BEE',
-    year: 3,
-    semester: 5
-  },
-  {
-    id: 'batch-2k25-bce',
-    code: '2K25-BCE',
-    name: 'BE Computer Systems Engineering — Batch 2K25',
-    departmentCode: 'BCE',
-    year: 2,
-    semester: 3
-  }
-];
-
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const PERSONAL_EMAIL_DOMAINS = new Set([
@@ -87,22 +52,6 @@ const PERSONAL_EMAIL_DOMAINS = new Set([
   'mail.com'
 ]);
 
-function isDemoOrDevEnvironment(): boolean {
-  try {
-    if (import.meta.env.DEV) return true;
-    if (import.meta.env.VITE_ENABLE_DEMO_ACCOUNTS === 'false') return false;
-    const host = window.location.hostname;
-    return (
-      host === 'localhost' ||
-      host === '127.0.0.1' ||
-      host.endsWith('.run.app') ||
-      host.includes('aistudio')
-    );
-  } catch {
-    return false;
-  }
-}
-
 export const AuthPage: React.FC<AuthPageProps> = ({
   initialMode = 'signin',
   initialPortal = 'student',
@@ -110,7 +59,6 @@ export const AuthPage: React.FC<AuthPageProps> = ({
   onCancel
 }) => {
   const storeSnapshot = useInstitutionalData();
-  const isDemoModeAvailable = isDemoOrDevEnvironment();
 
   const [availableInstitutions, setAvailableInstitutions] = useState<InstitutionSummary[]>(() =>
     institutionalStore.getAvailableInstitutions()
@@ -155,33 +103,30 @@ export const AuthPage: React.FC<AuthPageProps> = ({
     status: 'idle'
   });
 
-  // Demo Accounts Collapsible Drawer State
-  const [showDemoAccounts, setShowDemoAccounts] = useState(false);
-  const [demoPresetInstId, setDemoPresetInstId] = useState<'inst-western-poly' | 'inst-apex-tech'>(
-    () =>
-      institutionalStore.getCurrentInstitutionId() === 'inst-apex-tech'
-        ? 'inst-apex-tech'
-        : 'inst-western-poly'
-  );
-
   // Student Registration Form State
-  const [signupInstId, setSignupInstId] = useState<string>(() =>
-    institutionalStore.getCurrentInstitutionId()
-  );
-  const [batches, setBatches] = useState<PublicBatchOption[]>(DEFAULT_FALLBACK_BATCHES);
+  const [signupInstId, setSignupInstId] = useState<string>(() => {
+    const active = institutionalStore.getCurrentInstitutionId();
+    const list = institutionalStore.getAvailableInstitutions();
+    if (active && list.some(i => i.id === active)) return active;
+    return list[0]?.id || '';
+  });
+  const [batches, setBatches] = useState<PublicBatchOption[]>([]);
   const [regFullName, setRegFullName] = useState<string>('');
   const [regEmail, setRegEmail] = useState<string>('');
   const [regRollNumber, setRegRollNumber] = useState<string>('');
-  const [regBatchId, setRegBatchId] = useState<string>('batch-2k25-bscs');
+  const [regBatchId, setRegBatchId] = useState<string>('__custom__');
   const [regCustomBatchCode, setRegCustomBatchCode] = useState<string>('');
   const [regSection, setRegSection] = useState<string>('Section A');
   const [regPassword, setRegPassword] = useState<string>('');
   const [regConfirmPassword, setRegConfirmPassword] = useState<string>('');
 
   // Faculty Account Activation Form State
-  const [facInstId, setFacInstId] = useState<string>(() =>
-    institutionalStore.getCurrentInstitutionId()
-  );
+  const [facInstId, setFacInstId] = useState<string>(() => {
+    const active = institutionalStore.getCurrentInstitutionId();
+    const list = institutionalStore.getAvailableInstitutions();
+    if (active && list.some(i => i.id === active)) return active;
+    return list[0]?.id || '';
+  });
   const [facName, setFacName] = useState<string>('');
   const [facEmail, setFacEmail] = useState<string>('');
   const [facDepartment, setFacDepartment] = useState<string>('Department of Computer Science');
@@ -219,14 +164,15 @@ export const AuthPage: React.FC<AuthPageProps> = ({
         const mergedMap = new Map<string, InstitutionSummary>();
         localList.forEach(item => mergedMap.set(item.id, item));
         remoteList.forEach(rem => {
+          if (!rem.id || !rem.name || rem.isDemoTemplate) return;
           if (!mergedMap.has(rem.id)) {
             mergedMap.set(rem.id, {
               id: rem.id,
               name: rem.name,
               code: rem.code,
               campusName: rem.campusName || 'Main Campus',
-              isSample: Boolean(rem.isDemoTemplate),
-              isDemoTemplate: Boolean(rem.isDemoTemplate),
+              isSample: false,
+              isDemoTemplate: false,
               workingDays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'],
               dayStartTime: '09:00',
               dayEndTime: '17:00',
@@ -239,12 +185,22 @@ export const AuthPage: React.FC<AuthPageProps> = ({
             });
           }
         });
-        setAvailableInstitutions(Array.from(mergedMap.values()));
+        const nextList = Array.from(mergedMap.values());
+        setAvailableInstitutions(nextList);
+        if (nextList.length > 0) {
+          setSignupInstId(prev => (prev && nextList.some(i => i.id === prev) ? prev : nextList[0].id));
+          setFacInstId(prev => (prev && nextList.some(i => i.id === prev) ? prev : nextList[0].id));
+        }
       })
       .catch(() => {});
   }, []);
 
   const loadBatchesForInst = (instId: string) => {
+    if (!instId) {
+      setBatches([]);
+      setRegBatchId('__custom__');
+      return;
+    }
     fetchPublicBatches(instId)
       .then(list => {
         if (list.length > 0) {
@@ -269,6 +225,9 @@ export const AuthPage: React.FC<AuthPageProps> = ({
             }))
           );
           setRegBatchId(groups[0].id);
+        } else {
+          setBatches([]);
+          setRegBatchId('__custom__');
         }
       });
   };
@@ -307,22 +266,6 @@ export const AuthPage: React.FC<AuthPageProps> = ({
             status: 'unsupported',
             domain,
             message: `@${domain} is a personal email provider, not a university domain.`
-          });
-        } else if (domain.includes('westernpoly.edu')) {
-          setUniversityDetection({
-            status: 'detected',
-            domain,
-            institutionId: 'inst-western-poly',
-            institutionName: 'Western Polytechnic University',
-            institutionCode: 'WPU'
-          });
-        } else if (domain.includes('apextech.edu')) {
-          setUniversityDetection({
-            status: 'detected',
-            domain,
-            institutionId: 'inst-apex-tech',
-            institutionName: 'Apex Institute of Technology & Sciences',
-            institutionCode: 'AITS'
           });
         } else {
           setUniversityDetection({
@@ -382,15 +325,6 @@ export const AuthPage: React.FC<AuthPageProps> = ({
     }
   };
 
-  const fillDemoCredential = (email: string, password: string) => {
-    setIsForgotPasswordOpen(false);
-    clearErrors();
-    if (activePortal === 'student') setStudentSubMode('signin');
-    if (activePortal === 'faculty') setFacultySubMode('signin');
-    if (activePortal === 'admin') setAdminSubMode('signin');
-    setLoginEmail(email);
-    setLoginPassword(password);
-  };
 
   // =========================================================
   // INLINE FIELD VALIDATION HELPERS
@@ -412,6 +346,9 @@ export const AuthPage: React.FC<AuthPageProps> = ({
 
   const validateStudentSignupFields = (): boolean => {
     const errors: Record<string, string> = {};
+    if (!signupInstId) {
+      errors.regInstId = 'No registered university selected. Ask your administrator to onboard the university first.';
+    }
     if (regFullName.trim().length < 2) {
       errors.regFullName = 'Enter your full legal name (at least 2 characters).';
     }
@@ -436,6 +373,9 @@ export const AuthPage: React.FC<AuthPageProps> = ({
 
   const validateFacultyActivateFields = (): boolean => {
     const errors: Record<string, string> = {};
+    if (!facInstId) {
+      errors.facInstId = 'No registered university selected. Ask your administrator to onboard the university first.';
+    }
     if (facName.trim().length < 2) {
       errors.facName = 'Enter your full name and academic title (e.g., Dr. Sarah Chen).';
     }
@@ -461,7 +401,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({
       errors.univName = 'Enter the official university name.';
     }
     if (!univCode.trim()) {
-      errors.univCode = 'Enter the university short code (e.g., WPU).';
+      errors.univCode = 'Enter the university short code (e.g., UNIV).';
     }
     if (adminFullName.trim().length < 2) {
       errors.adminFullName = 'Enter the administrator full name.';
@@ -494,7 +434,6 @@ export const AuthPage: React.FC<AuthPageProps> = ({
       const authedUser = await loginWithBackend(
         loginEmail.trim(),
         loginPassword,
-        false,
         activePortal
       );
       setAuthSuccessMessage(`Authenticated as ${authedUser.name}. Opening workspace...`);
@@ -1019,15 +958,27 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                   <select
                     id="student-signup-university"
                     value={signupInstId}
-                    onChange={e => setSignupInstId(e.target.value)}
+                    onChange={e => {
+                      setSignupInstId(e.target.value);
+                      if (fieldErrors.regInstId) {
+                        setFieldErrors(prev => ({ ...prev, regInstId: '' }));
+                      }
+                    }}
                     className="w-full h-11 px-3 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] text-xs sm:text-sm font-medium text-[#171717] focus:outline-none focus:border-[#171717] cursor-pointer"
                   >
-                    {availableInstitutions.map(inst => (
-                      <option key={inst.id} value={inst.id}>
-                        {inst.name} ({inst.code})
-                      </option>
-                    ))}
+                    {availableInstitutions.length === 0 ? (
+                      <option value="">No universities registered yet — Onboard via Admin tab</option>
+                    ) : (
+                      availableInstitutions.map(inst => (
+                        <option key={inst.id} value={inst.id}>
+                          {inst.name} ({inst.code})
+                        </option>
+                      ))
+                    )}
                   </select>
+                  {fieldErrors.regInstId && (
+                    <p className="text-[11px] text-[#8B1E1E]">{fieldErrors.regInstId}</p>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">
@@ -1128,7 +1079,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                       autoComplete="email"
                       aria-invalid={Boolean(fieldErrors.regEmail)}
                       aria-describedby={fieldErrors.regEmail ? 'err-student-email' : undefined}
-                      placeholder="student@westernpoly.edu"
+                      placeholder="student@university.edu"
                       value={regEmail}
                       onChange={e => {
                         setRegEmail(e.target.value);
@@ -1361,15 +1312,27 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                   <select
                     id="faculty-activate-university"
                     value={facInstId}
-                    onChange={e => setFacInstId(e.target.value)}
+                    onChange={e => {
+                      setFacInstId(e.target.value);
+                      if (fieldErrors.facInstId) {
+                        setFieldErrors(prev => ({ ...prev, facInstId: '' }));
+                      }
+                    }}
                     className="w-full h-11 px-3 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] text-xs sm:text-sm font-medium text-[#171717] focus:outline-none focus:border-[#171717] cursor-pointer"
                   >
-                    {availableInstitutions.map(inst => (
-                      <option key={inst.id} value={inst.id}>
-                        {inst.name} ({inst.code})
-                      </option>
-                    ))}
+                    {availableInstitutions.length === 0 ? (
+                      <option value="">No universities registered yet — Onboard via Admin tab</option>
+                    ) : (
+                      availableInstitutions.map(inst => (
+                        <option key={inst.id} value={inst.id}>
+                          {inst.name} ({inst.code})
+                        </option>
+                      ))
+                    )}
                   </select>
+                  {fieldErrors.facInstId && (
+                    <p className="text-[11px] text-[#8B1E1E]">{fieldErrors.facInstId}</p>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">
@@ -1457,7 +1420,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({
                       type="email"
                       required
                       autoComplete="email"
-                      placeholder="s.chen@westernpoly.edu"
+                      placeholder="faculty@university.edu"
                       value={facEmail}
                       onChange={e => {
                         setFacEmail(e.target.value);
@@ -2089,222 +2052,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({
             </form>
           )}
 
-          {/* Visually Secondary Development/Demo Test Accounts Disclosure */}
-          {!isForgotPasswordOpen && isDemoModeAvailable && !isMultiColumnForm && (
-            <div className="pt-3 border-t border-[#E4E2DA]">
-              <button
-                type="button"
-                onClick={() => setShowDemoAccounts(prev => !prev)}
-                aria-expanded={showDemoAccounts}
-                className="w-full flex items-center justify-between text-[11px] font-medium text-[#77766F] hover:text-[#171717] py-1 transition-colors cursor-pointer"
-              >
-                <span>Demo Test Accounts</span>
-                <span>{showDemoAccounts ? 'Hide' : 'Show'}</span>
-              </button>
 
-              {showDemoAccounts && (
-                <div className="mt-2.5 border border-[#E4E2DA] rounded-xl divide-y divide-[#E4E2DA] text-xs overflow-hidden">
-                  <div className="px-3 py-2 flex items-center justify-between gap-2 bg-[#F7F6EF]/60">
-                    <span className="text-[11px] font-medium text-[#57564F]">
-                      University
-                    </span>
-                    <div className="inline-flex rounded-lg bg-[#EDEAE0]/70 p-0.5">
-                      <button
-                        type="button"
-                        onClick={() => setDemoPresetInstId('inst-western-poly')}
-                        className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors cursor-pointer ${
-                          demoPresetInstId === 'inst-western-poly'
-                            ? 'bg-[#171717] text-white'
-                            : 'text-[#57564F] hover:text-[#171717]'
-                        }`}
-                      >
-                        Western Poly (WPU)
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setDemoPresetInstId('inst-apex-tech')}
-                        className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors cursor-pointer ${
-                          demoPresetInstId === 'inst-apex-tech'
-                            ? 'bg-[#171717] text-white'
-                            : 'text-[#57564F] hover:text-[#171717]'
-                        }`}
-                      >
-                        Apex Tech (AITS)
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="px-3 py-2.5 flex flex-wrap items-center justify-between gap-2">
-                    <span className="text-[11px] text-[#77766F]">
-                      {roleOptions.find(r => r.id === activePortal)?.label}:
-                    </span>
-                    <div className="flex flex-wrap items-center gap-1.5">
-                          {demoPresetInstId === 'inst-apex-tech' ? (
-                            <>
-                              {activePortal === 'student' && (
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    fillDemoCredential(
-                                      'student.alex@apextech.edu',
-                                      'Student@2026'
-                                    )
-                                  }
-                                  className="px-2.5 py-1 rounded-lg bg-white border border-[#E4E2DA] hover:border-[#171717] text-[11px] font-semibold text-[#171717] cursor-pointer"
-                                >
-                                  Alex Rivera
-                                </button>
-                              )}
-                              {activePortal === 'br' && (
-                                <>
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      fillDemoCredential('br.male@apextech.edu', 'BR@2026')
-                                    }
-                                    className="px-2.5 py-1 rounded-lg bg-white border border-[#E4E2DA] hover:border-[#171717] text-[11px] font-semibold text-[#171717] cursor-pointer"
-                                  >
-                                    Male BR
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      fillDemoCredential('br.female@apextech.edu', 'BR@2026')
-                                    }
-                                    className="px-2.5 py-1 rounded-lg bg-white border border-[#E4E2DA] hover:border-[#171717] text-[11px] font-semibold text-[#171717] cursor-pointer"
-                                  >
-                                    Female BR
-                                  </button>
-                                </>
-                              )}
-                              {activePortal === 'faculty' && (
-                                <>
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      fillDemoCredential('m.vance@apextech.edu', 'Faculty@2026')
-                                    }
-                                    className="px-2.5 py-1 rounded-lg bg-white border border-[#E4E2DA] hover:border-[#171717] text-[11px] font-semibold text-[#171717] cursor-pointer"
-                                  >
-                                    Dr. Vance
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      fillDemoCredential(
-                                        'e.rostova@apextech.edu',
-                                        'Faculty@2026'
-                                      )
-                                    }
-                                    className="px-2.5 py-1 rounded-lg bg-white border border-[#E4E2DA] hover:border-[#171717] text-[11px] font-semibold text-[#171717] cursor-pointer"
-                                  >
-                                    Prof. Rostova
-                                  </button>
-                                </>
-                              )}
-                              {activePortal === 'admin' && (
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    fillDemoCredential('admin@apextech.edu', 'Admin@2026')
-                                  }
-                                  className="px-2.5 py-1 rounded-lg bg-white border border-[#E4E2DA] hover:border-[#171717] text-[11px] font-semibold text-[#171717] cursor-pointer"
-                                >
-                                  Dr. Arthur Vance
-                                </button>
-                              )}
-                            </>
-                          ) : (
-                            <>
-                              {activePortal === 'student' && (
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    fillDemoCredential('m.lin@westernpoly.edu', 'Student@2026')
-                                  }
-                                  className="px-2.5 py-1 rounded-lg bg-white border border-[#E4E2DA] hover:border-[#171717] text-[11px] font-semibold text-[#171717] cursor-pointer"
-                                >
-                                  Maya Lin
-                                </button>
-                              )}
-                              {activePortal === 'br' && (
-                                <>
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      fillDemoCredential(
-                                        'br.male.2k25bscs@westernpoly.edu',
-                                        'BR-2K25CS-M!'
-                                      )
-                                    }
-                                    className="px-2.5 py-1 rounded-lg bg-white border border-[#E4E2DA] hover:border-[#171717] text-[11px] font-semibold text-[#171717] cursor-pointer"
-                                  >
-                                    Male BR
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      fillDemoCredential(
-                                        'br.female.2k25bscs@westernpoly.edu',
-                                        'BR-2K25CS-F!'
-                                      )
-                                    }
-                                    className="px-2.5 py-1 rounded-lg bg-white border border-[#E4E2DA] hover:border-[#171717] text-[11px] font-semibold text-[#171717] cursor-pointer"
-                                  >
-                                    Female BR
-                                  </button>
-                                </>
-                              )}
-                              {activePortal === 'faculty' && (
-                                <>
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      fillDemoCredential(
-                                        'jehanzeb.ahmad@westernpoly.edu',
-                                        'Faculty@2026'
-                                      )
-                                    }
-                                    className="px-2.5 py-1 rounded-lg bg-white border border-[#E4E2DA] hover:border-[#171717] text-[11px] font-semibold text-[#171717] cursor-pointer"
-                                  >
-                                    Dr. Jehanzeb
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      fillDemoCredential(
-                                        'a.turing@westernpoly.edu',
-                                        'Faculty@2026'
-                                      )
-                                    }
-                                    className="px-2.5 py-1 rounded-lg bg-white border border-[#E4E2DA] hover:border-[#171717] text-[11px] font-semibold text-[#171717] cursor-pointer"
-                                  >
-                                    Prof. Turing
-                                  </button>
-                                </>
-                              )}
-                              {activePortal === 'admin' && (
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    fillDemoCredential(
-                                      'k.reynolds@westernpoly.edu',
-                                      'Admin@2026'
-                                    )
-                                  }
-                                  className="px-2.5 py-1 rounded-lg bg-white border border-[#E4E2DA] hover:border-[#171717] text-[11px] font-semibold text-[#171717] cursor-pointer"
-                                >
-                                  Dr. Reynolds
-                                </button>
-                              )}
-                            </>
-                          )}
-                        </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
         </div>
       </main>
 

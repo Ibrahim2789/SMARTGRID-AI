@@ -138,8 +138,12 @@ async def request_password_recovery(request: Request) -> Dict[str, Any]:
         )
 
         if user_row:
-            uni_id = user_row.get("institution_id") or "inst-western-poly"
-            inst_row = client.select_one("institutions", filters={"id": f"eq.{uni_id}"}, select="name")
+            uni_id = user_row.get("institution_id") or ""
+            inst_row = (
+                client.select_one("institutions", filters={"id": f"eq.{uni_id}"}, select="name")
+                if uni_id
+                else None
+            )
             uni_name = (inst_row or {}).get("name") or user_row.get("institution") or "your university"
 
             try:
@@ -264,8 +268,11 @@ async def register_student(request: Request) -> Dict[str, Any]:
     if clean_password != clean_confirm:
         raise HTTPException(status_code=400, detail={"error": "Password and Confirm Password do not match."})
 
-    resolved_inst_id = requested_inst_id or "inst-western-poly"
-    resolved_inst_name = "Western Polytechnic"
+    if not requested_inst_id:
+        raise HTTPException(status_code=400, detail={"error": "Please select a registered university."})
+
+    resolved_inst_id = requested_inst_id
+    resolved_inst_name = ""
     client = require_supabase_client()
 
     try:
@@ -274,9 +281,10 @@ async def register_student(request: Request) -> Dict[str, Any]:
             filters={"or": f"(id.eq.{resolved_inst_id},code.ilike.{resolved_inst_id})"},
             select="id,name",
         )
-        if inst_row:
-            resolved_inst_id = inst_row["id"]
-            resolved_inst_name = inst_row["name"]
+        if not inst_row:
+            raise HTTPException(status_code=404, detail={"error": "Selected university workspace was not found."})
+        resolved_inst_id = inst_row["id"]
+        resolved_inst_name = inst_row["name"]
 
         if (clean_batch_id == "__custom__" or not clean_batch_id) and clean_custom_batch:
             existing_custom_batch = client.select_one(
@@ -383,7 +391,7 @@ async def activate_faculty(request: Request) -> Dict[str, Any]:
     clean_dept = str(body.get("department") or "Faculty Member").strip()
     clean_password = str(body.get("password") or "").strip()
     clean_confirm = str(body.get("confirmPassword") or "").strip()
-    requested_inst_id = str(body.get("institutionId") or "inst-western-poly").strip()
+    requested_inst_id = str(body.get("institutionId") or "").strip()
 
     if len(clean_name) < 2:
         raise HTTPException(
@@ -399,9 +407,11 @@ async def activate_faculty(request: Request) -> Dict[str, Any]:
         raise HTTPException(status_code=400, detail={"error": "Password must be at least 6 characters long."})
     if clean_password != clean_confirm:
         raise HTTPException(status_code=400, detail={"error": "Password and Confirm Password do not match."})
+    if not requested_inst_id:
+        raise HTTPException(status_code=400, detail={"error": "Please select a registered university."})
 
     resolved_inst_id = requested_inst_id
-    resolved_inst_name = "Western Polytechnic"
+    resolved_inst_name = ""
     client = require_supabase_client()
 
     try:
@@ -410,9 +420,10 @@ async def activate_faculty(request: Request) -> Dict[str, Any]:
             filters={"or": f"(id.eq.{requested_inst_id},code.ilike.{requested_inst_id})"},
             select="id,name",
         )
-        if inst_row:
-            resolved_inst_id = inst_row["id"]
-            resolved_inst_name = inst_row["name"]
+        if not inst_row:
+            raise HTTPException(status_code=404, detail={"error": "Selected university workspace was not found."})
+        resolved_inst_id = inst_row["id"]
+        resolved_inst_name = inst_row["name"]
 
         existing_user = client.select_one(
             "users",
@@ -479,7 +490,6 @@ async def login(request: Request) -> Dict[str, Any]:
     body = await parse_json_body(request)
     email = body.get("email")
     password = body.get("password")
-    quick_switch = bool(body.get("quickSwitch"))
     expected_portal_role = body.get("expectedPortalRole")
 
     if not email or not isinstance(email, str):
@@ -545,13 +555,11 @@ async def login(request: Request) -> Dict[str, Any]:
                 },
             )
 
-    is_placeholder_demo_mask = password == "••••••••••••"
-    if not quick_switch and not is_placeholder_demo_mask:
-        if not password or not verify_password(str(password), user_row["password_hash"]):
-            raise HTTPException(
-                status_code=401,
-                detail={"error": "Invalid email or password. Please check your credentials."},
-            )
+    if not password or not verify_password(str(password), user_row["password_hash"]):
+        raise HTTPException(
+            status_code=401,
+            detail={"error": "Invalid email or password. Please check your credentials."},
+        )
 
     auth_context = get_user_auth_context(user_row["id"])
     if not auth_context:

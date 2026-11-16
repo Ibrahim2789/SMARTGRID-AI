@@ -16,7 +16,7 @@ router = APIRouter(tags=["timetables"])
 @router.get("/api/timetables")
 def list_timetable_versions(request: Request) -> Dict[str, Any]:
     auth_user = require_auth_user(request)
-    uni_id = get_query_param(request, "universityId", "") or auth_user.get("institutionId") or "inst-western-poly"
+    uni_id = get_query_param(request, "universityId", "") or auth_user.get("institutionId") or ""
     client = require_supabase_client()
 
     try:
@@ -76,7 +76,7 @@ def list_timetable_versions(request: Request) -> Dict[str, Any]:
 @router.post("/api/timetables/{versionId}/publish")
 def publish_timetable_version(versionId: str, request: Request) -> Dict[str, Any]:
     auth_user = require_auth_user(request, allowed_roles=["admin"])
-    uni_id = auth_user.get("institutionId") or "inst-western-poly"
+    uni_id = auth_user.get("institutionId") or ""
     current_iso = now_iso()
     client = require_supabase_client()
 

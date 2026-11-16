@@ -26,7 +26,7 @@ router = APIRouter(tags=["voting"])
 def get_voting_overview(request: Request) -> Dict[str, Any]:
     auth_user = require_auth_user(request)
     polls = build_enriched_polls_for_user(auth_user)
-    user_inst_id = auth_user.get("institutionId") or "inst-western-poly"
+    user_inst_id = auth_user.get("institutionId") or ""
     client = require_supabase_client()
 
     try:
@@ -369,7 +369,7 @@ async def submit_br_poll(request: Request) -> Dict[str, Any]:
     current_iso = now_iso()
     poll_id = f"poll-{uuid.uuid4()}"
     scope = "submitting_batch" if target_scope == "submitting_batch" else "all_batches"
-    user_inst_id = auth_user.get("institutionId") or "inst-western-poly"
+    user_inst_id = auth_user.get("institutionId") or ""
 
     try:
         client.insert(
@@ -434,7 +434,7 @@ async def create_admin_batch(request: Request) -> Dict[str, Any]:
     if not clean_code or not clean_name:
         raise HTTPException(status_code=400, detail={"error": "Batch code and batch name are required."})
 
-    admin_inst_id = auth_user.get("institutionId") or "inst-western-poly"
+    admin_inst_id = auth_user.get("institutionId") or ""
     client = require_supabase_client()
 
     try:
@@ -550,9 +550,9 @@ async def create_br_account(request: Request) -> Dict[str, Any]:
         gender_label = "Male" if gender_role == "male" else "Female"
         display_label = f"{clean_name} ({gender_label} BR · {batch_row['code']})"
 
-        admin_inst_id = auth_user.get("institutionId") or "inst-western-poly"
+        admin_inst_id = auth_user.get("institutionId") or ""
         admin_inst_row = client.select_one("institutions", filters={"id": f"eq.{admin_inst_id}"}, select="name")
-        admin_inst_name = admin_inst_row["name"] if admin_inst_row else "Western Polytechnic"
+        admin_inst_name = admin_inst_row["name"] if admin_inst_row else ""
 
         client.insert(
             "users",

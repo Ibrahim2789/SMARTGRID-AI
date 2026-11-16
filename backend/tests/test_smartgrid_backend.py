@@ -207,21 +207,17 @@ class SmartGridBackendTests(unittest.TestCase):
                     return fake_users.get(uid)
                 return None
 
-        if settings.is_supabase_configured:
+        with patch("app.deps.require_supabase_client", return_value=_StubClient()):
             admin_ctx = get_user_auth_context("user-admin-reynolds")
             apex_admin_ctx = get_user_auth_context("user-apex-admin")
-        else:
-            with patch("app.deps.require_supabase_client", return_value=_StubClient()):
-                admin_ctx = get_user_auth_context("user-admin-reynolds")
-                apex_admin_ctx = get_user_auth_context("user-apex-admin")
 
-        if admin_ctx is not None:
-            self.assertEqual(admin_ctx["systemRole"], "admin")
-            self.assertEqual(admin_ctx["role"], "Registrar")
-            self.assertEqual(admin_ctx["institutionId"], "inst-western-poly")
-
-        if apex_admin_ctx is not None:
-            self.assertEqual(apex_admin_ctx["institutionId"], "inst-apex-tech")
+        self.assertIsNotNone(admin_ctx)
+        self.assertIsNotNone(apex_admin_ctx)
+        assert admin_ctx is not None and apex_admin_ctx is not None
+        self.assertEqual(admin_ctx["systemRole"], "admin")
+        self.assertEqual(admin_ctx["role"], "Registrar")
+        self.assertEqual(admin_ctx["institutionId"], "inst-western-poly")
+        self.assertEqual(apex_admin_ctx["institutionId"], "inst-apex-tech")
 
     def test_03_dynamic_timeslot_configuration_and_midday_break(self) -> None:
         cfg = TimeSlotConfig(

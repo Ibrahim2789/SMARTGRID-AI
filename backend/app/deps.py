@@ -126,7 +126,7 @@ def get_user_auth_context(user_id: str) -> Optional[Dict[str, Any]]:
         effective_batch_code = br_assignment["batch_code"] if br_assignment else user_batch.get("code")
         effective_batch_name = br_assignment["batch_name"] if br_assignment else user_batch.get("name")
         effective_br_gender = br_assignment["gender_role"] if br_assignment else None
-        inst_id = user.get("institution_id") or "inst-western-poly"
+        inst_id = user.get("institution_id") or ""
 
         token = sign_auth_token(
             {
@@ -146,7 +146,7 @@ def get_user_auth_context(user_id: str) -> Optional[Dict[str, Any]]:
             "email": user["email"],
             "role": map_role_to_display_role(user["role"]),
             "systemRole": user["role"],
-            "institution": user.get("institution") or "Western Polytechnic",
+            "institution": user.get("institution") or "",
             "institutionId": inst_id,
             "batchId": effective_batch_id,
             "batchCode": effective_batch_code,
@@ -198,7 +198,7 @@ def require_auth_user(request: Request, allowed_roles: Optional[List[str]] = Non
 
         payload["role"] = db_user["role"]
         payload["name"] = db_user["name"]
-        payload["institutionId"] = db_user.get("institution_id") or payload.get("institutionId") or "inst-western-poly"
+        payload["institutionId"] = db_user.get("institution_id") or payload.get("institutionId") or ""
     except SupabaseQueryError as err:
         raise_supabase_http_error(err)
 
@@ -215,7 +215,7 @@ def require_auth_user(request: Request, allowed_roles: Optional[List[str]] = Non
 
 def build_enriched_polls_for_user(auth_user: Dict[str, Any]) -> List[Dict[str, Any]]:
     current_iso = now_iso()
-    user_inst_id = auth_user.get("institutionId") or "inst-western-poly"
+    user_inst_id = auth_user.get("institutionId") or ""
     role = auth_user.get("role")
     client = require_supabase_client()
 
@@ -413,29 +413,47 @@ def load_university_optimization_inputs(
     client = require_supabase_client()
 
     try:
-        inst_row = client.select_one("institutions", filters={"id": f"eq.{university_id}"})
-        if not inst_row:
-            inst_row = client.select_one("institutions", filters={"id": "eq.inst-western-poly"}) or {}
+        inst_row = (
+            client.select_one("institutions", filters={"id": f"eq.{university_id}"})
+            if university_id
+            else None
+        ) or {}
 
-        db_courses = client.select("courses", filters={"institution_id": f"eq.{university_id}"}, order="code.asc")
-        db_sessions = client.select("course_sessions", filters={"institution_id": f"eq.{university_id}"})
-        db_classrooms = client.select("classrooms", filters={"institution_id": f"eq.{university_id}"}, order="name.asc")
-        db_labs = client.select("laboratories", filters={"institution_id": f"eq.{university_id}"}, order="name.asc")
-        db_equip = client.select("room_equipment_capacities", filters={"institution_id": f"eq.{university_id}"})
-        db_batches = client.select("batches", filters={"institution_id": f"eq.{university_id}"}, order="code.asc")
-        db_instructors = client.select("instructors", filters={"institution_id": f"eq.{university_id}"}, order="name.asc")
-
-        if not db_courses:
-            db_courses = client.select("courses", filters={"institution_id": "eq.inst-western-poly"}, order="code.asc")
-            db_sessions = client.select("course_sessions", filters={"institution_id": "eq.inst-western-poly"})
-        if not db_classrooms and not db_labs:
-            db_classrooms = client.select("classrooms", filters={"institution_id": "eq.inst-western-poly"}, order="name.asc")
-            db_labs = client.select("laboratories", filters={"institution_id": "eq.inst-western-poly"}, order="name.asc")
-            db_equip = client.select("room_equipment_capacities", filters={"institution_id": "eq.inst-western-poly"})
-        if not db_batches:
-            db_batches = client.select("batches", filters={"institution_id": "eq.inst-western-poly"}, order="code.asc")
-        if not db_instructors:
-            db_instructors = client.select("instructors", filters={"institution_id": "eq.inst-western-poly"}, order="name.asc")
+        db_courses = (
+            client.select("courses", filters={"institution_id": f"eq.{university_id}"}, order="code.asc")
+            if university_id
+            else []
+        )
+        db_sessions = (
+            client.select("course_sessions", filters={"institution_id": f"eq.{university_id}"})
+            if university_id
+            else []
+        )
+        db_classrooms = (
+            client.select("classrooms", filters={"institution_id": f"eq.{university_id}"}, order="name.asc")
+            if university_id
+            else []
+        )
+        db_labs = (
+            client.select("laboratories", filters={"institution_id": f"eq.{university_id}"}, order="name.asc")
+            if university_id
+            else []
+        )
+        db_equip = (
+            client.select("room_equipment_capacities", filters={"institution_id": f"eq.{university_id}"})
+            if university_id
+            else []
+        )
+        db_batches = (
+            client.select("batches", filters={"institution_id": f"eq.{university_id}"}, order="code.asc")
+            if university_id
+            else []
+        )
+        db_instructors = (
+            client.select("instructors", filters={"institution_id": f"eq.{university_id}"}, order="name.asc")
+            if university_id
+            else []
+        )
     except SupabaseQueryError as err:
         raise_supabase_http_error(err)
 
@@ -449,8 +467,8 @@ def load_university_optimization_inputs(
     for s in db_sessions:
         sessions_by_course[s["course_id"]].append(s)
 
-    default_instructor_id = db_instructors[0]["id"] if db_instructors else "inst-turing"
-    default_batch_id = db_batches[0]["id"] if db_batches else "batch-2k25-bscs"
+    default_instructor_id = db_instructors[0]["id"] if db_instructors else ""
+    default_batch_id = db_batches[0]["id"] if db_batches else ""
 
     normalized_courses: List[Dict[str, Any]] = []
     default_sections: List[Dict[str, Any]] = []

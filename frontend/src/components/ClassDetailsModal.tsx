@@ -120,6 +120,7 @@ export const ClassDetailsModal: React.FC<ClassDetailsModalProps> = ({
       timeSlot: selectedPeriod,
       roomId: selectedRoomId
     });
+    void institutionalStore.syncToBackend();
     const newRoom = store.rooms.find(r => r.id === selectedRoomId);
     const labWindow = isLab
       ? (getLabBlockByStartPeriod(selectedPeriod, store.timeStructure, selectedDay)?.continuousLabel || selectedPeriod)
@@ -142,6 +143,7 @@ export const ClassDetailsModal: React.FC<ClassDetailsModalProps> = ({
   const handleExecuteSwap = () => {
     if (!selectedSwapSectionId) return;
     const res = institutionalStore.swapSectionSlots(classItem.id, selectedSwapSectionId);
+    void institutionalStore.syncToBackend();
     setSavedNotice(res.message);
     showAppPopup({ title: 'Sessions Swapped', message: res.message, variant: 'success' });
     setIsSwapping(false);
@@ -153,6 +155,7 @@ export const ClassDetailsModal: React.FC<ClassDetailsModalProps> = ({
   const handleToggleLock = () => {
     if (!isStoreBacked) return;
     institutionalStore.toggleSectionLock(classItem.id);
+    void institutionalStore.syncToBackend();
     const msg = isLocked
       ? `${classItem.code} unlocked for future solver runs.`
       : `${classItem.code} locked to current room and slot.`;

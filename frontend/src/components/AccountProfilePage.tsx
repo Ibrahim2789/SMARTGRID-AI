@@ -79,7 +79,7 @@ export const AccountProfilePage: React.FC<AccountProfilePageProps> = ({
       <header className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 pb-4 border-b border-[#E4E2DA]">
         <div className="space-y-1">
           <div className="text-xs font-medium text-[#77766F]">
-            {currentUser.institution || 'Western Polytechnic'}
+            {currentUser.institution || 'University Workspace'}
           </div>
           <h1 className="font-serif-editorial text-3xl text-[#171717] tracking-tight">
             Account &amp; Profile Settings

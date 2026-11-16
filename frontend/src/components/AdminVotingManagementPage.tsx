@@ -287,12 +287,15 @@ export const AdminVotingManagementPage: React.FC<AdminVotingManagementPageProps>
   };
 
   const handleTestLoginAsBr = async (email: string, password?: string | null) => {
-    try {
-      const loggedInBr = await loginWithBackend(
-        email,
-        password || undefined,
-        !password
+    if (!password) {
+      showAdminPopup(
+        'error',
+        'No temporary password hint is stored for this BR account. Use Reset Password to issue a new credential before testing login.'
       );
+      return;
+    }
+    try {
+      const loggedInBr = await loginWithBackend(email, password, 'br');
       onSwitchUser?.(loggedInBr);
     } catch (err) {
       showAdminPopup(
@@ -1121,7 +1124,7 @@ export const AdminVotingManagementPage: React.FC<AdminVotingManagementPageProps>
                                     setBrFormBatchId(batch.id);
                                     setBrFormGender('male');
                                     setBrFormEmail(
-                                      `br.male.${batch.code.toLowerCase().replace(/[^a-z0-9]/g, '')}@westernpoly.edu`
+                                      `br.male.${batch.code.toLowerCase().replace(/[^a-z0-9]/g, '')}@${currentUser?.email?.split('@')[1] || 'university.edu'}`
                                     );
                                   }}
                                   className="text-[11px] font-bold text-[#171717] underline cursor-pointer"
@@ -1170,7 +1173,7 @@ export const AdminVotingManagementPage: React.FC<AdminVotingManagementPageProps>
                                     setBrFormBatchId(batch.id);
                                     setBrFormGender('female');
                                     setBrFormEmail(
-                                      `br.female.${batch.code.toLowerCase().replace(/[^a-z0-9]/g, '')}@westernpoly.edu`
+                                      `br.female.${batch.code.toLowerCase().replace(/[^a-z0-9]/g, '')}@${currentUser?.email?.split('@')[1] || 'university.edu'}`
                                     );
                                   }}
                                   className="text-[11px] font-bold text-[#171717] underline cursor-pointer"
@@ -1265,7 +1268,7 @@ export const AdminVotingManagementPage: React.FC<AdminVotingManagementPageProps>
                     <input
                       type="email"
                       required
-                      placeholder="br.female.2k25bce@westernpoly.edu"
+                      placeholder={`br.female.cohort@${currentUser?.email?.split('@')[1] || 'university.edu'}`}
                       value={brFormEmail}
                       onChange={e => setBrFormEmail(e.target.value)}
                       className="input-field h-10 text-xs font-mono-tabular"

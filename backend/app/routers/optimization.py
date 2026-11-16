@@ -90,7 +90,7 @@ def _build_timetable_entries(
 async def run_optimization(request: Request) -> Dict[str, Any]:
     auth_user = require_auth_user(request, allowed_roles=["admin", "faculty", "br", "student"])
     body = await parse_json_body(request)
-    uni_id = body.get("universityId") or auth_user.get("institutionId") or "inst-western-poly"
+    uni_id = body.get("universityId") or auth_user.get("institutionId") or ""
 
     inputs = load_university_optimization_inputs(uni_id, body)
     hyperparams = body.get("hyperparameters") or {}
@@ -215,7 +215,7 @@ async def run_optimization(request: Request) -> Dict[str, Any]:
 async def compare_optimization(request: Request) -> Dict[str, Any]:
     auth_user = require_auth_user(request)
     body = await parse_json_body(request)
-    uni_id = body.get("universityId") or auth_user.get("institutionId") or "inst-western-poly"
+    uni_id = body.get("universityId") or auth_user.get("institutionId") or ""
     inputs = load_university_optimization_inputs(uni_id, body)
 
     comparison = compare_optimization_algorithms(
@@ -232,7 +232,7 @@ async def compare_optimization(request: Request) -> Dict[str, Any]:
 @router.get("/api/optimization/runs")
 def list_optimization_runs(request: Request) -> Dict[str, Any]:
     auth_user = require_auth_user(request)
-    uni_id = get_query_param(request, "universityId", "") or auth_user.get("institutionId") or "inst-western-poly"
+    uni_id = get_query_param(request, "universityId", "") or auth_user.get("institutionId") or ""
     client = require_supabase_client()
     try:
         runs = client.select(

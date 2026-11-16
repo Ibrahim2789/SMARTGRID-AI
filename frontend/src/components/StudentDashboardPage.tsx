@@ -19,7 +19,8 @@ import {
   AuthenticatedVotingUser,
   PollDTO,
   BatchDTO,
-  fetchVotingOverview
+  fetchVotingOverview,
+  saveStudentPreferenceBackend
 } from '../services/votingApi';
 import { resolveUserCohort } from '../utils/userTimetableScope';
 import { showAppPopup } from './ToastPopupHost';
@@ -139,6 +140,15 @@ export const StudentDashboardPage: React.FC<StudentDashboardPageProps> = ({
     try {
       localStorage.setItem(PREFS_STORAGE_KEY, JSON.stringify(prefs));
     } catch {}
+    if (syncedUser?.token) {
+      void saveStudentPreferenceBackend(syncedUser, {
+        preferredTimeWindow: prefs.preferredSelfStudyWindow,
+        avoidEarly8am: true,
+        avoidLateAfter4pm: true,
+        maxAcceptableGapMinutes: 60,
+        maxDailyLectures: 4
+      }).catch(() => {});
+    }
     showAppPopup({
       title: 'Preferences Saved',
       message: 'Your personal schedule and voting preferences have been saved.',
@@ -290,13 +300,13 @@ export const StudentDashboardPage: React.FC<StudentDashboardPageProps> = ({
           <div className="lg:col-span-7 space-y-4">
             <div className="flex flex-wrap items-center gap-2 text-xs text-[#77766F]">
               <span className="font-semibold text-[#171717]">
-                {store.institutionProfile?.name || 'Western Polytechnic'}
+                {store.institutionProfile?.name || syncedUser.institution || 'University Workspace'}
               </span>
               <span>·</span>
-              <span>{activeTerm?.name || 'Fall 2026'}</span>
+              <span>{activeTerm?.name || 'Current Term'}</span>
               <span>·</span>
               <span className="font-mono-tabular font-semibold text-[#171717]">
-                {syncedUser.registrationNumber || '2K25-BSCS-014'}
+                {syncedUser.registrationNumber || 'Registered Student'}
               </span>
             </div>
 
@@ -306,7 +316,8 @@ export const StudentDashboardPage: React.FC<StudentDashboardPageProps> = ({
 
             <p className="text-sm text-[#57564F]">
               <strong className="text-[#171717]">
-                {syncedUser.batchCode || '2K25-BSCS'} ({syncedUser.batchName || 'BS Computer Science'})
+                {syncedUser.batchCode || 'Unassigned Cohort'}
+                {syncedUser.batchName ? ` (${syncedUser.batchName})` : ''}
               </strong>{' '}
               · <strong className="text-[#171717]">{syncedUser.section || 'Section A'}</strong>
             </p>

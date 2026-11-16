@@ -21,11 +21,12 @@ import {
   Download
 } from 'lucide-react';
 import { exportTimetableToGoogleSheetsWorkbook } from '../utils/googleSheetsExport';
+import { AuthenticatedVotingUser, solveOptimizationApi } from '../services/votingApi';
 
 interface HomeScreenProps {
   onNavigate: (route: RouteType) => void;
   onOpenSetupStep: (stepIndex: number) => void;
-  currentUser: { name: string; role: string; email: string; institution?: string };
+  currentUser: AuthenticatedVotingUser;
 }
 
 export const HomeScreen: React.FC<HomeScreenProps> = ({
@@ -59,17 +60,86 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
     .trim()
     .replace(/\.$/, '');
 
-  const handleQuickGenerate = () => {
+  const handleQuickGenerate = async () => {
     setIsQuickSolving(true);
-    setTimeout(() => {
-      institutionalStore.runTimetableSolver({
-        departmentId: 'all',
-        strategyName: `${activeTerm?.name || 'Fall 2026'} — Full University Schedule`,
-        forceRescheduleAll: true
-      });
-      setIsQuickSolving(false);
-      onNavigate('timetables');
-    }, 550);
+    const runTitle = `${activeTerm?.name || 'Fall 2026'} — Full University Schedule`;
+    try {
+      if (currentUser?.token) {
+        const apiRes = await solveOptimizationApi(
+          {
+            universityId: store.institutionProfile?.id || institutionalStore.getCurrentInstitutionId(),
+            versionName: runTitle,
+            algorithm: 'hybrid_dsatur_ga_sa',
+            courses: store.courses.map(c => ({
+              id: c.id,
+              code: c.code,
+              title: c.title,
+              type: c.requiredRoomType === 'lab' || c.labHours > 0 ? 'Lab' : 'Theory',
+              credits: c.creditHours || 3,
+              credit_hours: c.creditHours || 3,
+              requiredEquipment: []
+            })),
+            classrooms: store.rooms.map(r => ({
+              id: r.id,
+              code: r.code,
+              name: r.name,
+              capacity: r.capacity,
+              type: r.type,
+              equipment: r.equipment,
+              isAvailable: r.isAvailable
+            })),
+            studentGroups: store.studentGroups.map(g => ({
+              id: g.id,
+              code: g.code,
+              name: g.name,
+              size: g.size
+            })),
+            sections: store.sections.map(s => ({
+              id: s.id,
+              courseId: s.courseId,
+              instructorId: s.instructorId,
+              studentGroupId: s.studentGroupId,
+              sectionCode: s.sectionNumber || 'A',
+              sessionType: s.sessionType === 'Lab' ? 'Lab' : 'Theory',
+              enrollment: s.expectedEnrollment || 45
+            }))
+          },
+          currentUser
+        );
+        if (apiRes.assignments && Object.keys(apiRes.assignments).length > 0) {
+          institutionalStore.applyBackendOptimizationResult({
+            assignments: apiRes.assignments,
+            strategyName: runTitle,
+            algorithm: 'hybrid_dsatur_ga_sa',
+            versionId: apiRes.timetableVersionId,
+            termId: activeTerm?.id,
+            fitness: {
+              totalScore: apiRes.metrics.totalScore,
+              studentSatisfaction: apiRes.metrics.studentSatisfaction,
+              instructorSatisfaction: apiRes.metrics.instructorSatisfaction,
+              roomUtilization: apiRes.metrics.roomUtilization,
+              fairnessScore: apiRes.metrics.fairnessScore
+            },
+            conflictCount: apiRes.metrics.conflictCount
+          });
+          void institutionalStore.syncToBackend(currentUser);
+          setIsQuickSolving(false);
+          onNavigate('timetables');
+          return;
+        }
+      }
+    } catch {
+      // Fallback gracefully to local combinatorial solver
+    }
+
+    institutionalStore.runTimetableSolver({
+      departmentId: 'all',
+      strategyName: runTitle,
+      forceRescheduleAll: true
+    });
+    void institutionalStore.syncToBackend(currentUser);
+    setIsQuickSolving(false);
+    onNavigate('timetables');
   };
 
   const handleQuickExportSheets = async () => {

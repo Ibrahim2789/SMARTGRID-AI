@@ -37,7 +37,13 @@ import {
 } from 'lucide-react';
 import { useInstitutionalData, institutionalStore, InstitutionSummary } from '../data/store';
 import { computeAcademicScheduleConfig } from '../types/institutional';
-import { AuthenticatedVotingUser } from '../services/votingApi';
+import {
+  AuthenticatedVotingUser,
+  fetchNotificationsBackend,
+  markNotificationReadBackend,
+  fetchInstitutionsApi,
+  fetchInstitutionDataApi
+} from '../services/votingApi';
 import { UniversityOnboardingModal } from './UniversityOnboardingModal';
 import { DataImportWizard } from './DataImportWizard';
 import { GlobalSearch } from './GlobalSearch';
@@ -143,12 +149,29 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
   const currentInstitutionId = institutionalStore.getCurrentInstitutionId();
   const currentInstSummary = availableInstitutions.find(i => i.id === currentInstitutionId);
 
-  const handleSwitchInstitution = (instId: string) => {
+  const handleSwitchInstitution = async (instId: string) => {
     institutionalStore.switchInstitution(instId);
     setTermDropdownOpen(false);
+    try {
+      const snapshot = await fetchInstitutionDataApi(instId);
+      if (snapshot) {
+        institutionalStore.hydrateInstitutionData(instId, snapshot);
+      }
+    } catch {
+      // Keep local fallback snapshot if unavailable
+    }
   };
 
-  const [notifications, setNotifications] = useState([
+  interface UiNotificationItem {
+    id: string;
+    title: string;
+    detail: string;
+    time: string;
+    unread: boolean;
+    fromBackend?: boolean;
+  }
+
+  const [notifications, setNotifications] = useState<UiNotificationItem[]>([
     {
       id: 'n1',
       title: 'Timetable Verified',
@@ -165,6 +188,61 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
     }
   ]);
 
+  const loadNotifications = React.useCallback(async () => {
+    if (!currentUser?.token) return;
+    try {
+      const rows = await fetchNotificationsBackend(currentUser);
+      if (Array.isArray(rows) && rows.length > 0) {
+        setNotifications(
+          rows.map(r => ({
+            id: r.id,
+            title: r.title,
+            detail: r.message,
+            time: r.created_at ? new Date(r.created_at).toLocaleDateString() : 'Recent',
+            unread: !r.is_read,
+            fromBackend: true
+          }))
+        );
+      }
+    } catch {
+      // Retain default notifications if backend is offline
+    }
+  }, [currentUser]);
+
+  useEffect(() => {
+    void loadNotifications();
+    fetchInstitutionsApi()
+      .then(list => {
+        if (list.length > 0) institutionalStore.registerRemoteInstitutions(list);
+      })
+      .catch(() => {});
+  }, [loadNotifications]);
+
+  useEffect(() => {
+    if (activeUtilityPanel === 'notifications') {
+      void loadNotifications();
+    }
+  }, [activeUtilityPanel, loadNotifications]);
+
+  const handleMarkNotificationRead = (notifId: string, fromBackend?: boolean) => {
+    setNotifications(prev =>
+      prev.map(n => (n.id === notifId ? { ...n, unread: false } : n))
+    );
+    if (fromBackend && currentUser?.token) {
+      void markNotificationReadBackend(currentUser, notifId).catch(() => {});
+    }
+  };
+
+  const handleMarkAllNotificationsRead = () => {
+    const backendUnread = notifications.filter(n => n.unread && n.fromBackend);
+    setNotifications(prev => prev.map(n => ({ ...n, unread: false })));
+    if (currentUser?.token) {
+      backendUnread.forEach(n => {
+        void markNotificationReadBackend(currentUser, n.id).catch(() => {});
+      });
+    }
+  };
+
   const unreadCount = notifications.filter(n => n.unread).length;
 
   useEffect(() => {
@@ -180,11 +258,12 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
       ? activeTermsList.map(t => t.name).join(' + ')
       : activeTermObj?.name || 'Configured Semester';
   const institutionName =
-    storeSnapshot.institutionProfile?.name || currentUser.institution || 'Western Polytechnic';
+    storeSnapshot.institutionProfile?.name || currentUser.institution || 'University Workspace';
 
   const handleToggleTermActive = (termId: string) => {
     if (!isAdminRole) return;
     institutionalStore.toggleTermActiveStatus(termId);
+    void institutionalStore.syncToBackend(currentUser);
   };
 
   const scheduledCount = storeSnapshot.sections.filter(s => Boolean(s.assignedSlot)).length;
@@ -820,27 +899,26 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
                     <span className="text-xs font-semibold text-white">Notifications</span>
                   </div>
                   <button
-                    onClick={() =>
-                      setNotifications(prev => prev.map(n => ({ ...n, unread: false })))
-                    }
+                    onClick={handleMarkAllNotificationsRead}
                     className="text-[11px] text-[#B8EEEE] hover:underline cursor-pointer"
                   >
                     Mark all read
                   </button>
                 </div>
-                <div className="space-y-2">
+                <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
                   {notifications.map(n => (
                     <div
                       key={n.id}
-                      className={`p-2.5 rounded-xl border text-xs space-y-1 ${
+                      onClick={() => handleMarkNotificationRead(n.id, n.fromBackend)}
+                      className={`p-2.5 rounded-xl border text-xs space-y-1 transition-colors cursor-pointer ${
                         n.unread
-                          ? 'bg-[#292929] border-[#3E3E3E]'
+                          ? 'bg-[#292929] border-[#3E3E3E] hover:border-[#B8EEEE]/40'
                           : 'bg-[#222222] border-[#2E2E2E] opacity-80'
                       }`}
                     >
-                      <div className="flex items-center justify-between font-medium text-white">
-                        <span>{n.title}</span>
-                        <span className="text-[10px] text-[#8E8C84]">{n.time}</span>
+                      <div className="flex items-center justify-between font-medium text-white gap-2">
+                        <span className="truncate">{n.title}</span>
+                        <span className="text-[10px] text-[#8E8C84] shrink-0">{n.time}</span>
                       </div>
                       <p className="text-[11px] text-[#B5B3AB] leading-relaxed">{n.detail}</p>
                     </div>

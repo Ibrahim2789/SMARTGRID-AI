@@ -1101,7 +1101,7 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
                     type="text"
                     value={name}
                     onChange={e => setName(e.target.value)}
-                    placeholder="e.g. Apex Institute of Science & Technology"
+                    placeholder="e.g. National Institute of Technology"
                     className="input-field text-xs"
                   />
                 </div>
@@ -1118,7 +1118,7 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
                       setCode(val);
                       setCampusCode(`${val || 'UNIV'}-MAIN-01`);
                     }}
-                    placeholder="e.g. AIST, MIT, NUST"
+                    placeholder="e.g. NIT, MIT, NUST"
                     className="input-field text-xs font-mono-tabular uppercase"
                   />
                 </div>
@@ -1192,7 +1192,7 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
                     type="text"
                     value={registrarName}
                     onChange={e => setRegistrarName(e.target.value)}
-                    placeholder="Dr. Katherine Reynolds"
+                    placeholder="Registrar Full Name"
                     className="input-field text-xs"
                   />
                 </div>

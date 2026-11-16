@@ -10,7 +10,7 @@ import {
   Send
 } from 'lucide-react';
 import { useInstitutionalData, institutionalStore } from '../data/store';
-import { AuthenticatedVotingUser } from '../services/votingApi';
+import { AuthenticatedVotingUser, saveInstructorPreferenceBackend } from '../services/votingApi';
 import { RouteType } from './SmartGridNav';
 import { DayOfWeek, computeAcademicScheduleConfig, getLabBlockByStartPeriod, getEffectiveSlotDisplayForDay } from '../types/institutional';
 import { resolveFacultyInstructor } from '../utils/userTimetableScope';
@@ -103,6 +103,17 @@ export const FacultyDashboardPage: React.FC<FacultyDashboardPageProps> = ({
       maxConsecutiveHours,
       unavailableSlots
     });
+    if (currentUser?.token) {
+      void saveInstructorPreferenceBackend(currentUser, {
+        instructorId: matchedInstructor.id,
+        preferredDays,
+        preferredStartTime: '09:00',
+        preferredEndTime: '17:00',
+        avoidBackToBackMoreThan: maxConsecutiveHours,
+        preferCompactSchedule: true
+      }).catch(() => {});
+    }
+    void institutionalStore.syncToBackend(currentUser);
     showAppPopup({
       title: 'Preferences Saved',
       message: 'Availability preferences submitted to Registrar and Timetable Solver successfully.',

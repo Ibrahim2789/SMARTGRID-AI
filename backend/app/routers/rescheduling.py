@@ -35,7 +35,7 @@ ALLOWED_DISRUPTION_TYPES = {
 async def report_disruption_and_reschedule(request: Request) -> Dict[str, Any]:
     auth_user = require_auth_user(request, allowed_roles=["admin", "faculty", "br"])
     body = await parse_json_body(request)
-    uni_id = body.get("universityId") or auth_user.get("institutionId") or "inst-western-poly"
+    uni_id = body.get("universityId") or auth_user.get("institutionId") or ""
 
     raw_type = str(body.get("type") or body.get("disruptionType") or "instructor_unavailable").strip()
     disruption_type = raw_type if raw_type in ALLOWED_DISRUPTION_TYPES else "admin_slot_adjustment"
@@ -176,7 +176,7 @@ async def report_disruption_and_reschedule(request: Request) -> Dict[str, Any]:
 @router.get("/api/rescheduling/proposals")
 def list_rescheduling_proposals(request: Request) -> Dict[str, Any]:
     auth_user = require_auth_user(request)
-    uni_id = get_query_param(request, "universityId", "") or auth_user.get("institutionId") or "inst-western-poly"
+    uni_id = get_query_param(request, "universityId", "") or auth_user.get("institutionId") or ""
     client = require_supabase_client()
 
     try:
@@ -219,7 +219,7 @@ def list_rescheduling_proposals(request: Request) -> Dict[str, Any]:
 @router.post("/api/rescheduling/proposals/{proposalId}/approve")
 def approve_rescheduling_proposal(proposalId: str, request: Request) -> Dict[str, Any]:
     auth_user = require_auth_user(request, allowed_roles=["admin"])
-    uni_id = auth_user.get("institutionId") or "inst-western-poly"
+    uni_id = auth_user.get("institutionId") or ""
     current_iso = now_iso()
     client = require_supabase_client()
 
