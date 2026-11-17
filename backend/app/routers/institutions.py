@@ -174,6 +174,8 @@ def get_universities() -> Dict[str, Any]:
 
 @router.patch("/api/universities/{universityId}/settings")
 async def update_university_settings(universityId: str, request: Request) -> Dict[str, Any]:
+    from app.optimization.constraints import canonicalize_working_days
+
     require_auth_user(request, allowed_roles=["admin"])
     body = await parse_json_body(request)
     client = require_supabase_client()
@@ -183,9 +185,17 @@ async def update_university_settings(universityId: str, request: Request) -> Dic
         if not existing:
             raise HTTPException(status_code=404, detail={"error": "University not found."})
 
-        working_days = body.get("workingDays") or existing["working_days"]
-        if isinstance(working_days, list):
-            working_days = ",".join(str(d) for d in working_days)
+        friday_enabled = bool(
+            body["fridayEnabled"]
+            if "fridayEnabled" in body
+            else existing.get("friday_enabled", "Fri" in str(existing.get("working_days", "Fri")))
+        )
+        raw_days = body.get("workingDays") or existing["working_days"]
+        if isinstance(raw_days, str):
+            raw_days = [d.strip() for d in raw_days.split(",") if d.strip()]
+        working_days_list = canonicalize_working_days(raw_days, friday_enabled)
+        working_days = ",".join(working_days_list)
+
         day_start = body.get("dayStartTime") or existing["day_start_time"]
         day_end = body.get("dayEndTime") or existing["day_end_time"]
         period_len = int(body.get("periodLengthMinutes") or existing["period_length_minutes"])
@@ -197,21 +207,65 @@ async def update_university_settings(universityId: str, request: Request) -> Dic
         midday_dur = int(body.get("middayBreakDuration") or existing["midday_break_duration"])
         lab_dur = int(body.get("labDurationMinutes") or existing["lab_duration_minutes"])
 
-        updated_rows = client.update(
-            "institutions",
-            {"id": f"eq.{universityId}"},
-            {
-                "working_days": working_days,
-                "day_start_time": day_start,
-                "day_end_time": day_end,
-                "period_length_minutes": period_len,
-                "short_break_minutes": short_break,
-                "midday_break_enabled": midday_enabled,
-                "midday_break_start": midday_start,
-                "midday_break_duration": midday_dur,
-                "lab_duration_minutes": lab_dur,
-            },
-        )
+        extended_patch = {
+            "working_days": working_days,
+            "day_start_time": day_start,
+            "day_end_time": day_end,
+            "period_length_minutes": period_len,
+            "short_break_minutes": short_break,
+            "midday_break_enabled": midday_enabled,
+            "midday_break_start": midday_start,
+            "midday_break_duration": midday_dur,
+            "lab_duration_minutes": lab_dur,
+            "friday_enabled": friday_enabled,
+            "friday_mode": body.get("fridayMode") or existing.get("friday_mode") or "jummah_break",
+            "friday_start_time": body.get("fridayStartTime") or existing.get("friday_start_time"),
+            "friday_end_time": body.get("fridayEndTime") or existing.get("friday_end_time"),
+            "friday_break_start": body.get("fridayBreakStart") or existing.get("friday_break_start") or "13:00",
+            "friday_break_end": body.get("fridayBreakEnd") or existing.get("friday_break_end") or "14:30",
+            "friday_closing_time": body.get("fridayClosingTime") or existing.get("friday_closing_time") or "13:00",
+            "friday_compression_scope": body.get("fridayCompressionScope")
+            or existing.get("friday_compression_scope")
+            or "none",
+            "friday_period_length": int(
+                body.get("fridayPeriodLengthMinutes")
+                or body.get("fridayPeriodLength")
+                or existing.get("friday_period_length")
+                or 40
+            ),
+            "friday_short_break": int(
+                body["fridayShortBreakMinutes"]
+                if "fridayShortBreakMinutes" in body
+                else existing.get("friday_short_break", 5)
+            ),
+            "friday_allowed_batches": body.get("fridayAllowedBatches")
+            if "fridayAllowedBatches" in body
+            else (existing.get("friday_allowed_batches") or []),
+            "friday_allowed_departments": body.get("fridayAllowedDepartments")
+            if "fridayAllowedDepartments" in body
+            else (existing.get("friday_allowed_departments") or []),
+            "lab_split_allowed": bool(body.get("labSplitAllowed", existing.get("lab_split_allowed", False))),
+        }
+
+        try:
+            updated_rows = client.update("institutions", {"id": f"eq.{universityId}"}, extended_patch)
+        except SupabaseQueryError:
+            # Fallback for databases that have not yet run 20261117000001_timetable_engine_rework.sql
+            core_patch = {
+                k: extended_patch[k]
+                for k in (
+                    "working_days",
+                    "day_start_time",
+                    "day_end_time",
+                    "period_length_minutes",
+                    "short_break_minutes",
+                    "midday_break_enabled",
+                    "midday_break_start",
+                    "midday_break_duration",
+                    "lab_duration_minutes",
+                )
+            }
+            updated_rows = client.update("institutions", {"id": f"eq.{universityId}"}, core_patch)
         updated = updated_rows[0] if updated_rows else existing
     except SupabaseQueryError as err:
         raise_supabase_http_error(err)

@@ -6,6 +6,33 @@ export type DegreeLevel = 'Undergraduate' | 'Graduate' | 'Postgraduate';
 export type ConstraintKind = 'hard' | 'soft';
 export type ScenarioStatus = 'draft' | 'published' | 'archived';
 export type AuditAction = 'create' | 'update' | 'delete' | 'generate' | 'publish' | 'restore';
+export type CourseType = 'lecture' | 'lab' | 'lecture_lab';
+export type LabSessionMode = 'continuous' | 'split_allowed';
+export type SessionComponentType = 'lecture' | 'lab';
+
+const CANONICAL_DAY_ORDER: DayOfWeek[] = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+/**
+ * Orders working days so Mon..Thu..Fri always keeps Friday as the rightmost
+ * standard weekday column (and Sat/Sun follow after Friday if enabled).
+ * If fridayEnabled is false, Friday is excluded cleanly.
+ */
+export function orderWorkingDaysFridayRightmost(
+  days?: Array<DayOfWeek | string> | null,
+  fridayEnabled = true
+): DayOfWeek[] {
+  const raw = Array.isArray(days) && days.length > 0 ? days : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
+  const normalized = new Set<DayOfWeek>();
+  raw.forEach(d => {
+    const short = String(d).trim().slice(0, 3);
+    const match = CANONICAL_DAY_ORDER.find(c => c.toLowerCase() === short.toLowerCase());
+    if (match) {
+      if (match === 'Fri' && !fridayEnabled) return;
+      normalized.add(match);
+    }
+  });
+  return CANONICAL_DAY_ORDER.filter(d => normalized.has(d));
+}
 
 export interface BaseEntity {
   is_sample?: boolean;
@@ -55,6 +82,7 @@ export interface Room extends BaseEntity {
   equipment: string[]; // e.g. ['Projector', 'AC', 'Accessible', 'Workstations']
   isAccessible: boolean;
   isAvailable: boolean;
+  assignedLabEngineerId?: string; // Dedicated Lab Engineer supervising this lab room
   availabilityWindows?: RoomAvailabilityWindow[];
 }
 
@@ -82,6 +110,7 @@ export interface Course extends BaseEntity {
   subDepartment?: string; // Optional internal department track/unit
   code: string;
   title: string;
+  courseType?: CourseType; // 'lecture' | 'lab' | 'lecture_lab'
   creditHours: number;
   lectureCredits?: number; // 1 credit hour = 1 lecture contact hour/week
   labCredits?: number; // 1 credit hour = 3 continuous lab contact hours/week
@@ -89,6 +118,11 @@ export interface Course extends BaseEntity {
   lectureHours: number;
   labHours: number;
   requiredRoomType: RoomType;
+  assignedInstructorId?: string; // Admin-assigned Lecture Instructor (strictly honored)
+  assignedLabEngineerId?: string; // Admin-assigned Lab Engineer (strictly honored)
+  assignedBatchId?: string;
+  semester?: number;
+  labSessionMode?: LabSessionMode; // 'continuous' (default 3h block) | 'split_allowed' (e.g. 1.5h + 1.5h)
   isElective?: boolean;
   electivePoolName?: string;
   description?: string;
@@ -104,6 +138,12 @@ export interface SectionSlotAssignment {
   sessionType?: SessionKind; // 'Lecture' | 'Lab'
   spanSlots?: number; // 1 for Lecture, 3 for 3-hour continuous Lab
   continuousTimeLabel?: string; // e.g. '9:00 AM – 12:00 PM' or '2:00 PM – 5:00 PM'
+  startTime24?: string; // Exact HH:MM start time (e.g. '09:00')
+  endTime24?: string; // Exact HH:MM end time (e.g. '12:00')
+  startMinutes?: number; // Minutes from midnight
+  endMinutes?: number; // Minutes from midnight
+  isSplitLab?: boolean;
+  slotSource?: 'regular' | 'friday_regular' | 'friday_compressed';
 }
 
 export interface Section extends BaseEntity {
@@ -113,9 +153,12 @@ export interface Section extends BaseEntity {
   sectionNumber: string; // e.g. '01', 'A', 'A-Lab'
   expectedEnrollment: number;
   instructorId: string;
+  labEngineerId?: string; // Dedicated Lab Engineer assigned to supervise Lab sessions
   studentGroupId: string;
   sharedGroupIds?: string[]; // Additional cohorts attending a shared/elective section
   sessionType?: SessionKind; // 'Lecture' | 'Lab'
+  componentType?: SessionComponentType; // 'lecture' | 'lab'
+  isAtomicSession?: boolean; // True when session cannot be arbitrarily split
   spanSlots?: number; // 1 for Lecture, 3 for Lab
   assignedSlot?: SectionSlotAssignment;
   isLocked?: boolean;
@@ -340,6 +383,12 @@ export interface TimeStructure extends BaseEntity {
   fridayAfternoonShiftEnabled?: boolean; // legacy compatibility flag
   fridayAfternoonStartTime?: string; // legacy compatibility ('14:30')
   // Enhanced Friday / Jummah Prayer Policy
+  fridayEnabled?: boolean; // Explicit toggle to enable/disable Friday classes
+  fridayStartTime?: string; // Custom Friday start time (defaults to dayStartTime)
+  fridayEndTime?: string;   // Custom Friday closing time (defaults to dayEndTime)
+  fridayAllowedBatches?: string[]; // Optional batch codes/IDs permitted on Friday (empty = all)
+  fridayAllowedDepartments?: string[]; // Optional department codes/IDs permitted on Friday (empty = all)
+  labSplitAllowed?: boolean; // Default false: labs are continuous 3h blocks unless split allowed
   fridayMode?: FridayMode; // 'standard' | 'jummah_break' | 'morning_only'
   fridayBreakStartTime?: string; // HH:mm default: '13:00' (when Jummah prayer break starts)
   fridayBreakEndTime?: string;   // HH:mm default: '14:30' (when Friday afternoon resumes)
@@ -364,6 +413,12 @@ export const DEFAULT_ACADEMIC_TIMING_CONFIG: Required<
     | 'middayBreakStartTime'
     | 'middayBreakDurationMinutes'
     | 'labDurationMinutes'
+    | 'labSplitAllowed'
+    | 'fridayEnabled'
+    | 'fridayStartTime'
+    | 'fridayEndTime'
+    | 'fridayAllowedBatches'
+    | 'fridayAllowedDepartments'
     | 'fridayAfternoonShiftEnabled'
     | 'fridayAfternoonStartTime'
     | 'fridayMode'
@@ -387,6 +442,12 @@ export const DEFAULT_ACADEMIC_TIMING_CONFIG: Required<
   middayBreakStartTime: '13:00',
   middayBreakDurationMinutes: 60,
   labDurationMinutes: 180,
+  labSplitAllowed: false,
+  fridayEnabled: true,
+  fridayStartTime: '09:00',
+  fridayEndTime: '17:00',
+  fridayAllowedBatches: [],
+  fridayAllowedDepartments: [],
   fridayAfternoonShiftEnabled: true,
   fridayAfternoonStartTime: '14:30',
   fridayMode: 'jummah_break',
@@ -755,11 +816,16 @@ export function computeAcademicScheduleConfig(
   // =========================================================
   // FRIDAY / JUMMAH PRAYER SCHEDULE ENGINE
   // =========================================================
-  const resolvedWorkingDays =
+  const rawWorkingDays =
     cfg.workingDays && cfg.workingDays.length > 0
       ? cfg.workingDays
       : DEFAULT_ACADEMIC_TIMING_CONFIG.workingDays;
-  const isFridayWorkingDay = resolvedWorkingDays.includes('Fri');
+  const fridayEnabledFlag =
+    timeStructure?.fridayEnabled !== undefined
+      ? Boolean(timeStructure.fridayEnabled) && rawWorkingDays.includes('Fri')
+      : rawWorkingDays.includes('Fri');
+  const resolvedWorkingDays = orderWorkingDaysFridayRightmost(rawWorkingDays, fridayEnabledFlag);
+  const isFridayWorkingDay = fridayEnabledFlag && resolvedWorkingDays.includes('Fri');
 
   const inferredFridayMode: FridayMode =
     timeStructure?.fridayMode ||
@@ -788,6 +854,15 @@ export function computeAcademicScheduleConfig(
   const afternoonFriPeriod = compressAfternoon ? fridayPeriodMins : periodLengthMinutes;
   const afternoonFriBreak = compressAfternoon ? fridayShortBreakMins : shortBreakMinutes;
 
+  const fridayStartMins = parseTime24ToMinutes(
+    timeStructure?.fridayStartTime || cfg.dayStartTime || '09:00',
+    dayStartMins
+  );
+  const fridayBaseEndMins = parseTime24ToMinutes(
+    timeStructure?.fridayEndTime || cfg.dayEndTime || '17:00',
+    dayEndMins
+  );
+
   const rawJummahStart = parseTime24ToMinutes(
     timeStructure?.fridayBreakStartTime || cfg.middayBreakStartTime || '13:00',
     middayStartMins
@@ -797,7 +872,7 @@ export function computeAcademicScheduleConfig(
     870
   );
   const rawFridayClosing = parseTime24ToMinutes(
-    timeStructure?.fridayClosingTime || timeStructure?.fridayBreakStartTime || '13:00',
+    timeStructure?.fridayClosingTime || timeStructure?.fridayEndTime || timeStructure?.fridayBreakStartTime || '13:00',
     780
   );
 
@@ -807,29 +882,72 @@ export function computeAcademicScheduleConfig(
   let jummahEnabled = false;
   let jummahStartMins = middayStartMins;
   let jummahEndMins = middayEndMins;
-  let fridayEndEffectiveMins = dayEndMins;
+  let fridayEndEffectiveMins = fridayBaseEndMins;
 
   const morningBaseSlots = slots.filter(s => s.session === 'Morning');
   const afternoonBaseSlots = slots.filter(s => s.session === 'Afternoon');
 
-  if (inferredFridayMode === 'standard') {
+  if (!isFridayWorkingDay) {
+    jummahEnabled = false;
+    fridayEndEffectiveMins = fridayStartMins;
+  } else if (inferredFridayMode === 'standard') {
     jummahEnabled = middayBreakEnabled;
     jummahStartMins = middayStartMins;
     jummahEndMins = middayEndMins;
-    fridaySlots = slots.map(s => {
-      const mapped = { ...s, basePeriod: s.period };
-      fridaySlotByBasePeriod[s.period] = mapped;
-      return mapped;
-    });
-    continuousLabBlocks.forEach(b => fridayContinuousLabBlocks.push({ ...b }));
+    if (fridayStartMins === dayStartMins && fridayBaseEndMins === dayEndMins) {
+      fridaySlots = slots.map(s => {
+        const mapped = { ...s, basePeriod: s.period };
+        fridaySlotByBasePeriod[s.period] = mapped;
+        return mapped;
+      });
+      continuousLabBlocks.forEach(b => fridayContinuousLabBlocks.push({ ...b }));
+    } else {
+      const friMorning = buildSessionSlotsList({
+        sessionStart: fridayStartMins,
+        sessionEnd: middayBreakEnabled ? Math.min(middayStartMins, fridayBaseEndMins) : fridayBaseEndMins,
+        sessionName: 'Morning',
+        periodMins: periodLengthMinutes,
+        shortBreakMins: shortBreakMinutes,
+        shortBreakEnabled,
+        includeBreakAfterLastSlot,
+        startingSlotNumber: 1
+      });
+      const friAfternoon = middayBreakEnabled && middayEndMins < fridayBaseEndMins
+        ? buildSessionSlotsList({
+            sessionStart: middayEndMins,
+            sessionEnd: fridayBaseEndMins,
+            sessionName: 'Afternoon',
+            periodMins: periodLengthMinutes,
+            shortBreakMins: shortBreakMinutes,
+            shortBreakEnabled,
+            includeBreakAfterLastSlot,
+            startingSlotNumber: friMorning.length + 1
+          })
+        : [];
+      friMorning.forEach((s, idx) => {
+        const base = morningBaseSlots[idx];
+        const mapped = { ...s, basePeriod: base?.period || s.period };
+        fridaySlots.push(mapped);
+        if (mapped.basePeriod) fridaySlotByBasePeriod[mapped.basePeriod] = mapped;
+      });
+      friAfternoon.forEach((s, idx) => {
+        const base = afternoonBaseSlots[idx];
+        const mapped = { ...s, basePeriod: base?.period || s.period };
+        fridaySlots.push(mapped);
+        if (mapped.basePeriod) fridaySlotByBasePeriod[mapped.basePeriod] = mapped;
+      });
+    }
   } else if (inferredFridayMode === 'morning_only') {
     jummahEnabled = true;
-    fridayEndEffectiveMins = Math.max(dayStartMins + morningFriPeriod, Math.min(dayEndMins, rawFridayClosing));
+    fridayEndEffectiveMins = Math.max(
+      fridayStartMins + morningFriPeriod,
+      Math.min(fridayBaseEndMins, rawFridayClosing)
+    );
     jummahStartMins = fridayEndEffectiveMins;
     jummahEndMins = fridayEndEffectiveMins;
 
     const friMorning = buildSessionSlotsList({
-      sessionStart: dayStartMins,
+      sessionStart: fridayStartMins,
       sessionEnd: fridayEndEffectiveMins,
       sessionName: 'Morning',
       periodMins: morningFriPeriod,
@@ -854,7 +972,7 @@ export function computeAcademicScheduleConfig(
       const slice = mappedMorning.slice(i, i + friMorningSpan);
       const first = slice[0];
       const last = slice[slice.length - 1];
-      const startM = first.startMinutes ?? dayStartMins;
+      const startM = first.startMinutes ?? fridayStartMins;
       const lastLecEnd = last.lectureEndMinutes ?? fridayEndEffectiveMins;
       const targetEnd = startM + labDurationMinutes;
 
@@ -888,11 +1006,11 @@ export function computeAcademicScheduleConfig(
   } else {
     // 'jummah_break'
     jummahEnabled = true;
-    jummahStartMins = Math.max(dayStartMins + morningFriPeriod, Math.min(dayEndMins - afternoonFriPeriod, rawJummahStart));
-    jummahEndMins = Math.max(jummahStartMins + 15, Math.min(dayEndMins, rawJummahEnd));
+    jummahStartMins = Math.max(fridayStartMins + morningFriPeriod, Math.min(fridayBaseEndMins - afternoonFriPeriod, rawJummahStart));
+    jummahEndMins = Math.max(jummahStartMins + 15, Math.min(fridayBaseEndMins, rawJummahEnd));
 
     const friMorning = buildSessionSlotsList({
-      sessionStart: dayStartMins,
+      sessionStart: fridayStartMins,
       sessionEnd: jummahStartMins,
       sessionName: 'Morning',
       periodMins: morningFriPeriod,
@@ -904,7 +1022,7 @@ export function computeAcademicScheduleConfig(
 
     const friAfternoon = buildSessionSlotsList({
       sessionStart: jummahEndMins,
-      sessionEnd: dayEndMins,
+      sessionEnd: fridayBaseEndMins,
       sessionName: 'Afternoon',
       periodMins: afternoonFriPeriod,
       shortBreakMins: afternoonFriBreak,
@@ -934,14 +1052,14 @@ export function computeAcademicScheduleConfig(
     (['Morning', 'Afternoon'] as const).forEach(sessionName => {
       const isCompressed = sessionName === 'Morning' ? compressMorning : compressAfternoon;
       const sBreak = sessionName === 'Morning' ? morningFriBreak : afternoonFriBreak;
-      const sessionEndLimit = sessionName === 'Morning' ? jummahStartMins : dayEndMins;
+      const sessionEndLimit = sessionName === 'Morning' ? jummahStartMins : fridayBaseEndMins;
       const sessionMapped = fridaySlots.filter(s => s.session === sessionName && Boolean(s.basePeriod));
 
       for (let i = 0; i + rawSpanSlots <= sessionMapped.length; i++) {
         const slice = sessionMapped.slice(i, i + rawSpanSlots);
         const first = slice[0];
         const last = slice[slice.length - 1];
-        const startM = first.startMinutes ?? dayStartMins;
+        const startM = first.startMinutes ?? fridayStartMins;
         const lastLecEnd = last.lectureEndMinutes ?? sessionEndLimit;
         const targetEnd = startM + labDurationMinutes;
 
@@ -977,21 +1095,25 @@ export function computeAcademicScheduleConfig(
 
   const operatingHoursLabel = formatRange12(dayStartMins, dayEndMins, true);
   const firstFriAfternoon = fridaySlots.find(s => s.session === 'Afternoon');
-  const friHoursLabel = formatRange12(
-    dayStartMins,
-    inferredFridayMode === 'morning_only' ? fridayEndEffectiveMins : dayEndMins,
-    true
-  );
+  const friHoursLabel = !isFridayWorkingDay
+    ? 'Friday Disabled (No Classes)'
+    : formatRange12(
+        fridayStartMins,
+        inferredFridayMode === 'morning_only' ? fridayEndEffectiveMins : fridayBaseEndMins,
+        true
+      );
 
   const fridaySummaryParts: string[] = [];
-  if (inferredFridayMode === 'standard') {
-    fridaySummaryParts.push(`Same as Mon–Thu (${operatingHoursLabel})`);
+  if (!isFridayWorkingDay) {
+    fridaySummaryParts.push('Friday Disabled (0 Sessions)');
+  } else if (inferredFridayMode === 'standard') {
+    fridaySummaryParts.push(`Friday Active (${friHoursLabel})`);
   } else if (inferredFridayMode === 'morning_only') {
     fridaySummaryParts.push(`Morning Only (${friHoursLabel} · Closed for Jummah)`);
   } else {
     fridaySummaryParts.push(`Jummah Break ${formatRange12(jummahStartMins, jummahEndMins, false)}`);
   }
-  if (rawCompressionScope !== 'none') {
+  if (isFridayWorkingDay && rawCompressionScope !== 'none') {
     const scopeLabel =
       rawCompressionScope === 'before_jummah'
         ? 'Before Jummah'
@@ -1006,7 +1128,7 @@ export function computeAcademicScheduleConfig(
     isFridayWorkingDay,
     operatingHoursLabel: friHoursLabel,
     closingTime24: minutesToTime24(
-      inferredFridayMode === 'morning_only' ? fridayEndEffectiveMins : dayEndMins
+      inferredFridayMode === 'morning_only' ? fridayEndEffectiveMins : fridayBaseEndMins
     ),
     jummahBreak: {
       enabled: jummahEnabled,
@@ -1140,12 +1262,19 @@ export function validateAcademicTimingConfig(
   }
 
   // Validate Friday / Jummah configuration if Friday is a working day
-  const fridayActive = workingDays.includes('Fri');
+  const fridayActive = input.fridayEnabled !== false && workingDays.includes('Fri');
   const fridayMode: FridayMode =
     input.fridayMode ||
     (input.fridayAfternoonShiftEnabled === false ? 'standard' : 'jummah_break');
 
-  if (fridayActive && fridayMode !== 'standard' && startMins >= 0 && endMins > startMins) {
+  const friStartMins = parseTime24ToMinutes(input.fridayStartTime || input.dayStartTime || '09:00', startMins);
+  const friEndMins = parseTime24ToMinutes(input.fridayEndTime || input.dayEndTime || '17:00', endMins);
+
+  if (fridayActive && (friStartMins < 0 || friEndMins < 0 || friEndMins <= friStartMins)) {
+    errors.push('Friday end time must be later than Friday start time.');
+  }
+
+  if (fridayActive && fridayMode !== 'standard' && friStartMins >= 0 && friEndMins > friStartMins) {
     const compressionScope = input.fridayCompressionScope || 'after_jummah';
     const friClassMins = Number(input.fridayPeriodLengthMinutes ?? 45);
 
@@ -1176,22 +1305,22 @@ export function validateAcademicTimingConfig(
         errors.push('Enter valid Jummah break start and end times.');
       } else if (jEnd <= jStart) {
         errors.push('Friday Jummah resume time must be later than Jummah break start time.');
-      } else if (jStart < startMins + effMorningLen) {
+      } else if (jStart < friStartMins + effMorningLen) {
         errors.push('Jummah break start leaves no room for morning Friday classes.');
-      } else if (jEnd + effAfternoonLen > endMins) {
-        errors.push('Friday afternoon resume time leaves no room for any afternoon class before closing.');
+      } else if (jEnd + effAfternoonLen > friEndMins) {
+        errors.push('Friday afternoon resume time leaves no room for any afternoon class before Friday closing.');
       }
     } else if (fridayMode === 'morning_only') {
       const friClose = parseTime24ToMinutes(
-        input.fridayClosingTime || input.fridayBreakStartTime || '13:00',
+        input.fridayClosingTime || input.fridayEndTime || input.fridayBreakStartTime || '13:00',
         -1
       );
       if (friClose < 0) {
         errors.push('Enter a valid Friday early closing time.');
-      } else if (friClose < startMins + effMorningLen) {
+      } else if (friClose < friStartMins + effMorningLen) {
         errors.push('Friday closing time must allow at least one morning session.');
-      } else if (friClose > endMins) {
-        errors.push('Friday early closing time cannot exceed standard university closing time.');
+      } else if (friClose > friEndMins) {
+        errors.push('Friday early closing time cannot exceed configured Friday end time.');
       }
     }
   }

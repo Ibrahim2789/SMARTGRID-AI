@@ -54,7 +54,7 @@ async def report_disruption_and_reschedule(request: Request) -> Dict[str, Any]:
     current_assignments = body.get("currentAssignments")
     timetable_version_id = body.get("timetableVersionId")
 
-    if not isinstance(current_assignments, dict) or not current_assignments:
+    if (not isinstance(current_assignments, (dict, list))) or not current_assignments:
         try:
             latest_run = client.select_one(
                 "optimization_runs",
@@ -62,20 +62,24 @@ async def report_disruption_and_reschedule(request: Request) -> Dict[str, Any]:
                 select="timetable_version_id,assignments_snapshot",
                 order="created_at.desc",
             )
-            if latest_run and isinstance(latest_run.get("assignments_snapshot"), dict) and latest_run["assignments_snapshot"]:
-                current_assignments = latest_run["assignments_snapshot"]
+            snap = latest_run.get("assignments_snapshot") if latest_run else None
+            if isinstance(snap, (dict, list)) and snap:
+                current_assignments = snap
                 timetable_version_id = timetable_version_id or latest_run.get("timetable_version_id")
         except SupabaseQueryError as err:
             raise_supabase_http_error(err)
 
-        if not isinstance(current_assignments, dict) or not current_assignments:
+        if (not isinstance(current_assignments, (dict, list))) or not current_assignments:
             initial_run = run_hybrid_timetable_pipeline(
                 sections=inputs["sections"],
                 courses=inputs["courses"],
                 rooms_raw=inputs["rooms_raw"],
                 student_groups=inputs["student_groups"],
+                instructors=inputs["instructors"],
                 time_config=inputs["time_config"],
                 weights=inputs["weights"],
+                unavailable_instructor_slots=inputs["unavailable_instructor_slots"],
+                unavailable_room_slots=inputs["unavailable_room_slots"],
                 algorithm="hybrid_dsatur_ga_sa",
             )
             current_assignments = initial_run["assignments"]
@@ -102,6 +106,9 @@ async def report_disruption_and_reschedule(request: Request) -> Dict[str, Any]:
         student_groups=inputs["student_groups"],
         time_config=inputs["time_config"],
         weights=inputs["weights"],
+        instructors=inputs["instructors"],
+        unavailable_instructor_slots=inputs["unavailable_instructor_slots"],
+        unavailable_room_slots=inputs["unavailable_room_slots"],
     )
 
     disruption_id = f"disr-{uuid.uuid4().hex[:8]}"

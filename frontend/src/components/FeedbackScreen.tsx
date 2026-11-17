@@ -134,8 +134,8 @@ export const FeedbackScreen: React.FC<FeedbackScreenProps> = ({ onNavigate, curr
   };
 
   const handleRestoreVersion = (scenarioId: string, scenarioName: string, version: string) => {
-    institutionalStore.restoreScenario(scenarioId);
-    triggerNotice(`Restored ${version} (${scenarioName}) as the active published timetable baseline.`);
+    const res = institutionalStore.restoreScenario(scenarioId);
+    triggerNotice(res.message || `Restored ${version} (${scenarioName}) as the active published timetable baseline.`);
   };
 
   // =========================================================================
@@ -1579,13 +1579,15 @@ export const FeedbackScreen: React.FC<FeedbackScreenProps> = ({ onNavigate, curr
                               {!isPublished && (
                                 <button
                                   type="button"
+                                  disabled={(sc.metrics?.clashCount ?? 0) > 0}
+                                  title={(sc.metrics?.clashCount ?? 0) > 0 ? 'Resolve hard clashes before publishing' : 'Restore & Publish this version'}
                                   onClick={() =>
                                     handleRestoreVersion(sc.id, sc.name, sc.version)
                                   }
-                                  className="px-2.5 py-1 rounded-lg bg-[#F7F6EF] border border-[#E4E2DA] hover:bg-[#EDEAE0] text-[11px] font-semibold text-[#171717] inline-flex items-center gap-1 cursor-pointer"
+                                  className="px-2.5 py-1 rounded-lg bg-[#F7F6EF] border border-[#E4E2DA] hover:bg-[#EDEAE0] disabled:opacity-45 disabled:cursor-not-allowed text-[11px] font-semibold text-[#171717] inline-flex items-center gap-1 cursor-pointer"
                                 >
                                   <RotateCcw className="w-3 h-3" />
-                                  <span>Restore</span>
+                                  <span>{(sc.metrics?.clashCount ?? 0) > 0 ? 'Invalid Draft' : 'Restore'}</span>
                                 </button>
                               )}
                             </div>

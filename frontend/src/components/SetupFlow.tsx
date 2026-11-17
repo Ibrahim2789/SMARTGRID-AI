@@ -4,6 +4,8 @@ import { institutionalStore, useInstitutionalData } from '../data/store';
 import {
   Room,
   Course,
+  CourseType,
+  LabSessionMode,
   Instructor,
   StudentGroup,
   Department,
@@ -33,7 +35,8 @@ import {
   Search,
   ArrowUpDown,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Sparkles
 } from 'lucide-react';
 import { showAppPopup } from './ToastPopupHost';
 import {
@@ -166,15 +169,22 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
     buildingName: 'Alan Turing Hall',
     capacity: 45,
     type: 'lecture' as RoomType,
-    equipment: 'Projector, Whiteboard, Audio System'
+    equipment: 'Projector, Whiteboard, Audio System',
+    assignedLabEngineerId: ''
   });
 
   const [courseForm, setCourseForm] = useState({
     code: '',
     title: '',
     departmentId: store.departments[0]?.id || 'dept-cs',
+    courseType: 'lecture' as CourseType,
     lectureCredits: 3,
     labCredits: 0,
+    assignedInstructorId: '',
+    assignedLabEngineerId: '',
+    assignedBatchId: '',
+    semester: 1,
+    labSessionMode: 'continuous' as LabSessionMode,
     isElective: false,
     electivePoolName: '',
     requiredRoomType: 'lecture' as RoomType
@@ -326,9 +336,9 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
   const handleDownloadTemplate = (type: string) => {
     let csvContent = 'data:text/csv;charset=utf-8,';
     if (type === 'rooms') {
-      csvContent += 'code,building,capacity,type,equipment\nHALL-101,Turing Hall,60,lecture,Projector\n';
+      csvContent += 'code,building,capacity,type,equipment,assignedLabEngineer\nHALL-101,Turing Hall,60,lecture,Projector,\nLAB-201,Computing Wing,40,lab,Workstations,Engr. Bilal Tariq\n';
     } else if (type === 'courses') {
-      csvContent += 'code,title,lectureCredits,labCredits,weeklyHours,subDepartment,isElective,roomType\nCS-101,Introduction to CS,3,1,6,AI & Data Systems,no,lecture\n';
+      csvContent += 'code,title,courseType,lectureCredits,labCredits,weeklyHours,assignedInstructor,assignedLabEngineer,subDepartment,isElective,roomType\nCS-101,Introduction to CS,lecture_lab,3,1,6,Dr. Sarah Chen,Engr. Bilal Tariq,AI & Data Systems,no,lecture\n';
     }
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
@@ -421,7 +431,8 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
         buildingName: room.name || 'Alan Turing Hall',
         capacity: room.capacity,
         type: room.type,
-        equipment: room.equipment.join(', ')
+        equipment: room.equipment.join(', '),
+        assignedLabEngineerId: room.assignedLabEngineerId || ''
       });
     } else {
       setEditingItem(null);
@@ -430,7 +441,8 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
         buildingName: 'Alan Turing Hall',
         capacity: 45,
         type: 'lecture',
-        equipment: 'Projector, Whiteboard, Audio System'
+        equipment: 'Projector, Whiteboard, Audio System',
+        assignedLabEngineerId: ''
       });
     }
     setSideDrawerOpen(true);
@@ -450,6 +462,10 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
     const cleanName = roomForm.buildingName.trim() || cleanCode;
     const eqList = roomForm.equipment.split(',').map(s => s.trim()).filter(Boolean);
     const roomId = editingItem ? editingItem.id : `room-${Date.now()}`;
+    const assignedLabEng =
+      roomForm.type === 'lab' && roomForm.assignedLabEngineerId
+        ? roomForm.assignedLabEngineerId
+        : undefined;
 
     if (editingItem) {
       institutionalStore.updateRoom(editingItem.id, {
@@ -457,7 +473,8 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
         name: cleanName,
         capacity: Number(roomForm.capacity),
         type: roomForm.type,
-        equipment: eqList
+        equipment: eqList,
+        assignedLabEngineerId: assignedLabEng
       });
       showToast(`Updated room ${cleanCode}.`);
     } else {
@@ -470,7 +487,8 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
         type: roomForm.type,
         equipment: eqList,
         isAccessible: true,
-        isAvailable: true
+        isAvailable: true,
+        assignedLabEngineerId: assignedLabEng
       });
       showToast(`Added room ${cleanCode} (${roomForm.capacity} seats).`);
     }
@@ -483,7 +501,8 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
         capacity: Number(roomForm.capacity),
         type: roomForm.type,
         equipment: eqList,
-        isAvailable: true
+        isAvailable: true,
+        assignedLabEngineerId: assignedLabEng
       }).catch(() => {});
       void institutionalStore.syncToBackend(currentUser);
     }
@@ -510,12 +529,25 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
           : isPureLab
             ? 0
             : Math.max(0, (course.creditHours || 3) - inferredLabCr));
+      const inferredType: CourseType =
+        course.courseType ||
+        (inferredLecCr > 0 && inferredLabCr > 0
+          ? 'lecture_lab'
+          : inferredLabCr > 0
+            ? 'lab'
+            : 'lecture');
       setCourseForm({
         code: course.code,
         title: course.title,
         departmentId: course.departmentId || store.departments[0]?.id || 'dept-cs',
+        courseType: inferredType,
         lectureCredits: inferredLecCr,
         labCredits: inferredLabCr,
+        assignedInstructorId: course.assignedInstructorId || '',
+        assignedLabEngineerId: course.assignedLabEngineerId || '',
+        assignedBatchId: course.assignedBatchId || '',
+        semester: course.semester || 1,
+        labSessionMode: course.labSessionMode || 'continuous',
         isElective: Boolean(course.isElective),
         electivePoolName: course.electivePoolName || '',
         requiredRoomType: course.requiredRoomType
@@ -526,8 +558,14 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
         code: '',
         title: '',
         departmentId: store.departments[0]?.id || 'dept-cs',
+        courseType: 'lecture',
         lectureCredits: 3,
         labCredits: 0,
+        assignedInstructorId: '',
+        assignedLabEngineerId: '',
+        assignedBatchId: '',
+        semester: 1,
+        labSessionMode: 'continuous',
         isElective: false,
         electivePoolName: '',
         requiredRoomType: 'lecture'
@@ -543,8 +581,8 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
       return;
     }
 
-    const lecCr = Math.max(0, Number(courseForm.lectureCredits) || 0);
-    const labCr = Math.max(0, Number(courseForm.labCredits) || 0);
+    const lecCr = courseForm.courseType === 'lab' ? 0 : Math.max(0, Number(courseForm.lectureCredits) || 0);
+    const labCr = courseForm.courseType === 'lecture' ? 0 : Math.max(0, Number(courseForm.labCredits) || 0);
     const totalCr = lecCr + labCr;
     if (totalCr <= 0) {
       setValidationError('Specify at least 1 Lecture Credit or 1 Lab Credit.');
@@ -555,6 +593,8 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
     const lecHours = lecCr * 1;
     const labHours = labCr * 3;
     const weeklyContactHours = lecHours + labHours;
+    const effectiveCourseType: CourseType =
+      lecCr > 0 && labCr > 0 ? 'lecture_lab' : labCr > 0 ? 'lab' : 'lecture';
     const effectiveRoomType: RoomType =
       labCr > 0 && lecCr === 0
         ? 'lab'
@@ -568,18 +608,26 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
     const courseId = editingItem ? editingItem.id : `course-${Date.now()}`;
     const deptCode =
       store.departments.find(d => d.id === courseForm.departmentId)?.code || 'BSCS';
+    const assignedInst = lecCr > 0 && courseForm.assignedInstructorId ? courseForm.assignedInstructorId : undefined;
+    const assignedLabEng = labCr > 0 && courseForm.assignedLabEngineerId ? courseForm.assignedLabEngineerId : undefined;
 
     if (editingItem) {
       institutionalStore.updateCourse(editingItem.id, {
         code: cleanCode,
         title: cleanTitle,
         departmentId: courseForm.departmentId,
+        courseType: effectiveCourseType,
         creditHours: totalCr,
         lectureCredits: lecCr,
         labCredits: labCr,
         lectureHours: lecHours,
         labHours: labHours,
         weeklyContactHours,
+        assignedInstructorId: assignedInst,
+        assignedLabEngineerId: assignedLabEng,
+        assignedBatchId: courseForm.assignedBatchId || undefined,
+        semester: Number(courseForm.semester) || undefined,
+        labSessionMode: courseForm.labSessionMode,
         isElective: courseForm.isElective,
         electivePoolName: cleanPool,
         requiredRoomType: effectiveRoomType
@@ -589,6 +637,7 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
       institutionalStore.addCourse({
         id: courseId,
         departmentId: courseForm.departmentId,
+        courseType: effectiveCourseType,
         code: cleanCode,
         title: cleanTitle,
         creditHours: totalCr,
@@ -597,6 +646,11 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
         weeklyContactHours,
         lectureHours: lecHours,
         labHours: labHours,
+        assignedInstructorId: assignedInst,
+        assignedLabEngineerId: assignedLabEng,
+        assignedBatchId: courseForm.assignedBatchId || undefined,
+        semester: Number(courseForm.semester) || undefined,
+        labSessionMode: courseForm.labSessionMode,
         isElective: courseForm.isElective,
         electivePoolName: cleanPool,
         requiredRoomType: effectiveRoomType
@@ -610,10 +664,21 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
         code: cleanCode,
         title: cleanTitle,
         departmentCode: deptCode,
-        type: labCr > 0 && lecCr === 0 ? 'Lab' : 'Theory',
+        batchId: courseForm.assignedBatchId || undefined,
+        semester: Number(courseForm.semester) || undefined,
+        instructorId: assignedInst || assignedLabEng,
+        assignedInstructorId: assignedInst,
+        assignedLabEngineerId: assignedLabEng,
+        type: effectiveCourseType === 'lab' ? 'Lab' : 'Theory',
+        courseType: effectiveCourseType,
         creditHours: totalCr,
+        lectureCredits: lecCr,
+        labCredits: labCr,
+        lectureHours: lecHours,
+        labHours: labHours,
         hoursPerWeek: weeklyContactHours,
-        requiredRoomType: effectiveRoomType
+        requiredRoomType: effectiveRoomType,
+        labSessionMode: courseForm.labSessionMode
       }).catch(() => {});
       void institutionalStore.syncToBackend(currentUser);
     }
@@ -1153,6 +1218,17 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
         <div className="flex flex-wrap items-center gap-2.5 shrink-0">
           <button
             type="button"
+            onClick={() => {
+              institutionalStore.loadSampleUniversityData();
+              showToast('Loaded complete sample university dataset (Departments, Courses, Qualified Teachers & Sections)!');
+            }}
+            className="btn-secondary text-xs h-9 bg-[#E8D36B]/30 hover:bg-[#E8D36B]/50 border-[#D4BC4C] text-[#171717]"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-[#171717]" />
+            <span>Load Sample Data</span>
+          </button>
+          <button
+            type="button"
             onClick={() => onNavigate('generate')}
             className="btn-primary text-xs h-9"
           >
@@ -1621,11 +1697,18 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
                                 {room.capacity} seats
                               </td>
                               <td className="py-3 px-4 capitalize text-[#57564F]">
-                                {room.type === 'lab'
-                                  ? 'Laboratory'
-                                  : room.type === 'lecture'
-                                  ? 'Classroom / Lecture'
-                                  : room.type}
+                                <div>
+                                  {room.type === 'lab'
+                                    ? 'Laboratory'
+                                    : room.type === 'lecture'
+                                    ? 'Classroom / Lecture'
+                                    : room.type}
+                                </div>
+                                {room.type === 'lab' && room.assignedLabEngineerId && (
+                                  <div className="text-[11px] text-[#77766F] normal-case">
+                                    Eng: {store.instructors.find(i => i.id === room.assignedLabEngineerId)?.name || 'Assigned'}
+                                  </div>
+                                )}
                               </td>
                               <td className="py-3 px-4">
                                 <span className="text-[#171717] font-medium">
@@ -1860,12 +1943,19 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
                           i.qualifiedCourseIds?.includes(course.id)
                         );
                         const primaryInst =
+                          store.instructors.find(i => i.id === course.assignedInstructorId) ||
                           store.instructors.find(i => i.id === courseSections[0]?.instructorId) ||
+                          qualifiedStaff.find(i => i.staffRole !== 'lab_engineer') ||
                           qualifiedStaff[0];
-                        const primaryGroup = store.studentGroups.find(
-                          g => g.id === courseSections[0]?.studentGroupId
-                        );
+                        const primaryLabEng =
+                          store.instructors.find(i => i.id === course.assignedLabEngineerId) ||
+                          store.instructors.find(i => i.id === courseSections.find(s => s.sessionType === 'Lab')?.labEngineerId) ||
+                          qualifiedStaff.find(i => i.staffRole === 'lab_engineer');
+                        const primaryGroup =
+                          store.studentGroups.find(g => g.id === course.assignedBatchId) ||
+                          store.studentGroups.find(g => g.id === courseSections[0]?.studentGroupId);
                         const isPureLab =
+                          course.courseType === 'lab' ||
                           course.requiredRoomType === 'lab' ||
                           course.code.endsWith('-L') ||
                           ((course.labCredits ?? 0) > 0 && (course.lectureCredits ?? 0) === 0);
@@ -1903,12 +1993,23 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
                             </td>
                             <td className="py-3 px-4 text-[#171717]">
                               {primaryInst ? (
-                                <span>
-                                  {primaryInst.name}
-                                  {qualifiedStaff.length > 1 ? (
-                                    <span className="text-[#77766F]"> (+{qualifiedStaff.length - 1} eligible)</span>
-                                  ) : null}
-                                </span>
+                                <div>
+                                  <span>
+                                    {primaryInst.name}
+                                    {course.assignedInstructorId && (
+                                      <span className="text-[10px] text-[#57564F] ml-1">(Assigned)</span>
+                                    )}
+                                  </span>
+                                  {labCr > 0 && primaryLabEng && (
+                                    <div className="text-[11px] text-[#77766F]">
+                                      Lab Eng: {primaryLabEng.name}
+                                    </div>
+                                  )}
+                                </div>
+                              ) : labCr > 0 && primaryLabEng ? (
+                                <div className="text-xs text-[#171717]">
+                                  Lab Eng: {primaryLabEng.name}
+                                </div>
                               ) : (
                                 <span className="text-[#77766F]">Department Staff</span>
                               )}
@@ -1994,13 +2095,26 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
         {activeStep === 3 && (
           <div className="sf-card-white p-6 space-y-5">
             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-[#E4E2DA] pb-4">
-              <h2 className="font-serif-editorial text-2xl text-[#171717]">
-                Instructors ({filteredInstructors.length})
-              </h2>
+              <div>
+                <h2 className="font-serif-editorial text-2xl text-[#171717]">
+                  Instructors &amp; Lab Engineers ({filteredInstructors.length})
+                </h2>
+                <p className="text-xs text-[#77766F] mt-0.5">
+                  Assign teachers to their appropriate subjects via the <strong>Qualified Subjects</strong> checklist in each staff profile.
+                </p>
+              </div>
               <button onClick={() => handleOpenAddInstructor()} className="btn-primary text-xs h-9 self-start lg:self-auto">
                 <Plus className="w-3.5 h-3.5" />
                 <span>Add Instructor</span>
               </button>
+            </div>
+
+            {/* How to assign teachers to subjects info banner */}
+            <div className="p-3.5 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] text-xs text-[#57564F] flex items-start gap-2.5">
+              <Sparkles className="w-4 h-4 text-[#171717] mt-0.5 shrink-0" />
+              <div>
+                <span className="font-semibold text-[#171717]">How to assign each teacher to its appropriate subject:</span> Click <strong className="text-[#171717]">Edit</strong> on any instructor or lab engineer to open their profile. Under <strong className="text-[#171717]">Qualified Subjects</strong>, check the boxes for the exact courses they are authorized to teach. Faculty are automatically assigned to lectures and Lab Engineers to 3-hour labs matching these qualifications.
+              </div>
             </div>
 
             {/* Search & Compact Filters Bar */}
@@ -3323,6 +3437,27 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
                       className="input-field"
                     />
                   </div>
+                  {roomForm.type === 'lab' && (
+                    <div>
+                      <label className="block text-xs font-semibold text-[#171717] mb-1.5">
+                        Assigned Lab Engineer (Optional)
+                      </label>
+                      <select
+                        value={roomForm.assignedLabEngineerId}
+                        onChange={e => setRoomForm({ ...roomForm, assignedLabEngineerId: e.target.value })}
+                        className="input-field"
+                      >
+                        <option value="">Any Department Lab Engineer</option>
+                        {store.instructors
+                          .filter(i => i.staffRole === 'lab_engineer' || i.title.toLowerCase().includes('engineer'))
+                          .map(eng => (
+                            <option key={eng.id} value={eng.id}>
+                              {eng.name} ({eng.title})
+                            </option>
+                          ))}
+                      </select>
+                    </div>
+                  )}
                 </form>
               )}
 
@@ -3350,21 +3485,44 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
                       className="input-field"
                     />
                   </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-[#171717] mb-1.5">Department</label>
-                    <select
-                      value={courseForm.departmentId}
-                      onChange={e =>
-                        setCourseForm({ ...courseForm, departmentId: e.target.value })
-                      }
-                      className="input-field"
-                    >
-                      {store.departments.map(d => (
-                        <option key={d.id} value={d.id}>
-                          {d.code} — {d.name}
-                        </option>
-                      ))}
-                    </select>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-[#171717] mb-1.5">Department</label>
+                      <select
+                        value={courseForm.departmentId}
+                        onChange={e =>
+                          setCourseForm({ ...courseForm, departmentId: e.target.value })
+                        }
+                        className="input-field"
+                      >
+                        {store.departments.map(d => (
+                          <option key={d.id} value={d.id}>
+                            {d.code} — {d.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-[#171717] mb-1.5">Course Type</label>
+                      <select
+                        value={courseForm.courseType}
+                        onChange={e => {
+                          const nextType = e.target.value as CourseType;
+                          setCourseForm(prev => ({
+                            ...prev,
+                            courseType: nextType,
+                            lectureCredits: nextType === 'lab' ? 0 : Math.max(1, prev.lectureCredits || 3),
+                            labCredits: nextType === 'lecture' ? 0 : Math.max(1, prev.labCredits || 1),
+                            requiredRoomType: nextType === 'lab' ? 'lab' : prev.requiredRoomType === 'lab' ? 'lecture' : prev.requiredRoomType
+                          }));
+                        }}
+                        className="input-field"
+                      >
+                        <option value="lecture">Lecture Only (1 CR = 1h/wk)</option>
+                        <option value="lab">Laboratory Only (1 CR = 3h/wk)</option>
+                        <option value="lecture_lab">Lecture + Laboratory</option>
+                      </select>
+                    </div>
                   </div>
 
                   {/* Lecture Credits (1:1) & Lab Credits (1:3 continuous) */}
@@ -3378,11 +3536,17 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
                           type="number"
                           min="0"
                           max="6"
-                          value={courseForm.lectureCredits}
-                          onChange={e =>
-                            setCourseForm({ ...courseForm, lectureCredits: Math.max(0, Number(e.target.value)) })
-                          }
-                          className="input-field font-mono-tabular bg-white"
+                          disabled={courseForm.courseType === 'lab'}
+                          value={courseForm.courseType === 'lab' ? 0 : courseForm.lectureCredits}
+                          onChange={e => {
+                            const nextLec = Math.max(0, Number(e.target.value));
+                            setCourseForm(prev => ({
+                              ...prev,
+                              lectureCredits: nextLec,
+                              courseType: nextLec > 0 && prev.labCredits > 0 ? 'lecture_lab' : prev.labCredits > 0 ? 'lab' : 'lecture'
+                            }));
+                          }}
+                          className="input-field font-mono-tabular bg-white disabled:opacity-50"
                         />
                       </div>
                       <div>
@@ -3393,43 +3557,156 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
                           type="number"
                           min="0"
                           max="3"
-                          value={courseForm.labCredits}
-                          onChange={e =>
-                            setCourseForm({ ...courseForm, labCredits: Math.max(0, Number(e.target.value)) })
-                          }
-                          className="input-field font-mono-tabular bg-white"
+                          disabled={courseForm.courseType === 'lecture'}
+                          value={courseForm.courseType === 'lecture' ? 0 : courseForm.labCredits}
+                          onChange={e => {
+                            const nextLab = Math.max(0, Number(e.target.value));
+                            setCourseForm(prev => ({
+                              ...prev,
+                              labCredits: nextLab,
+                              courseType: prev.lectureCredits > 0 && nextLab > 0 ? 'lecture_lab' : nextLab > 0 ? 'lab' : 'lecture'
+                            }));
+                          }}
+                          className="input-field font-mono-tabular bg-white disabled:opacity-50"
                         />
                       </div>
                     </div>
                     <div className="text-[11px] font-mono-tabular text-[#57564F] flex items-center justify-between pt-1 border-t border-[#E4E2DA]">
                       <span>
-                        Total Credits: <strong className="text-[#171717]">{courseForm.lectureCredits + courseForm.labCredits} Cr</strong>
+                        Total Credits:{' '}
+                        <strong className="text-[#171717]">
+                          {(courseForm.courseType === 'lab' ? 0 : courseForm.lectureCredits) +
+                            (courseForm.courseType === 'lecture' ? 0 : courseForm.labCredits)}{' '}
+                          Cr
+                        </strong>
                       </span>
                       <span>
                         Weekly Hours:{' '}
                         <strong className="text-[#171717]">
-                          {courseForm.lectureCredits * 1 + courseForm.labCredits * 3}h/wk
-                        </strong>{' '}
-                        ({courseForm.lectureCredits}h Lec + {courseForm.labCredits * 3}h Lab)
+                          {(courseForm.courseType === 'lab' ? 0 : courseForm.lectureCredits) * 1 +
+                            (courseForm.courseType === 'lecture' ? 0 : courseForm.labCredits) * 3}
+                          h/wk
+                        </strong>
                       </span>
                     </div>
                   </div>
 
-                  <div>
-                    <label className="block text-xs font-semibold text-[#171717] mb-1.5">
-                      Primary Lecture Space
-                    </label>
-                    <select
-                      value={courseForm.requiredRoomType}
-                      onChange={e => setCourseForm({ ...courseForm, requiredRoomType: e.target.value as RoomType })}
-                      className="input-field"
-                    >
-                      <option value="lecture">Lecture Hall</option>
-                      <option value="lab">Laboratory Only</option>
-                      <option value="seminar">Seminar Room</option>
-                      <option value="studio">Design Studio</option>
-                    </select>
+                  {/* Admin-Assigned Lecture Instructor & Lab Engineer */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {courseForm.courseType !== 'lab' && (
+                      <div>
+                        <label className="block text-xs font-semibold text-[#171717] mb-1.5">
+                          Assigned Lecture Instructor
+                        </label>
+                        <select
+                          value={courseForm.assignedInstructorId}
+                          onChange={e =>
+                            setCourseForm({ ...courseForm, assignedInstructorId: e.target.value })
+                          }
+                          className="input-field"
+                        >
+                          <option value="">Auto-match qualified faculty</option>
+                          {store.instructors
+                            .filter(i => i.staffRole !== 'lab_engineer')
+                            .map(inst => (
+                              <option key={inst.id} value={inst.id}>
+                                {inst.name} ({inst.title})
+                              </option>
+                            ))}
+                        </select>
+                      </div>
+                    )}
+
+                    {courseForm.courseType !== 'lecture' && (
+                      <div>
+                        <label className="block text-xs font-semibold text-[#171717] mb-1.5">
+                          Assigned Lab Engineer
+                        </label>
+                        <select
+                          value={courseForm.assignedLabEngineerId}
+                          onChange={e =>
+                            setCourseForm({ ...courseForm, assignedLabEngineerId: e.target.value })
+                          }
+                          className="input-field"
+                        >
+                          <option value="">Auto-match lab engineer</option>
+                          {store.instructors
+                            .filter(i => i.staffRole === 'lab_engineer' || i.title.toLowerCase().includes('engineer'))
+                            .map(eng => (
+                              <option key={eng.id} value={eng.id}>
+                                {eng.name} ({eng.title})
+                              </option>
+                            ))}
+                        </select>
+                      </div>
+                    )}
                   </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-[#171717] mb-1.5">
+                        Target Batch (Optional)
+                      </label>
+                      <select
+                        value={courseForm.assignedBatchId}
+                        onChange={e => setCourseForm({ ...courseForm, assignedBatchId: e.target.value })}
+                        className="input-field"
+                      >
+                        <option value="">All Batches</option>
+                        {store.studentGroups.map(g => (
+                          <option key={g.id} value={g.id}>
+                            {g.code}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-[#171717] mb-1.5">Semester</label>
+                      <input
+                        type="number"
+                        min="1"
+                        max="12"
+                        value={courseForm.semester}
+                        onChange={e =>
+                          setCourseForm({ ...courseForm, semester: Math.max(1, Number(e.target.value) || 1) })
+                        }
+                        className="input-field font-mono-tabular"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-[#171717] mb-1.5">
+                        Primary Space
+                      </label>
+                      <select
+                        value={courseForm.requiredRoomType}
+                        onChange={e => setCourseForm({ ...courseForm, requiredRoomType: e.target.value as RoomType })}
+                        className="input-field"
+                      >
+                        <option value="lecture">Lecture Hall</option>
+                        <option value="lab">Laboratory Only</option>
+                        <option value="seminar">Seminar Room</option>
+                        <option value="studio">Design Studio</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {courseForm.courseType !== 'lecture' && (
+                    <div>
+                      <label className="block text-xs font-semibold text-[#171717] mb-1.5">
+                        Lab Scheduling Policy
+                      </label>
+                      <select
+                        value={courseForm.labSessionMode}
+                        onChange={e =>
+                          setCourseForm({ ...courseForm, labSessionMode: e.target.value as LabSessionMode })
+                        }
+                        className="input-field"
+                      >
+                        <option value="continuous">Continuous 3h Block (Default Academic Standard)</option>
+                        <option value="split_allowed">Allow Split (e.g. 1.5h + 1.5h if campus split enabled)</option>
+                      </select>
+                    </div>
+                  )}
 
                   {/* Core vs Elective */}
                   <div className="pt-2 border-t border-[#E4E2DA] space-y-2.5">

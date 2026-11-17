@@ -23,6 +23,11 @@ def compare_optimization_algorithms(
     student_groups: List[Dict[str, Any]],
     time_config: Optional[TimeSlotConfig] = None,
     weights: Optional[OptimizationWeights] = None,
+    instructors: Optional[List[Dict[str, Any]]] = None,
+    student_preferences: Optional[List[Dict[str, Any]]] = None,
+    instructor_preferences: Optional[List[Dict[str, Any]]] = None,
+    unavailable_instructor_slots: Optional[Any] = None,
+    unavailable_room_slots: Optional[Any] = None,
 ) -> Dict[str, Any]:
     algorithms = [
         ("dsatur_only", "DSatur Graph Coloring Initial Schedule"),
@@ -32,6 +37,7 @@ def compare_optimization_algorithms(
     ]
 
     comparisons: List[Dict[str, Any]] = []
+    comparison_ui: List[Dict[str, Any]] = []
     baseline_score: Optional[float] = None
 
     for algo_id, label in algorithms:
@@ -40,9 +46,14 @@ def compare_optimization_algorithms(
             courses=courses,
             rooms_raw=rooms_raw,
             student_groups=student_groups,
+            instructors=instructors,
             time_config=time_config,
             weights=weights,
             algorithm=algo_id,
+            student_preferences=student_preferences,
+            instructor_preferences=instructor_preferences,
+            unavailable_instructor_slots=unavailable_instructor_slots,
+            unavailable_room_slots=unavailable_room_slots,
         )
         score = float(res["fitness"]["totalScore"])
         if baseline_score is None:
@@ -67,6 +78,18 @@ def compare_optimization_algorithms(
                 "executionTimeMs": res["executionTimeMs"],
             }
         )
+        comparison_ui.append(
+            {
+                "algorithm": algo_id,
+                "label": label,
+                "feasible": res["feasible"],
+                "hardConstraintViolations": res["hardConstraintViolations"],
+                "executionTimeMs": res["executionTimeMs"],
+                "placedSessions": res["placedSessions"],
+                "totalSessions": res["totalSessions"],
+                "fitness": res["fitness"],
+            }
+        )
 
     best_entry = max(
         comparisons,
@@ -76,4 +99,5 @@ def compare_optimization_algorithms(
     return {
         "recommendedAlgorithm": best_entry["algorithmId"],
         "comparisons": comparisons,
+        "comparison": comparison_ui,
     }

@@ -1,153 +1,134 @@
-"""
-Chromosome Representation and Feasibility Repair Operator for Timetable Optimization.
-Each Chromosome maps every SchedulingSession (session_id) -> (day, start_time, room_id).
-"""
+"""Chromosome representation and exact clock-interval helper methods."""
 
 from __future__ import annotations
 
 import copy
-import random
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Optional, Tuple
 
-from .constraints import (
-    RoomResource,
-    SchedulingSession,
-    TimeSlotConfig,
-    get_compatible_rooms,
-)
+from .constraints import ScheduleSession, TimeSlotConfig
 
 
 @dataclass
+class SessionGene:
+    """Represents one scheduled session assignment in the timetable chromosome."""
+
+    session_id: str
+    day: str
+    slot_index: int
+    room_id: str
+    duration_slots: int = 1
+    is_lab: bool = False
+    is_locked: bool = False
+    start_min: int = 0
+    end_min: int = 0
+    covered_slots: List[int] = field(default_factory=list)
+
+    def sync_timing(self, session: ScheduleSession, time_config: TimeSlotConfig) -> None:
+        win = time_config.compute_session_window(
+            self.day,
+            self.slot_index,
+            session.duration_minutes,
+            session.is_lab,
+        )
+        if win is not None:
+            self.start_min, self.end_min, self.covered_slots = win
+            self.duration_slots = max(1, len(self.covered_slots))
+        else:
+            anchor = time_config.get_slot(self.day, self.slot_index)
+            base_start = anchor.start_min if anchor else time_config.day_start_min
+            self.start_min = base_start
+            self.end_min = base_start + session.duration_minutes
+            self.covered_slots = [self.slot_index + i for i in range(max(1, self.duration_slots))]
+
+    def get_occupied_slot_indices(self) -> List[int]:
+        if self.covered_slots:
+            return list(self.covered_slots)
+        return [self.slot_index + i for i in range(max(1, self.duration_slots))]
+
+    def overlaps(self, other: "SessionGene") -> bool:
+        if self.day != other.day:
+            return False
+        if self.start_min > 0 and self.end_min > self.start_min and other.start_min > 0 and other.end_min > other.start_min:
+            return self.start_min < other.end_min and other.start_min < self.end_min
+        return bool(set(self.get_occupied_slot_indices()) & set(other.get_occupied_slot_indices()))
+
+
 class TimetableChromosome:
-    genes: Dict[str, Tuple[str, str, str]] = field(default_factory=dict)  # session_id -> (day, start_time, room_id)
-    fitness_score: float = 0.0
-    hard_violations: int = 0
+    """
+    Hybrid schedule encoding mapping session_id -> SessionGene(day, slot_index, room_id).
+    Note: Instructor and Lab Engineer IDs live strictly on ScheduleSession and are NEVER mutated here.
+    """
+
+    def __init__(self, genes: Optional[Dict[str, SessionGene]] = None) -> None:
+        self.genes: Dict[str, SessionGene] = genes or {}
+        self.fitness_score: float = 0.0
+        self.hard_violations: int = 0
+        self.metrics: Dict[str, object] = {}
 
     def clone(self) -> "TimetableChromosome":
-        return TimetableChromosome(
-            genes=dict(self.genes),
-            fitness_score=self.fitness_score,
-            hard_violations=self.hard_violations,
-        )
+        cloned = TimetableChromosome(copy.deepcopy(self.genes))
+        cloned.fitness_score = self.fitness_score
+        cloned.hard_violations = self.hard_violations
+        cloned.metrics = copy.deepcopy(self.metrics)
+        return cloned
+
+    def get_gene(self, session_id: str) -> Optional[SessionGene]:
+        return self.genes.get(session_id)
+
+    def set_gene(
+        self,
+        session_id: str,
+        gene: SessionGene,
+        session: Optional[ScheduleSession] = None,
+        time_config: Optional[TimeSlotConfig] = None,
+    ) -> None:
+        if session is not None and time_config is not None:
+            gene.sync_timing(session, time_config)
+        self.genes[session_id] = gene
+
+    def is_complete(self, sessions: List[ScheduleSession]) -> bool:
+        return all(s.session_id in self.genes for s in sessions)
+
+
+def compute_session_time_window(
+    day: str,
+    slot_index: int,
+    session: ScheduleSession,
+    time_config: TimeSlotConfig,
+) -> Optional[Tuple[int, int, List[int]]]:
+    return time_config.compute_session_window(
+        day,
+        slot_index,
+        session.duration_minutes,
+        session.is_lab,
+    )
 
 
 def repair_chromosome(
     chromosome: TimetableChromosome,
-    sessions: List[SchedulingSession],
-    rooms: List[RoomResource],
+    sessions: List[ScheduleSession],
+    rooms: List[object],
     time_config: TimeSlotConfig,
-    unavailable_instructor_slots: Optional[Set[Tuple[str, str, str]]] = None,
-    unavailable_room_slots: Optional[Set[Tuple[str, str, str]]] = None,
-    rng: Optional[random.Random] = None,
+    unavailable_instructor_slots: Optional[object] = None,
+    unavailable_room_slots: Optional[object] = None,
 ) -> TimetableChromosome:
-    """
-    Repairs any hard constraint collisions in a candidate chromosome by reassigning
-    conflicting or unassigned sessions to conflict-free (day, start_time, room_id) tuples.
-    """
-    rand = rng or random
-    repaired_genes: Dict[str, Tuple[str, str, str]] = {}
+    """Repair any hard violations or unplaced sessions without altering assigned staff."""
+    import random
+    from .constraints import normalize_rooms_input
+    from .fitness import normalize_unavailable_slots_map
+    from .genetic_algorithm import _repair_conflicts
 
-    instructor_busy: Set[Tuple[str, str, str]] = set(unavailable_instructor_slots or set())
-    room_busy: Set[Tuple[str, str, str]] = set(unavailable_room_slots or set())
-    group_busy: Set[Tuple[str, str, str]] = set()
-    section_days: Dict[str, Set[str]] = {s.section_id: set() for s in sessions}
-
-    days = list(time_config.working_days)
-    lecture_slots = time_config.generate_daily_lecture_slots()
-    lab_slots = time_config.generate_valid_lab_start_slots()
-    room_map = {r.room_id: r for r in rooms}
-
-    # Process labs first, then theory sessions
-    ordered_sessions = sorted(
+    norm_rooms = normalize_rooms_input(rooms)
+    unavail_inst = normalize_unavailable_slots_map(unavailable_instructor_slots, None)
+    unavail_room = normalize_unavailable_slots_map(unavailable_room_slots, None)
+    return _repair_conflicts(
+        chromosome,
         sessions,
-        key=lambda s: (0 if s.session_type == "Lab" else 1, -s.expected_students),
+        norm_rooms,
+        time_config,
+        random.Random(42),
+        unavail_inst=unavail_inst,
+        unavail_room=unavail_room,
     )
 
-    needs_reassignment: List[SchedulingSession] = []
-
-    for sess in ordered_sessions:
-        existing = chromosome.genes.get(sess.session_id)
-        if not existing:
-            needs_reassignment.append(sess)
-            continue
-
-        day, start_time, room_id = existing
-        is_lab = sess.session_type == "Lab"
-        valid_slots = lab_slots if is_lab else lecture_slots
-
-        if day not in days or start_time not in valid_slots:
-            needs_reassignment.append(sess)
-            continue
-
-        if not is_lab and day in section_days[sess.section_id]:
-            needs_reassignment.append(sess)
-            continue
-
-        room = room_map.get(room_id)
-        if not room or not room.is_available or (room.room_type.lower() == "lab") != is_lab:
-            needs_reassignment.append(sess)
-            continue
-
-        covered = time_config.covered_lecture_slots(start_time, is_lab)
-        has_collision = False
-        for st in covered:
-            if sess.instructor_id and (sess.instructor_id, day, st) in instructor_busy:
-                has_collision = True
-                break
-            if (sess.student_group_id, day, st) in group_busy:
-                has_collision = True
-                break
-            if (room_id, day, st) in room_busy:
-                has_collision = True
-                break
-
-        if has_collision:
-            needs_reassignment.append(sess)
-        else:
-            repaired_genes[sess.session_id] = (day, start_time, room_id)
-            section_days[sess.section_id].add(day)
-            for st in covered:
-                if sess.instructor_id:
-                    instructor_busy.add((sess.instructor_id, day, st))
-                group_busy.add((sess.student_group_id, day, st))
-                room_busy.add((room_id, day, st))
-
-    # Reassign colliding sessions into valid free slots
-    for sess in needs_reassignment:
-        is_lab = sess.session_type == "Lab"
-        candidate_slots = lab_slots if is_lab else lecture_slots
-        candidate_pairs = [(d, st) for st in candidate_slots for d in days]
-        rand.shuffle(candidate_pairs)
-
-        # Prefer days not yet used by this section
-        used_days = section_days[sess.section_id]
-        candidate_pairs.sort(key=lambda pair: (1 if pair[0] in used_days else 0))
-
-        for day, start_time in candidate_pairs:
-            if not is_lab and day in used_days:
-                continue
-            covered = time_config.covered_lecture_slots(start_time, is_lab)
-            if sess.instructor_id and any((sess.instructor_id, day, st) in instructor_busy for st in covered):
-                continue
-            if any((sess.student_group_id, day, st) in group_busy for st in covered):
-                continue
-            compat_rooms = get_compatible_rooms(
-                sess,
-                rooms,
-                unavailable_room_slots=room_busy,
-                day=day,
-                covered_slots=covered,
-            )
-            if compat_rooms:
-                chosen_room = compat_rooms[0]
-                repaired_genes[sess.session_id] = (day, start_time, chosen_room.room_id)
-                used_days.add(day)
-                for st in covered:
-                    if sess.instructor_id:
-                        instructor_busy.add((sess.instructor_id, day, st))
-                    group_busy.add((sess.student_group_id, day, st))
-                    room_busy.add((chosen_room.room_id, day, st))
-                break
-
-    return TimetableChromosome(genes=repaired_genes)

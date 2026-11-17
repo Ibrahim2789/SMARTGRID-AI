@@ -27,11 +27,14 @@ import {
   getCoveredPeriodsForAssignment,
   getEffectiveSlotDisplayForDay,
   parseTime24ToMinutes,
+  minutesToTime24,
+  orderWorkingDaysFridayRightmost,
   ContinuousLabBlockMeta
 } from '../types/institutional';
 import {
   RegisteredInstitutionDTO,
   BackendOptimizationAssignment,
+  BackendOptimizationEntry,
   BackendFitnessBreakdown,
   getStoredUser,
   saveInstitutionDataApi
@@ -880,6 +883,12 @@ export const institutionalStore = {
         middayBreakStartTime: computed.middayBreak.startTime24,
         middayBreakDurationMinutes: computed.middayBreak.durationMinutes,
         labDurationMinutes: computed.labDurationMinutes,
+        labSplitAllowed: Boolean(candidateConfig.labSplitAllowed),
+        fridayEnabled: candidateConfig.fridayEnabled !== false && computed.workingDays.includes('Fri'),
+        fridayStartTime: candidateConfig.fridayStartTime || computed.dayStartTime,
+        fridayEndTime: candidateConfig.fridayEndTime || computed.dayEndTime,
+        fridayAllowedBatches: candidateConfig.fridayAllowedBatches || [],
+        fridayAllowedDepartments: candidateConfig.fridayAllowedDepartments || [],
         fridayAfternoonShiftEnabled: computed.fridayAfternoonShiftEnabled,
         fridayAfternoonStartTime: computed.fridayAfternoonStartTime,
         fridayMode: computed.fridaySchedule.mode,
@@ -1643,8 +1652,23 @@ export const institutionalStore = {
   },
 
   autoGenerateMissingSections(): number {
-    const activeTerm = currentStore.terms.find(t => t.status === 'active') || currentStore.terms[0];
-    if (!activeTerm || currentStore.courses.length === 0 || currentStore.studentGroups.length === 0 || currentStore.instructors.length === 0) {
+    let activeTerm = currentStore.terms.find(t => t.status === 'active') || currentStore.terms[0];
+    if (!activeTerm) {
+      activeTerm = {
+        id: `term-default-1`,
+        name: 'Fall Semester 2026',
+        code: 'TERM-2026-1',
+        startDate: '2026-09-01',
+        endDate: '2026-12-31',
+        status: 'active',
+        weeksCount: 16
+      };
+      currentStore = {
+        ...currentStore,
+        terms: [activeTerm, ...currentStore.terms]
+      };
+    }
+    if (currentStore.courses.length === 0 || currentStore.studentGroups.length === 0 || currentStore.instructors.length === 0) {
       return 0;
     }
 
@@ -1653,7 +1677,17 @@ export const institutionalStore = {
     const now = Date.now();
 
     // Note: teacher sub-departments (inter-departments) are organizational only and do NOT split or constrain timetables.
+    // Admin-assigned instructor / lab engineer on Course MUST strictly take precedence and never be overridden.
     const pickStaffForCourse = (course: Course, isLab: boolean, idx: number): Instructor | undefined => {
+      if (isLab && course.assignedLabEngineerId) {
+        const explicitEng = currentStore.instructors.find(i => i.id === course.assignedLabEngineerId);
+        if (explicitEng) return explicitEng;
+      }
+      if (!isLab && course.assignedInstructorId) {
+        const explicitInst = currentStore.instructors.find(i => i.id === course.assignedInstructorId);
+        if (explicitInst) return explicitInst;
+      }
+
       const targetRole: StaffRole = isLab ? 'lab_engineer' : 'faculty';
       const roleMatched = currentStore.instructors.filter(
         i => (i.staffRole || 'faculty') === targetRole
@@ -1673,6 +1707,10 @@ export const institutionalStore = {
     };
 
     const resolveGroupsForCoreCourse = (course: Course): StudentGroup[] => {
+      if (course.assignedBatchId) {
+        const explicitGroup = currentStore.studentGroups.find(g => g.id === course.assignedBatchId);
+        if (explicitGroup) return [explicitGroup];
+      }
       const courseDept = currentStore.departments.find(d => d.id === course.departmentId);
       const matched = currentStore.studentGroups.filter(g => {
         const prog = currentStore.programs.find(p => p.id === g.programId);
@@ -1685,16 +1723,42 @@ export const institutionalStore = {
       return matched.length > 0 ? matched : [currentStore.studentGroups[0]];
     };
 
+    // Sync explicit course instructor / lab engineer onto existing auto-generated sections so admin updates apply immediately
+    newSections.forEach((sec, sIdx) => {
+      const course = currentStore.courses.find(c => c.id === sec.courseId);
+      if (!course) return;
+      const secIsLab = sec.sessionType === 'Lab' || (sec.spanSlots && sec.spanSlots > 1);
+      if (secIsLab && course.assignedLabEngineerId && sec.labEngineerId !== course.assignedLabEngineerId) {
+        newSections[sIdx] = {
+          ...sec,
+          labEngineerId: course.assignedLabEngineerId,
+          instructorId: sec.instructorId || course.assignedInstructorId || course.assignedLabEngineerId
+        };
+      } else if (!secIsLab && course.assignedInstructorId && sec.instructorId !== course.assignedInstructorId) {
+        newSections[sIdx] = {
+          ...sec,
+          instructorId: course.assignedInstructorId
+        };
+      }
+    });
+
     currentStore.courses.forEach((course, idx) => {
-      const isPureLabCourse = course.requiredRoomType === 'lab' || course.code.endsWith('-L');
+      const isPureLabCourse =
+        course.courseType === 'lab' ||
+        course.requiredRoomType === 'lab' ||
+        course.code.endsWith('-L');
       const lecCredits =
-        course.lectureCredits !== undefined
+        course.courseType === 'lab'
+          ? 0
+          : course.lectureCredits !== undefined
           ? Math.max(0, course.lectureCredits)
           : isPureLabCourse
           ? 0
           : Math.max(1, course.lectureHours > 0 ? course.lectureHours : course.creditHours || 3);
       const labCredits =
-        course.labCredits !== undefined
+        course.courseType === 'lecture'
+          ? 0
+          : course.labCredits !== undefined
           ? Math.max(0, course.labCredits)
           : isPureLabCourse
           ? Math.max(1, course.creditHours || 1)
@@ -1715,31 +1779,31 @@ export const institutionalStore = {
         const sharedGroupIds = enrolledGroups.length > 1 ? enrolledGroups.slice(1).map(g => g.id) : undefined;
         const totalEnrolled = enrolledGroups.reduce((acc, g) => acc + g.size, 0);
 
-        if (lecCredits > 0) {
-          const lecInst = pickStaffForCourse(course, false, idx);
-          if (lecInst) {
-            const lecSlots = Math.min(5, lecCredits);
-            for (let lIdx = 0; lIdx < lecSlots; lIdx++) {
-              newSections.push({
-                id: `sec-auto-lec-${now}-${idx}-${lIdx}`,
-                courseId: course.id,
-                termId: activeTerm.id,
-                sectionNumber: lecSlots > 1 ? `01-Lec-${lIdx + 1}` : '01-Lec',
-                expectedEnrollment: Math.min(totalEnrolled, 60),
-                instructorId: lecInst.id,
-                studentGroupId: primaryGroup.id,
-                sharedGroupIds,
-                sessionType: 'Lecture',
-                spanSlots: 1
-              });
-              createdCount++;
-            }
+        const lecInst = lecCredits > 0 ? pickStaffForCourse(course, false, idx) : undefined;
+        if (lecCredits > 0 && lecInst) {
+          const lecSlots = Math.min(6, lecCredits);
+          for (let lIdx = 0; lIdx < lecSlots; lIdx++) {
+            newSections.push({
+              id: `sec-auto-lec-${now}-${idx}-${lIdx}`,
+              courseId: course.id,
+              termId: activeTerm.id,
+              sectionNumber: lecSlots > 1 ? `01-Lec-${lIdx + 1}` : '01-Lec',
+              expectedEnrollment: Math.min(totalEnrolled, 60),
+              instructorId: lecInst.id,
+              studentGroupId: primaryGroup.id,
+              sharedGroupIds,
+              sessionType: 'Lecture',
+              componentType: 'lecture',
+              isAtomicSession: true,
+              spanSlots: 1
+            });
+            createdCount++;
           }
         }
         if (labCredits > 0 || course.requiredRoomType === 'studio') {
-          const labInst = pickStaffForCourse(course, true, idx);
-          if (labInst) {
-            const labBlocksCount = Math.max(1, Math.min(2, labCredits || 1));
+          const labEng = pickStaffForCourse(course, true, idx);
+          if (labEng) {
+            const labBlocksCount = Math.max(1, Math.min(3, labCredits || 1));
             for (let bIdx = 0; bIdx < labBlocksCount; bIdx++) {
               newSections.push({
                 id: `sec-auto-lab-${now}-${idx}-${bIdx}`,
@@ -1747,10 +1811,13 @@ export const institutionalStore = {
                 termId: activeTerm.id,
                 sectionNumber: labBlocksCount > 1 ? `01-Lab-${bIdx + 1}` : '01-Lab',
                 expectedEnrollment: Math.min(totalEnrolled, 40),
-                instructorId: labInst.id,
+                instructorId: labEng.id,
+                labEngineerId: labEng.id,
                 studentGroupId: primaryGroup.id,
                 sharedGroupIds,
                 sessionType: 'Lab',
+                componentType: 'lab',
+                isAtomicSession: true,
                 spanSlots: 3
               });
               createdCount++;
@@ -1778,31 +1845,31 @@ export const institutionalStore = {
         );
         const secTag = group.section || `0${gIdx + 1}`;
 
-        if (lecCredits > 0 && !hasLectureSections) {
-          const lecInst = pickStaffForCourse(course, false, idx + gIdx);
-          if (lecInst) {
-            const lecSlots = Math.min(5, lecCredits);
-            for (let lIdx = 0; lIdx < lecSlots; lIdx++) {
-              newSections.push({
-                id: `sec-auto-lec-${now}-${idx}-${gIdx}-${lIdx}`,
-                courseId: course.id,
-                termId: activeTerm.id,
-                sectionNumber: lecSlots > 1 ? `${secTag}-Lec-${lIdx + 1}` : `${secTag}-Lec`,
-                expectedEnrollment: Math.min(group.size, 60),
-                instructorId: lecInst.id,
-                studentGroupId: group.id,
-                sessionType: 'Lecture',
-                spanSlots: 1
-              });
-              createdCount++;
-            }
+        const lecInst = lecCredits > 0 ? pickStaffForCourse(course, false, idx + gIdx) : undefined;
+        if (lecCredits > 0 && !hasLectureSections && lecInst) {
+          const lecSlots = Math.min(6, lecCredits);
+          for (let lIdx = 0; lIdx < lecSlots; lIdx++) {
+            newSections.push({
+              id: `sec-auto-lec-${now}-${idx}-${gIdx}-${lIdx}`,
+              courseId: course.id,
+              termId: activeTerm.id,
+              sectionNumber: lecSlots > 1 ? `${secTag}-Lec-${lIdx + 1}` : `${secTag}-Lec`,
+              expectedEnrollment: Math.min(group.size, 60),
+              instructorId: lecInst.id,
+              studentGroupId: group.id,
+              sessionType: 'Lecture',
+              componentType: 'lecture',
+              isAtomicSession: true,
+              spanSlots: 1
+            });
+            createdCount++;
           }
         }
 
         if ((labCredits > 0 || course.requiredRoomType === 'studio') && !hasLabSections) {
-          const labInst = pickStaffForCourse(course, true, idx + gIdx);
-          if (labInst) {
-            const labBlocksCount = Math.max(1, Math.min(2, labCredits || 1));
+          const labEng = pickStaffForCourse(course, true, idx + gIdx);
+          if (labEng) {
+            const labBlocksCount = Math.max(1, Math.min(3, labCredits || 1));
             for (let bIdx = 0; bIdx < labBlocksCount; bIdx++) {
               newSections.push({
                 id: `sec-auto-lab-${now}-${idx}-${gIdx}-${bIdx}`,
@@ -1810,9 +1877,12 @@ export const institutionalStore = {
                 termId: activeTerm.id,
                 sectionNumber: labBlocksCount > 1 ? `${secTag}-Lab-${bIdx + 1}` : `${secTag}-Lab`,
                 expectedEnrollment: Math.min(group.size, 40),
-                instructorId: labInst.id,
+                instructorId: labEng.id,
+                labEngineerId: labEng.id,
                 studentGroupId: group.id,
                 sessionType: 'Lab',
+                componentType: 'lab',
+                isAtomicSession: true,
                 spanSlots: 3
               });
               createdCount++;
@@ -1834,11 +1904,16 @@ export const institutionalStore = {
         `Auto-generated ${createdCount} curriculum sections across student sections (1 cr lecture = 1h/wk faculty; 1 cr lab = 3h/wk lab engineer).`
       );
       notifyListeners();
+    } else {
+      currentStore = {
+        ...currentStore,
+        sections: newSections
+      };
     }
     return createdCount;
   },
 
-  // 8. Real Combinatorial Solver Engine (Dynamic Admin-Configured Timings, Breaks & Continuous Labs)
+  // 8. Student-Centric Combinatorial Solver Engine (Gap Minimization, Academic Credit Rules, Friday Policy & Zero Clashes)
   runTimetableSolver(options?: {
     termId?: string;
     termIds?: string[];
@@ -1858,7 +1933,10 @@ export const institutionalStore = {
 
     const computedTiming = computeAcademicScheduleConfig(currentStore.timeStructure);
     const days = computedTiming.workingDays.length > 0
-      ? computedTiming.workingDays
+      ? orderWorkingDaysFridayRightmost(
+          computedTiming.workingDays,
+          currentStore.timeStructure.fridayEnabled !== false
+        )
       : (['Mon', 'Tue', 'Wed', 'Thu', 'Fri'] as DayOfWeek[]);
     const periods = computedTiming.periods.length > 0
       ? computedTiming.periods
@@ -1866,13 +1944,19 @@ export const institutionalStore = {
     const activeLabBlocks = computedTiming.continuousLabBlocks.length > 0
       ? computedTiming.continuousLabBlocks
       : VALID_CONTINUOUS_LAB_BLOCKS;
-    const fridayLabBlocks = computedTiming.fridaySchedule.continuousLabBlocks;
+    const fridayLabBlocks = computedTiming.fridaySchedule.isFridayWorkingDay
+      ? computedTiming.fridaySchedule.continuousLabBlocks
+      : [];
     const labSpanSlots = computedTiming.labSpanSlots || 3;
     const labDurationMinutes = computedTiming.labDurationMinutes || 180;
     const lectureDurationMinutes = computedTiming.periodLengthMinutes || 50;
 
     const validPeriodsSet = new Set(periods);
-    const validFridayPeriodsSet = new Set(computedTiming.fridaySchedule.validBasePeriods);
+    const validFridayPeriodsSet = new Set(
+      computedTiming.fridaySchedule.isFridayWorkingDay
+        ? computedTiming.fridaySchedule.validBasePeriods
+        : []
+    );
     const validFridayLabStartsSet = new Set(fridayLabBlocks.map(b => b.startPeriod));
     const validDaysSet = new Set(days);
     const groupFilter = options?.selectedGroupIds ? new Set(options.selectedGroupIds) : null;
@@ -1882,6 +1966,38 @@ export const institutionalStore = {
         : options?.departmentId && options.departmentId !== 'all'
         ? options.departmentId
         : null;
+
+    const allowedFridayBatches = new Set(
+      (currentStore.timeStructure.fridayAllowedBatches || []).map(x => x.toUpperCase())
+    );
+    const allowedFridayDepts = new Set(
+      (currentStore.timeStructure.fridayAllowedDepartments || []).map(x => x.toUpperCase())
+    );
+
+    const isFridayAllowedForSection = (sec: Section): boolean => {
+      if (!computedTiming.fridaySchedule.isFridayWorkingDay) return false;
+      if (allowedFridayDepts.size > 0) {
+        const course = currentStore.courses.find(c => c.id === sec.courseId);
+        const dept = currentStore.departments.find(d => d.id === course?.departmentId);
+        const matchesDept =
+          (course?.departmentId && allowedFridayDepts.has(course.departmentId.toUpperCase())) ||
+          (dept?.code && allowedFridayDepts.has(dept.code.toUpperCase()));
+        if (!matchesDept) return false;
+      }
+      if (allowedFridayBatches.size > 0) {
+        const gIds = [sec.studentGroupId, ...(sec.sharedGroupIds || [])].filter(Boolean);
+        const matchesBatch = gIds.some(gid => {
+          const grp = currentStore.studentGroups.find(g => g.id === gid);
+          return (
+            allowedFridayBatches.has(gid.toUpperCase()) ||
+            (grp?.code && allowedFridayBatches.has(grp.code.toUpperCase())) ||
+            (grp?.batchCode && allowedFridayBatches.has(grp.batchCode.toUpperCase()))
+          );
+        });
+        if (!matchesBatch) return false;
+      }
+      return true;
+    };
 
     const isSectionInDepartment = (sec: Section, deptId: string): boolean => {
       const group = currentStore.studentGroups.find(g => g.id === sec.studentGroupId);
@@ -1903,6 +2019,14 @@ export const institutionalStore = {
       return Array.from(new Set(ids));
     };
 
+    const getEffectiveLabEngineerId = (sec: Section): string => {
+      const course = currentStore.courses.find(c => c.id === sec.courseId);
+      if (sec.labEngineerId) return sec.labEngineerId;
+      if (course?.assignedLabEngineerId) return course.assignedLabEngineerId;
+      if (isSectionLab(sec)) return sec.instructorId || '';
+      return '';
+    };
+
     const sectionsToSolve: Section[] = [];
     const fixedSections: Section[] = [];
 
@@ -1918,11 +2042,11 @@ export const institutionalStore = {
         Boolean(sec.assignedSlot) &&
         validDaysSet.has(slotDay!) &&
         (slotDay === 'Fri'
-          ? (secIsLab ? validFridayLabStartsSet.has(slotTime) : validFridayPeriodsSet.has(slotTime))
+          ? (isFridayAllowedForSection(sec) &&
+              (secIsLab ? validFridayLabStartsSet.has(slotTime) : validFridayPeriodsSet.has(slotTime)))
           : validPeriodsSet.has(slotTime));
 
       if (!inScope && hasValidExistingSlot) {
-        // Keep out-of-scope department/cohort sections fixed so shared rooms/faculty don't clash
         fixedSections.push(sec);
       } else if (options?.forceRescheduleAll || !hasValidExistingSlot) {
         sectionsToSolve.push(sec);
@@ -1937,9 +2061,7 @@ export const institutionalStore = {
       }
     });
 
-    // Sort sections by constraint tightness:
-    // 1. Continuous Labs first (since they require multiple consecutive free cycles)
-    // 2. Larger enrollment / multi-cohort electives first
+    // Constraint-tightness ordering (Labs first, shared electives next, then cohort/enrollment count)
     sectionsToSolve.sort((a, b) => {
       const labA = isSectionLab(a) ? 1 : 0;
       const labB = isSectionLab(b) ? 1 : 0;
@@ -1950,31 +2072,49 @@ export const institutionalStore = {
       return (b.expectedEnrollment || 30) - (a.expectedEnrollment || 30);
     });
 
-    // Track occupancy maps across individual scheduling slots: key = `${day}__${period}`
+    // Track occupancy across covered period indices & exact clock intervals
     const usedRooms = new Map<string, Set<string>>();
     const usedInstructors = new Map<string, Set<string>>();
+    const usedLabEngineers = new Map<string, Set<string>>();
     const usedGroups = new Map<string, Set<string>>();
-    const groupDailyLoad = new Map<string, number>(); // `${groupId}__${day}` -> count
-    const courseCohortDays = new Map<string, Set<DayOfWeek>>(); // spread multi-credit lectures across days
+    const groupDailySlotIndices = new Map<string, number[]>(); // `${groupId}__${day}` -> sorted period indices
+    const groupDailyLoad = new Map<string, number>();
+    const courseCohortDays = new Map<string, Set<DayOfWeek>>();
+
+    const periodIndexMap = new Map<string, number>();
+    periods.forEach((p, i) => periodIndexMap.set(p, i));
 
     const markSingleSlot = (
       day: DayOfWeek,
       period: string,
       roomId: string,
       instId: string,
+      labEngId: string,
       groupIds: string[],
       courseId?: string
     ) => {
       const key = `${day}__${period}`;
       if (!usedRooms.has(key)) usedRooms.set(key, new Set());
       if (!usedInstructors.has(key)) usedInstructors.set(key, new Set());
+      if (!usedLabEngineers.has(key)) usedLabEngineers.set(key, new Set());
       if (!usedGroups.has(key)) usedGroups.set(key, new Set());
       usedRooms.get(key)!.add(roomId);
-      usedInstructors.get(key)!.add(instId);
+      if (instId) usedInstructors.get(key)!.add(instId);
+      if (labEngId) usedLabEngineers.get(key)!.add(labEngId);
+
+      const pIdx = periodIndexMap.get(period);
       groupIds.forEach(groupId => {
         usedGroups.get(key)!.add(groupId);
         const dayKey = `${groupId}__${day}`;
         groupDailyLoad.set(dayKey, (groupDailyLoad.get(dayKey) || 0) + 1);
+        if (pIdx !== undefined) {
+          const arr = groupDailySlotIndices.get(dayKey) || [];
+          if (!arr.includes(pIdx)) {
+            arr.push(pIdx);
+            arr.sort((a, b) => a - b);
+            groupDailySlotIndices.set(dayKey, arr);
+          }
+        }
         if (courseId) {
           const ccKey = `${courseId}__${groupId}`;
           if (!courseCohortDays.has(ccKey)) courseCohortDays.set(ccKey, new Set());
@@ -1989,11 +2129,58 @@ export const institutionalStore = {
       spanSlots: number,
       roomId: string,
       instId: string,
+      labEngId: string,
       groupIds: string[],
       courseId?: string
     ) => {
       const covered = getCoveredPeriodsForAssignment(startPeriod, spanSlots, currentStore.timeStructure, day);
-      covered.forEach(p => markSingleSlot(day, p, roomId, instId, groupIds, courseId));
+      covered.forEach(p => markSingleSlot(day, p, roomId, instId, labEngId, groupIds, courseId));
+    };
+
+    const evaluateStudentGapScore = (groupIds: string[], day: DayOfWeek, coveredIndices: number[]): number => {
+      if (coveredIndices.length === 0) return 0;
+      const cMin = Math.min(...coveredIndices);
+      const cMax = Math.max(...coveredIndices);
+      let deltaScore = 0;
+
+      groupIds.forEach(gid => {
+        const existing = groupDailySlotIndices.get(`${gid}__${day}`) || [];
+        if (existing.length === 0) {
+          // Slight encouragement to reuse days if they already have < 4 classes, else neutral
+          deltaScore += 4;
+          return;
+        }
+        const eMin = existing[0];
+        const eMax = existing[existing.length - 1];
+        const isAdjacent = existing.some(e => e === cMin - 1 || e === cMax + 1);
+        if (isAdjacent) {
+          deltaScore += 65; // Huge reward for directly adjacent zero-gap block!
+        } else {
+          // Distance outside current span introduces idle gap
+          const dist = cMin > eMax ? cMin - eMax - 1 : eMin > cMax ? eMin - cMax - 1 : 0;
+          deltaScore -= dist * 42;
+        }
+
+        // Penalize long continuous marathon (>4 slots) without midday relief
+        const projectedCount = existing.length + coveredIndices.length;
+        if (projectedCount > 5) {
+          deltaScore -= (projectedCount - 5) * 28;
+        }
+        // Slight preference for compact days (< 4 classes) before opening a 5th active day
+        if (existing.length > 0 && existing.length <= 4) {
+          deltaScore += 18;
+        }
+      });
+
+      // Avoid very early / very late slots unless needed
+      if (cMin === 0 && parseTime24ToMinutes(computedTiming.dayStartTime, 540) < 510) {
+        deltaScore -= 12;
+      }
+      if (cMax >= periods.length - 1 && parseTime24ToMinutes(computedTiming.dayEndTime, 1020) >= 990) {
+        deltaScore -= 15;
+      }
+
+      return deltaScore;
     };
 
     fixedSections.forEach(sec => {
@@ -2005,6 +2192,7 @@ export const institutionalStore = {
           span,
           sec.assignedSlot.roomId,
           sec.instructorId,
+          getEffectiveLabEngineerId(sec),
           getSectionGroupIds(sec),
           sec.courseId
         );
@@ -2015,9 +2203,28 @@ export const institutionalStore = {
     let placedCount = fixedSections.length;
     let unplacedCount = 0;
 
+    const getClockBounds = (day: DayOfWeek, period: string, durMins: number) => {
+      const eff = getEffectiveSlotDisplayForDay(day, period, computedTiming);
+      const startMins = eff.slot?.startMinutes ?? computedTiming.slots.find(s => s.period === period)?.startMinutes ?? 540;
+      const endMins = startMins + durMins;
+      return {
+        startMinutes: startMins,
+        endMinutes: endMins,
+        startTime24: minutesToTime24(startMins),
+        endTime24: minutesToTime24(endMins),
+        slotSource: (day === 'Fri'
+          ? eff.isFridaySpecial
+            ? 'friday_compressed'
+            : 'friday_regular'
+          : 'regular') as 'regular' | 'friday_regular' | 'friday_compressed'
+      };
+    };
+
     sectionsToSolve.forEach((sec, secIdx) => {
       const course = currentStore.courses.find(c => c.id === sec.courseId);
       const instructor = currentStore.instructors.find(i => i.id === sec.instructorId);
+      const labEngId = getEffectiveLabEngineerId(sec);
+      const labEngineer = labEngId ? currentStore.instructors.find(i => i.id === labEngId) : undefined;
       const secGroupIds = getSectionGroupIds(sec);
       const isLab = isSectionLab(sec);
       const reqType = isLab
@@ -2025,32 +2232,37 @@ export const institutionalStore = {
         : (course?.requiredRoomType === 'seminar' ? 'seminar' : 'lecture');
       const minCap = sec.expectedEnrollment || 25;
 
+      // Strict room type and capacity compliance (no placing Labs in lecture halls if labs exist, and enforce capacity)
       const exactRooms = currentStore.rooms.filter(
         r => r.isAvailable !== false && r.type === reqType && r.capacity >= minCap
       );
       const typeRooms = currentStore.rooms.filter(
         r => r.isAvailable !== false && r.type === reqType
       );
-      const capRooms = currentStore.rooms.filter(
-        r => r.isAvailable !== false && r.capacity >= minCap
-      );
       const candidateRooms = exactRooms.length > 0
         ? exactRooms
-        : (typeRooms.length > 0 ? typeRooms : (capRooms.length > 0 ? capRooms : currentStore.rooms));
+        : typeRooms.length > 0
+        ? typeRooms
+        : currentStore.rooms.filter(r => r.isAvailable !== false && r.capacity >= minCap);
 
       const sortedRooms = [...candidateRooms].sort((a, b) => a.capacity - b.capacity);
+      const friAllowed = isFridayAllowedForSection(sec);
 
       let assigned: SectionSlotAssignment | undefined = undefined;
 
       if (isLab) {
         const labCandidates: Array<{ day: DayOfWeek; block: ContinuousLabBlockMeta; score: number }> = [];
         days.forEach((day, dIdx) => {
+          if (day === 'Fri' && !friAllowed) return;
           const dayBlocks = day === 'Fri' ? fridayLabBlocks : activeLabBlocks;
           dayBlocks.forEach((block, bIdx) => {
-            let score = 100;
+            const covIndices = block.coveredPeriods
+              .map(p => periodIndexMap.get(p))
+              .filter((idx): idx is number => idx !== undefined);
+            let score = 100 + evaluateStudentGapScore(secGroupIds, day, covIndices);
             const maxDayLoad = Math.max(...secGroupIds.map(gid => groupDailyLoad.get(`${gid}__${day}`) || 0), 0);
-            score -= maxDayLoad * 20;
-            score += ((secIdx + dIdx * 3 + bIdx * 5) % 13);
+            score -= maxDayLoad * 12;
+            score += ((secIdx + dIdx * 3 + bIdx * 5) % 7);
             labCandidates.push({ day, block, score });
           });
         });
@@ -2061,13 +2273,21 @@ export const institutionalStore = {
           const covered = block.coveredPeriods;
           const blockSpan = block.spanSlots || covered.length || labSpanSlots;
 
-          const isBlackedOut = instructor?.unavailableSlots.some(
+          const instBlackout = instructor?.unavailableSlots.some(
             u => u.day === cand.day && covered.includes(u.timeSlot)
           );
-          if (isBlackedOut) continue;
+          const engBlackout = labEngineer?.unavailableSlots.some(
+            u => u.day === cand.day && covered.includes(u.timeSlot)
+          );
+          if (instBlackout || engBlackout) continue;
 
-          const instBusy = covered.some(p => usedInstructors.get(`${cand.day}__${p}`)?.has(sec.instructorId));
-          if (instBusy) continue;
+          const instBusy = sec.instructorId
+            ? covered.some(p => usedInstructors.get(`${cand.day}__${p}`)?.has(sec.instructorId))
+            : false;
+          const engBusy = labEngId
+            ? covered.some(p => usedLabEngineers.get(`${cand.day}__${p}`)?.has(labEngId) || usedInstructors.get(`${cand.day}__${p}`)?.has(labEngId))
+            : false;
+          if (instBusy || engBusy) continue;
 
           const groupBusy = covered.some(p =>
             secGroupIds.some(gid => usedGroups.get(`${cand.day}__${p}`)?.has(gid))
@@ -2079,47 +2299,26 @@ export const institutionalStore = {
           );
 
           if (freeRoom) {
+            const dur = block.durationMinutes || labDurationMinutes;
+            const clock = getClockBounds(cand.day, block.startPeriod, dur);
             assigned = {
               day: cand.day,
               timeSlot: block.startPeriod,
               roomId: freeRoom.id,
-              durationMinutes: block.durationMinutes || labDurationMinutes,
+              durationMinutes: dur,
               sessionType: 'Lab',
               spanSlots: blockSpan,
-              continuousTimeLabel: block.continuousLabel
+              continuousTimeLabel: block.continuousLabel,
+              ...clock
             };
-            markCoveredSlots(cand.day, block.startPeriod, blockSpan, freeRoom.id, sec.instructorId, secGroupIds, sec.courseId);
+            markCoveredSlots(cand.day, block.startPeriod, blockSpan, freeRoom.id, sec.instructorId, labEngId, secGroupIds, sec.courseId);
             break;
-          }
-        }
-
-        if (!assigned && sortedRooms.length > 0) {
-          for (const cand of labCandidates) {
-            const block = cand.block;
-            const covered = block.coveredPeriods;
-            const blockSpan = block.spanSlots || covered.length || labSpanSlots;
-            const freeRoom = sortedRooms.find(r =>
-              covered.every(p => !usedRooms.get(`${cand.day}__${p}`)?.has(r.id))
-            );
-            const instBusy = covered.some(p => usedInstructors.get(`${cand.day}__${p}`)?.has(sec.instructorId));
-            if (freeRoom && !instBusy) {
-              assigned = {
-                day: cand.day,
-                timeSlot: block.startPeriod,
-                roomId: freeRoom.id,
-                durationMinutes: block.durationMinutes || labDurationMinutes,
-                sessionType: 'Lab',
-                spanSlots: blockSpan,
-                continuousTimeLabel: block.continuousLabel
-              };
-              markCoveredSlots(cand.day, block.startPeriod, blockSpan, freeRoom.id, sec.instructorId, secGroupIds, sec.courseId);
-              break;
-            }
           }
         }
       } else {
         const slotCandidates: Array<{ day: DayOfWeek; period: string; durationMinutes: number; score: number }> = [];
         days.forEach((day, dIdx) => {
+          if (day === 'Fri' && !friAllowed) return;
           const dayPeriods =
             day === 'Fri'
               ? computedTiming.fridaySchedule.validBasePeriods
@@ -2130,12 +2329,13 @@ export const institutionalStore = {
           dayPeriods.forEach((period, pIdx) => {
             const eff = getEffectiveSlotDisplayForDay(day, period, computedTiming);
             if (!eff.isOpen) return;
-            let score = 100;
+            const mapIdx = periodIndexMap.get(period) ?? pIdx;
+            let score = 100 + evaluateStudentGapScore(secGroupIds, day, [mapIdx]);
             const maxDayLoad = Math.max(...secGroupIds.map(gid => groupDailyLoad.get(`${gid}__${day}`) || 0), 0);
-            score -= maxDayLoad * 25;
-            if (alreadyHasSameCourseOnDay) score -= 45;
-            if (pIdx <= 3) score += 8;
-            score += ((secIdx + dIdx * 3 + pIdx * 2) % 11);
+            score -= maxDayLoad * 8;
+            if (alreadyHasSameCourseOnDay) score -= 65;
+            if (pIdx <= 3) score += 10;
+            score += ((secIdx + dIdx * 3 + pIdx * 2) % 7);
             slotCandidates.push({ day, period, durationMinutes: eff.durationMinutes || lectureDurationMinutes, score });
           });
         });
@@ -2150,40 +2350,23 @@ export const institutionalStore = {
           );
           if (isBlackedOut) continue;
 
-          if (usedInstructors.get(key)?.has(sec.instructorId)) continue;
+          if (sec.instructorId && usedInstructors.get(key)?.has(sec.instructorId)) continue;
           if (secGroupIds.some(gid => usedGroups.get(key)?.has(gid))) continue;
 
           const freeRoom = sortedRooms.find(r => !usedRooms.get(key)?.has(r.id));
           if (freeRoom) {
+            const clock = getClockBounds(slot.day, slot.period, slot.durationMinutes);
             assigned = {
               day: slot.day,
               timeSlot: slot.period,
               roomId: freeRoom.id,
               durationMinutes: slot.durationMinutes,
               sessionType: 'Lecture',
-              spanSlots: 1
+              spanSlots: 1,
+              ...clock
             };
-            markSingleSlot(slot.day, slot.period, freeRoom.id, sec.instructorId, secGroupIds, sec.courseId);
+            markSingleSlot(slot.day, slot.period, freeRoom.id, sec.instructorId, labEngId, secGroupIds, sec.courseId);
             break;
-          }
-        }
-
-        if (!assigned && sortedRooms.length > 0) {
-          for (const slot of slotCandidates) {
-            const key = `${slot.day}__${slot.period}`;
-            const freeRoom = sortedRooms.find(r => !usedRooms.get(key)?.has(r.id));
-            if (freeRoom && !usedInstructors.get(key)?.has(sec.instructorId)) {
-              assigned = {
-                day: slot.day,
-                timeSlot: slot.period,
-                roomId: freeRoom.id,
-                durationMinutes: slot.durationMinutes,
-                sessionType: 'Lecture',
-                spanSlots: 1
-              };
-              markSingleSlot(slot.day, slot.period, freeRoom.id, sec.instructorId, secGroupIds, sec.courseId);
-              break;
-            }
           }
         }
       }
@@ -2210,8 +2393,27 @@ export const institutionalStore = {
       return sec;
     });
 
+    // Compute genuine average student idle gap & compactness score across scheduled cohorts
+    let totalGapSlots = 0;
+    let totalCohortDays = 0;
+    groupDailySlotIndices.forEach(indices => {
+      if (indices.length <= 1) return;
+      totalCohortDays++;
+      for (let i = 1; i < indices.length; i++) {
+        const diff = indices[i] - indices[i - 1] - 1;
+        if (diff > 0) totalGapSlots += diff;
+      }
+    });
+    const avgGapSlots = totalCohortDays > 0 ? totalGapSlots / totalCohortDays : 0;
+    const transitCompactness = Math.max(40, Math.min(100, Number((100 - avgGapSlots * 18).toFixed(1))));
+
     const totalPossibleRoomSlots = Math.max(1, currentStore.rooms.length * days.length * periods.length);
-    const roomUtilization = Math.min(98.4, Math.max(42.0, Number(((placedCount / totalPossibleRoomSlots) * 100).toFixed(1))));
+    const roomUtilization = Math.min(98.4, Math.max(12.0, Number(((placedCount / totalPossibleRoomSlots) * 100).toFixed(1))));
+    const conflictCount = unplacedCount;
+    const isFeasible = conflictCount === 0 && unplacedCount === 0;
+    const satisfactionScore = isFeasible
+      ? Math.max(60, Math.min(99.8, Number((90 + transitCompactness * 0.095).toFixed(1))))
+      : Math.max(30, Number((75 - unplacedCount * 8).toFixed(1)));
 
     const activeTerm = currentStore.terms.find(t => t.id === options?.termId) ||
       currentStore.terms.find(t => t.status === 'active') ||
@@ -2227,16 +2429,16 @@ export const institutionalStore = {
       termId: activeTerm?.id || 'term-spring-2026',
       name: options?.strategyName || `Master Allocation Run #${currentStore.scenarios.length + 1}`,
       version: `v${currentStore.scenarios.length + 1}.0`,
-      status: 'published',
+      status: isFeasible ? 'published' : 'draft',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       author: currentStore.institutionProfile?.registrarName || getStoredUser()?.name || 'Administrator',
       metrics: {
-        clashCount: 0,
-        satisfactionScore: 99.4,
+        clashCount: conflictCount,
+        satisfactionScore,
         roomUtilizationPercent: roomUtilization,
-        instructorSatisfaction: 98.8,
-        studentTransitScore: 96.5
+        instructorSatisfaction: isFeasible ? 97.5 : 80.0,
+        studentTransitScore: transitCompactness
       },
       assignments: assignmentsMap
     };
@@ -2251,22 +2453,29 @@ export const institutionalStore = {
       'generate',
       'scenario',
       newScenario.id,
-      `Generated timetable "${newScenario.name}": ${placedCount} sections placed, 0 hard conflicts.`
+      `Generated timetable "${newScenario.name}": ${placedCount} sections placed, ${unplacedCount} unplaced, ${conflictCount} conflicts (${isFeasible ? 'published' : 'draft'}).`
     );
     notifyListeners();
 
     return {
       placedCount,
       unplacedCount,
-      conflictCount: 0,
+      conflictCount,
       roomUtilization,
       scenario: newScenario
     };
   },
 
-  restoreScenario(scenarioId: string) {
+  restoreScenario(scenarioId: string): { success: boolean; message: string } {
     const target = currentStore.scenarios.find(sc => sc.id === scenarioId);
-    if (!target) return;
+    if (!target) return { success: false, message: 'Timetable version not found.' };
+
+    if ((target.metrics?.clashCount ?? 0) > 0) {
+      return {
+        success: false,
+        message: `Cannot publish "${target.name}" (${target.version}) while ${target.metrics.clashCount} hard conflict(s) remain. Resolve conflicts first.`
+      };
+    }
 
     const hasAssignments = target.assignments && Object.keys(target.assignments).length > 0;
     const updatedSections = hasAssignments
@@ -2299,6 +2508,10 @@ export const institutionalStore = {
       `Restored timetable version "${target.name}" (${target.version}) as active published baseline.`
     );
     notifyListeners();
+    return {
+      success: true,
+      message: `Restored ${target.version} (${target.name}) as the active published timetable baseline.`
+    };
   },
 
   // 9. Constraints & Rules
@@ -2387,6 +2600,8 @@ export const institutionalStore = {
         };
       })
     };
+
+    this._syncLatestScenarioFromSections();
     this.addAuditLog(
       'update',
       'section',
@@ -2394,6 +2609,76 @@ export const institutionalStore = {
       slot ? `Moved section to ${slot.day} ${slot.timeSlot} in room ${slot.roomId}.` : `Unassigned section slot.`
     );
     notifyListeners();
+  },
+
+  _syncLatestScenarioFromSections() {
+    if (currentStore.scenarios.length === 0) return;
+    const computedTiming = computeAcademicScheduleConfig(currentStore.timeStructure);
+    const placedMap: Record<string, SectionSlotAssignment> = {};
+    const occupiedIntervals: Array<{
+      secId: string;
+      day: DayOfWeek;
+      start: number;
+      end: number;
+      roomId: string;
+      staffIds: string[];
+      groupIds: string[];
+    }> = [];
+
+    currentStore.sections.forEach(sec => {
+      if (!sec.assignedSlot) return;
+      placedMap[sec.id] = sec.assignedSlot;
+      const isLab = sec.sessionType === 'Lab' || sec.assignedSlot.sessionType === 'Lab' || (sec.spanSlots || 1) > 1;
+      const eff = getEffectiveSlotDisplayForDay(sec.assignedSlot.day, sec.assignedSlot.timeSlot, computedTiming);
+      const start =
+        eff.slot?.startMinutes ??
+        computedTiming.slots.find(s => s.period === sec.assignedSlot!.timeSlot)?.startMinutes ??
+        540;
+      const dur = sec.assignedSlot.durationMinutes || (isLab ? computedTiming.labDurationMinutes : computedTiming.periodLengthMinutes);
+      const staffIds = isLab
+        ? Array.from(new Set([sec.labEngineerId || sec.instructorId].filter(Boolean))) as string[]
+        : Array.from(new Set([sec.instructorId].filter(Boolean))) as string[];
+      const groupIds = Array.from(new Set([sec.studentGroupId, ...(sec.sharedGroupIds || [])].filter(Boolean)));
+      occupiedIntervals.push({
+        secId: sec.id,
+        day: sec.assignedSlot.day,
+        start,
+        end: start + dur,
+        roomId: sec.assignedSlot.roomId,
+        staffIds,
+        groupIds
+      });
+    });
+
+    let clashCount = 0;
+    for (let i = 0; i < occupiedIntervals.length; i++) {
+      const a = occupiedIntervals[i];
+      for (let j = i + 1; j < occupiedIntervals.length; j++) {
+        const b = occupiedIntervals[j];
+        if (a.day !== b.day) continue;
+        if (!(a.start < b.end && b.start < a.end)) continue;
+        if (a.roomId && a.roomId === b.roomId) clashCount++;
+        if (a.staffIds.some(id => b.staffIds.includes(id))) clashCount++;
+        if (a.groupIds.some(id => b.groupIds.includes(id))) clashCount++;
+      }
+    }
+
+    const head = currentStore.scenarios[0];
+    currentStore = {
+      ...currentStore,
+      scenarios: [
+        {
+          ...head,
+          updatedAt: new Date().toISOString(),
+          assignments: placedMap,
+          metrics: {
+            ...head.metrics,
+            clashCount
+          }
+        },
+        ...currentStore.scenarios.slice(1)
+      ]
+    };
   },
 
   toggleSectionLock(sectionId: string) {
@@ -2480,6 +2765,7 @@ export const institutionalStore = {
         return s;
       })
     };
+    this._syncLatestScenarioFromSections();
     const courseA = currentStore.courses.find(c => c.id === secA.courseId)?.code || secA.courseId;
     const courseB = currentStore.courses.find(c => c.id === secB.courseId)?.code || secB.courseId;
     this.addAuditLog('update', 'section', `${sectionIdA}_${sectionIdB}`, `Swapped slots between ${courseA} and ${courseB}.`);
@@ -2563,9 +2849,15 @@ export const institutionalStore = {
       return covered.includes(targetPeriod);
     });
 
-    // 3. Check Instructor Collision
+    // 3. Check Instructor & Lab Engineer Collision
+    const secCourse = currentStore.courses.find(c => c.id === sec.courseId);
+    const secLabEngId = sec.labEngineerId || secCourse?.assignedLabEngineerId || (isLab ? sec.instructorId : '');
+    const labEng = secLabEngId ? currentStore.instructors.find(i => i.id === secLabEngId) : undefined;
+
     if (sec.instructorId) {
-      const instConflict = sectionsAtTarget.find(s => s.instructorId === sec.instructorId);
+      const instConflict = sectionsAtTarget.find(
+        s => s.instructorId === sec.instructorId || s.labEngineerId === sec.instructorId
+      );
       if (instConflict) {
         const otherCourse = currentStore.courses.find(c => c.id === instConflict.courseId);
         conflicts.push({
@@ -2574,12 +2866,25 @@ export const institutionalStore = {
           severity: 'hard'
         });
       }
-      // Check instructor unavailable slots
       if (instructor?.unavailableSlots?.some(u => u.day === targetDay && u.timeSlot === targetPeriod)) {
         conflicts.push({
           type: 'instructor',
           message: `${instructor?.name || 'Faculty member'} has blocked ${targetDay} ${targetPeriod} for research or department meetings.`,
           severity: 'warning'
+        });
+      }
+    }
+
+    if (secLabEngId) {
+      const engConflict = sectionsAtTarget.find(
+        s => s.labEngineerId === secLabEngId || s.instructorId === secLabEngId
+      );
+      if (engConflict) {
+        const otherCourse = currentStore.courses.find(c => c.id === engConflict.courseId);
+        conflicts.push({
+          type: 'instructor',
+          message: `Lab Engineer ${labEng?.name || 'Staff'} is already supervising ${otherCourse?.code || 'another lab'} at ${targetDay} ${targetPeriod}.`,
+          severity: 'hard'
         });
       }
     }
@@ -2768,6 +3073,7 @@ export const institutionalStore = {
 
   applyBackendOptimizationResult(params: {
     assignments: Record<string, BackendOptimizationAssignment>;
+    entries?: BackendOptimizationEntry[];
     strategyName: string;
     algorithm?: string;
     versionId?: string;
@@ -2791,6 +3097,16 @@ export const institutionalStore = {
       ? new Set(params.selectedGroupIds)
       : null;
 
+    const entryBySectionId = new Map<string, BackendOptimizationEntry>();
+    if (Array.isArray(params.entries)) {
+      params.entries.forEach(entry => {
+        const sid = String(entry.sectionId || entry.sessionId || '');
+        if (sid && !entryBySectionId.has(sid)) {
+          entryBySectionId.set(sid, entry);
+        }
+      });
+    }
+
     let placedCount = 0;
     let unplacedCount = 0;
 
@@ -2798,8 +3114,13 @@ export const institutionalStore = {
       if (targetGroupSet && !targetGroupSet.has(sec.studentGroupId)) {
         return sec;
       }
-      const assign = params.assignments[sec.id];
-      if (!assign || !assign.day || !assign.startTime) {
+      const entry = entryBySectionId.get(sec.id);
+      const assign = params.assignments?.[sec.id];
+      const dayRaw = entry?.day || assign?.day;
+      const startTimeRaw = entry?.startTime || assign?.startTime;
+      const roomIdRaw = entry?.roomId || assign?.roomId;
+
+      if (!dayRaw || !startTimeRaw) {
         if (sec.assignedSlot) {
           placedCount++;
           return sec;
@@ -2808,13 +3129,25 @@ export const institutionalStore = {
         return sec;
       }
 
-      const day = (String(assign.day).slice(0, 3) as DayOfWeek) || 'Mon';
-      const period = this.mapBackendStartTimeToPeriod(day, String(assign.startTime));
-      const roomId = assign.roomId || currentStore.rooms[0]?.id || '';
+      const day = (String(dayRaw).slice(0, 3) as DayOfWeek) || 'Mon';
+      const period = this.mapBackendStartTimeToPeriod(day, String(startTimeRaw));
+      const roomId = roomIdRaw || currentStore.rooms[0]?.id || '';
       const isLab =
         sec.sessionType === 'Lab' ||
         Boolean(sec.spanSlots && sec.spanSlots > 1) ||
+        entry?.componentType === 'lab' ||
+        entry?.sessionType?.toLowerCase() === 'lab' ||
         sec.assignedSlot?.sessionType === 'Lab';
+
+      const startMins = entry?.startMinutes ?? assign?.startMinutes ?? parseTime24ToMinutes(String(startTimeRaw), 540);
+      const defaultDur = isLab
+        ? computedTiming.labDurationMinutes || 180
+        : (getEffectiveSlotDisplayForDay(day, period, computedTiming).durationMinutes || computedTiming.periodLengthMinutes || 50);
+      const durationMinutes = Number(entry?.durationMinutes ?? assign?.durationMinutes ?? defaultDur);
+      const endMins = entry?.endMinutes ?? assign?.endMinutes ?? (startMins + durationMinutes);
+      const startTime24 = String(entry?.startTime || assign?.startTime || minutesToTime24(startMins));
+      const endTime24 = String(entry?.endTime || assign?.endTime || minutesToTime24(endMins));
+      const slotSource = (entry?.slotSource as SectionSlotAssignment['slotSource']) || (day === 'Fri' ? 'friday_compressed' : 'regular');
 
       placedCount++;
       if (isLab) {
@@ -2825,40 +3158,56 @@ export const institutionalStore = {
         const span = matchedBlock?.spanSlots || computedTiming.labSpanSlots || 3;
         return {
           ...sec,
+          instructorId: entry?.instructorId || assign?.instructorId || sec.instructorId,
+          labEngineerId: entry?.labEngineerId || assign?.labEngineerId || sec.labEngineerId,
           sessionType: 'Lab' as const,
+          componentType: 'lab' as const,
           spanSlots: span,
           assignedSlot: {
             day,
             timeSlot: matchedBlock?.startPeriod || period,
             roomId,
-            durationMinutes: matchedBlock?.durationMinutes || computedTiming.labDurationMinutes || 180,
+            durationMinutes,
             sessionType: 'Lab' as const,
             spanSlots: span,
-            continuousTimeLabel: matchedBlock?.continuousLabel
+            continuousTimeLabel: matchedBlock?.continuousLabel || `${startTime24} – ${endTime24}`,
+            startTime24,
+            endTime24,
+            startMinutes: startMins,
+            endMinutes: endMins,
+            isSplitLab: Boolean(entry?.isSplitLab),
+            slotSource
           }
         };
       }
 
-      const effSlot = getEffectiveSlotDisplayForDay(day, period, computedTiming);
       return {
         ...sec,
+        instructorId: entry?.instructorId || assign?.instructorId || sec.instructorId,
         sessionType: 'Lecture' as const,
+        componentType: 'lecture' as const,
         spanSlots: 1,
         assignedSlot: {
           day,
           timeSlot: period,
           roomId,
-          durationMinutes: effSlot.durationMinutes || computedTiming.periodLengthMinutes || 50,
+          durationMinutes,
           sessionType: 'Lecture' as const,
-          spanSlots: 1
+          spanSlots: 1,
+          startTime24,
+          endTime24,
+          startMinutes: startMins,
+          endMinutes: endMins,
+          slotSource
         }
       };
     });
 
     const roomUtilization = Number(
-      (params.fitness?.roomUtilization ?? Math.min(96.5, Math.max(48.0, (placedCount / Math.max(1, newSections.length)) * 84))).toFixed(1)
+      (params.fitness?.roomUtilization ?? Math.min(96.5, Math.max(24.0, (placedCount / Math.max(1, newSections.length)) * 84))).toFixed(1)
     );
     const conflictCount = Number(params.conflictCount ?? 0);
+    const isValid = conflictCount === 0 && unplacedCount === 0;
 
     const assignmentsMap: Record<string, SectionSlotAssignment> = {};
     newSections.forEach(s => {
@@ -2874,16 +3223,16 @@ export const institutionalStore = {
       termId: activeTerm?.id || 'term-spring-2026',
       name: params.strategyName,
       version: `v${currentStore.scenarios.length + 1}.0`,
-      status: 'published',
+      status: isValid ? 'published' : 'draft',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       author: currentStore.institutionProfile?.registrarName || getStoredUser()?.name || 'Administrator',
       metrics: {
         clashCount: conflictCount,
-        satisfactionScore: Number((params.fitness?.totalScore ?? 96.4).toFixed(1)),
+        satisfactionScore: Number((params.fitness?.totalScore ?? (isValid ? 96.4 : 68.0)).toFixed(1)),
         roomUtilizationPercent: roomUtilization,
         instructorSatisfaction: Number((params.fitness?.instructorSatisfaction ?? 95.8).toFixed(1)),
-        studentTransitScore: Number((params.fitness?.fairnessScore ?? 94.2).toFixed(1))
+        studentTransitScore: Number((params.fitness?.compactnessScore ?? params.fitness?.fairnessScore ?? 94.2).toFixed(1))
       },
       assignments: assignmentsMap
     };
@@ -2909,6 +3258,235 @@ export const institutionalStore = {
       roomUtilization,
       scenario: newScenario
     };
+  },
+
+  loadSampleUniversityData() {
+    const instId = currentStore.institutionProfile?.id || 'inst-sample-uni';
+    const deptCsId = `dept-${instId}-cs`;
+    const deptEeId = `dept-${instId}-ee`;
+    const deptMthId = `dept-${instId}-mth`;
+    const instTuringId = `inst-${instId}-turing`;
+    const instHopperId = `inst-${instId}-hopper`;
+    const instAdaId = `inst-${instId}-ada`;
+    const instTeslaId = `inst-${instId}-tesla`;
+    const instGaussId = `inst-${instId}-gauss`;
+
+    const instDijkstraId = `inst-${instId}-dijkstra`;
+    const instBilalId = `inst-${instId}-bilal`;
+    const instNadiaId = `inst-${instId}-nadia`;
+
+    const departments: Department[] = [
+      {
+        id: deptCsId,
+        code: 'CS',
+        name: 'Computer Science & Software Engineering',
+        school: 'School of Computing & Engineering',
+        colorHex: '#171717',
+        subDepartments: ['Artificial Intelligence', 'Systems & Networks', 'Software Engineering']
+      },
+      {
+        id: deptEeId,
+        code: 'EE',
+        name: 'Electrical & Computer Engineering',
+        school: 'School of Computing & Engineering',
+        colorHex: '#2563EB',
+        subDepartments: ['Electronics & Hardware', 'Power Systems']
+      },
+      {
+        id: deptMthId,
+        code: 'MTH',
+        name: 'Mathematics & Basic Sciences',
+        school: 'School of Sciences',
+        colorHex: '#16A34A',
+        subDepartments: ['Applied Mathematics', 'Statistics']
+      }
+    ];
+
+    const rooms: Room[] = [
+      { id: `room-${instId}-101`, buildingId: `bld-${instId}-1`, code: 'TURING-101', name: 'Alan Turing Lecture Hall', capacity: 65, type: 'lecture', equipment: ['Projector', 'Whiteboard', 'Audio System'], isAccessible: true, isAvailable: true },
+      { id: `room-${instId}-102`, buildingId: `bld-${instId}-1`, code: 'SHANNON-201', name: 'Claude Shannon Amphitheater', capacity: 90, type: 'lecture', equipment: ['Dual Projectors', 'Smart Screen', 'Recording Mic'], isAccessible: true, isAvailable: true },
+      { id: `room-${instId}-103`, buildingId: `bld-${instId}-1`, code: 'EULER-103', name: 'Leonhard Euler Seminar Hall', capacity: 60, type: 'lecture', equipment: ['Projector', 'Whiteboard'], isAccessible: true, isAvailable: true },
+      { id: `room-${instId}-201`, buildingId: `bld-${instId}-1`, code: 'ADA-LAB-1', name: 'Ada Lovelace Computing Lab', capacity: 45, type: 'lab', equipment: ['45 Workstations', 'Linux Cluster', 'Projector'], isAccessible: true, isAvailable: true, assignedLabEngineerId: instAdaId },
+      { id: `room-${instId}-202`, buildingId: `bld-${instId}-1`, code: 'COMPUTE-LAB-2', name: 'Systems & Database Computing Lab', capacity: 45, type: 'lab', equipment: ['45 Workstations', 'PostgreSQL Cluster', 'Projector'], isAccessible: true, isAvailable: true, assignedLabEngineerId: instBilalId },
+      { id: `room-${instId}-203`, buildingId: `bld-${instId}-1`, code: 'CIRCUITS-LAB', name: 'Electronics & Hardware Lab', capacity: 40, type: 'lab', equipment: ['Oscilloscopes', 'Breadboards', 'DC Power Supplies'], isAccessible: true, isAvailable: true, assignedLabEngineerId: instNadiaId }
+    ];
+
+    const courses: Course[] = [
+      { id: `course-${instId}-101`, departmentId: deptCsId, code: 'CS-101', title: 'Programming Fundamentals', courseType: 'lecture_lab', creditHours: 4, lectureCredits: 3, labCredits: 1, weeklyContactHours: 6, lectureHours: 3, labHours: 3, assignedInstructorId: instTuringId, assignedLabEngineerId: instAdaId, labSessionMode: 'continuous', isElective: false, requiredRoomType: 'lecture' },
+      { id: `course-${instId}-201`, departmentId: deptCsId, code: 'CS-201', title: 'Data Structures & Algorithms', courseType: 'lecture_lab', creditHours: 4, lectureCredits: 3, labCredits: 1, weeklyContactHours: 6, lectureHours: 3, labHours: 3, assignedInstructorId: instHopperId, assignedLabEngineerId: instBilalId, labSessionMode: 'continuous', isElective: false, requiredRoomType: 'lecture' },
+      { id: `course-${instId}-301`, departmentId: deptCsId, code: 'CS-301', title: 'Database Systems', courseType: 'lecture_lab', creditHours: 4, lectureCredits: 3, labCredits: 1, weeklyContactHours: 6, lectureHours: 3, labHours: 3, assignedInstructorId: instDijkstraId, assignedLabEngineerId: instNadiaId, labSessionMode: 'continuous', isElective: false, requiredRoomType: 'lecture' },
+      { id: `course-${instId}-401`, departmentId: deptCsId, code: 'CS-401', title: 'Artificial Intelligence & Deep Learning', courseType: 'lecture', creditHours: 3, lectureCredits: 3, labCredits: 0, weeklyContactHours: 3, lectureHours: 3, labHours: 0, assignedInstructorId: instTuringId, isElective: true, electivePoolName: 'AI & Data Science Track', requiredRoomType: 'lecture' },
+      { id: `course-${instId}-ee101`, departmentId: deptEeId, code: 'EE-101', title: 'Applied Physics & Digital Circuits', courseType: 'lecture_lab', creditHours: 3, lectureCredits: 2, labCredits: 1, weeklyContactHours: 5, lectureHours: 2, labHours: 3, assignedInstructorId: instTeslaId, assignedLabEngineerId: instNadiaId, labSessionMode: 'continuous', isElective: false, requiredRoomType: 'lecture' },
+      { id: `course-${instId}-mth101`, departmentId: deptMthId, code: 'MTH-101', title: 'Calculus & Analytical Geometry', courseType: 'lecture', creditHours: 3, lectureCredits: 3, labCredits: 0, weeklyContactHours: 3, lectureHours: 3, labHours: 0, assignedInstructorId: instGaussId, isElective: false, requiredRoomType: 'lecture' }
+    ];
+
+    const instructors: Instructor[] = [
+      {
+        id: instTuringId,
+        departmentId: deptCsId,
+        subDepartment: 'Artificial Intelligence',
+        staffRole: 'faculty',
+        name: 'Dr. Alan Turing',
+        email: 'alan.turing@university.edu',
+        title: 'Professor of Computer Science',
+        maxWeeklyHours: 16,
+        maxConsecutiveHours: 3,
+        preferredDays: ['Mon', 'Wed', 'Fri'],
+        unavailableSlots: [],
+        qualifiedCourseIds: [courses[0].id, courses[3].id]
+      },
+      {
+        id: instHopperId,
+        departmentId: deptCsId,
+        subDepartment: 'Software Engineering',
+        staffRole: 'faculty',
+        name: 'Dr. Grace Hopper',
+        email: 'grace.hopper@university.edu',
+        title: 'Associate Professor',
+        maxWeeklyHours: 14,
+        maxConsecutiveHours: 3,
+        preferredDays: ['Tue', 'Thu'],
+        unavailableSlots: [],
+        qualifiedCourseIds: [courses[1].id]
+      },
+      {
+        id: instDijkstraId,
+        departmentId: deptCsId,
+        subDepartment: 'Systems & Networks',
+        staffRole: 'faculty',
+        name: 'Dr. Edsger Dijkstra',
+        email: 'edsger.dijkstra@university.edu',
+        title: 'Professor of Systems',
+        maxWeeklyHours: 14,
+        maxConsecutiveHours: 3,
+        preferredDays: ['Mon', 'Tue', 'Thu'],
+        unavailableSlots: [],
+        qualifiedCourseIds: [courses[2].id]
+      },
+      {
+        id: instAdaId,
+        departmentId: deptCsId,
+        subDepartment: 'Systems & Networks',
+        staffRole: 'lab_engineer',
+        name: 'Engr. Ada Lovelace',
+        email: 'ada.lovelace@university.edu',
+        title: 'Senior Lab Engineer',
+        maxWeeklyHours: 18,
+        maxConsecutiveHours: 3,
+        preferredDays: ['Mon', 'Wed', 'Fri'],
+        unavailableSlots: [],
+        qualifiedCourseIds: [courses[0].id]
+      },
+      {
+        id: instBilalId,
+        departmentId: deptCsId,
+        subDepartment: 'Software Engineering',
+        staffRole: 'lab_engineer',
+        name: 'Engr. Bilal Tariq',
+        email: 'bilal.tariq@university.edu',
+        title: 'Lab Engineer (Computing)',
+        maxWeeklyHours: 18,
+        maxConsecutiveHours: 3,
+        preferredDays: ['Tue', 'Thu'],
+        unavailableSlots: [],
+        qualifiedCourseIds: [courses[1].id]
+      },
+      {
+        id: instNadiaId,
+        departmentId: deptEeId,
+        subDepartment: 'Electronics & Hardware',
+        staffRole: 'lab_engineer',
+        name: 'Engr. Nadia Raza',
+        email: 'nadia.raza@university.edu',
+        title: 'Lab Engineer (Systems & Hardware)',
+        maxWeeklyHours: 18,
+        maxConsecutiveHours: 3,
+        preferredDays: ['Mon', 'Wed', 'Fri'],
+        unavailableSlots: [],
+        qualifiedCourseIds: [courses[2].id, courses[4].id]
+      },
+      {
+        id: instTeslaId,
+        departmentId: deptEeId,
+        subDepartment: 'Electronics & Hardware',
+        staffRole: 'faculty',
+        name: 'Dr. Nikola Tesla',
+        email: 'nikola.tesla@university.edu',
+        title: 'Professor of Electrical Engineering',
+        maxWeeklyHours: 12,
+        maxConsecutiveHours: 3,
+        preferredDays: ['Mon', 'Tue', 'Wed'],
+        unavailableSlots: [],
+        qualifiedCourseIds: [courses[4].id]
+      },
+      {
+        id: instGaussId,
+        departmentId: deptMthId,
+        subDepartment: 'Applied Mathematics',
+        staffRole: 'faculty',
+        name: 'Dr. Carl Gauss',
+        email: 'carl.gauss@university.edu',
+        title: 'Professor of Mathematics',
+        maxWeeklyHours: 16,
+        maxConsecutiveHours: 3,
+        preferredDays: ['Tue', 'Thu'],
+        unavailableSlots: [],
+        qualifiedCourseIds: [courses[5].id]
+      }
+    ];
+
+    const programs: Program[] = [
+      { id: `prog-${instId}-bscs`, departmentId: deptCsId, code: 'BSCS', name: 'BS Computer Science', degreeLevel: 'Undergraduate', totalSemesters: 8 },
+      { id: `prog-${instId}-bsee`, departmentId: deptEeId, code: 'BSEE', name: 'BS Electrical Engineering', degreeLevel: 'Undergraduate', totalSemesters: 8 }
+    ];
+
+    const studentGroups: StudentGroup[] = [
+      { id: `group-${instId}-2k24-a`, programId: programs[0].id, departmentCode: 'BSCS', batchCode: '2K24', section: 'A', name: '2K24 BSCS Section A', code: '2K24-BSCS-A', year: 2, semester: 3, size: 42, sharedCourseIds: [courses[3].id] },
+      { id: `group-${instId}-2k24-b`, programId: programs[0].id, departmentCode: 'BSCS', batchCode: '2K24', section: 'B', name: '2K24 BSCS Section B', code: '2K24-BSCS-B', year: 2, semester: 3, size: 40, sharedCourseIds: [courses[3].id] },
+      { id: `group-${instId}-2k24-c`, programId: programs[0].id, departmentCode: 'BSCS', batchCode: '2K24', section: 'C', name: '2K24 BSCS Section C', code: '2K24-BSCS-C', year: 2, semester: 3, size: 38, sharedCourseIds: [] },
+      { id: `group-${instId}-2k25-a`, programId: programs[0].id, departmentCode: 'BSCS', batchCode: '2K25', section: 'A', name: '2K25 BSCS Section A (Freshman)', code: '2K25-BSCS-A', year: 1, semester: 1, size: 45, sharedCourseIds: [] },
+      { id: `group-${instId}-2k24-ee`, programId: programs[1].id, departmentCode: 'BSEE', batchCode: '2K24', section: 'A', name: '2K24 BSEE Section A', code: '2K24-BSEE-A', year: 2, semester: 3, size: 35, sharedCourseIds: [] }
+    ];
+
+    const activeTerm = currentStore.terms[0] || {
+      id: `term-${instId}-1`,
+      name: 'Fall Semester 2026',
+      code: 'TERM-2026-1',
+      startDate: '2026-09-01',
+      endDate: '2026-12-31',
+      status: 'active',
+      weeksCount: 16
+    };
+    const terms = currentStore.terms.length > 0 ? currentStore.terms : [activeTerm];
+
+    currentStore = {
+      ...currentStore,
+      institutionProfile: {
+        ...(currentStore.institutionProfile || {
+          name: 'University of Engineering & Technology',
+          campusCode: 'UET',
+          accreditation: 'ABET & HEC Accredited',
+          registrarName: 'Registrar Office',
+          registrarEmail: 'registrar@uet.edu',
+          autoConflictSweep: true,
+          defaultSessionMinutes: 50,
+          timezone: 'UTC'
+        }),
+        isSample: false
+      },
+      terms,
+      departments,
+      rooms,
+      courses,
+      instructors,
+      programs,
+      studentGroups
+    };
+
+    this.autoGenerateMissingSections();
+    this.runTimetableSolver();
+    this.addAuditLog('create', 'term', 'sample-load', 'Loaded complete sample university dataset with departments, faculty qualified subjects, and multi-section batches.');
+    notifyListeners();
   },
 
   async syncToBackend(userOverride?: ReturnType<typeof getStoredUser>): Promise<boolean> {

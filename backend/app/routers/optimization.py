@@ -1,4 +1,4 @@
-"""Hybrid AI Optimization (DSatur + GA + SA) endpoints (Supabase PostgreSQL)."""
+"""Hybrid AI Optimization (DSatur + GA + SA) and Validation endpoints (Supabase PostgreSQL)."""
 
 from __future__ import annotations
 
@@ -14,8 +14,11 @@ from app.deps import (
     raise_supabase_http_error,
     require_auth_user,
 )
+from app.optimization.constraints import expand_sections_to_sessions, normalize_rooms_input
 from app.optimization.evaluation import compare_optimization_algorithms
+from app.optimization.fitness import _coerce_slot_dict
 from app.optimization.scheduler import run_hybrid_timetable_pipeline
+from app.optimization.validator import validate_timetable_assignments
 from database import now_iso
 from fastapi_compat import APIRouter, Request
 
@@ -51,19 +54,23 @@ def _build_timetable_entries(
         sec = sec_by_id.get(str(sec_id), {})
         crs = course_by_id.get(str(sec.get("courseId") or ""), {})
         stype = str(sec.get("sessionType") or crs.get("type") or "Theory")
-        dur = lab_len if stype.lower() == "lab" else period_len
+        is_lab = stype.lower() == "lab"
+        dur = int(assign.get("durationMinutes") or (lab_len if is_lab else period_len))
         room_id = str(assign.get("roomId") or "room-lh-101")
         course_code = str(sec.get("courseCode") or crs.get("code") or sec_id)
         course_title = str(crs.get("title") or course_code)
 
-        meetings = [
-            (assign.get("day"), assign.get("startTime")),
-            (assign.get("secondDay"), assign.get("secondStartTime")),
-            (assign.get("thirdDay"), assign.get("thirdStartTime")),
+        meetings = assign.get("meetings") if isinstance(assign.get("meetings"), list) and assign["meetings"] else [
+            {"day": assign.get("day"), "startTime": assign.get("startTime"), "durationMinutes": dur, "roomId": room_id},
+            {"day": assign.get("secondDay"), "startTime": assign.get("secondStartTime"), "durationMinutes": dur, "roomId": room_id},
+            {"day": assign.get("thirdDay"), "startTime": assign.get("thirdStartTime"), "durationMinutes": dur, "roomId": room_id},
         ]
-        for day, start_t in meetings:
+        for mt in meetings:
+            day = mt.get("day")
+            start_t = mt.get("startTime")
             if not day or not start_t:
                 continue
+            m_dur = int(mt.get("durationMinutes") or dur)
             rows.append(
                 {
                     "institution_id": uni_id,
@@ -74,15 +81,47 @@ def _build_timetable_entries(
                     "batch_id": sec.get("studentGroupId"),
                     "section_code": str(sec.get("sectionCode") or "A"),
                     "instructor_id": sec.get("instructorId"),
-                    "room_id": room_id,
+                    "room_id": str(mt.get("roomId") or room_id),
                     "day_of_week": str(day)[:3],
                     "start_time": str(start_t),
-                    "end_time": _compute_end_time(str(start_t), dur),
-                    "duration_minutes": dur,
+                    "end_time": _compute_end_time(str(start_t), m_dur),
+                    "duration_minutes": m_dur,
                     "session_type": stype,
                     "is_locked": False,
                 }
             )
+    return rows
+
+
+def _build_timetable_entries_from_canonical(
+    uni_id: str,
+    version_id: str,
+    canonical_entries: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    rows: List[Dict[str, Any]] = []
+    for e in canonical_entries:
+        rows.append(
+            {
+                "institution_id": uni_id,
+                "timetable_version_id": version_id,
+                "course_session_id": str(e.get("sectionId") or e.get("sessionId") or ""),
+                "course_code": str(e.get("courseCode") or ""),
+                "course_title": str(e.get("courseTitle") or ""),
+                "batch_id": e.get("batchId"),
+                "section_code": str(e.get("sectionCode") or "A"),
+                "instructor_id": e.get("instructorId") or None,
+                "lab_engineer_id": e.get("labEngineerId") or None,
+                "room_id": str(e.get("roomId") or "room-lh-101"),
+                "day_of_week": str(e.get("day") or "Mon")[:3],
+                "start_time": str(e.get("startTime") or "09:00"),
+                "end_time": str(e.get("endTime") or _compute_end_time(str(e.get("startTime") or "09:00"), int(e.get("durationMinutes") or 50))),
+                "duration_minutes": int(e.get("durationMinutes") or 50),
+                "session_type": str(e.get("sessionType") or "Theory"),
+                "component_type": str(e.get("componentType") or "lecture"),
+                "slot_source": str(e.get("slotSource") or "regular"),
+                "is_locked": bool(e.get("isLocked", False)),
+            }
+        )
     return rows
 
 
@@ -103,9 +142,14 @@ async def run_optimization(request: Request) -> Dict[str, Any]:
         courses=inputs["courses"],
         rooms_raw=inputs["rooms_raw"],
         student_groups=inputs["student_groups"],
+        instructors=inputs["instructors"],
         time_config=inputs["time_config"],
         weights=inputs["weights"],
         algorithm=algorithm,
+        student_preferences=inputs["student_preferences"],
+        instructor_preferences=inputs["instructor_preferences"],
+        unavailable_instructor_slots=inputs["unavailable_instructor_slots"],
+        unavailable_room_slots=inputs["unavailable_room_slots"],
     )
 
     run_id = f"opt-{uuid.uuid4().hex[:8]}"
@@ -115,12 +159,14 @@ async def run_optimization(request: Request) -> Dict[str, Any]:
     fb = pipeline_result["fitness"]
     hist = pipeline_result.get("fitnessHistory") or [fb["totalScore"]]
     hard_violations = int(pipeline_result["hardConstraintViolations"])
+    is_feasible = bool(pipeline_result.get("feasible")) and hard_violations == 0
+    version_status = "published" if is_feasible else "draft"
     exec_ms = float(pipeline_result["executionTimeMs"])
     version_name = body.get("versionName") or f"Hybrid AI Schedule ({current_iso[:10]})"
 
     client = require_supabase_client()
     try:
-        # 1. Insert timetable_versions FIRST (referenced by optimization_runs.timetable_version_id)
+        # 1. Insert timetable_versions FIRST (published ONLY if 0 hard violations)
         client.insert(
             "timetable_versions",
             {
@@ -128,7 +174,7 @@ async def run_optimization(request: Request) -> Dict[str, Any]:
                 "institution_id": uni_id,
                 "name": version_name,
                 "version_number": "1.0.0",
-                "status": "published",
+                "status": version_status,
                 "algorithm_used": algorithm,
                 "hard_violations_count": hard_violations,
                 "overall_fitness_score": float(fb["totalScore"]),
@@ -137,23 +183,31 @@ async def run_optimization(request: Request) -> Dict[str, Any]:
                 "room_utilization_score": float(fb["roomUtilization"]),
                 "fairness_score": float(fb["fairnessScore"]),
                 "created_by": auth_user.get("userId"),
-                "published_at": current_iso,
+                "published_at": current_iso if is_feasible else None,
                 "created_at": current_iso,
             },
         )
 
-        # 2. Insert normalized timetable_entries
-        entries = _build_timetable_entries(
+        # 2. Insert normalized timetable_entries from canonical entries
+        entries = _build_timetable_entries_from_canonical(
             uni_id=uni_id,
             version_id=version_id,
-            assignments=pipeline_result["assignments"],
-            sections=inputs["sections"],
-            courses=inputs["courses"],
-            period_len=inputs["time_config"].period_length_minutes,
-            lab_len=inputs["time_config"].lab_duration_minutes,
+            canonical_entries=pipeline_result.get("entries") or [],
         )
         if entries:
-            client.insert("timetable_entries", entries)
+            try:
+                client.insert("timetable_entries", entries)
+            except SupabaseQueryError:
+                # Fallback if extended columns aren't migrated yet
+                fallback_entries = [
+                    {
+                        k: v
+                        for k, v in row.items()
+                        if k not in ("lab_engineer_id", "component_type", "slot_source")
+                    }
+                    for row in entries
+                ]
+                client.insert("timetable_entries", fallback_entries)
 
         # 3. Insert optimization_runs
         client.insert(
@@ -163,7 +217,7 @@ async def run_optimization(request: Request) -> Dict[str, Any]:
                 "institution_id": uni_id,
                 "timetable_version_id": version_id,
                 "algorithm": algorithm,
-                "status": "completed",
+                "status": "completed" if is_feasible else "needs_review",
                 "total_sessions": int(pipeline_result.get("totalSessions") or len(inputs["sections"])),
                 "placed_sessions": int(pipeline_result.get("placedSessions") or len(pipeline_result["assignments"])),
                 "hard_constraint_violations": hard_violations,
@@ -173,16 +227,18 @@ async def run_optimization(request: Request) -> Dict[str, Any]:
                     "objectiveWeights": objective_weights,
                     "fitnessHistory": hist,
                     "summaryMetrics": fb,
+                    "timeConfig": pipeline_result.get("timeConfig"),
+                    "preValidation": pipeline_result.get("preValidation"),
                 },
-                "assignments_snapshot": pipeline_result["assignments"],
+                "assignments_snapshot": pipeline_result.get("entries") or pipeline_result["assignments"],
                 "created_by": auth_user.get("userId"),
                 "created_at": current_iso,
             },
         )
 
         # 4. Insert optimization_scores
-        batch_breakdown = fb.get("batchSatisfactionByBatch") or {}
-        least_batch = min(batch_breakdown.values()) if batch_breakdown else float(fb["studentSatisfaction"])
+        batch_breakdown = fb.get("batchSatisfactionByBatch") or fb.get("batchBreakdown") or {}
+        least_batch = fb.get("leastSatisfiedBatchScore") or (min(batch_breakdown.values()) if batch_breakdown else float(fb["studentSatisfaction"]))
         client.insert(
             "optimization_scores",
             {
@@ -192,8 +248,8 @@ async def run_optimization(request: Request) -> Dict[str, Any]:
                 "student_satisfaction_score": float(fb["studentSatisfaction"]),
                 "instructor_satisfaction_score": float(fb["instructorSatisfaction"]),
                 "compactness_score": float(fb["compactnessScore"]),
-                "student_gap_penalty": float(fb["studentGapMinutesAvg"]),
-                "workload_balance_score": float(fb["workloadBalanceScore"]),
+                "student_gap_penalty": float(fb.get("studentGapMinutesAvg", fb.get("studentGapPenalty", 0.0))),
+                "workload_balance_score": float(fb.get("workloadBalanceScore", fb.get("workloadBalance", 0.0))),
                 "fairness_score": float(fb["fairnessScore"]),
                 "least_satisfied_batch_score": float(least_batch),
                 "room_utilization_score": float(fb["roomUtilization"]),
@@ -207,7 +263,39 @@ async def run_optimization(request: Request) -> Dict[str, Any]:
     return {
         "runId": run_id,
         "timetableVersionId": version_id,
+        "status": version_status,
         **pipeline_result,
+    }
+
+
+@router.post("/api/optimization/validate")
+async def validate_timetable_endpoint(request: Request) -> Dict[str, Any]:
+    auth_user = require_auth_user(request, allowed_roles=["admin", "faculty", "br", "student"])
+    body = await parse_json_body(request)
+    uni_id = body.get("universityId") or auth_user.get("institutionId") or ""
+    inputs = load_university_optimization_inputs(uni_id, body)
+    norm_rooms = normalize_rooms_input(inputs["rooms_raw"])
+    sessions = expand_sections_to_sessions(
+        courses=inputs["courses"],
+        sections=inputs["sections"],
+        rooms=norm_rooms,
+        instructors=inputs["instructors"],
+        time_config=inputs["time_config"],
+    )
+
+    candidate_assignments = body.get("assignments") or {}
+    report = validate_timetable_assignments(
+        candidate_assignments,
+        sessions,
+        norm_rooms,
+        inputs["time_config"],
+        instructors=inputs["instructors"],
+        unavailable_instructor_slots=_coerce_slot_dict(inputs["unavailable_instructor_slots"]),
+        unavailable_room_slots=_coerce_slot_dict(inputs["unavailable_room_slots"]),
+    )
+    return {
+        "valid": report.is_valid,
+        "validationReport": report.to_dict(),
     }
 
 
@@ -225,6 +313,11 @@ async def compare_optimization(request: Request) -> Dict[str, Any]:
         student_groups=inputs["student_groups"],
         time_config=inputs["time_config"],
         weights=inputs["weights"],
+        instructors=inputs["instructors"],
+        student_preferences=inputs["student_preferences"],
+        instructor_preferences=inputs["instructor_preferences"],
+        unavailable_instructor_slots=inputs["unavailable_instructor_slots"],
+        unavailable_room_slots=inputs["unavailable_room_slots"],
     )
     return comparison
 

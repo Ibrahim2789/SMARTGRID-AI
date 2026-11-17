@@ -9,6 +9,7 @@ import {
   DEFAULT_ACADEMIC_TIMING_CONFIG,
   computeAcademicScheduleConfig,
   validateAcademicTimingConfig,
+  orderWorkingDaysFridayRightmost,
   isUserAdminRole
 } from '../types/institutional';
 import {
@@ -143,7 +144,25 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
     ts.dayEndTime || DEFAULT_ACADEMIC_TIMING_CONFIG.dayEndTime
   );
   const [workingDays, setWorkingDays] = useState<DayOfWeek[]>(
-    ts.workingDays?.length ? ts.workingDays : DEFAULT_ACADEMIC_TIMING_CONFIG.workingDays
+    orderWorkingDaysFridayRightmost(
+      ts.workingDays?.length ? ts.workingDays : DEFAULT_ACADEMIC_TIMING_CONFIG.workingDays,
+      ts.fridayEnabled !== false
+    )
+  );
+  const [fridayEnabled, setFridayEnabled] = useState<boolean>(
+    ts.fridayEnabled ?? (ts.workingDays ? ts.workingDays.includes('Fri') : true)
+  );
+  const [fridayStartTime, setFridayStartTime] = useState<string>(
+    ts.fridayStartTime || ts.dayStartTime || DEFAULT_ACADEMIC_TIMING_CONFIG.fridayStartTime
+  );
+  const [fridayEndTime, setFridayEndTime] = useState<string>(
+    ts.fridayEndTime || ts.dayEndTime || DEFAULT_ACADEMIC_TIMING_CONFIG.fridayEndTime
+  );
+  const [fridayAllowedDepartments, setFridayAllowedDepartments] = useState<string[]>(
+    ts.fridayAllowedDepartments || []
+  );
+  const [fridayAllowedBatches, setFridayAllowedBatches] = useState<string[]>(
+    ts.fridayAllowedBatches || []
   );
   const [fridayMode, setFridayMode] = useState<FridayMode>(
     ts.fridayMode ||
@@ -200,6 +219,9 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
 
   const [labDurationMinutes, setLabDurationMinutes] = useState<number>(
     ts.labDurationMinutes ?? DEFAULT_ACADEMIC_TIMING_CONFIG.labDurationMinutes
+  );
+  const [labSplitAllowed, setLabSplitAllowed] = useState<boolean>(
+    ts.labSplitAllowed ?? DEFAULT_ACADEMIC_TIMING_CONFIG.labSplitAllowed
   );
 
   const [timingValidationErrors, setTimingValidationErrors] = useState<string[]>([]);
@@ -261,11 +283,25 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
 
   // Sync local state when saved timeStructure updates or resets
   useEffect(() => {
+    const nextFridayEnabled =
+      ts.fridayEnabled ?? (ts.workingDays ? ts.workingDays.includes('Fri') : true);
     setDayStartTime(ts.dayStartTime || DEFAULT_ACADEMIC_TIMING_CONFIG.dayStartTime);
     setDayEndTime(ts.dayEndTime || DEFAULT_ACADEMIC_TIMING_CONFIG.dayEndTime);
+    setFridayEnabled(nextFridayEnabled);
     setWorkingDays(
-      ts.workingDays?.length ? ts.workingDays : DEFAULT_ACADEMIC_TIMING_CONFIG.workingDays
+      orderWorkingDaysFridayRightmost(
+        ts.workingDays?.length ? ts.workingDays : DEFAULT_ACADEMIC_TIMING_CONFIG.workingDays,
+        nextFridayEnabled
+      )
     );
+    setFridayStartTime(
+      ts.fridayStartTime || ts.dayStartTime || DEFAULT_ACADEMIC_TIMING_CONFIG.fridayStartTime
+    );
+    setFridayEndTime(
+      ts.fridayEndTime || ts.dayEndTime || DEFAULT_ACADEMIC_TIMING_CONFIG.fridayEndTime
+    );
+    setFridayAllowedDepartments(ts.fridayAllowedDepartments || []);
+    setFridayAllowedBatches(ts.fridayAllowedBatches || []);
     setFridayMode(
       ts.fridayMode ||
         (ts.fridayAfternoonShiftEnabled === false ? 'standard' : 'jummah_break')
@@ -315,13 +351,23 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
     setLabDurationMinutes(
       ts.labDurationMinutes ?? DEFAULT_ACADEMIC_TIMING_CONFIG.labDurationMinutes
     );
+    setLabSplitAllowed(
+      ts.labSplitAllowed ?? DEFAULT_ACADEMIC_TIMING_CONFIG.labSplitAllowed
+    );
   }, [ts]);
+
+  const effectiveWorkingDays = orderWorkingDaysFridayRightmost(workingDays, fridayEnabled);
 
   // Draft timing configuration for real-time slot calculation & validation
   const draftTimingConfig = {
-    workingDays,
+    workingDays: effectiveWorkingDays,
     dayStartTime,
     dayEndTime,
+    fridayEnabled,
+    fridayStartTime,
+    fridayEndTime,
+    fridayAllowedDepartments,
+    fridayAllowedBatches,
     fridayAfternoonShiftEnabled: fridayMode !== 'standard',
     fridayAfternoonStartTime: fridayBreakEndTime,
     fridayMode,
@@ -339,7 +385,8 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
     middayBreakMode,
     middayBreakStartTime,
     middayBreakDurationMinutes,
-    labDurationMinutes
+    labDurationMinutes,
+    labSplitAllowed
   };
 
   const liveValidation = validateAcademicTimingConfig(draftTimingConfig);
@@ -348,12 +395,22 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
   const handleToggleWorkingDay = (day: DayOfWeek) => {
     if (!isAdmin) return;
     setTimingValidationErrors([]);
+    if (day === 'Fri') {
+      const nextEnabled = !fridayEnabled;
+      setFridayEnabled(nextEnabled);
+      setWorkingDays(prev =>
+        nextEnabled
+          ? orderWorkingDaysFridayRightmost([...prev, 'Fri'], true)
+          : orderWorkingDaysFridayRightmost(prev.filter(d => d !== 'Fri'), false)
+      );
+      if (!nextEnabled) setPreviewDayTab('mon_thu');
+      return;
+    }
     setWorkingDays(prev => {
       if (prev.includes(day)) {
-        return prev.filter(d => d !== day);
+        return orderWorkingDaysFridayRightmost(prev.filter(d => d !== day), fridayEnabled);
       }
-      const order: DayOfWeek[] = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-      return [...prev, day].sort((a, b) => order.indexOf(a) - order.indexOf(b));
+      return orderWorkingDaysFridayRightmost([...prev, day], fridayEnabled);
     });
   };
 
@@ -1033,32 +1090,218 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
                       ))}
                     </div>
                   )}
+
+                  <div className="pt-3 border-t border-[#E4E2DA] flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-xs font-semibold text-[#171717]">
+                        Allow Split Laboratory Sessions (e.g. 1.5h + 1.5h)
+                      </div>
+                      <p className="text-[11px] text-[#77766F] mt-0.5">
+                        {labSplitAllowed
+                          ? 'Enabled — labs may split into two non-break blocks when courses allow split mode.'
+                          : 'Disabled (Recommended) — every 1 CR Lab runs as one continuous 3-hour uninterrupted block.'}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTimingValidationErrors([]);
+                        setLabSplitAllowed(!labSplitAllowed);
+                      }}
+                      className={`w-10 h-6 flex items-center rounded-full p-1 transition-colors cursor-pointer shrink-0 ${
+                        labSplitAllowed ? 'bg-[#171717]' : 'bg-[#D6D3C9]'
+                      }`}
+                      aria-label="Toggle split laboratory sessions"
+                    >
+                      <div
+                        className={`bg-white w-4 h-4 rounded-full transition-transform ${
+                          labSplitAllowed ? 'translate-x-4' : 'translate-x-0'
+                        }`}
+                      />
+                    </button>
+                  </div>
                 </div>
               </section>
 
               {/* SECTION 3: FRIDAY & JUMMAH PRAYER CONFIGURATION (END OF SCREEN) */}
               <section className="sf-card-white divide-y divide-[#E4E2DA] overflow-hidden">
                 {/* Header */}
-                <div className="p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-[#F7F6EF]/40">
+                <div className="p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[#F7F6EF]/40">
                   <div>
                     <h2 className="font-serif-editorial text-xl text-[#171717]">
                       Friday &amp; Jummah Prayer Schedule
                     </h2>
                     <p className="text-xs text-[#77766F] mt-0.5">
-                      Configure Jummah prayer break, half-day closure, and reduced Friday class durations.
+                      Enable or disable Friday classes, set custom Friday timings, Jummah break, and department/batch eligibility.
                     </p>
                   </div>
-                  <span className="font-mono-tabular text-xs font-semibold text-[#57564F] shrink-0">
-                    {workingDays.includes('Fri') ? livePreview.fridaySchedule.operatingHoursLabel : 'Friday Off'}
-                  </span>
+                  <div className="flex items-center gap-3 shrink-0">
+                    <span className="font-mono-tabular text-xs font-semibold text-[#57564F]">
+                      {fridayEnabled ? livePreview.fridaySchedule.operatingHoursLabel : 'Friday Disabled'}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTimingValidationErrors([]);
+                        const next = !fridayEnabled;
+                        setFridayEnabled(next);
+                        setWorkingDays(prev =>
+                          next
+                            ? orderWorkingDaysFridayRightmost([...prev, 'Fri'], true)
+                            : orderWorkingDaysFridayRightmost(prev.filter(d => d !== 'Fri'), false)
+                        );
+                        if (!next) setPreviewDayTab('mon_thu');
+                      }}
+                      className={`w-10 h-6 flex items-center rounded-full p-1 transition-colors cursor-pointer shrink-0 ${
+                        fridayEnabled ? 'bg-[#171717]' : 'bg-[#D6D3C9]'
+                      }`}
+                      aria-label="Enable Friday scheduling"
+                    >
+                      <div
+                        className={`bg-white w-4 h-4 rounded-full transition-transform ${
+                          fridayEnabled ? 'translate-x-4' : 'translate-x-0'
+                        }`}
+                      />
+                    </button>
+                  </div>
                 </div>
 
-                {!workingDays.includes('Fri') ? (
+                {!fridayEnabled ? (
                   <div className="p-6 text-xs text-[#77766F]">
-                    Friday is currently unchecked in <strong>Working Days</strong> above. Select <strong>Fri</strong> to enable Friday &amp; Jummah prayer rules.
+                    Friday classes are <strong>Disabled</strong>. Zero sessions will be scheduled on Friday and the Friday column will be excluded from generated schedules. Toggle above to enable Friday scheduling.
                   </div>
                 ) : (
                   <>
+                    {/* Custom Friday Operating Hours */}
+                    <div className="p-6 space-y-3">
+                      <div className="text-xs font-semibold text-[#171717]">
+                        Friday Custom Hours &amp; Eligibility Scope
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-[11px] font-medium text-[#57564F] mb-1">
+                            Friday Start Time
+                          </label>
+                          <input
+                            type="time"
+                            value={fridayStartTime}
+                            onChange={e => {
+                              setTimingValidationErrors([]);
+                              setFridayStartTime(e.target.value);
+                              setPreviewDayTab('friday');
+                            }}
+                            className="input-field h-10 text-xs font-mono-tabular"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-medium text-[#57564F] mb-1">
+                            Friday End Time
+                          </label>
+                          <input
+                            type="time"
+                            value={fridayEndTime}
+                            onChange={e => {
+                              setTimingValidationErrors([]);
+                              setFridayEndTime(e.target.value);
+                              setPreviewDayTab('friday');
+                            }}
+                            className="input-field h-10 text-xs font-mono-tabular"
+                          />
+                        </div>
+                      </div>
+
+                      {store.departments.length > 0 && (
+                        <div className="pt-2 space-y-1.5">
+                          <div className="flex items-center justify-between text-[11px]">
+                            <span className="font-medium text-[#57564F]">
+                              Departments Permitted on Friday (leave all unselected for whole university)
+                            </span>
+                            {fridayAllowedDepartments.length > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => setFridayAllowedDepartments([])}
+                                className="text-[#171717] underline cursor-pointer"
+                              >
+                                Allow All
+                              </button>
+                            )}
+                          </div>
+                          <div className="flex flex-wrap gap-1.5">
+                            {store.departments.map(dept => {
+                              const selected =
+                                fridayAllowedDepartments.includes(dept.code) ||
+                                fridayAllowedDepartments.includes(dept.id);
+                              return (
+                                <button
+                                  key={dept.id}
+                                  type="button"
+                                  onClick={() => {
+                                    setFridayAllowedDepartments(prev =>
+                                      prev.includes(dept.code)
+                                        ? prev.filter(x => x !== dept.code && x !== dept.id)
+                                        : [...prev, dept.code]
+                                    );
+                                  }}
+                                  className={`px-2.5 py-1 rounded-md text-[11px] font-mono-tabular border cursor-pointer transition-colors ${
+                                    selected
+                                      ? 'bg-[#171717] text-white border-[#171717]'
+                                      : 'bg-[#F7F6EF] text-[#57564F] border-[#E4E2DA] hover:text-[#171717]'
+                                  }`}
+                                >
+                                  {dept.code}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      {store.studentGroups.length > 0 && (
+                        <div className="pt-2 space-y-1.5">
+                          <div className="flex items-center justify-between text-[11px]">
+                            <span className="font-medium text-[#57564F]">
+                              Batches Permitted on Friday (leave unselected if all batches are allowed)
+                            </span>
+                            {fridayAllowedBatches.length > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => setFridayAllowedBatches([])}
+                                className="text-[#171717] underline cursor-pointer"
+                              >
+                                Allow All
+                              </button>
+                            )}
+                          </div>
+                          <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
+                            {store.studentGroups.map(grp => {
+                              const selected =
+                                fridayAllowedBatches.includes(grp.code) ||
+                                fridayAllowedBatches.includes(grp.id);
+                              return (
+                                <button
+                                  key={grp.id}
+                                  type="button"
+                                  onClick={() => {
+                                    setFridayAllowedBatches(prev =>
+                                      prev.includes(grp.code)
+                                        ? prev.filter(x => x !== grp.code && x !== grp.id)
+                                        : [...prev, grp.code]
+                                    );
+                                  }}
+                                  className={`px-2.5 py-1 rounded-md text-[11px] font-mono-tabular border cursor-pointer transition-colors ${
+                                    selected
+                                      ? 'bg-[#171717] text-white border-[#171717]'
+                                      : 'bg-[#F7F6EF] text-[#57564F] border-[#E4E2DA] hover:text-[#171717]'
+                                  }`}
+                                >
+                                  {grp.code}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
                     {/* Row 1: Friday Day Structure */}
                     <div className="p-6 space-y-3">
                       <div className="flex items-center justify-between gap-2">

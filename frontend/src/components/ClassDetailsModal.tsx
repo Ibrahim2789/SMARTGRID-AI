@@ -19,6 +19,8 @@ export interface ClassItem {
   roomId?: string;
   prof: string;
   instructorId?: string;
+  labEngineerId?: string;
+  labEngineerName?: string;
   cohort: string;
   studentGroupId?: string;
   sharedGroupIds?: string[];
@@ -29,15 +31,23 @@ export interface ClassItem {
   enrolled?: number;
   time?: string;
   effectiveTime?: string;
+  startTime24?: string;
+  endTime24?: string;
+  startMinutes?: number;
+  endMinutes?: number;
+  isSplitLab?: boolean;
+  slotSource?: 'regular' | 'friday_regular' | 'friday_compressed';
   day?: string;
   type?: 'Lecture' | 'Lab' | 'Laboratory' | 'Studio' | 'Recitation';
   sessionType?: 'Lecture' | 'Lab';
+  componentType?: 'lecture' | 'lab';
   spanSlots?: number; // 1 for Lecture, N for continuous Lab
   durationMinutes?: number;
   continuousTimeLabel?: string; // e.g., '9:00 AM – 12:00 PM' or '2:30 PM – 4:55 PM'
   credits?: number;
   accent: 'plum' | 'terracotta' | 'emerald';
   isLocked?: boolean;
+  hasConflict?: boolean;
   constraintStatus?: 'Optimal' | 'Soft Penalty Resolved' | 'Equilibrium Confirmed';
 }
 
@@ -96,14 +106,19 @@ export const ClassDetailsModal: React.FC<ClassDetailsModalProps> = ({
   const displayTimeWindow = isLab
     ? (classItem.continuousTimeLabel ||
        getLabBlockByStartPeriod(classItem.time || '', store.timeStructure, classItem.day)?.continuousLabel ||
-       classItem.time)
+       (classItem.startTime24 && classItem.endTime24 ? `${classItem.startTime24} – ${classItem.endTime24}` : classItem.time))
     : (classItem.effectiveTime ||
        (effectiveSlotInfo.isOpen ? effectiveSlotInfo.period : classItem.time) ||
        computedTiming.periods[0] ||
        '9:00 – 9:50 AM');
   const displayDurationMinutes = isLab
     ? (classItem.durationMinutes || computedTiming.labDurationMinutes)
-    : (effectiveSlotInfo.isOpen ? effectiveSlotInfo.durationMinutes : (classItem.durationMinutes || computedTiming.periodLengthMinutes));
+    : (classItem.durationMinutes || (effectiveSlotInfo.isOpen ? effectiveSlotInfo.durationMinutes : computedTiming.periodLengthMinutes));
+  const resolvedCourse = currentSec ? store.courses.find(c => c.id === currentSec.courseId) : undefined;
+  const resolvedLabEngId = classItem.labEngineerId || currentSec?.labEngineerId || resolvedCourse?.assignedLabEngineerId;
+  const resolvedLabEngName =
+    classItem.labEngineerName ||
+    (resolvedLabEngId ? store.instructors.find(i => i.id === resolvedLabEngId)?.name : undefined);
 
   const dayLabBlocks =
     selectedDay === 'Fri'
@@ -242,11 +257,16 @@ export const ClassDetailsModal: React.FC<ClassDetailsModalProps> = ({
             <div className="p-3.5 space-y-1">
               <div className="text-[11px] font-medium text-[#77766F] flex items-center gap-1.5">
                 <Clock className="w-3.5 h-3.5 text-[#171717]" />
-                <span>{isLab ? `Continuous ${computedTiming.labDurationHoursLabel} Lab` : 'Scheduled Slot'}</span>
+                <span>{isLab ? (classItem.isSplitLab ? `Split Lab (${displayDurationMinutes}m)` : `Continuous ${computedTiming.labDurationHoursLabel} Lab`) : `Lecture (${displayDurationMinutes}m)`}</span>
               </div>
               <div className="text-xs font-mono-tabular font-semibold text-[#171717]">
                 {classItem.day ? `${classItem.day} · ` : ''}{displayTimeWindow}
               </div>
+              {classItem.startTime24 && classItem.endTime24 && (
+                <div className="text-[10px] font-mono-tabular text-[#77766F]">
+                  {classItem.startTime24}–{classItem.endTime24} ({displayDurationMinutes} min)
+                </div>
+              )}
             </div>
 
             <div className="p-3.5 space-y-1">
@@ -262,11 +282,16 @@ export const ClassDetailsModal: React.FC<ClassDetailsModalProps> = ({
             <div className="p-3.5 space-y-1">
               <div className="text-[11px] font-medium text-[#77766F] flex items-center gap-1.5">
                 <User className="w-3.5 h-3.5 text-[#171717]" />
-                <span>Instructor</span>
+                <span>{isLab ? 'Course Instructor' : 'Instructor'}</span>
               </div>
               <div className="text-xs font-semibold text-[#171717]">
                 {classItem.prof}
               </div>
+              {(isLab || resolvedLabEngName) && (
+                <div className="text-[11px] text-[#57564F] pt-0.5">
+                  Lab Engineer: <strong className="text-[#171717]">{resolvedLabEngName || 'Unassigned'}</strong>
+                </div>
+              )}
             </div>
 
             <div className="p-3.5 space-y-1">
@@ -443,9 +468,12 @@ export const ClassDetailsModal: React.FC<ClassDetailsModalProps> = ({
 
           {/* Subtle Validation Footer Line */}
           <div className="flex items-center gap-2 text-xs text-[#57564F]">
-            <CheckCircle className="w-3.5 h-3.5 text-[#1B5E20] shrink-0" />
+            <CheckCircle className={`w-3.5 h-3.5 shrink-0 ${classItem.hasConflict ? 'text-[#8B1E1E]' : 'text-[#1B5E20]'}`} />
             <span>
-              <strong className="text-[#171717] font-semibold">{classItem.constraintStatus || 'Optimal'}</strong> · Conflict-free &amp; within room capacity ({classItem.enrolled || 38}/{classItem.capacity || 45})
+              <strong className="text-[#171717] font-semibold">
+                {classItem.hasConflict ? 'Conflict Detected' : classItem.constraintStatus || 'Optimal'}
+              </strong>{' '}
+              · {classItem.hasConflict ? 'Overlapping resource assignment needs resolution' : 'Conflict-free'} &amp; within room capacity ({classItem.enrolled || 38}/{classItem.capacity || 45})
             </span>
           </div>
         </div>

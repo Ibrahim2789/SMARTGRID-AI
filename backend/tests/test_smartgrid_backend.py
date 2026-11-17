@@ -363,6 +363,387 @@ class SmartGridBackendTests(unittest.TestCase):
             assert client is not None
             self.assertEqual(client.api_key, opaque_key)
 
+    def test_09_scenario_a_b_credit_hour_expansion_and_split_lab(self) -> None:
+        from app.optimization.constraints import expand_sections_to_sessions
+
+        courses = [
+            {
+                "id": "crs-1cr-lec",
+                "code": "HUM-101",
+                "title": "Ethics",
+                "courseType": "lecture",
+                "lectureCredits": 1,
+                "labCredits": 0,
+                "credits": 1,
+                "assignedInstructorId": "inst-1",
+            },
+            {
+                "id": "crs-3lec-1lab",
+                "code": "CS-201",
+                "title": "Data Structures",
+                "courseType": "lecture_lab",
+                "lectureCredits": 3,
+                "labCredits": 1,
+                "credits": 4,
+                "assignedInstructorId": "inst-1",
+                "assignedLabEngineerId": "eng-1",
+            },
+        ]
+        cfg = TimeSlotConfig()
+        # Scenario A + B default continuous lab
+        sessions = expand_sections_to_sessions(courses=courses, sections=[], rooms=[], instructors=[], time_config=cfg)
+        lec_1cr = [s for s in sessions if s.course_id == "crs-1cr-lec" and not s.is_lab]
+        lec_3cr = [s for s in sessions if s.course_id == "crs-3lec-1lab" and not s.is_lab]
+        lab_1cr = [s for s in sessions if s.course_id == "crs-3lec-1lab" and s.is_lab]
+        self.assertEqual(len(lec_1cr), 1)
+        self.assertEqual(len(lec_3cr), 3)
+        self.assertEqual(len(lab_1cr), 1)
+        self.assertEqual(lab_1cr[0].duration_minutes, 180)
+        # Total weekly minutes for 3 Lec (3*50) + 1 Lab (180)
+        self.assertEqual(sum(s.duration_minutes for s in lec_3cr + lab_1cr), 3 * 50 + 180)
+
+        # Split lab allowed when explicitly enabled via preferSplitLab + lab_split_allowed
+        cfg_split = TimeSlotConfig(lab_split_allowed=True)
+        split_sections = [
+            {
+                "id": "sec-split-lab",
+                "courseId": "crs-3lec-1lab",
+                "studentGroupId": "grp-a",
+                "sessionType": "Lab",
+                "componentType": "lab",
+                "preferSplitLab": True,
+                "instructorId": "inst-1",
+                "labEngineerId": "eng-1",
+            }
+        ]
+        split_sessions = expand_sections_to_sessions(
+            courses=courses,
+            sections=split_sections,
+            rooms=[],
+            instructors=[],
+            time_config=cfg_split,
+        )
+        self.assertEqual(len(split_sessions), 2)
+        self.assertTrue(all(s.is_split_lab and s.duration_minutes == 90 for s in split_sessions))
+
+    def test_10_scenario_c_d_admin_staff_binding_invariance(self) -> None:
+        courses = [
+            {
+                "id": "crs-os",
+                "code": "CS-310",
+                "title": "Operating Systems",
+                "courseType": "lecture",
+                "credits": 3,
+                "assignedInstructorId": "inst-alice",
+            },
+            {
+                "id": "crs-os-lab",
+                "code": "CS-310L",
+                "title": "Operating Systems Lab",
+                "courseType": "lab",
+                "credits": 1,
+                "assignedInstructorId": "inst-alice",
+                "assignedLabEngineerId": "eng-zara",
+            },
+            {
+                "id": "crs-db-lab",
+                "code": "CS-320L",
+                "title": "Database Lab",
+                "courseType": "lab",
+                "credits": 1,
+                "assignedInstructorId": "inst-bob",
+                "assignedLabEngineerId": "eng-zara",
+            },
+        ]
+        instructors = [
+            {"id": "inst-alice", "name": "Dr. Alice", "staffRole": "faculty"},
+            {"id": "inst-bob", "name": "Dr. Bob", "staffRole": "faculty"},
+            {"id": "eng-zara", "name": "Eng. Zara", "staffRole": "lab_engineer"},
+        ]
+        sections = [
+            {
+                "id": "s-os-lec",
+                "courseId": "crs-os",
+                "studentGroupId": "batch-a",
+                "instructorId": "inst-alice",
+                "sessionType": "Theory",
+                "componentType": "lecture",
+            },
+            {
+                "id": "s-os-lab",
+                "courseId": "crs-os-lab",
+                "studentGroupId": "batch-a",
+                "instructorId": "inst-alice",
+                "labEngineerId": "eng-zara",
+                "sessionType": "Lab",
+                "componentType": "lab",
+            },
+            {
+                "id": "s-db-lab",
+                "courseId": "crs-db-lab",
+                "studentGroupId": "batch-b",
+                "instructorId": "inst-bob",
+                "labEngineerId": "eng-zara",
+                "sessionType": "Lab",
+                "componentType": "lab",
+            },
+        ]
+        rooms_raw = [
+            {"id": "r-lh1", "code": "LH-1", "type": "lecture", "capacity": 80, "isAvailable": True},
+            {"id": "r-lab1", "code": "LAB-1", "type": "lab", "capacity": 80, "isAvailable": True},
+            {"id": "r-lab2", "code": "LAB-2", "type": "lab", "capacity": 80, "isAvailable": True},
+        ]
+        groups = [
+            {"id": "batch-a", "code": "2K24-BSCS-A", "size": 50},
+            {"id": "batch-b", "code": "2K24-BSCS-B", "size": 50},
+        ]
+
+        for algo in ["dsatur_only", "ga_only", "ga_sa", "hybrid_dsatur_ga_sa"]:
+            res = run_hybrid_timetable_pipeline(
+                sections=sections,
+                courses=courses,
+                rooms_raw=rooms_raw,
+                student_groups=groups,
+                instructors=instructors,
+                algorithm=algo,
+            )
+            self.assertEqual(res["hardConstraintViolations"], 0, f"Hard clash in {algo}")
+            entries = res["entries"]
+            os_lab_entries = [e for e in entries if e["sectionId"] == "s-os-lab"]
+            db_lab_entries = [e for e in entries if e["sectionId"] == "s-db-lab"]
+            self.assertTrue(all(e["labEngineerId"] == "eng-zara" for e in os_lab_entries + db_lab_entries))
+            # Shared lab engineer Eng. Zara must NOT have overlapping labs
+            for e1 in os_lab_entries:
+                for e2 in db_lab_entries:
+                    if e1["day"] == e2["day"]:
+                        self.assertFalse(
+                            e1["startMinutes"] < e2["endMinutes"] and e2["startMinutes"] < e1["endMinutes"],
+                            f"Lab engineer overlap in {algo}",
+                        )
+
+    def test_11_scenario_e_student_gap_evaluation_excludes_midday_break(self) -> None:
+        from app.optimization.chromosome import SessionGene
+        from app.optimization.fitness import evaluate_student_gaps
+
+        cfg = TimeSlotConfig(
+            day_start_time="09:00",
+            day_end_time="17:00",
+            period_length_minutes=50,
+            short_break_minutes=10,
+            midday_break_enabled=True,
+            midday_break_start="13:00",
+            midday_break_duration=60,
+        )
+        courses = [
+            {"id": "c1", "code": "MTH-101", "title": "Calc", "credits": 2, "assignedInstructorId": "i1"},
+        ]
+        # 2 classes separated ONLY by official midday break (12:00-12:50 and 14:00-14:50) -> 0 unnecessary idle mins
+        sessions = expand_sections_to_sessions(
+            courses=courses,
+            sections=[
+                {
+                    "id": "sec1",
+                    "courseId": "c1",
+                    "studentGroupId": "grp1",
+                    "instructorId": "i1",
+                    "sessionsPerWeek": 2,
+                }
+            ],
+            rooms=[],
+            instructors=[{"id": "i1", "name": "Prof"}],
+            time_config=cfg,
+        )
+        # Find morning 12:00 slot index and afternoon 14:00 slot index on Mon
+        mon_slots = cfg.get_day_slots("Mon")
+        pre_lunch_idx = next(s.slot_index for s in mon_slots if s.start_time == "12:00")
+        post_lunch_idx = next(s.slot_index for s in mon_slots if s.start_time == "14:00")
+
+        g0 = SessionGene(session_id=sessions[0].session_id, day="Mon", slot_index=pre_lunch_idx, room_id="r1")
+        g1 = SessionGene(session_id=sessions[1].session_id, day="Mon", slot_index=post_lunch_idx, room_id="r1")
+        g0.sync_timing(sessions[0], cfg)
+        g1.sync_timing(sessions[1], cfg)
+
+        report_break_only = evaluate_student_gaps({"grp1": [(sessions[0], g0), (sessions[1], g1)]}, cfg)
+        self.assertEqual(report_break_only["totalIdleMinutes"], 0)
+        self.assertGreaterEqual(report_break_only["avgCompactness"], 99.0)
+
+        # Now move g1 to 16:00 (2 hours of unnecessary idle after break) -> penalizes idle minutes
+        late_idx = next(s.slot_index for s in mon_slots if s.start_time == "16:00")
+        g1_late = SessionGene(session_id=sessions[1].session_id, day="Mon", slot_index=late_idx, room_id="r1")
+        g1_late.sync_timing(sessions[1], cfg)
+        report_with_gap = evaluate_student_gaps({"grp1": [(sessions[0], g0), (sessions[1], g1_late)]}, cfg)
+        self.assertGreater(report_with_gap["totalIdleMinutes"], 100)
+        self.assertLess(report_with_gap["avgCompactness"], report_break_only["avgCompactness"])
+
+    def test_12_scenario_f_friday_disabled_and_batch_restrictions_and_rightmost(self) -> None:
+        from app.optimization.constraints import canonicalize_working_days
+
+        # Rightmost Friday ordering regardless of input permutation
+        self.assertEqual(canonicalize_working_days(["Fri", "Wed", "Mon", "Thu", "Tue"], True), ["Mon", "Tue", "Wed", "Thu", "Fri"])
+        self.assertEqual(canonicalize_working_days(["Mon", "Tue", "Wed", "Thu", "Fri"], False), ["Mon", "Tue", "Wed", "Thu"])
+
+        sections, courses, rooms_raw, student_groups = sample_test_catalog()
+        # Disable Friday completely -> zero Friday entries
+        cfg_no_fri = TimeSlotConfig(working_days=["Mon", "Tue", "Wed", "Thu", "Fri"], friday_enabled=False)
+        res_no_fri = run_hybrid_timetable_pipeline(
+            sections=sections,
+            courses=courses,
+            rooms_raw=rooms_raw,
+            student_groups=student_groups,
+            time_config=cfg_no_fri,
+        )
+        self.assertEqual(res_no_fri["hardConstraintViolations"], 0)
+        self.assertFalse(any(e["day"] == "Fri" for e in res_no_fri["entries"]))
+
+        # Restrict Friday ONLY to 2K24-BESE batch -> 2K25-BSCS must never appear on Friday
+        cfg_restricted_fri = TimeSlotConfig(
+            working_days=["Mon", "Tue", "Wed", "Thu", "Fri"],
+            friday_enabled=True,
+            friday_allowed_batches=["2K24-BESE"],
+        )
+        res_restricted = run_hybrid_timetable_pipeline(
+            sections=sections,
+            courses=courses,
+            rooms_raw=rooms_raw,
+            student_groups=student_groups,
+            time_config=cfg_restricted_fri,
+        )
+        self.assertEqual(res_restricted["hardConstraintViolations"], 0)
+        for e in res_restricted["entries"]:
+            if e["day"] == "Fri":
+                self.assertEqual(e["batchId"], "batch-2k24-bese")
+
+    def test_13_scenario_g_h_i_reject_invalid_publish_and_validate_clashes(self) -> None:
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        from app.routers.timetables import publish_timetable_version
+        from fastapi_compat import HTTPException
+
+        class _FakePublishClient:
+            def select_one(self, table, filters=None, select="*", order=None):
+                if table == "timetable_versions":
+                    return {
+                        "id": "ttv-invalid-1",
+                        "name": "Conflicted Draft",
+                        "status": "draft",
+                        "hard_violations_count": 2,
+                        "overall_fitness_score": 45.0,
+                    }
+                return None
+
+        fake_req = SimpleNamespace(
+            method="POST",
+            url="/api/timetables/ttv-invalid-1/publish",
+            headers={},
+            query_params={},
+            path_params={"versionId": "ttv-invalid-1"},
+        )
+        with (
+            patch("app.routers.timetables.require_auth_user", return_value={"userId": "u-admin", "role": "admin", "institutionId": "inst-1"}),
+            patch("app.routers.timetables.require_supabase_client", return_value=_FakePublishClient()),
+        ):
+            with self.assertRaises(HTTPException) as ctx:
+                publish_timetable_version("ttv-invalid-1", fake_req)
+            self.assertEqual(ctx.exception.status_code, 422)
+
+        # Scenario I: Validator catches injected resource/Friday conflict
+        cfg = TimeSlotConfig(friday_enabled=False)
+        sections = [
+            {"id": "s1", "courseId": "c1", "studentGroupId": "g1", "instructorId": "i1", "sessionsPerWeek": 1},
+            {"id": "s2", "courseId": "c2", "studentGroupId": "g1", "instructorId": "i2", "sessionsPerWeek": 1},
+        ]
+        courses = [
+            {"id": "c1", "code": "CS1", "title": "C1", "credits": 1, "assignedInstructorId": "i1"},
+            {"id": "c2", "code": "CS2", "title": "C2", "credits": 1, "assignedInstructorId": "i2"},
+        ]
+        rooms = [{"id": "r1", "code": "LH-1", "type": "lecture", "capacity": 60, "isAvailable": True}]
+        sessions = expand_sections_to_sessions(courses=courses, sections=sections, rooms=rooms, time_config=cfg)
+        # Inject overlapping Monday 09:00 same cohort + same room
+        bad_assignments = {
+            sessions[0].session_id: ("Mon", "09:00", "r1"),
+            sessions[1].session_id: ("Mon", "09:00", "r1"),
+        }
+        report = validate_timetable_assignments(bad_assignments, sessions, rooms, cfg)
+        self.assertFalse(report.is_valid)
+        self.assertGreaterEqual(report.hard_violation_count, 2)
+
+    def test_14_dict_unavailability_enforcement_across_all_algorithms(self) -> None:
+        from tests.audit_benchmark import (
+            build_realistic_university_dataset,
+            check_unavailability_compliance,
+        )
+
+        dataset = build_realistic_university_dataset()
+        cfg = TimeSlotConfig()
+        for algo in ["dsatur_only", "ga_only", "ga_sa", "hybrid_dsatur_ga_sa"]:
+            res = run_hybrid_timetable_pipeline(
+                sections=dataset["sections"],
+                courses=dataset["courses"],
+                rooms_raw=dataset["rooms_raw"],
+                student_groups=dataset["student_groups"],
+                instructors=dataset["instructors"],
+                time_config=cfg,
+                algorithm=algo,
+                student_preferences=dataset["student_preferences"],
+                unavailable_instructor_slots=dataset["unavailable_instructor_slots"],
+                unavailable_room_slots=dataset["unavailable_room_slots"],
+            )
+            self.assertTrue(res["feasible"], f"{algo} failed feasibility: {res['validationReport']}")
+            self.assertEqual(res["hardConstraintViolations"], 0, f"{algo} had hard violations")
+            hits, msgs = check_unavailability_compliance(res, dataset)
+            self.assertEqual(hits, 0, f"{algo} violated unavailability: {msgs}")
+
+    def test_15_compare_schema_and_minimal_rescheduling(self) -> None:
+        from tests.audit_benchmark import build_realistic_university_dataset
+
+        dataset = build_realistic_university_dataset()
+        cfg = TimeSlotConfig()
+        comp = compare_optimization_algorithms(
+            sections=dataset["sections"],
+            courses=dataset["courses"],
+            rooms_raw=dataset["rooms_raw"],
+            student_groups=dataset["student_groups"],
+            time_config=cfg,
+            instructors=dataset["instructors"],
+            student_preferences=dataset["student_preferences"],
+            unavailable_instructor_slots=dataset["unavailable_instructor_slots"],
+            unavailable_room_slots=dataset["unavailable_room_slots"],
+        )
+        self.assertIn("comparisons", comp)
+        self.assertIn("comparison", comp)
+        self.assertEqual(len(comp["comparison"]), 4)
+        self.assertTrue(all(item["feasible"] for item in comp["comparison"]))
+
+        base_res = run_hybrid_timetable_pipeline(
+            sections=dataset["sections"],
+            courses=dataset["courses"],
+            rooms_raw=dataset["rooms_raw"],
+            student_groups=dataset["student_groups"],
+            instructors=dataset["instructors"],
+            time_config=cfg,
+            algorithm="hybrid_dsatur_ga_sa",
+        )
+        target_entry = next(e for e in base_res["entries"] if not e["isLab"])
+        resched = generate_rescheduling_proposal(
+            disruption_type="instructor_unavailable",
+            affected_resource_id=target_entry["instructorId"],
+            affected_days=[target_entry["day"]],
+            affected_start_times=[target_entry["startTime"]],
+            reason="One-slot disruption regression check",
+            current_section_assignments=base_res["assignments"],
+            sections=dataset["sections"],
+            courses=dataset["courses"],
+            rooms_raw=dataset["rooms_raw"],
+            student_groups=dataset["student_groups"],
+            time_config=cfg,
+            instructors=dataset["instructors"],
+        )
+        self.assertTrue(resched["feasible"])
+        self.assertEqual(resched["remainingHardViolations"], 0)
+        self.assertGreaterEqual(resched["stabilityPercentage"], 95.0)
+        self.assertLessEqual(resched["changedSessionsCount"], 2)
+
 
 if __name__ == "__main__":
     unittest.main()
+

@@ -403,14 +403,22 @@ def load_university_optimization_inputs(
 ) -> Dict[str, Any]:
     """
     Loads courses, course_sessions, classrooms, laboratories, room_equipment_capacities,
-    instructors, batches/student_groups, and TimeSlotConfig for the given university_id
-    from Supabase PostgreSQL, allowing optional overrides in request body.
+    instructors, batches/student_groups, preferences, availability, and TimeSlotConfig
+    for the given university_id from Supabase PostgreSQL, allowing overrides in request body.
     """
     from app.optimization.constraints import TimeSlotConfig
     from app.optimization.fitness import OptimizationWeights
 
     body = override_body or {}
     client = require_supabase_client()
+
+    def _safe_select(table: str, filters: Dict[str, str], order: Optional[str] = None) -> List[Dict[str, Any]]:
+        if not university_id:
+            return []
+        try:
+            return client.select(table, filters=filters, order=order)
+        except SupabaseQueryError:
+            return []
 
     try:
         inst_row = (
@@ -457,12 +465,29 @@ def load_university_optimization_inputs(
     except SupabaseQueryError as err:
         raise_supabase_http_error(err)
 
+    db_student_prefs = _safe_select("student_preferences", {"institution_id": f"eq.{university_id}"})
+    db_inst_prefs = _safe_select("instructor_preferences", {"institution_id": f"eq.{university_id}"})
+    db_inst_avails = _safe_select("instructor_availability", {"institution_id": f"eq.{university_id}"})
+
     equip_by_room: Dict[str, List[str]] = defaultdict(list)
     for eq in db_equip:
         if eq.get("room_id") and eq.get("equipment_name"):
             equip_by_room[eq["room_id"]].append(eq["equipment_name"])
 
-    course_by_id = {c["id"]: c for c in db_courses}
+    unavail_inst: Dict[str, List[str]] = defaultdict(list)
+    for av in db_inst_avails:
+        if not av.get("is_available", True) and av.get("instructor_id"):
+            unavail_inst[av["instructor_id"]].append(f"{av['day_of_week']}-{av['start_time']}")
+
+    normalized_instructors: List[Dict[str, Any]] = []
+    for inst in db_instructors:
+        normalized_instructors.append(
+            {
+                **inst,
+                "unavailable_slots": unavail_inst.get(inst["id"], []),
+            }
+        )
+
     sessions_by_course: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
     for s in db_sessions:
         sessions_by_course[s["course_id"]].append(s)
@@ -475,13 +500,39 @@ def load_university_optimization_inputs(
 
     for c in db_courses:
         req_eq = c.get("required_equipment") if isinstance(c.get("required_equipment"), list) else safe_json_loads(c.get("required_equipment"), [])
-        is_lab = int(c.get("lab_hours_per_week") or 0) > 0 and int(c.get("lecture_hours_per_week") or 0) == 0
-        ctype = "Lab" if is_lab else "Theory"
+        lec_hrs = int(c.get("lecture_hours_per_week") or 0)
+        lab_hrs = int(c.get("lab_hours_per_week") or 0)
+        lec_cr = int(c.get("lecture_credit_hours") if c.get("lecture_credit_hours") is not None else lec_hrs)
+        lab_cr = int(c.get("lab_credit_hours") if c.get("lab_credit_hours") is not None else (round(lab_hrs / 3) if lab_hrs > 0 else 0))
+
+        raw_ct = str(c.get("course_type") or "").strip().lower()
+        if raw_ct in ("lecture", "lab", "lecture_lab"):
+            course_type = raw_ct
+        elif lec_cr > 0 and lab_cr > 0:
+            course_type = "lecture_lab"
+        elif lab_cr > 0:
+            course_type = "lab"
+        else:
+            course_type = "lecture"
+
+        is_pure_lab = course_type == "lab"
+        legacy_ctype = "Lab" if is_pure_lab else "Theory"
+        assigned_inst_id = c.get("assigned_instructor_id") or default_instructor_id
+        assigned_lab_eng_id = c.get("assigned_lab_engineer_id")
+
         normalized_courses.append(
             {
                 **c,
-                "type": ctype,
-                "credits": int(c.get("credit_hours") or (1 if is_lab else 3)),
+                "type": legacy_ctype,
+                "courseType": course_type,
+                "credits": int(c.get("credit_hours") or max(1, lec_cr + lab_cr)),
+                "lectureCredits": lec_cr,
+                "labCredits": lab_cr,
+                "lectureHours": lec_hrs or lec_cr,
+                "labHours": lab_hrs or (lab_cr * 3),
+                "assignedInstructorId": assigned_inst_id,
+                "assignedLabEngineerId": assigned_lab_eng_id,
+                "labSessionMode": c.get("lab_session_mode") or "continuous",
                 "required_equipment": req_eq,
                 "requiredEquipment": req_eq,
             }
@@ -489,31 +540,56 @@ def load_university_optimization_inputs(
         c_sessions = sessions_by_course.get(c["id"], [])
         if c_sessions:
             for s in c_sessions:
+                s_type = str(s.get("session_type") or legacy_ctype)
+                s_is_lab = s_type.lower() == "lab" or str(s.get("component_type") or "").lower() == "lab"
                 default_sections.append(
                     {
                         "id": s["id"],
                         "courseId": c["id"],
                         "courseCode": c["code"],
-                        "instructorId": s.get("instructor_id") or default_instructor_id,
+                        "instructorId": s.get("instructor_id") or assigned_inst_id,
+                        "labEngineerId": s.get("lab_engineer_id") or assigned_lab_eng_id,
                         "studentGroupId": s.get("batch_id") or default_batch_id,
                         "sectionCode": s.get("section_code") or "A",
-                        "sessionType": s.get("session_type") or ctype,
+                        "sessionType": s_type,
+                        "componentType": s.get("component_type") or ("lab" if s_is_lab else "lecture"),
+                        "sessionsPerWeek": s.get("sessions_per_week"),
+                        "durationMinutes": s.get("duration_minutes"),
                         "enrollment": int(s.get("expected_students") or 60),
                     }
                 )
         else:
-            default_sections.append(
-                {
-                    "id": f"sec-{c['id']}-a",
-                    "courseId": c["id"],
-                    "courseCode": c["code"],
-                    "instructorId": default_instructor_id,
-                    "studentGroupId": default_batch_id,
-                    "sectionCode": "A",
-                    "sessionType": ctype,
-                    "enrollment": 60,
-                }
-            )
+            if lec_cr > 0:
+                default_sections.append(
+                    {
+                        "id": f"sec-{c['id']}-a-lec",
+                        "courseId": c["id"],
+                        "courseCode": c["code"],
+                        "instructorId": assigned_inst_id,
+                        "studentGroupId": default_batch_id,
+                        "sectionCode": "A",
+                        "sessionType": "Theory",
+                        "componentType": "lecture",
+                        "sessionsPerWeek": lec_cr,
+                        "enrollment": 60,
+                    }
+                )
+            if lab_cr > 0:
+                default_sections.append(
+                    {
+                        "id": f"sec-{c['id']}-a-lab",
+                        "courseId": c["id"],
+                        "courseCode": c["code"],
+                        "instructorId": assigned_inst_id,
+                        "labEngineerId": assigned_lab_eng_id,
+                        "studentGroupId": default_batch_id,
+                        "sectionCode": "A",
+                        "sessionType": "Lab",
+                        "componentType": "lab",
+                        "sessionsPerWeek": lab_cr,
+                        "enrollment": 60,
+                    }
+                )
 
     normalized_rooms: List[Dict[str, Any]] = []
     for r in db_classrooms:
@@ -537,6 +613,7 @@ def load_university_optimization_inputs(
                 "name": lab["name"],
                 "capacity": int(lab.get("capacity") or 40),
                 "type": "lab",
+                "assignedLabEngineerId": lab.get("assigned_lab_engineer_id"),
                 "equipment": equip_by_room.get(lab["id"], ["Workstations"]),
                 "isAvailable": bool(lab.get("is_available", True)),
             }
@@ -550,34 +627,110 @@ def load_university_optimization_inputs(
                 "batchId": b["id"],
                 "code": b["code"],
                 "name": b["name"],
+                "departmentCode": b.get("department_code") or "",
                 "size": int(b.get("student_count") or 60),
             }
         )
 
-    working_days_raw = inst_row.get("working_days") or "Mon,Tue,Wed,Thu,Fri"
-    working_days = [d.strip() for d in str(working_days_raw).split(",") if d.strip()]
-    time_config = TimeSlotConfig(
-        working_days=working_days or ["Mon", "Tue", "Wed", "Thu", "Fri"],
-        day_start_time=str(inst_row.get("day_start_time") or "09:00"),
-        day_end_time=str(inst_row.get("day_end_time") or "17:00"),
-        period_length_minutes=int(inst_row.get("period_length_minutes") or 50),
-        short_break_minutes=int(inst_row.get("short_break_minutes") or 10),
-        midday_break_enabled=bool(inst_row.get("midday_break_enabled", True)),
-        midday_break_start=str(inst_row.get("midday_break_start") or "13:00"),
-        midday_break_duration=int(inst_row.get("midday_break_duration") or 60),
-        lab_duration_minutes=int(inst_row.get("lab_duration_minutes") or 180),
+    # Merge institution TimeSlotConfig with optional request-body timeStructure/timeConfig override
+    ts_override = body.get("timeStructure") or body.get("timeConfig") or {}
+    working_days_raw = ts_override.get("workingDays") or inst_row.get("working_days") or "Mon,Tue,Wed,Thu,Fri"
+    if isinstance(working_days_raw, list):
+        working_days = [str(d).strip() for d in working_days_raw if str(d).strip()]
+    else:
+        working_days = [d.strip() for d in str(working_days_raw).split(",") if d.strip()]
+
+    merged_ts: Dict[str, Any] = {
+        "workingDays": working_days or ["Mon", "Tue", "Wed", "Thu", "Fri"],
+        "dayStartTime": ts_override.get("dayStartTime") or str(inst_row.get("day_start_time") or "09:00"),
+        "dayEndTime": ts_override.get("dayEndTime") or str(inst_row.get("day_end_time") or "17:00"),
+        "periodLengthMinutes": int(ts_override.get("periodLengthMinutes") or inst_row.get("period_length_minutes") or 50),
+        "shortBreakMinutes": int(
+            ts_override["shortBreakMinutes"]
+            if "shortBreakMinutes" in ts_override
+            else (inst_row.get("short_break_minutes") if inst_row.get("short_break_minutes") is not None else 10)
+        ),
+        "shortBreakEnabled": ts_override.get("shortBreakEnabled", True),
+        "middayBreakEnabled": bool(ts_override.get("middayBreakEnabled", inst_row.get("midday_break_enabled", True))),
+        "middayBreakStart": ts_override.get("middayBreakStart")
+        or ts_override.get("middayBreakStartTime")
+        or str(inst_row.get("midday_break_start") or "13:00"),
+        "middayBreakDuration": int(
+            ts_override.get("middayBreakDuration")
+            or ts_override.get("middayBreakDurationMinutes")
+            or inst_row.get("midday_break_duration")
+            or 60
+        ),
+        "labDurationMinutes": int(ts_override.get("labDurationMinutes") or inst_row.get("lab_duration_minutes") or 180),
+        "labSplitAllowed": bool(ts_override.get("labSplitAllowed", inst_row.get("lab_split_allowed", False))),
+        "fridayEnabled": bool(
+            ts_override["fridayEnabled"]
+            if "fridayEnabled" in ts_override
+            else inst_row.get("friday_enabled", "Fri" in working_days)
+        ),
+        "fridayMode": ts_override.get("fridayMode") or inst_row.get("friday_mode") or "jummah_break",
+        "fridayStartTime": ts_override.get("fridayStartTime") or inst_row.get("friday_start_time"),
+        "fridayEndTime": ts_override.get("fridayEndTime") or inst_row.get("friday_end_time"),
+        "fridayBreakStart": ts_override.get("fridayBreakStart")
+        or ts_override.get("fridayBreakStartTime")
+        or inst_row.get("friday_break_start")
+        or "13:00",
+        "fridayBreakEnd": ts_override.get("fridayBreakEnd")
+        or ts_override.get("fridayBreakEndTime")
+        or ts_override.get("fridayAfternoonStartTime")
+        or inst_row.get("friday_break_end")
+        or "14:30",
+        "fridayClosingTime": ts_override.get("fridayClosingTime") or inst_row.get("friday_closing_time") or "13:00",
+        "fridayCompressionScope": ts_override.get("fridayCompressionScope")
+        or inst_row.get("friday_compression_scope")
+        or "none",
+        "fridayPeriodLength": int(
+            ts_override.get("fridayPeriodLengthMinutes")
+            or ts_override.get("fridayPeriodLength")
+            or inst_row.get("friday_period_length")
+            or 40
+        ),
+        "fridayShortBreak": int(
+            ts_override["fridayShortBreakMinutes"]
+            if "fridayShortBreakMinutes" in ts_override
+            else inst_row.get("friday_short_break", 5)
+        ),
+        "fridayAllowedBatches": ts_override.get("fridayAllowedBatches")
+        if ts_override.get("fridayAllowedBatches") is not None
+        else (inst_row.get("friday_allowed_batches") or []),
+        "fridayAllowedDepartments": ts_override.get("fridayAllowedDepartments")
+        if ts_override.get("fridayAllowedDepartments") is not None
+        else (inst_row.get("friday_allowed_departments") or []),
+    }
+    time_config = TimeSlotConfig.from_dict(merged_ts)
+
+    w_raw = body.get("weights") or {}
+    weights = OptimizationWeights(
+        student_gap_minimization=float(w_raw.get("student_gap_minimization", 0.35)),
+        student_fairness=float(w_raw.get("student_fairness", 0.25)),
+        instructor_balance=float(w_raw.get("instructor_balance", 0.20)),
+        room_utilization=float(w_raw.get("room_utilization", 0.15)),
+        preferences=float(w_raw.get("preferences", 0.15)),
     )
 
     courses = body.get("courses") if isinstance(body.get("courses"), list) and body.get("courses") else normalized_courses
     sections = body.get("sections") if isinstance(body.get("sections"), list) and body.get("sections") else default_sections
     rooms_raw = body.get("classrooms") if isinstance(body.get("classrooms"), list) and body.get("classrooms") else normalized_rooms
     student_groups = body.get("studentGroups") if isinstance(body.get("studentGroups"), list) and body.get("studentGroups") else normalized_groups
+    instructors = body.get("instructors") if isinstance(body.get("instructors"), list) and body.get("instructors") else normalized_instructors
+    student_prefs = body.get("studentPreferences") if isinstance(body.get("studentPreferences"), list) else db_student_prefs
+    inst_prefs = body.get("instructorPreferences") if isinstance(body.get("instructorPreferences"), list) else db_inst_prefs
 
     return {
         "sections": sections,
         "courses": courses,
         "rooms_raw": rooms_raw,
         "student_groups": student_groups,
+        "instructors": instructors,
+        "student_preferences": student_prefs,
+        "instructor_preferences": inst_prefs,
+        "unavailable_instructor_slots": body.get("unavailableInstructorSlots") or unavail_inst,
+        "unavailable_room_slots": body.get("unavailableRoomSlots") or {},
         "time_config": time_config,
-        "weights": OptimizationWeights(),
+        "weights": weights,
     }

@@ -1,14 +1,23 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import type { RouteType } from './SmartGridNav';
 import { useInstitutionalData, institutionalStore } from '../data/store';
 import { buildMatrixSchedule } from '../data/solverAdapter';
 import {
   UNIVERSITY_SLOTS,
+  DayOfWeek,
   computeAcademicScheduleConfig,
   getLabBlockByStartPeriod,
-  getEffectiveSlotDisplayForDay
+  getEffectiveSlotDisplayForDay,
+  orderWorkingDaysFridayRightmost,
+  parseTime24ToMinutes,
+  minutesToTime24
 } from '../types/institutional';
-import { exportTimetableToGoogleSheetsWorkbook } from '../utils/googleSheetsExport';
+import {
+  exportTimetableToGoogleSheetsWorkbook,
+  buildCanonicalExportModel,
+  CanonicalExportModel,
+  CanonicalTimetableExportEntry
+} from '../utils/googleSheetsExport';
 import {
   Download,
   Sparkles,
@@ -18,7 +27,6 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
-  Check,
   Layers,
   Search,
   Users,
@@ -29,6 +37,8 @@ import {
   AlertCircle,
   AlertTriangle,
   GripVertical,
+  Printer,
+  Clock,
   X
 } from 'lucide-react';
 import { ClassDetailsModal, ClassItem } from './ClassDetailsModal';
@@ -51,30 +61,108 @@ interface TimetableMatrixProps {
 }
 
 const PASTEL_PALETTE = [
-  { bg: '#B8EEEE', border: '#95DFDF', label: 'Cyan' },
-  { bg: '#F2D8FA', border: '#DFB9EC', label: 'Lavender' },
-  { bg: '#B8F2E6', border: '#93DEC9', label: 'Mint' },
-  { bg: '#B7F77C', border: '#98DF58', label: 'Lime' },
-  { bg: '#E8D36B', border: '#D4BC4C', label: 'Mustard' }
+  { bg: '#B8EEEE', border: '#95DFDF', fillRgb: [184, 238, 238] as const, label: 'Cyan' },
+  { bg: '#F2D8FA', border: '#DFB9EC', fillRgb: [242, 216, 250] as const, label: 'Lavender' },
+  { bg: '#B8F2E6', border: '#93DEC9', fillRgb: [184, 242, 230] as const, label: 'Mint' },
+  { bg: '#B7F77C', border: '#98DF58', fillRgb: [183, 247, 124] as const, label: 'Lime' },
+  { bg: '#E8D36B', border: '#D4BC4C', fillRgb: [232, 211, 107] as const, label: 'Mustard' }
 ];
 
 function getCoursePastel(code: string) {
+  const clean = code.replace(/-L$/i, '');
   let hash = 0;
-  for (let i = 0; i < code.length; i++) {
-    hash = (hash * 31 + code.charCodeAt(i)) >>> 0;
+  for (let i = 0; i < clean.length; i++) {
+    hash = (hash * 31 + clean.charCodeAt(i)) >>> 0;
   }
   return PASTEL_PALETTE[hash % PASTEL_PALETTE.length];
 }
 
+interface PositionedDaySession {
+  cls: ClassItem;
+  startMinutes: number;
+  endMinutes: number;
+  durationMinutes: number;
+  startTime24: string;
+  endTime24: string;
+  laneIndex: number;
+  laneCount: number;
+}
+
+/**
+ * Connected-component sweep-line interval lane assignment so concurrent sessions
+ * always render cleanly side-by-side without hiding or overlapping one another.
+ */
+function assignOverlapLanes(
+  items: Array<{
+    cls: ClassItem;
+    startMinutes: number;
+    endMinutes: number;
+    durationMinutes: number;
+    startTime24: string;
+    endTime24: string;
+  }>
+): PositionedDaySession[] {
+  if (items.length === 0) return [];
+  const sorted = [...items].sort((a, b) => {
+    if (a.startMinutes !== b.startMinutes) return a.startMinutes - b.startMinutes;
+    if (b.durationMinutes !== a.durationMinutes) return b.durationMinutes - a.durationMinutes;
+    return a.cls.code.localeCompare(b.cls.code);
+  });
+
+  // Partition into overlap clusters
+  const clusters: Array<typeof sorted> = [];
+  let currentCluster: typeof sorted = [];
+  let clusterMaxEnd = -1;
+
+  sorted.forEach(item => {
+    if (currentCluster.length === 0 || item.startMinutes < clusterMaxEnd) {
+      currentCluster.push(item);
+      clusterMaxEnd = Math.max(clusterMaxEnd, item.endMinutes);
+    } else {
+      clusters.push(currentCluster);
+      currentCluster = [item];
+      clusterMaxEnd = item.endMinutes;
+    }
+  });
+  if (currentCluster.length > 0) clusters.push(currentCluster);
+
+  const result: PositionedDaySession[] = [];
+  clusters.forEach(cluster => {
+    const laneEnds: number[] = [];
+    const assigned = cluster.map(item => {
+      let laneIdx = laneEnds.findIndex(endMin => endMin <= item.startMinutes);
+      if (laneIdx === -1) {
+        laneIdx = laneEnds.length;
+        laneEnds.push(item.endMinutes);
+      } else {
+        laneEnds[laneIdx] = item.endMinutes;
+      }
+      return { ...item, laneIndex: laneIdx };
+    });
+    const laneCount = Math.max(1, laneEnds.length);
+    assigned.forEach(a => {
+      result.push({
+        cls: a.cls,
+        startMinutes: a.startMinutes,
+        endMinutes: a.endMinutes,
+        durationMinutes: a.durationMinutes,
+        startTime24: a.startTime24,
+        endTime24: a.endTime24,
+        laneIndex: a.laneIndex,
+        laneCount
+      });
+    });
+  });
+
+  return result;
+}
+
 export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
   onNavigate,
-  onOpenAuth,
-  onSignOut,
-  currentUser,
-  hideNav = false
+  currentUser
 }) => {
   const store = useInstitutionalData();
-  const { scheduleData } = buildMatrixSchedule(store);
+  const { scheduleData, conflicts } = useMemo(() => buildMatrixSchedule(store), [store]);
   const hasGeneratedTimetable =
     store.scenarios.length > 0 || store.sections.some(s => Boolean(s.assignedSlot));
 
@@ -99,7 +187,6 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
     return hasWeekendClasses ? 7 : 5;
   });
   const [focusedDay, setFocusedDay] = useState<string>('Mon');
-  // Default to 'cohort' (Individual Class/Section Timetable) so each class/section timetable is displayed clearly
   const [perspective, setPerspective] = useState<'cohort' | 'master' | 'instructor' | 'room'>(() =>
     isFaculty ? 'instructor' : 'cohort'
   );
@@ -139,7 +226,6 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
   const [draggedClassItem, setDraggedClassItem] = useState<ClassItem | null>(null);
   const [dragOverCellKey, setDragOverCellKey] = useState<string | null>(null);
 
-  // Interactive Conflict Inspector and Swap Confirmation Dialog States
   const [conflictDialogData, setConflictDialogData] = useState<{
     sourceItem: ClassItem;
     targetDay: string;
@@ -156,41 +242,6 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
     conflictsB: Array<{ type: string; message: string; severity: 'hard' | 'warning' }>;
   } | null>(null);
 
-  // Parent container width tracking for dynamic 7-column responsive calculation
-  const gridContainerRef = useRef<HTMLDivElement>(null);
-  const [containerWidth, setContainerWidth] = useState<number>(0);
-
-  useEffect(() => {
-    const el = gridContainerRef.current;
-    if (!el) return;
-
-    const updateWidth = () => {
-      if (gridContainerRef.current) {
-        const w = Math.floor(gridContainerRef.current.getBoundingClientRect().width);
-        if (w > 0) setContainerWidth(w);
-      }
-    };
-
-    updateWidth();
-
-    const observer = new ResizeObserver(entries => {
-      for (const entry of entries) {
-        const width = Math.floor(entry.contentRect.width);
-        if (width > 0) {
-          setContainerWidth(width);
-        }
-      }
-    });
-
-    observer.observe(el);
-    window.addEventListener('resize', updateWidth);
-    return () => {
-      observer.disconnect();
-      window.removeEventListener('resize', updateWidth);
-    };
-  }, [calendarMode, effectivePerspective]);
-
-  // Synchronize perspective and cohort/instructor when role or store changes
   useEffect(() => {
     if (isStudent) {
       setPerspective('cohort');
@@ -257,7 +308,6 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
     )
   ).sort((a, b) => b.localeCompare(a));
 
-  // Filter classes/sections strictly by role, selected department/field, and selected batch
   const departmentFilteredGroups = isStudent
     ? matchedStudentCohort
       ? [matchedStudentCohort]
@@ -301,16 +351,22 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
     handleSelectCohort(departmentFilteredGroups[nextIdx].id);
   };
 
-  const computedTiming = computeAcademicScheduleConfig(store.timeStructure);
+  const computedTiming = useMemo(() => computeAcademicScheduleConfig(store.timeStructure), [store.timeStructure]);
   const dynamicSlots = computedTiming.slots.length > 0 ? computedTiming.slots : UNIVERSITY_SLOTS;
+  const fridayEnabled = store.timeStructure.fridayEnabled !== false;
 
-  const FULL_SEVEN_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-  const FIVE_WORKING_DAYS =
-    computedTiming.workingDays.length > 0
-      ? computedTiming.workingDays
-      : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
-  const days = weekColumnSpan === 7 ? FULL_SEVEN_DAYS : FIVE_WORKING_DAYS;
-  const timeSlots = dynamicSlots.map(s => s.period);
+  // Canonical day ordering: Friday is ALWAYS rightmost among standard weekdays (Mon..Thu..Fri),
+  // omitted completely when fridayEnabled is false, and Sat/Sun follow after Friday if active.
+  const fiveDayWorkingList = orderWorkingDaysFridayRightmost(
+    computedTiming.workingDays.length > 0 ? computedTiming.workingDays : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'],
+    fridayEnabled
+  );
+  const sevenDayList = orderWorkingDaysFridayRightmost(
+    ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+    fridayEnabled
+  );
+  const days: DayOfWeek[] = weekColumnSpan === 7 ? sevenDayList : fiveDayWorkingList;
+  const activeFocusDay = (sevenDayList.includes(focusedDay as DayOfWeek) ? focusedDay : sevenDayList[0] || 'Mon') as DayOfWeek;
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -326,10 +382,101 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
     setIsSweeping(true);
     try {
       const user = currentUser || getStoredUser();
-      const res = await solveOptimizationApi({ algorithm: 'hybrid_dsatur_ga_sa', universityId: store.institutionProfile?.id || user?.institutionId }, user);
-      if (res.assignments && Object.keys(res.assignments).length > 0) {
+      institutionalStore.autoGenerateMissingSections();
+      const fresh = institutionalStore.get();
+      const payload = {
+        universityId: fresh.institutionProfile?.id || user?.institutionId || institutionalStore.getCurrentInstitutionId(),
+        algorithm: 'hybrid_dsatur_ga_sa',
+        timeStructure: fresh.timeStructure,
+        instructors: fresh.instructors.map(i => ({
+          id: i.id,
+          name: i.name,
+          email: i.email,
+          departmentId: i.departmentId,
+          subDepartment: i.subDepartment,
+          staffRole: i.staffRole || 'faculty',
+          qualifiedCourseIds: i.qualifiedCourseIds || [],
+          maxWeeklyHours: i.maxWeeklyHours,
+          maxConsecutiveHours: i.maxConsecutiveHours,
+          preferredDays: i.preferredDays,
+          unavailableSlots: i.unavailableSlots || []
+        })),
+        courses: fresh.courses.map(c => {
+          const courseType =
+            c.courseType ||
+            (c.requiredRoomType === 'lab' && c.lectureHours === 0
+              ? 'lab'
+              : c.labHours > 0
+              ? 'lecture_lab'
+              : 'lecture');
+          return {
+            id: c.id,
+            code: c.code,
+            title: c.title,
+            courseType,
+            type: courseType === 'lab' ? 'Lab' : 'Theory',
+            credits: c.creditHours || 3,
+            lectureCredits: c.lectureCredits ?? c.lectureHours ?? (courseType === 'lab' ? 0 : c.creditHours || 3),
+            labCredits: c.labCredits ?? (c.labHours > 0 ? Math.max(1, Math.round(c.labHours / 3)) : courseType === 'lab' ? 1 : 0),
+            lectureHours: c.lectureHours,
+            labHours: c.labHours,
+            departmentId: c.departmentId,
+            assignedInstructorId: c.assignedInstructorId,
+            assignedLabEngineerId: c.assignedLabEngineerId,
+            assignedBatchId: c.assignedBatchId,
+            semester: c.semester,
+            labSessionMode: c.labSessionMode || (fresh.timeStructure.labSplitAllowed ? 'split_allowed' : 'continuous'),
+            isElective: Boolean(c.isElective),
+            requiredRoomType: c.requiredRoomType,
+            requiredEquipment: []
+          };
+        }),
+        classrooms: fresh.rooms.map(r => ({
+          id: r.id,
+          code: r.code,
+          name: r.name,
+          capacity: r.capacity,
+          type: r.type,
+          equipment: r.equipment,
+          isAvailable: r.isAvailable,
+          assignedLabEngineerId: r.assignedLabEngineerId
+        })),
+        studentGroups: fresh.studentGroups.map(g => ({
+          id: g.id,
+          code: g.code,
+          name: g.name,
+          size: g.size,
+          batchCode: g.batchCode,
+          departmentCode: g.departmentCode,
+          semester: g.semester,
+          section: g.section
+        })),
+        sections: fresh.sections.map(s => {
+          const isLab = s.sessionType === 'Lab' || Boolean(s.spanSlots && s.spanSlots > 1) || s.componentType === 'lab';
+          return {
+            id: s.id,
+            courseId: s.courseId,
+            instructorId: s.instructorId,
+            labEngineerId: s.labEngineerId,
+            studentGroupId: s.studentGroupId,
+            sharedGroupIds: s.sharedGroupIds || [],
+            sectionCode: s.sectionNumber || 'A',
+            sessionType: isLab ? 'Lab' : 'Theory',
+            componentType: s.componentType || (isLab ? 'lab' : 'lecture'),
+            isAtomicSession: s.isAtomicSession ?? true,
+            spanSlots: s.spanSlots || (isLab ? 3 : 1),
+            sessionsPerWeek: 1,
+            enrollment: s.expectedEnrollment || 45,
+            isLocked: Boolean(s.isLocked)
+          };
+        })
+      };
+
+      const res = await solveOptimizationApi(payload, user);
+      if ((res.entries && res.entries.length > 0) || (res.assignments && Object.keys(res.assignments).length > 0)) {
         institutionalStore.applyBackendOptimizationResult({
-          assignments: res.assignments,
+          assignments: res.assignments || {},
+          entries: res.entries,
           strategyName: 'Python Hybrid AI Re-Optimization',
           algorithm: 'hybrid_dsatur_ga_sa',
           fitness: {
@@ -337,15 +484,18 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
             studentSatisfaction: res.metrics.studentSatisfaction,
             instructorSatisfaction: res.metrics.instructorSatisfaction,
             roomUtilization: res.metrics.roomUtilization,
-            fairnessScore: res.metrics.fairnessScore
+            fairnessScore: res.metrics.fairnessScore,
+            studentGapMinutesAvg: res.metrics.studentGapMinutesAvg,
+            compactnessScore: res.metrics.compactnessScore,
+            worstBatchSatisfaction: res.metrics.worstBatchSatisfaction
           },
           conflictCount: res.metrics.conflictCount
         });
         void institutionalStore.syncToBackend(user || undefined);
         showAppPopup({
-          title: 'Timetable Re-Optimized (Python Hybrid AI)',
-          message: `${res.metrics.placedCount} sessions synchronized with ${res.metrics.conflictCount} hard conflicts.`,
-          variant: 'success'
+          title: res.metrics.conflictCount === 0 ? 'Timetable Re-Optimized' : 'Re-Optimized (Draft Needs Review)',
+          message: `${res.metrics.placedCount} sessions synchronized (${res.metrics.conflictCount} hard conflicts, compactness ${Math.round(res.metrics.compactnessScore ?? res.metrics.studentSatisfaction ?? 0)}%).`,
+          variant: res.metrics.conflictCount === 0 ? 'success' : 'info'
         });
       } else {
         throw new Error('No assignments returned.');
@@ -354,9 +504,9 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
       const localRes = institutionalStore.runTimetableSolver();
       void institutionalStore.syncToBackend(currentUser || undefined);
       showAppPopup({
-        title: 'Timetable Re-Optimized (Local Solver)',
-        message: `${localRes.placedCount} sessions synchronized with 0 hard overlaps.`,
-        variant: 'success'
+        title: localRes.conflictCount === 0 ? 'Timetable Re-Optimized (Local Solver)' : 'Local Draft Saved (Conflicts Remain)',
+        message: `${localRes.placedCount} sessions synchronized with ${localRes.conflictCount} hard overlaps.`,
+        variant: localRes.conflictCount === 0 ? 'success' : 'info'
       });
     } finally {
       setIsSweeping(false);
@@ -373,7 +523,6 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
       (draggedClassItem.spanSlots && draggedClassItem.spanSlots > 1);
     let targetPeriod = rawTargetPeriod;
 
-    // If dragging a continuous Lab, ensure targetPeriod has enough consecutive slots in the same session to span its full duration
     if (isDraggedLab) {
       const desiredSpan = Math.max(
         2,
@@ -391,20 +540,17 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
       }
     }
 
-    // If dropped on the same slot, do nothing
     if (draggedClassItem.day === targetDay && draggedClassItem.time === targetPeriod) {
       setDraggedClassItem(null);
       return;
     }
 
-    // Find any existing class at this target day and period
     const existingClasses = (scheduleData[targetPeriod]?.[targetDay] || []).filter(filterClass);
     const conflictingItem = existingClasses[0] || null;
 
-    // Run real-time constraint validation
     const validation = institutionalStore.validateSlotMoveOrSwap(
       draggedClassItem.id,
-      targetDay as any,
+      targetDay as DayOfWeek,
       targetPeriod,
       draggedClassItem.roomId,
       conflictingItem ? conflictingItem.id : undefined
@@ -421,7 +567,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
       });
     } else {
       institutionalStore.updateSectionSlot(draggedClassItem.id, {
-        day: targetDay as any,
+        day: targetDay as DayOfWeek,
         timeSlot: targetPeriod,
         roomId: draggedClassItem.roomId || store.rooms[0]?.id || ''
       });
@@ -445,18 +591,14 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
     const res = institutionalStore.swapSectionSlots(itemA.id, itemB.id);
     void institutionalStore.syncToBackend(currentUser || undefined);
     setSwapDialogData(null);
-    showAppPopup({
-      title: 'Sessions Swapped',
-      message: res.message,
-      variant: 'success'
-    });
+    showAppPopup({ title: 'Sessions Swapped', message: res.message, variant: 'success' });
   };
 
   const handleConfirmOverrideMove = () => {
     if (!conflictDialogData) return;
     const { sourceItem, targetDay, targetPeriod, targetRoomId } = conflictDialogData;
     institutionalStore.updateSectionSlot(sourceItem.id, {
-      day: targetDay as any,
+      day: targetDay as DayOfWeek,
       timeSlot: targetPeriod,
       roomId: targetRoomId || store.rooms[0]?.id || ''
     });
@@ -464,7 +606,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
     setConflictDialogData(null);
     showAppPopup({
       title: 'Session Moved (Override)',
-      message: `Manually moved ${sourceItem.code} to ${targetDay} · ${targetPeriod} (Override applied).`,
+      message: `Manually moved ${sourceItem.code} to ${targetDay} · ${targetPeriod}.`,
       variant: 'info'
     });
   };
@@ -491,7 +633,12 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
         return false;
       }
     } else if (effectivePerspective === 'instructor') {
-      if (!effectiveInstructorId || cls.instructorId !== effectiveInstructorId) return false;
+      if (
+        !effectiveInstructorId ||
+        (cls.instructorId !== effectiveInstructorId && cls.labEngineerId !== effectiveInstructorId)
+      ) {
+        return false;
+      }
     } else if (effectivePerspective === 'room') {
       if (selectedRoomId && cls.roomId !== selectedRoomId) return false;
     } else if (effectivePerspective === 'master' && selectedDeptId !== 'all') {
@@ -503,6 +650,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
         cls.code.toLowerCase().includes(q) ||
         cls.title.toLowerCase().includes(q) ||
         cls.prof.toLowerCase().includes(q) ||
+        (cls.labEngineerName || '').toLowerCase().includes(q) ||
         cls.room.toLowerCase().includes(q) ||
         cls.cohort.toLowerCase().includes(q);
       if (!match) return false;
@@ -531,7 +679,6 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
     return 'All_Classes_University';
   };
 
-  // Multi-Worksheet Google Sheets (.xlsx) Export — Compact Landscape Weekly Overview + 1 Tab per Class/Section
   const handleExportGoogleSheets = async (scope: 'filtered' | 'all') => {
     const safeScope = isAdmin ? scope : 'filtered';
     try {
@@ -547,14 +694,14 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
       });
       showAppPopup({
         title: 'Workbook Exported',
-        message: `Exported "${result.fileName}" (1 Weekly Overview + ${result.classSheetCount} Class/Section tabs).`,
+        message: `Exported "${result.fileName}" (1 Weekly Overview + ${result.classSheetCount} Class/Section tabs · ${result.totalSessionsCount} sessions).`,
         variant: 'success'
       });
     } catch (err) {
       console.error('Google Sheets export error:', err);
       showAppPopup({
         title: 'Export Failed',
-        message: 'Failed to generate Google Sheets workbook. Please try again.',
+        message: 'Failed to generate Excel workbook. Please try again.',
         variant: 'error'
       });
     } finally {
@@ -563,87 +710,63 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
     }
   };
 
-  // CSV Export Routine
+  // Canonical CSV Export
   const handleExportCSV = (scope: 'filtered' | 'all') => {
     const safeScope = isAdmin ? scope : 'filtered';
-    const records: Array<{
-      day: string;
-      timeSlot: string;
-      sessionType: string;
-      duration: string;
-      code: string;
-      title: string;
-      credits: number;
-      room: string;
-      prof: string;
-      cohort: string;
-    }> = [];
-
-    days.forEach(day => {
-      timeSlots.forEach(time => {
-        const classes = scheduleData[time]?.[day] || [];
-        classes.forEach(cls => {
-          if (safeScope === 'all' || filterClass(cls)) {
-            const isLab = cls.sessionType === 'Lab' || (cls.spanSlots && cls.spanSlots > 1);
-            const effSlot = getEffectiveSlotDisplayForDay(day, time, computedTiming);
-            const labMeta = isLab ? getLabBlockByStartPeriod(time, store.timeStructure, day) : undefined;
-            const breakDesc =
-              computedTiming.shortBreakEnabled && computedTiming.shortBreakMinutes > 0
-                ? `(+ ${computedTiming.shortBreakMinutes}m Short Break)`
-                : '(Back-to-Back, No Break)';
-            records.push({
-              day,
-              timeSlot: isLab
-                ? ((day === 'Fri' ? labMeta?.continuousLabel : undefined) || cls.continuousTimeLabel || labMeta?.continuousLabel || time)
-                : (effSlot.isOpen ? effSlot.period : time),
-              sessionType: isLab ? `Lab (${computedTiming.labDurationHoursLabel} Continuous)` : 'Lecture',
-              duration: isLab
-                ? `${labMeta?.durationMinutes || computedTiming.labDurationMinutes} mins continuous`
-                : `${effSlot.isOpen ? effSlot.durationMinutes : computedTiming.periodLengthMinutes} mins ${breakDesc}`,
-              code: cls.code,
-              title: cls.title,
-              credits: cls.credits || 3,
-              room: cls.room,
-              prof: cls.prof,
-              cohort: cls.cohort
-            });
-          }
-        });
-      });
+    const model = buildCanonicalExportModel({
+      store,
+      scheduleData,
+      filterClass,
+      scope: safeScope,
+      daysOverride: days
     });
 
     const headers = [
       'Day',
+      'Start Time (24h)',
+      'End Time (24h)',
+      'Duration (min)',
       'Time Window',
       'Session Type',
-      'Duration',
+      'Slot Source',
       'Course Code',
       'Course Title',
       'Credits',
+      'Course Instructor',
+      'Lab Engineer',
       'Room / Facility',
-      'Faculty Instructor',
-      'Class / Section'
+      'Batch / Section',
+      'Status'
     ];
-    const rows = records.map(r => [
-      `"${r.day}"`,
-      `"${r.timeSlot}"`,
-      `"${r.sessionType}"`,
-      `"${r.duration}"`,
-      `"${r.code}"`,
-      `"${r.title.replace(/"/g, '""')}"`,
-      r.credits,
-      `"${r.room}"`,
-      `"${r.prof}"`,
-      `"${r.cohort}"`
+
+    const escapeCsv = (val: string | number | undefined) =>
+      `"${String(val ?? '').replace(/"/g, '""')}"`;
+
+    const rows = model.entries.map(e => [
+      escapeCsv(e.day),
+      escapeCsv(e.startTime24),
+      escapeCsv(e.endTime24),
+      e.durationMinutes,
+      escapeCsv(e.timeDisplay),
+      escapeCsv(e.sessionType === 'Lab' ? (e.isSplitLab ? 'Split Lab' : 'Continuous Lab') : 'Lecture'),
+      escapeCsv(e.slotSource),
+      escapeCsv(e.courseCode),
+      escapeCsv(e.courseTitle),
+      e.credits,
+      escapeCsv(e.instructorName),
+      escapeCsv(e.labEngineerName || (e.sessionType === 'Lab' ? e.instructorName : '—')),
+      escapeCsv(e.roomCode),
+      escapeCsv(e.cohortCode),
+      escapeCsv(e.hasConflict ? 'Conflict' : 'Valid')
     ]);
 
-    const csvContent = [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
+    const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     const scopeLabel = safeScope === 'all' ? 'All_University_Classes' : getActiveScopeLabel();
     link.href = url;
-    link.download = `SmartGrid_Timetable_${scopeLabel}_Fall2026.csv`;
+    link.download = `SmartGrid_Timetable_${scopeLabel}.csv`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -651,163 +774,251 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
 
     showAppPopup({
       title: 'CSV Exported',
-      message: `Exported ${records.length} scheduled sessions to CSV (${scopeLabel.replace(/_/g, ' ')}).`,
+      message: `Exported ${model.entries.length} canonical sessions to CSV (${scopeLabel.replace(/_/g, ' ')}).`,
       variant: 'success'
     });
     setShowExportMenu(false);
   };
 
-  // PDF Export Routine using jsPDF
+  // Canonical Proportional PDF Export via jsPDF
+  const drawProportionalPdfPage = (
+    doc: jsPDF,
+    model: CanonicalExportModel,
+    pageEntries: CanonicalTimetableExportEntry[],
+    headerTitle: string,
+    headerSubtitle: string,
+    scopeRightLabel: string
+  ) => {
+    const pageWidth = 297;
+    const margin = 10;
+    const contentWidth = pageWidth - margin * 2;
+
+    doc.setFillColor(23, 23, 23);
+    doc.rect(margin, 8, contentWidth, 2, 'F');
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11.5);
+    doc.setTextColor(23, 23, 23);
+    doc.text(headerTitle, margin, 15.5);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+    doc.setTextColor(87, 86, 79);
+    doc.text(headerSubtitle, margin, 20);
+
+    const dateStr = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+    doc.text(`${scopeRightLabel}  •  ${dateStr}`, pageWidth - margin, 15.5, { align: 'right' });
+
+    const headerY = 23.5;
+    const headerH = 7;
+    const timeColW = 24;
+    const numDays = Math.max(1, model.days.length);
+    const dayColW = (contentWidth - timeColW) / numDays;
+
+    const gridTopY = headerY + headerH;
+    const gridBottomY = 199;
+    const gridHeight = gridBottomY - gridTopY;
+    const spanMins = Math.max(60, model.timelineEndMinutes - model.timelineStartMinutes);
+    const mmPerMin = gridHeight / spanMins;
+
+    // Header row background
+    doc.setFillColor(237, 234, 224);
+    doc.setDrawColor(214, 211, 201);
+    doc.setLineWidth(0.25);
+    doc.rect(margin, headerY, contentWidth, headerH, 'FD');
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7);
+    doc.setTextColor(23, 23, 23);
+    doc.text('TIME (24H)', margin + 2, headerY + 4.7);
+
+    model.days.forEach((day, dIdx) => {
+      const colX = margin + timeColW + dIdx * dayColW;
+      doc.line(colX, headerY, colX, gridBottomY);
+      const fri = model.computedTiming.fridaySchedule;
+      const dayTitle =
+        day === 'Fri' && fri.mode === 'morning_only'
+          ? `FRI (AM · ${fri.closingTime24})`
+          : day === 'Fri' && fri.mode === 'jummah_break'
+          ? `FRI (JUMMAH ${fri.jummahBreak.startTime24}–${fri.jummahBreak.endTime24})`
+          : day.toUpperCase();
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7.5);
+      doc.setTextColor(23, 23, 23);
+      doc.text(dayTitle, colX + 2.5, headerY + 4.7);
+    });
+
+    // Outer frame + Left time gutter background
+    doc.setFillColor(247, 246, 239);
+    doc.rect(margin, gridTopY, timeColW, gridHeight, 'F');
+    doc.setDrawColor(214, 211, 201);
+    doc.rect(margin, gridTopY, contentWidth, gridHeight, 'S');
+    doc.line(margin + timeColW, gridTopY, margin + timeColW, gridBottomY);
+
+    // Hour horizontal lines and labels
+    for (let m = model.timelineStartMinutes; m <= model.timelineEndMinutes; m += 60) {
+      const y = gridTopY + (m - model.timelineStartMinutes) * mmPerMin;
+      doc.setDrawColor(228, 226, 218);
+      doc.line(margin, y, margin + contentWidth, y);
+      if (m < model.timelineEndMinutes) {
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(6.8);
+        doc.setTextColor(87, 86, 79);
+        doc.text(minutesToTime24(m), margin + 2.2, y + 4);
+      }
+    }
+
+    // Official break bands (Midday & Jummah / Friday closed)
+    model.breaks.forEach(brk => {
+      const brkY = gridTopY + (brk.startMinutes - model.timelineStartMinutes) * mmPerMin;
+      const brkH = Math.max(4, brk.durationMinutes * mmPerMin);
+      model.days.forEach((day, dIdx) => {
+        if (!brk.appliesToDays.includes(day)) return;
+        const colX = margin + timeColW + dIdx * dayColW;
+        doc.setFillColor(240, 237, 226);
+        doc.rect(colX + 0.3, brkY, dayColW - 0.6, brkH, 'F');
+        doc.setFont('helvetica', 'italic');
+        doc.setFontSize(5.8);
+        doc.setTextColor(119, 118, 111);
+        const brkText = doc.splitTextToSize(`${brk.label} (${brk.startTime24}–${brk.endTime24})`, dayColW - 3);
+        doc.text(brkText[0] || brk.label, colX + 1.8, brkY + Math.min(brkH - 1.5, 4.2));
+      });
+    });
+
+    // Session cards positioned by exact clock coordinates + overlap lanes
+    model.days.forEach((day, dIdx) => {
+      const colX = margin + timeColW + dIdx * dayColW;
+      const dayItems = pageEntries
+        .filter(e => e.day === day)
+        .map(e => ({
+          cls: e.classItem,
+          startMinutes: e.startMinutes,
+          endMinutes: e.endMinutes,
+          durationMinutes: e.durationMinutes,
+          startTime24: e.startTime24,
+          endTime24: e.endTime24
+        }));
+      const positioned = assignOverlapLanes(dayItems);
+
+      positioned.forEach(item => {
+        const y = gridTopY + (item.startMinutes - model.timelineStartMinutes) * mmPerMin + 0.5;
+        const h = Math.max(7, (item.endMinutes - item.startMinutes) * mmPerMin - 1);
+        const laneW = (dayColW - 1.4) / item.laneCount;
+        const x = colX + 0.7 + item.laneIndex * laneW;
+        const w = Math.max(6, laneW - 0.5);
+
+        const pastel = getCoursePastel(item.cls.code);
+        doc.setFillColor(pastel.fillRgb[0], pastel.fillRgb[1], pastel.fillRgb[2]);
+        doc.setDrawColor(item.cls.hasConflict ? 198 : 160, item.cls.hasConflict ? 40 : 158, item.cls.hasConflict ? 40 : 148);
+        doc.roundedRect(x, y, w, h, 1, 1, 'FD');
+
+        const isLab = item.cls.sessionType === 'Lab' || item.cls.componentType === 'lab';
+        const headerStr = `${item.cls.code} · ${item.startTime24}–${item.endTime24}`;
+        const staffStr = isLab && item.cls.labEngineerName
+          ? `${item.cls.prof} / Eng: ${item.cls.labEngineerName}`
+          : item.cls.prof;
+        const locStr = `${item.cls.room} · ${item.cls.cohort}`;
+
+        const innerW = Math.max(5, w - 2.2);
+        const fontSize = item.laneCount >= 3 ? 4.8 : item.laneCount === 2 ? 5.3 : 6;
+        doc.setFontSize(fontSize);
+
+        let textY = y + 3.2;
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(23, 23, 23);
+        const headerLines = doc.splitTextToSize(headerStr, innerW);
+        doc.text(headerLines[0] || headerStr, x + 1.1, textY);
+        textY += 2.6;
+
+        if (h > 10) {
+          doc.setFont('helvetica', 'normal');
+          const titleLines = doc.splitTextToSize(item.cls.title, innerW);
+          const maxTitleLines = h >= 28 ? 3 : 2;
+          titleLines.slice(0, maxTitleLines).forEach((ln: string) => {
+            if (textY < y + h - 2.2) {
+              doc.text(ln, x + 1.1, textY);
+              textY += 2.4;
+            }
+          });
+        }
+
+        if (h > 13 && textY < y + h - 1.2) {
+          doc.setFontSize(Math.max(4.5, fontSize - 0.6));
+          doc.setTextColor(68, 68, 64);
+          const metaLines = doc.splitTextToSize(`${staffStr} | ${locStr}`, innerW);
+          metaLines.slice(0, h >= 24 ? 2 : 1).forEach((ln: string) => {
+            if (textY < y + h - 0.8) {
+              doc.text(ln, x + 1.1, textY);
+              textY += 2.2;
+            }
+          });
+        }
+      });
+    });
+  };
+
   const handleExportPDF = (scope: 'filtered' | 'all') => {
     const safeScope = isAdmin ? scope : 'filtered';
+    const model = buildCanonicalExportModel({
+      store,
+      scheduleData,
+      filterClass,
+      scope: safeScope,
+      daysOverride: days
+    });
+
     const doc = new jsPDF({
       orientation: 'landscape',
       unit: 'mm',
       format: 'a4'
     });
 
-    const pageWidth = 297;
-    const margin = 12;
-
-    doc.setFillColor(23, 23, 23);
-    doc.rect(margin, 10, pageWidth - margin * 2, 2.5, 'F');
-
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(13);
-    doc.setTextColor(23, 23, 23);
-    doc.text(
-      `${(store.institutionProfile?.name || 'SMARTGRID AI').toUpperCase()} — UNIVERSITY TIMETABLE (${computedTiming.operatingHoursLabel})`,
-      margin,
-      18
-    );
-
-    const activeTerm = store.terms.find(t => t.status === 'active') || store.terms[0];
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8);
-    doc.setTextColor(119, 118, 111);
-    doc.text(
-      `${(activeTerm?.name || 'FALL 2026').toUpperCase()}   •   ${computedTiming.summaryText.toUpperCase()}`,
-      margin,
-      23
-    );
-
     const scopeLabel = safeScope === 'all' ? 'All University Classes' : getActiveScopeLabel().replace(/_/g, ' ');
-    const dateStr = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
-    doc.text(`Scope: ${scopeLabel}   •   Generated: ${dateStr}`, pageWidth - margin, 18, { align: 'right' });
 
-    const tableStartY = 27;
-    const colTimeWidth = 36;
-    const numDays = Math.min(days.length, 5);
-    const dayColWidth = (pageWidth - margin * 2 - colTimeWidth) / numDays;
-    const headerHeight = 7;
-    const slotRowHeight = Math.max(13, Math.min(19, Math.floor(140 / Math.max(1, dynamicSlots.length))));
-    const lunchRowHeight = 9;
+    if (safeScope === 'all') {
+      drawProportionalPdfPage(
+        doc,
+        model,
+        model.entries,
+        `${model.institutionName.toUpperCase()} — UNIVERSITY TIMETABLE OVERVIEW`,
+        `${model.termName.toUpperCase()}  •  ${model.computedTiming.summaryText}`,
+        `${model.entries.length} Sessions`
+      );
 
-    doc.setFillColor(237, 234, 224);
-    doc.rect(margin, tableStartY, pageWidth - margin * 2, headerHeight, 'F');
-    doc.setDrawColor(228, 226, 218);
-    doc.setLineWidth(0.3);
-    doc.rect(margin, tableStartY, pageWidth - margin * 2, headerHeight, 'S');
-
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(7);
-    doc.setTextColor(23, 23, 23);
-    doc.text('SLOT / TIME', margin + 2.5, tableStartY + 4.8);
-
-    days.slice(0, numDays).forEach((day, dIdx) => {
-      const x = margin + colTimeWidth + dIdx * dayColWidth;
-      doc.line(x, tableStartY, x, tableStartY + headerHeight);
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(8);
-      doc.setTextColor(23, 23, 23);
-      const dayLabel =
-        day === 'Fri' && computedTiming.fridaySchedule.mode === 'morning_only'
-          ? 'FRI (AM ONLY)'
-          : day === 'Fri' && computedTiming.fridaySchedule.mode === 'jummah_break'
-          ? `FRI (JUMMAH ${computedTiming.fridaySchedule.jummahBreak.timeRangeLabel})`
-          : day.toUpperCase();
-      doc.text(dayLabel, x + 3, tableStartY + 4.8);
-    });
-
-    let currentY = tableStartY + headerHeight;
-
-    dynamicSlots.forEach(slotMeta => {
-      if (computedTiming.middayBreak.enabled && slotMeta.slotNumber === computedTiming.firstAfternoonSlotNumber) {
-        doc.setFillColor(232, 211, 107);
-        doc.setDrawColor(228, 226, 218);
-        doc.rect(margin, currentY, colTimeWidth, lunchRowHeight, 'FD');
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(7);
-        doc.setTextColor(23, 23, 23);
-        doc.text(computedTiming.middayBreak.timeRangeLabel, margin + 2.5, currentY + 4);
-        doc.text('MIDDAY BREAK', margin + 2.5, currentY + 7.2);
-
-        doc.setFillColor(237, 234, 224);
-        doc.rect(margin + colTimeWidth, currentY, pageWidth - margin * 2 - colTimeWidth, lunchRowHeight, 'FD');
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(7.5);
-        doc.text(
-          `UNIVERSITY MIDDAY / LUNCH BREAK (${computedTiming.middayBreak.fullRangeLabel}) — NO LECTURES OR LABS SCHEDULED`,
-          margin + colTimeWidth + 8,
-          currentY + 5.8
+      const activeGroups = store.studentGroups.filter(g =>
+        model.entries.some(e => e.studentGroupId === g.id || e.classItem.sharedGroupIds?.includes(g.id))
+      );
+      activeGroups.forEach(grp => {
+        doc.addPage('a4', 'landscape');
+        const grpEntries = model.entries.filter(
+          e => e.studentGroupId === grp.id || e.classItem.sharedGroupIds?.includes(grp.id)
         );
-        currentY += lunchRowHeight;
-      }
-
-      doc.setDrawColor(228, 226, 218);
-      doc.setFillColor(247, 246, 239);
-      doc.rect(margin, currentY, colTimeWidth, slotRowHeight, 'FD');
-
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(7);
-      doc.setTextColor(23, 23, 23);
-      doc.text(`Slot ${slotMeta.slotNumber}: ${slotMeta.period}`, margin + 2, currentY + 5.5);
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(6);
-      doc.setTextColor(119, 118, 111);
-      doc.text(`Break: ${slotMeta.shortBreak}`, margin + 2, currentY + 10.5);
-
-      days.slice(0, numDays).forEach((day, dIdx) => {
-        const x = margin + colTimeWidth + dIdx * dayColWidth;
-        doc.setDrawColor(228, 226, 218);
-        doc.rect(x, currentY, dayColWidth, slotRowHeight, 'S');
-
-        const classes = (scheduleData[slotMeta.period]?.[day] || []).filter(
-          cls => safeScope === 'all' || filterClass(cls)
+        drawProportionalPdfPage(
+          doc,
+          model,
+          grpEntries,
+          `${model.institutionName.toUpperCase()} — SECTION TIMETABLE: ${grp.code}`,
+          `${grp.name}  •  ${model.termName}  •  ${model.computedTiming.operatingHoursLabel}`,
+          `${grpEntries.length} Sessions`
         );
-
-        const cls = classes[0];
-        if (cls) {
-          const isLab = cls.sessionType === 'Lab' || (cls.spanSlots && cls.spanSlots > 1);
-          doc.setFillColor(isLab ? 242 : 184, isLab ? 216 : 238, isLab ? 250 : 238);
-          doc.roundedRect(x + 1.2, currentY + 1.2, dayColWidth - 2.4, slotRowHeight - 2.4, 1.2, 1.2, 'FD');
-
-          doc.setFont('helvetica', 'bold');
-          doc.setFontSize(6.5);
-          doc.setTextColor(23, 23, 23);
-          doc.text(
-            `${cls.code} [${isLab ? `LAB ${computedTiming.labDurationHoursLabel.toUpperCase()}` : `LEC ${computedTiming.periodLengthMinutes}M`}]`,
-            x + 2.5,
-            currentY + 5.5
-          );
-
-          doc.setFont('helvetica', 'normal');
-          doc.setFontSize(6);
-          const truncatedTitle = cls.title.length > 24 ? cls.title.substring(0, 22) + '..' : cls.title;
-          doc.text(truncatedTitle, x + 2.5, currentY + 10);
-          doc.text(`${cls.room} · ${cls.prof}`, x + 2.5, currentY + 14.5);
-        }
       });
-
-      currentY += slotRowHeight;
-    });
+    } else {
+      drawProportionalPdfPage(
+        doc,
+        model,
+        model.entries,
+        `${model.institutionName.toUpperCase()} — ${scopeLabel.toUpperCase()}`,
+        `${model.termName.toUpperCase()}  •  ${model.computedTiming.summaryText}`,
+        `${model.entries.length} Sessions`
+      );
+    }
 
     const fileLabel = safeScope === 'all' ? 'All_University_Classes' : getActiveScopeLabel();
-    doc.save(`SmartGrid_Timetable_${fileLabel}_Fall2026.pdf`);
+    doc.save(`SmartGrid_Timetable_${fileLabel}.pdf`);
 
     showAppPopup({
       title: 'PDF Exported',
-      message: `Exported timetable as landscape PDF (${fileLabel.replace(/_/g, ' ')}).`,
+      message: `Exported canonical landscape PDF (${fileLabel.replace(/_/g, ' ')} · ${model.entries.length} sessions).`,
       variant: 'success'
     });
     setShowExportMenu(false);
@@ -815,9 +1026,8 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
 
   const currentInstructorObj = store.instructors.find(i => i.id === effectiveInstructorId) || null;
   const currentRoomObj = store.rooms.find(r => r.id === selectedRoomId);
-  const visibleDays = calendarMode === 'day' ? [focusedDay] : days;
+  const visibleDays: DayOfWeek[] = calendarMode === 'day' ? [activeFocusDay] : days;
 
-  // Compute stats for the currently viewed Class/Section (or full view)
   const activeFilteredSections = store.sections.filter(s => {
     if (!s.assignedSlot) return false;
     if (effectivePerspective === 'cohort') {
@@ -826,7 +1036,12 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
         (s.studentGroupId === effectiveCohortId || Boolean(s.sharedGroupIds?.includes(effectiveCohortId!)))
       );
     }
-    if (effectivePerspective === 'instructor') return Boolean(effectiveInstructorId) && s.instructorId === effectiveInstructorId;
+    if (effectivePerspective === 'instructor') {
+      return (
+        Boolean(effectiveInstructorId) &&
+        (s.instructorId === effectiveInstructorId || s.labEngineerId === effectiveInstructorId)
+      );
+    }
     if (effectivePerspective === 'room') return s.assignedSlot.roomId === selectedRoomId;
     if (selectedDeptId !== 'all') {
       const grp = store.studentGroups.find(g => g.id === s.studentGroupId);
@@ -836,72 +1051,95 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
     return true;
   });
 
-  // Precompute Continuous Lab vertical spans (`rowSpan={spanCount}`) per visible day
-  // Map key: `${day}__${slotNumber}`
-  const skippedCells = new Set<string>();
-  const labSpanByCell = new Map<
-    string,
-    {
-      labItem: ClassItem;
-      concurrentItems: ClassItem[];
-      continuousWindow: string;
-      rowSpanCount: number;
-    }
-  >();
+  // Collect deduplicated filtered ClassItems per visible day & compute proportional timeline bounds + Student Idle Gap metric
+  const {
+    visibleItemsByDay,
+    timelineStartMins,
+    timelineEndMins,
+    cohortGapStats
+  } = useMemo(() => {
+    const byDay = new Map<DayOfWeek, ClassItem[]>();
+    visibleDays.forEach(d => byDay.set(d, []));
 
-  visibleDays.forEach(day => {
-    dynamicSlots.forEach((slotMeta, sIdx) => {
-      const cellKey = `${day}__${slotMeta.slotNumber}`;
-      if (skippedCells.has(cellKey)) return;
+    const seenByDay = new Map<string, Set<string>>();
+    visibleDays.forEach(d => seenByDay.set(d, new Set<string>()));
 
-      const classesAtStart = (scheduleData[slotMeta.period]?.[day] || []).filter(filterClass);
-      const labItem = classesAtStart.find(
-        c => c.sessionType === 'Lab' || (c.spanSlots && c.spanSlots > 1)
-      );
+    let minStart = dynamicSlots[0]?.startMinutes ?? parseTime24ToMinutes(computedTiming.dayStartTime, 540);
+    let maxEnd = dynamicSlots[dynamicSlots.length - 1]?.cycleEndMinutes ?? parseTime24ToMinutes(computedTiming.dayEndTime, 1020);
 
-      if (!labItem) return;
+    Object.entries(scheduleData).forEach(([_period, dayMap]) => {
+      Object.entries(dayMap).forEach(([rawDay, items]) => {
+        const dNorm = visibleDays.find(vd => vd.toLowerCase() === rawDay.toLowerCase());
+        if (!dNorm) return;
+        const daySeen = seenByDay.get(dNorm)!;
+        const list = byDay.get(dNorm)!;
 
-      const labBlock = getLabBlockByStartPeriod(slotMeta.period, store.timeStructure, day);
-      const desiredSpan = Math.max(
-        2,
-        labItem.spanSlots || labBlock?.spanSlots || computedTiming.labSpanSlots || 3
-      );
+        items.forEach(cls => {
+          if (!filterClass(cls)) return;
+          if (daySeen.has(cls.id)) return;
+          daySeen.add(cls.id);
+          list.push(cls);
 
-      // Collect consecutive slots in the same session, or fallback to remaining consecutive slots so the Lab always spans its full configured duration
-      let spannedSlots = dynamicSlots
-        .slice(sIdx, sIdx + desiredSpan)
-        .filter(s => s.session === slotMeta.session);
-
-      if (spannedSlots.length < desiredSpan) {
-        spannedSlots = dynamicSlots.slice(sIdx, Math.min(dynamicSlots.length, sIdx + desiredSpan));
-      }
-
-      if (spannedSlots.length >= 2) {
-        const coveredSubsequent = spannedSlots.slice(1);
-        coveredSubsequent.forEach(subSlot => {
-          skippedCells.add(`${day}__${subSlot.slotNumber}`);
+          const st = cls.startMinutes ?? minStart;
+          const en = cls.endMinutes ?? st + (cls.durationMinutes || computedTiming.periodLengthMinutes || 50);
+          if (st < minStart) minStart = st;
+          if (en > maxEnd) maxEnd = en;
         });
-
-        const otherInSlot1 = classesAtStart.filter(c => c.id !== labItem.id);
-        const otherInSubsequent = coveredSubsequent.flatMap(subSlot =>
-          (scheduleData[subSlot.period]?.[day] || []).filter(filterClass)
-        );
-
-        const continuousWindow =
-          (day === 'Fri' ? labBlock?.continuousLabel : undefined) ||
-          labItem.continuousTimeLabel ||
-          labBlock?.continuousLabel ||
-          `${slotMeta.startTime} – ${spannedSlots[spannedSlots.length - 1].cycleEndTime}`;
-
-        labSpanByCell.set(cellKey, {
-          labItem,
-          concurrentItems: [...otherInSlot1, ...otherInSubsequent],
-          continuousWindow,
-          rowSpanCount: spannedSlots.length
-        });
-      }
+      });
     });
-  });
+
+    // Compute daily unnecessary student idle gaps (excluding short transition buffer <= shortBreakMinutes and official breaks)
+    let totalIdleMins = 0;
+    let activeStudyDays = 0;
+    if (effectivePerspective === 'cohort') {
+      byDay.forEach((items, day) => {
+        if (items.length === 0) return;
+        activeStudyDays += 1;
+        const sorted = [...items].sort((a, b) => (a.startMinutes ?? 540) - (b.startMinutes ?? 540));
+        const brkStart =
+          day === 'Fri' && computedTiming.fridaySchedule.jummahBreak.enabled
+            ? computedTiming.fridaySchedule.jummahBreak.startMinutes
+            : computedTiming.middayBreak.enabled
+            ? computedTiming.middayBreak.startMinutes
+            : -1;
+        const brkEnd =
+          day === 'Fri' && computedTiming.fridaySchedule.jummahBreak.enabled
+            ? computedTiming.fridaySchedule.jummahBreak.endMinutes
+            : computedTiming.middayBreak.enabled
+            ? computedTiming.middayBreak.endMinutes
+            : -1;
+        const shortBuf = computedTiming.shortBreakEnabled ? computedTiming.shortBreakMinutes : 0;
+
+        for (let i = 0; i < sorted.length - 1; i++) {
+          const curEnd = sorted[i].endMinutes ?? (sorted[i].startMinutes ?? 540) + (sorted[i].durationMinutes ?? 50);
+          const nextStart = sorted[i + 1].startMinutes ?? curEnd;
+          if (nextStart <= curEnd) continue;
+          let rawGap = nextStart - curEnd;
+          if (brkStart >= 0 && brkEnd > brkStart) {
+            const ov = Math.max(0, Math.min(nextStart, brkEnd) - Math.max(curEnd, brkStart));
+            rawGap = Math.max(0, rawGap - ov);
+          }
+          if (rawGap > shortBuf) {
+            totalIdleMins += rawGap - shortBuf;
+          }
+        }
+      });
+    }
+
+    return {
+      visibleItemsByDay: byDay,
+      timelineStartMins: Math.floor(minStart / 60) * 60,
+      timelineEndMins: Math.ceil(maxEnd / 60) * 60,
+      cohortGapStats: {
+        totalIdleMins,
+        activeStudyDays,
+        avgDailyIdleMins: activeStudyDays > 0 ? Math.round(totalIdleMins / activeStudyDays) : 0
+      }
+    };
+  }, [scheduleData, visibleDays, dynamicSlots, computedTiming, effectivePerspective, effectiveCohortId, effectiveInstructorId, selectedRoomId, selectedDeptId, searchQuery]);
+
+  const latestScenario = store.scenarios[0];
+  const isDraftOrConflicted = conflicts.length > 0 || latestScenario?.status === 'draft';
 
   if (!hasGeneratedTimetable) {
     return (
@@ -940,13 +1178,27 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
                 {store.studentGroups.length} Cohorts
               </div>
               <div className="flex flex-wrap items-center justify-center gap-3 pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    institutionalStore.loadSampleUniversityData();
+                    showAppPopup({
+                      title: 'Sample Timetable Generated',
+                      message: 'Loaded sample university departments, courses, qualified faculty, and generated section timetables.',
+                      variant: 'success'
+                    });
+                  }}
+                  className="btn-primary h-10 px-5 text-xs font-semibold bg-[#E8D36B] text-[#171717] hover:bg-[#D4BC4C] border border-[#D4BC4C]"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>Load Sample University Data &amp; Generate</span>
+                </button>
                 {onNavigate && (
                   <button
                     type="button"
                     onClick={() => onNavigate('generate')}
-                    className="btn-primary h-10 px-5 text-xs font-semibold"
+                    className="btn-secondary h-10 px-4 text-xs font-semibold"
                   >
-                    <Sparkles className="w-3.5 h-3.5" />
                     <span>Go to Generate Timetable</span>
                   </button>
                 )}
@@ -967,11 +1219,18 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
     );
   }
 
+  const PX_PER_MIN = 1.55;
+  const timelineSpanMins = Math.max(120, timelineEndMins - timelineStartMins);
+  const timelineHeightPx = Math.round(timelineSpanMins * PX_PER_MIN);
+  const hourTicks: number[] = [];
+  for (let m = timelineStartMins; m <= timelineEndMins; m += 60) {
+    hourTicks.push(m);
+  }
+
   return (
     <div className="space-y-4">
-
       {/* =========================================================
-          1. COMPACT EDITORIAL HEADER & COLLAPSED EXPORT / OPTIMIZE ACTIONS
+          1. COMPACT EDITORIAL HEADER & EXPORT / PRINT / OPTIMIZE
          ========================================================= */}
       <header className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-3 border-b border-[#E4E2DA]">
         <div>
@@ -994,16 +1253,28 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
                 }`
               : 'University Master Timetable'}
           </h1>
+          <p className="text-[11px] text-[#77766F] font-mono-tabular mt-0.5">
+            {computedTiming.operatingHoursLabel} · {computedTiming.fridaySchedule.summaryText}
+          </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2.5 shrink-0">
-          {/* Collapsed Export Dropdown Menu (Includes Google Sheets, PDF, and CSV) */}
+        <div className="flex flex-wrap items-center gap-2.5 shrink-0 no-print">
+          <button
+            type="button"
+            onClick={() => window.print()}
+            className="btn-secondary text-xs h-9 px-3.5"
+            title="Print landscape timetable"
+          >
+            <Printer className="w-3.5 h-3.5" />
+            <span>Print</span>
+          </button>
+
           <div className="relative" ref={exportDropdownRef}>
             <button
               onClick={() => setShowExportMenu(!showExportMenu)}
               disabled={isExportingSheets}
               className="btn-secondary text-xs h-9 px-3.5"
-              title="Export timetable to Google Sheets (.xlsx), PDF, or CSV"
+              title="Export timetable to Excel (.xlsx), PDF, or CSV"
             >
               <Download className="w-3.5 h-3.5" />
               <span>{isExportingSheets ? 'Exporting...' : 'Export'}</span>
@@ -1014,7 +1285,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
               <div className="absolute right-0 mt-2 w-80 bg-white border border-[#E4E2DA] rounded-2xl shadow-xl z-50 py-2">
                 <div className="px-4 py-2 border-b border-[#E4E2DA]">
                   <div className="text-[11px] font-semibold uppercase tracking-wider text-[#77766F]">
-                    Google Sheets Workbook (.xlsx)
+                    Excel Workbook (.xlsx)
                   </div>
                   <div className="text-xs text-[#171717] mt-0.5">
                     {isAdmin
@@ -1031,7 +1302,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
                     >
                       <FileSpreadsheet className="w-4 h-4 text-[#171717] mt-0.5 shrink-0" />
                       <div>
-                        <div className="font-semibold">All Classes Google Sheets (.xlsx)</div>
+                        <div className="font-semibold">All Classes Workbook (.xlsx)</div>
                         <div className="text-[11px] text-[#77766F]">
                           Weekly Overview + {store.studentGroups.length} Class/Section tabs
                         </div>
@@ -1058,6 +1329,19 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
                 <div className="mx-2 my-1 border-t border-[#E4E2DA]" />
 
                 <div className="p-2 space-y-1">
+                  {isAdmin && (
+                    <button
+                      onClick={() => handleExportPDF('all')}
+                      className="w-full text-left px-3 py-2 rounded-xl text-xs flex items-center justify-between hover:bg-[#F7F6EF] transition-colors cursor-pointer text-[#171717]"
+                    >
+                      <span className="flex items-center gap-2 font-medium">
+                        <FileText className="w-3.5 h-3.5" />
+                        <span>All Sections Pack (.pdf)</span>
+                      </span>
+                      <span className="text-[10px] font-mono-tabular text-[#77766F]">Multi-Page</span>
+                    </button>
+                  )}
+
                   <button
                     onClick={() => handleExportPDF('filtered')}
                     className="w-full text-left px-3 py-2 rounded-xl text-xs flex items-center justify-between hover:bg-[#F7F6EF] transition-colors cursor-pointer text-[#171717]"
@@ -1097,15 +1381,62 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
         </div>
       </header>
 
+      {/* Draft / Conflict Notice Banner */}
+      {isDraftOrConflicted && (
+        <div
+          className={`px-4 py-2.5 rounded-xl border text-xs flex flex-wrap items-center justify-between gap-2 ${
+            conflicts.length > 0
+              ? 'bg-[#FDE8E8] border-[#F5B5B5] text-[#8B1E1E]'
+              : 'bg-[#FFF6D6] border-[#F0D98C] text-[#171717]'
+          }`}
+        >
+          <div className="flex items-center gap-2 font-medium">
+            <AlertTriangle className="w-4 h-4 shrink-0" />
+            <span>
+              {conflicts.length > 0
+                ? `${conflicts.length} hard clash${conflicts.length > 1 ? 'es' : ''} detected (${conflicts[0]?.description}). Publishing is blocked until resolved.`
+                : 'Active timetable is currently saved as a Draft awaiting publication.'}
+            </span>
+          </div>
+          {isAdmin && (
+            <div className="flex items-center gap-2 no-print">
+              {conflicts.length === 0 && latestScenario?.status === 'draft' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const res = institutionalStore.restoreScenario(latestScenario.id);
+                    showAppPopup({
+                      title: res.success ? 'Timetable Published' : 'Publish Blocked',
+                      message: res.message,
+                      variant: res.success ? 'success' : 'error'
+                    });
+                  }}
+                  className="px-2.5 py-1 rounded-lg bg-[#16A34A] text-white text-[11px] font-semibold cursor-pointer"
+                >
+                  Publish Draft
+                </button>
+              )}
+              {conflicts.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleRunSweep}
+                  disabled={isSweeping}
+                  className="px-2.5 py-1 rounded-lg bg-[#171717] text-white text-[11px] font-semibold cursor-pointer"
+                >
+                  Auto-Resolve Conflicts
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* =========================================================
-          2. FIXED-DIMENSION AGENDA & SCHEDULING SCOPE SELECTOR
-          (Stable height & width across all perspectives and calendar modes — zero layout shift)
+          2. FIXED-DIMENSION SCOPE & VIEW SELECTOR
          ========================================================= */}
-      <div className="sf-card-white p-3.5 space-y-2.5">
-        {/* ROW 1 (Fixed Height): Role-Scoped Context / Perspective Scope Tabs + Calendar Mode Tabs + Search */}
+      <div className="sf-card-white p-3.5 space-y-2.5 no-print">
         <div className="min-h-[40px] flex flex-col xl:flex-row xl:items-center justify-between gap-2.5">
           {isAdmin ? (
-            /* Perspective Tabs — Admin / Registrar Only */
             <div className="inline-flex flex-wrap items-center p-1 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] shrink-0">
               {[
                 { id: 'cohort' as const, label: 'By Class / Section', icon: Users },
@@ -1133,7 +1464,6 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
               })}
             </div>
           ) : (
-            /* Locked Personal Scope Pill — Student / BR / Faculty */
             <div className="inline-flex items-center gap-2 px-3 h-10 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] text-xs shrink-0">
               {isFaculty ? (
                 <User className="w-3.5 h-3.5 text-[#171717] shrink-0" />
@@ -1151,9 +1481,19 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
             </div>
           )}
 
-          {/* Right Controls: Week/Day/Agenda Mode + Fixed-Width Search */}
           <div className="flex flex-wrap items-center gap-2 shrink-0">
-            {/* Fixed-width Calendar / Agenda Mode Switcher */}
+            {effectivePerspective === 'cohort' && (
+              <div
+                className="inline-flex items-center gap-1.5 px-2.5 h-9 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] text-[11px] font-mono-tabular text-[#171717]"
+                title="Student idle time between consecutive sessions excluding short buffers and midday/Jummah breaks"
+              >
+                <Clock className="w-3.5 h-3.5 text-[#77766F]" />
+                <span>
+                  Gap: <strong>{cohortGapStats.avgDailyIdleMins}m/day</strong> · {cohortGapStats.activeStudyDays}d
+                </span>
+              </div>
+            )}
+
             <div className="inline-flex items-center p-1 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] shrink-0">
               {[
                 { id: 'week' as const, label: 'Week' },
@@ -1175,7 +1515,6 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
               ))}
             </div>
 
-            {/* Fixed-width Search Field */}
             <div className="input-group-field h-10 px-3 gap-2 w-[215px] shrink-0">
               <Search className="w-3.5 h-3.5 text-[#77766F] shrink-0" />
               <input
@@ -1189,9 +1528,8 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
           </div>
         </div>
 
-        {/* ROW 2 (Fixed Height `min-h-[44px]` across all perspectives and calendar modes so layout never shifts) */}
+        {/* ROW 2 */}
         <div className="min-h-[44px] pt-2.5 border-t border-[#E4E2DA] flex flex-col lg:flex-row lg:items-center justify-between gap-2.5">
-          {/* Left Context Control */}
           <div className="flex flex-wrap items-center gap-2 min-w-0">
             {isAdmin && (effectivePerspective === 'cohort' || effectivePerspective === 'master') && (
               <div className="inline-flex flex-wrap items-center p-1 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] shrink-0">
@@ -1302,7 +1640,6 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
                   <ChevronRight className="w-4 h-4" />
                 </button>
 
-                {/* Quick Section Tabs (Sec A | Sec B | Sec C) when viewing a Batch/Field or up to 6 sections */}
                 {departmentFilteredGroups.length > 1 && departmentFilteredGroups.length <= 6 && (
                   <div className="inline-flex items-center p-0.5 rounded-lg bg-[#F7F6EF] border border-[#E4E2DA]">
                     {departmentFilteredGroups.map(g => {
@@ -1337,7 +1674,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
                 >
                   {store.instructors.map(i => (
                     <option key={i.id} value={i.id}>
-                      {i.name} ({i.title})
+                      {i.name} ({i.staffRole === 'lab_engineer' ? 'Lab Engineer' : i.title})
                     </option>
                   ))}
                 </select>
@@ -1420,13 +1757,15 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
             )}
           </div>
 
-          {/* Right Sub-Mode Control (Always occupies h-8 so switching Week / Day / Agenda causes zero layout shift) */}
           <div className="flex items-center gap-2 shrink-0">
             {calendarMode === 'week' && (
               <div className="inline-flex items-center p-1 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] h-9">
                 {[
-                  { span: 7 as const, label: '7-Day (Mon–Sun)' },
-                  { span: 5 as const, label: '5-Day (Mon–Fri)' }
+                  { span: 7 as const, label: fridayEnabled ? '7-Day (Mon–Sun)' : '6-Day (No Fri)' },
+                  {
+                    span: 5 as const,
+                    label: fridayEnabled ? '5-Day (Mon–Fri)' : '4-Day (Mon–Thu)'
+                  }
                 ].map(opt => (
                   <button
                     key={opt.span}
@@ -1446,13 +1785,13 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
 
             {calendarMode === 'day' && (
               <div className="inline-flex items-center gap-1 bg-[#F7F6EF] p-1 rounded-xl border border-[#E4E2DA] h-9">
-                {FULL_SEVEN_DAYS.map(d => (
+                {sevenDayList.map(d => (
                   <button
                     key={d}
                     type="button"
                     onClick={() => setFocusedDay(d)}
                     className={`h-7 w-10 rounded-lg text-xs font-semibold cursor-pointer inline-flex items-center justify-center ${
-                      focusedDay === d
+                      activeFocusDay === d
                         ? 'bg-[#171717] text-white'
                         : 'text-[#77766F] hover:text-[#171717]'
                     }`}
@@ -1464,11 +1803,10 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
             )}
           </div>
         </div>
-
       </div>
 
       {/* =========================================================
-          3. ZERO-SCROLL WEEKLY TIMETABLE GRID OR AGENDA VIEW
+          3. EXACT PROPORTIONAL TIME-AXIS TIMETABLE GRID OR AGENDA
          ========================================================= */}
       {!isAdmin && activeFilteredSections.length === 0 ? (
         <div className="sf-card-white p-10 text-center space-y-2">
@@ -1497,443 +1835,409 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
             </span>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
-            {days.flatMap(day =>
-              dynamicSlots.flatMap(slotMeta =>
-                (scheduleData[slotMeta.period]?.[day] || [])
-                  .filter(filterClass)
-                  .map(cls => {
-                    const pastel = getCoursePastel(cls.code);
-                    const isLab = cls.sessionType === 'Lab' || (cls.spanSlots && cls.spanSlots > 1);
-                    const effSlot = getEffectiveSlotDisplayForDay(day, slotMeta.period, computedTiming);
-                    const labBlock = isLab ? getLabBlockByStartPeriod(slotMeta.period, store.timeStructure, day) : undefined;
-                    const timeWindow = isLab
-                      ? ((day === 'Fri' ? labBlock?.continuousLabel : undefined) ||
-                         cls.continuousTimeLabel ||
-                         labBlock?.continuousLabel ||
-                         slotMeta.period)
-                      : (effSlot.isOpen ? effSlot.period : slotMeta.period);
-                    const effDuration = isLab
-                      ? `${labBlock?.durationMinutes ? (labBlock.durationMinutes === computedTiming.labDurationMinutes ? computedTiming.labDurationHoursLabel : `${labBlock.durationMinutes}m`) : computedTiming.labDurationHoursLabel}`
-                      : `${effSlot.isOpen ? effSlot.durationMinutes : computedTiming.periodLengthMinutes}m`;
-                    return (
-                      <div
-                        key={`${day}-${slotMeta.period}-${cls.id}`}
-                        onClick={() => handleClassClick(cls)}
-                        style={{ backgroundColor: pastel.bg, borderColor: pastel.border }}
-                        className="p-4 rounded-xl border text-[#171717] cursor-pointer hover:-translate-y-0.5 transition-transform space-y-2"
-                      >
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="font-mono-tabular font-semibold text-[#171717]/80">
-                            {cls.code} · {isLab ? `Lab (${effDuration})` : `Lecture (${effDuration})`}
-                          </span>
-                          <span className="font-mono-tabular font-medium">
-                            {day} · {timeWindow}
-                          </span>
-                        </div>
-                        <div className="font-serif-editorial text-base leading-snug">
-                          {cls.title}
-                        </div>
-                        <div className="flex items-center justify-between text-xs text-[#171717]/75 pt-1.5 border-t border-black/10">
-                          <span className="font-mono-tabular font-medium">{cls.room}</span>
-                          <span>{isFaculty ? cls.cohort : cls.prof}</span>
-                        </div>
+            {visibleDays.flatMap(day => {
+              const dayItems = [...(visibleItemsByDay.get(day) || [])].sort(
+                (a, b) => (a.startMinutes ?? 540) - (b.startMinutes ?? 540)
+              );
+              return dayItems.map(cls => {
+                const pastel = getCoursePastel(cls.code);
+                const isLab = cls.sessionType === 'Lab' || Boolean(cls.spanSlots && cls.spanSlots > 1) || cls.componentType === 'lab';
+                const start24 = cls.startTime24 || minutesToTime24(cls.startMinutes ?? 540);
+                const end24 = cls.endTime24 || minutesToTime24((cls.startMinutes ?? 540) + (cls.durationMinutes ?? 50));
+                const durMins = cls.durationMinutes || computedTiming.periodLengthMinutes;
+                return (
+                  <div
+                    key={`${day}-${cls.id}`}
+                    onClick={() => handleClassClick(cls)}
+                    style={{ backgroundColor: pastel.bg, borderColor: cls.hasConflict ? '#C62828' : pastel.border }}
+                    className={`p-4 rounded-xl border text-[#171717] cursor-pointer hover:-translate-y-0.5 transition-transform space-y-2 ${
+                      cls.hasConflict ? 'ring-2 ring-[#C62828]/40' : ''
+                    }`}
+                  >
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-mono-tabular font-semibold text-[#171717]/80">
+                        {cls.code} · {isLab ? (cls.isSplitLab ? `Split Lab (${durMins}m)` : `Lab (${durMins}m)`) : `Lecture (${durMins}m)`}
+                      </span>
+                      <span className="font-mono-tabular font-medium">
+                        {day} · {start24}–{end24}
+                      </span>
+                    </div>
+                    <div className="font-serif-editorial text-base leading-snug">
+                      {cls.title}
+                    </div>
+                    <div className="text-xs text-[#171717]/80 pt-1.5 border-t border-black/10 space-y-0.5">
+                      <div className="flex items-center justify-between">
+                        <span className="font-mono-tabular font-semibold">{cls.room}</span>
+                        <span>{isFaculty ? cls.cohort : cls.prof}</span>
                       </div>
-                    );
-                  })
-              )
-            )}
+                      {isLab && cls.labEngineerName && (
+                        <div className="text-[11px] text-[#171717]/75">
+                          Lab Engineer: <strong className="font-semibold">{cls.labEngineerName}</strong>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              });
+            })}
           </div>
         </div>
       ) : (
-        <div ref={gridContainerRef} className="sf-card-white w-full overflow-hidden">
-          {(() => {
-            const numDayCols = Math.max(1, visibleDays.length);
-            // Dynamically calculate time column and per-day column widths from the measured parent container width
-            const timeColWidthPx =
-              containerWidth > 0
-                ? Math.max(78, Math.min(104, Math.floor(containerWidth * 0.088)))
-                : 92;
-            const remainingWidthPx =
-              containerWidth > 0 ? Math.max(0, containerWidth - timeColWidthPx) : 0;
-            const dayColWidthPx =
-              remainingWidthPx > 0 ? Math.floor(remainingWidthPx / numDayCols) : 0;
-            const isCompactCol = numDayCols >= 7 || (dayColWidthPx > 0 && dayColWidthPx < 138);
-            const singleSlotHeightPx = 76;
-
-            return (
-              <table className="w-full table-fixed border-collapse text-left">
-                <colgroup>
-                  <col
-                    style={{
-                      width: containerWidth > 0 ? `${timeColWidthPx}px` : '9%'
-                    }}
-                  />
-                  {visibleDays.map(day => (
-                    <col
-                      key={day}
-                      style={{
-                        width:
-                          dayColWidthPx > 0
-                            ? `${dayColWidthPx}px`
-                            : `${(91 / numDayCols).toFixed(3)}%`
-                      }}
-                    />
-                  ))}
-                </colgroup>
-                <thead>
-                  <tr className="border-b border-[#E4E2DA] bg-[#F7F6EF]">
-                    <th className="py-2 px-2 text-[10.5px] font-semibold text-[#77766F] truncate">
-                      Time & Break
-                    </th>
-                    {visibleDays.map(day => {
-                      const isWeekend = day === 'Sat' || day === 'Sun';
-                      return (
-                        <th
-                          key={day}
-                          className={`py-2 px-2 text-xs sm:text-sm font-serif-editorial text-[#171717] border-l border-[#E4E2DA] overflow-hidden ${
-                            isWeekend ? 'bg-[#F7F6EF]/75 text-[#77766F]' : ''
-                          }`}
+        <div className="sf-card-white w-full overflow-hidden">
+          {/* Day Header Bar */}
+          <div className="flex border-b border-[#E4E2DA] bg-[#F7F6EF]">
+            <div className="w-[78px] sm:w-[90px] shrink-0 py-2.5 px-2.5 text-[10.5px] font-semibold text-[#77766F] border-r border-[#E4E2DA] flex items-center">
+              Time (24h)
+            </div>
+            <div
+              className="flex-1 grid min-w-0"
+              style={{ gridTemplateColumns: `repeat(${Math.max(1, visibleDays.length)}, minmax(0, 1fr))` }}
+            >
+              {visibleDays.map((day, idx) => {
+                const isWeekend = day === 'Sat' || day === 'Sun';
+                const fri = computedTiming.fridaySchedule;
+                return (
+                  <div
+                    key={day}
+                    className={`py-2 px-2.5 text-xs sm:text-sm font-serif-editorial text-[#171717] overflow-hidden ${
+                      idx > 0 ? 'border-l border-[#E4E2DA]' : ''
+                    } ${isWeekend ? 'bg-[#F7F6EF]/75 text-[#77766F]' : ''}`}
+                  >
+                    <div className="flex items-center justify-between gap-1 min-w-0">
+                      <span className="truncate font-semibold">{day}</span>
+                      {day === 'Fri' && fri.mode === 'jummah_break' && (
+                        <span
+                          className="text-[9.5px] font-sans font-mono-tabular font-normal text-[#77766F] truncate"
+                          title={`Friday Jummah Break: ${fri.jummahBreak.fullRangeLabel}`}
                         >
-                          <div className="flex items-center justify-between gap-1 min-w-0">
-                            <span className="truncate">{day}</span>
-                            {day === 'Fri' && computedTiming.fridaySchedule.mode === 'jummah_break' && (
-                              <span
-                                className="text-[9.5px] font-sans font-mono-tabular font-normal text-[#77766F] truncate"
-                                title={`Friday Jummah Prayer Break: ${computedTiming.fridaySchedule.jummahBreak.fullRangeLabel}`}
-                              >
-                                Jummah {computedTiming.fridaySchedule.jummahBreak.timeRangeLabel.replace(' PM', '')}
-                              </span>
-                            )}
-                            {day === 'Fri' && computedTiming.fridaySchedule.mode === 'morning_only' && (
-                              <span
-                                className="text-[9.5px] font-sans font-mono-tabular font-normal text-[#77766F] truncate"
-                                title={`Friday Half-Day: ${computedTiming.fridaySchedule.operatingHoursLabel}`}
-                              >
-                                AM Only
-                              </span>
-                            )}
-                            {isWeekend && (
-                              <span className="text-[9.5px] font-sans font-normal text-[#77766F] truncate">
-                                Weekend
-                              </span>
-                            )}
-                          </div>
-                        </th>
+                          Jummah {fri.jummahBreak.startTime24}–{fri.jummahBreak.endTime24}
+                        </span>
+                      )}
+                      {day === 'Fri' && fri.mode === 'morning_only' && (
+                        <span
+                          className="text-[9.5px] font-sans font-mono-tabular font-normal text-[#77766F] truncate"
+                          title={`Friday Half-Day: ${fri.operatingHoursLabel}`}
+                        >
+                          AM · {fri.closingTime24} Close
+                        </span>
+                      )}
+                      {isWeekend && (
+                        <span className="text-[9.5px] font-sans font-normal text-[#77766F] truncate">
+                          Weekend
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Continuous Proportional Time-Axis Body */}
+          <div className="flex relative bg-white" style={{ height: `${timelineHeightPx}px` }}>
+            {/* Left Vertical Clock Gutter */}
+            <div className="w-[78px] sm:w-[90px] shrink-0 relative bg-[#F7F6EF]/45 border-r border-[#E4E2DA] select-none">
+              {hourTicks.map((m, idx) => {
+                const topPx = (m - timelineStartMins) * PX_PER_MIN;
+                const isLast = idx === hourTicks.length - 1;
+                return (
+                  <div
+                    key={m}
+                    style={{ top: `${isLast ? Math.max(0, topPx - 16) : topPx}px` }}
+                    className="absolute inset-x-0 px-2 pt-1 flex flex-col"
+                  >
+                    <span className="font-mono-tabular text-[10.5px] font-bold text-[#171717] leading-none">
+                      {minutesToTime24(m)}
+                    </span>
+                    {!isLast && (
+                      <span className="font-mono-tabular text-[9px] text-[#77766F] mt-0.5 leading-none">
+                        {m >= 720 ? (m === 720 ? '12 PM' : `${(m / 60) - 12} PM`) : `${m / 60} AM`}
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Day Columns Grid */}
+            <div
+              className="flex-1 grid relative min-w-0"
+              style={{ gridTemplateColumns: `repeat(${Math.max(1, visibleDays.length)}, minmax(0, 1fr))` }}
+            >
+              {visibleDays.map((day, dIdx) => {
+                const dayItems = visibleItemsByDay.get(day) || [];
+                const positionedItems = assignOverlapLanes(
+                  dayItems.map(cls => {
+                    const st = cls.startMinutes ?? parseTime24ToMinutes(cls.startTime24 || '09:00', 540);
+                    const dur = cls.durationMinutes || computedTiming.periodLengthMinutes || 50;
+                    const en = cls.endMinutes ?? st + dur;
+                    return {
+                      cls,
+                      startMinutes: st,
+                      endMinutes: en,
+                      durationMinutes: Math.max(20, en - st),
+                      startTime24: cls.startTime24 || minutesToTime24(st),
+                      endTime24: cls.endTime24 || minutesToTime24(en)
+                    };
+                  })
+                );
+
+                const middayApplies =
+                  computedTiming.middayBreak.enabled &&
+                  computedTiming.middayBreak.durationMinutes > 0 &&
+                  (day !== 'Fri' || computedTiming.fridaySchedule.mode === 'standard');
+
+                const fri = computedTiming.fridaySchedule;
+                const showJummahBand =
+                  day === 'Fri' && fri.mode === 'jummah_break' && fri.jummahBreak.durationMinutes > 0;
+                const showFridayClosedBand =
+                  day === 'Fri' && fri.mode === 'morning_only' && timelineEndMins > fri.jummahBreak.startMinutes;
+
+                return (
+                  <div
+                    key={day}
+                    className={`relative h-full overflow-hidden ${
+                      dIdx > 0 ? 'border-l border-[#E4E2DA]' : ''
+                    } ${day === 'Sat' || day === 'Sun' ? 'bg-[#F7F6EF]/35' : ''}`}
+                  >
+                    {/* Hourly Guide Lines */}
+                    {hourTicks.map(m => {
+                      const topPx = (m - timelineStartMins) * PX_PER_MIN;
+                      return (
+                        <div
+                          key={`line-${day}-${m}`}
+                          style={{ top: `${topPx}px` }}
+                          className="absolute inset-x-0 border-t border-[#E4E2DA]/80 pointer-events-none"
+                        />
                       );
                     })}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#E4E2DA]">
-                  {dynamicSlots.map(slotMeta => {
-                    const time = slotMeta.period;
-                    const isFirstAfternoon =
-                      computedTiming.middayBreak.enabled &&
-                      slotMeta.slotNumber === computedTiming.firstAfternoonSlotNumber;
 
-                    return (
-                      <React.Fragment key={slotMeta.slotNumber}>
-                        {/* Admin-Configured Midday / Lunch Break Row */}
-                        {isFirstAfternoon && (
-                          <tr className="bg-[#F7F6EF] border-y border-[#E4E2DA]">
-                            <td className="py-1.5 px-2 border-r border-[#E4E2DA] align-middle bg-[#E8D36B]/35 overflow-hidden">
-                              <div className="text-[10.5px] font-mono-tabular font-bold text-[#171717] truncate">
-                                {computedTiming.middayBreak.timeRangeLabel}
-                              </div>
-                              <div className="text-[9.5px] text-[#77766F] truncate">
-                                Lunch ({computedTiming.middayBreak.durationMinutes}m)
-                              </div>
-                            </td>
-                            <td
-                              colSpan={visibleDays.length}
-                              className="py-1.5 px-3 text-center align-middle"
+                    {/* Interactive Slot Drop Targets (visible/active during admin drag) */}
+                    {isAdmin &&
+                      draggedClassItem &&
+                      dynamicSlots.map(slotMeta => {
+                        const effSlot = getEffectiveSlotDisplayForDay(day, slotMeta.period, computedTiming);
+                        if (day === 'Fri' && !effSlot.isOpen) return null;
+                        const sStart = effSlot.slot?.startMinutes ?? slotMeta.startMinutes ?? 540;
+                        const sEnd = effSlot.slot?.lectureEndMinutes ?? slotMeta.lectureEndMinutes ?? sStart + 50;
+                        const topPx = (sStart - timelineStartMins) * PX_PER_MIN;
+                        const hPx = Math.max(28, (sEnd - sStart) * PX_PER_MIN);
+                        const cellKey = `${day}__${slotMeta.slotNumber}`;
+                        const isOver = dragOverCellKey === cellKey;
+                        return (
+                          <div
+                            key={`drop-${cellKey}`}
+                            onDragOver={e => {
+                              e.preventDefault();
+                              e.dataTransfer.dropEffect = 'move';
+                              if (dragOverCellKey !== cellKey) setDragOverCellKey(cellKey);
+                            }}
+                            onDragLeave={() => {
+                              if (dragOverCellKey === cellKey) setDragOverCellKey(null);
+                            }}
+                            onDrop={e => {
+                              e.preventDefault();
+                              handleDropOnSlot(day, slotMeta.period);
+                            }}
+                            style={{ top: `${topPx}px`, height: `${hPx}px` }}
+                            className={`absolute inset-x-1 z-30 rounded-lg border-2 border-dashed transition-colors flex items-center justify-center text-[10px] font-mono-tabular font-semibold ${
+                              isOver
+                                ? 'bg-[#B8F2E6]/75 border-[#171717] text-[#171717]'
+                                : 'bg-[#F7F6EF]/45 border-[#CFCBC0] text-[#77766F]'
+                            }`}
+                          >
+                            Drop {day} · {minutesToTime24(sStart)}
+                          </div>
+                        );
+                      })}
+
+                    {/* Protected Midday Break Band */}
+                    {middayApplies && (
+                      <div
+                        style={{
+                          top: `${(computedTiming.middayBreak.startMinutes - timelineStartMins) * PX_PER_MIN}px`,
+                          height: `${computedTiming.middayBreak.durationMinutes * PX_PER_MIN}px`
+                        }}
+                        className="absolute inset-x-0 z-10 bg-[#EDEAE0]/85 border-y border-[#D4D1C7] flex flex-col items-center justify-center text-center px-2 pointer-events-none"
+                      >
+                        <div className="inline-flex items-center gap-1 text-[10.5px] font-semibold text-[#57564F]">
+                          <Coffee className="w-3 h-3 text-[#171717] shrink-0" />
+                          <span className="truncate">Midday Break</span>
+                        </div>
+                        <span className="text-[9.5px] font-mono-tabular text-[#77766F] truncate">
+                          {computedTiming.middayBreak.startTime24}–{computedTiming.middayBreak.endTime24}
+                        </span>
+                      </div>
+                    )}
+
+                    {/* Friday Jummah Break Band */}
+                    {showJummahBand && (
+                      <div
+                        style={{
+                          top: `${(fri.jummahBreak.startMinutes - timelineStartMins) * PX_PER_MIN}px`,
+                          height: `${fri.jummahBreak.durationMinutes * PX_PER_MIN}px`
+                        }}
+                        className="absolute inset-x-0 z-10 bg-[#E8D36B]/25 border-y border-[#D4BC4C] flex flex-col items-center justify-center text-center px-2 pointer-events-none"
+                      >
+                        <div className="text-[10.5px] font-semibold text-[#171717] truncate">
+                          Jummah Prayer Break
+                        </div>
+                        <span className="text-[9.5px] font-mono-tabular text-[#57564F] truncate">
+                          {fri.jummahBreak.startTime24}–{fri.jummahBreak.endTime24}
+                        </span>
+                      </div>
+                    )}
+
+                    {/* Friday Half-Day Closed Band */}
+                    {showFridayClosedBand && (
+                      <div
+                        style={{
+                          top: `${(fri.jummahBreak.startMinutes - timelineStartMins) * PX_PER_MIN}px`,
+                          height: `${(timelineEndMins - fri.jummahBreak.startMinutes) * PX_PER_MIN}px`
+                        }}
+                        className="absolute inset-x-0 z-10 bg-[#F7F6EF]/90 border-t border-dashed border-[#D4D1C7] flex flex-col items-center justify-center text-center px-2 pointer-events-none"
+                      >
+                        <span className="text-[10.5px] font-semibold text-[#77766F]">
+                          Friday Half-Day Closed
+                        </span>
+                        <span className="text-[9.5px] font-mono-tabular text-[#9E9D96]">
+                          Closed from {fri.closingTime24}
+                        </span>
+                      </div>
+                    )}
+
+                    {/* Instructor Unavailable Overlays */}
+                    {effectivePerspective === 'instructor' &&
+                      currentInstructorObj?.unavailableSlots
+                        .filter(u => u.day === day)
+                        .map((u, uIdx) => {
+                          const matchedSlot = dynamicSlots.find(s => s.period === u.timeSlot);
+                          const uStart = matchedSlot?.startMinutes ?? 540;
+                          const uEnd = matchedSlot?.lectureEndMinutes ?? uStart + 50;
+                          return (
+                            <div
+                              key={`unavail-${day}-${uIdx}`}
+                              style={{
+                                top: `${(uStart - timelineStartMins) * PX_PER_MIN}px`,
+                                height: `${Math.max(24, (uEnd - uStart) * PX_PER_MIN)}px`
+                              }}
+                              className="absolute inset-x-1 z-10 rounded-lg bg-[#F7F6EF] border border-dashed border-[#CFCBC0] flex items-center justify-center text-[9.5px] text-[#77766F] pointer-events-none"
                             >
-                              <div className="inline-flex items-center gap-2 text-[11px] font-medium text-[#77766F]">
-                                <Coffee className="w-3.5 h-3.5 text-[#171717] shrink-0" />
-                                <span className="text-[#171717] font-semibold">
-                                  University Midday / Lunch Break ({computedTiming.middayBreak.fullRangeLabel})
-                                </span>
-                              </div>
-                            </td>
-                          </tr>
-                        )}
-
-                        {/* Regular Class Slot Row — Uniform height so spanned Lab blocks occupy full 3-hour height */}
-                        <tr className="h-[76px]">
-                          {/* Left Column: Lecture Time + Short Break Buffer */}
-                          <td className="h-[76px] py-1.5 px-2 text-[10.5px] font-mono-tabular text-[#171717] align-middle bg-[#F7F6EF]/40 overflow-hidden">
-                            <div className="font-semibold text-[10.5px] text-[#171717] leading-tight truncate">
-                              {slotMeta.period.replace(' AM', '').replace(' PM', '')}
+                              Unavailable
                             </div>
-                            {computedTiming.shortBreakEnabled &&
-                              computedTiming.shortBreakMinutes > 0 &&
-                              slotMeta.shortBreak !== 'No Break' && (
-                                <div className="text-[9.5px] text-[#77766F] mt-0.5 leading-tight truncate">
-                                  {computedTiming.shortBreakMinutes}m buffer
-                                </div>
+                          );
+                        })}
+
+                    {/* Exact Time-Scaled Session Cards with Side-by-Side Overlap Lanes */}
+                    {positionedItems.map(item => {
+                      const { cls, laneIndex, laneCount, startMinutes, endMinutes, durationMinutes, startTime24, endTime24 } = item;
+                      const pastel = getCoursePastel(cls.code);
+                      const isLab = cls.sessionType === 'Lab' || Boolean(cls.spanSlots && cls.spanSlots > 1) || cls.componentType === 'lab';
+                      const topPx = (startMinutes - timelineStartMins) * PX_PER_MIN + 1;
+                      const heightPx = Math.max(46, (endMinutes - startMinutes) * PX_PER_MIN - 2);
+                      const isTallBlock = heightPx >= 120;
+                      const isNarrowLane = laneCount >= 2 || visibleDays.length >= 7;
+
+                      return (
+                        <div
+                          key={cls.id}
+                          draggable={isAdmin}
+                          onDragStart={
+                            isAdmin
+                              ? e => {
+                                  e.dataTransfer.setData('text/plain', cls.id);
+                                  setDraggedClassItem(cls);
+                                }
+                              : undefined
+                          }
+                          onDragEnd={
+                            isAdmin
+                              ? () => {
+                                  setDraggedClassItem(null);
+                                  setDragOverCellKey(null);
+                                }
+                              : undefined
+                          }
+                          onClick={() => handleClassClick(cls)}
+                          style={{
+                            top: `${topPx}px`,
+                            height: `${heightPx}px`,
+                            left: `calc(${(laneIndex / laneCount) * 100}% + 3px)`,
+                            width: `calc(${100 / laneCount}% - 6px)`,
+                            backgroundColor: pastel.bg,
+                            borderColor: cls.hasConflict ? '#C62828' : pastel.border
+                          }}
+                          className={`absolute z-20 rounded-xl border text-[#171717] flex flex-col justify-between transition-all hover:z-30 hover:-translate-y-0.5 hover:shadow-md overflow-hidden ${
+                            isNarrowLane ? 'px-1.5 py-1' : 'px-2.5 py-1.5'
+                          } ${cls.hasConflict ? 'ring-2 ring-[#C62828]' : ''} ${
+                            isAdmin ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'
+                          }`}
+                          title={`${cls.code} — ${cls.title} (${startTime24}–${endTime24}, ${durationMinutes}m)\nInstructor: ${cls.prof}${
+                            isLab && cls.labEngineerName ? `\nLab Engineer: ${cls.labEngineerName}` : ''
+                          }\nRoom: ${cls.room} · ${cls.cohort}`}
+                        >
+                          {/* Header Meta */}
+                          <div className="flex items-center justify-between gap-1 text-[9.5px] font-mono-tabular font-bold text-[#171717]/85 min-w-0">
+                            <span className="inline-flex items-center gap-0.5 truncate">
+                              {isAdmin && !isNarrowLane && (
+                                <GripVertical className="w-2.5 h-2.5 text-[#77766F] shrink-0" />
                               )}
-                          </td>
+                              <span className="truncate">{cls.code}</span>
+                              {!isNarrowLane && (
+                                <span className="shrink-0">
+                                  · {isLab ? (cls.isSplitLab ? `LAB ${durationMinutes}m` : `LAB`) : `${durationMinutes}m`}
+                                </span>
+                              )}
+                            </span>
+                            <span className="inline-flex items-center gap-0.5 shrink-0">
+                              {cls.hasConflict && (
+                                <AlertCircle className="w-2.5 h-2.5 text-[#C62828] shrink-0" />
+                              )}
+                              {cls.isLocked && <Lock className="w-2.5 h-2.5 shrink-0" />}
+                            </span>
+                          </div>
 
-                          {/* Day Cells */}
-                          {visibleDays.map(day => {
-                            const cellKey = `${day}__${slotMeta.slotNumber}`;
-                            const isWeekend = day === 'Sat' || day === 'Sun';
+                          {/* Course Title */}
+                          <div
+                            className={`${
+                              isTallBlock
+                                ? 'font-serif-editorial text-xs sm:text-[13px] font-semibold line-clamp-3 my-auto py-1'
+                                : 'font-semibold text-[10.5px] leading-tight line-clamp-2'
+                            } text-[#171717] break-words`}
+                          >
+                            {cls.title}
+                          </div>
 
-                            // Skip cell if covered by a continuous Lab above
-                            if (skippedCells.has(cellKey)) {
-                              return null;
-                            }
-
-                            const labSpanInfo = labSpanByCell.get(cellKey);
-
-                            // Render a Continuous Lab cell (`rowSpan={rowSpanCount}`) stretching across 100% of the spanned rows
-                            if (labSpanInfo) {
-                              const { labItem, concurrentItems, continuousWindow, rowSpanCount } = labSpanInfo;
-                              const pastel = getCoursePastel(labItem.code);
-                              const isDragOver = dragOverCellKey === cellKey;
-                              const fullLabMinHeight = rowSpanCount * singleSlotHeightPx - 8;
-
-                              return (
-                                <td
-                                  key={day}
-                                  rowSpan={rowSpanCount}
-                                  onDragOver={
-                                    isAdmin
-                                      ? e => {
-                                          e.preventDefault();
-                                          e.dataTransfer.dropEffect = 'move';
-                                          if (dragOverCellKey !== cellKey) setDragOverCellKey(cellKey);
-                                        }
-                                      : undefined
-                                  }
-                                  onDragLeave={
-                                    isAdmin
-                                      ? () => {
-                                          if (dragOverCellKey === cellKey) setDragOverCellKey(null);
-                                        }
-                                      : undefined
-                                  }
-                                  onDrop={
-                                    isAdmin
-                                      ? e => {
-                                          e.preventDefault();
-                                          handleDropOnSlot(day, time);
-                                        }
-                                      : undefined
-                                  }
-                                  className={`h-[1px] p-1 border-l border-[#E4E2DA] align-top bg-white overflow-hidden transition-colors ${
-                                    isDragOver ? 'bg-[#B8F2E6]/60 ring-2 ring-inset ring-[#93DEC9]' : ''
-                                  }`}
-                                >
-                                  <div
-                                    draggable={isAdmin}
-                                    onDragStart={
-                                      isAdmin
-                                        ? e => {
-                                            e.dataTransfer.setData('text/plain', labItem.id);
-                                            setDraggedClassItem(labItem);
-                                          }
-                                        : undefined
-                                    }
-                                    onDragEnd={
-                                      isAdmin
-                                        ? () => {
-                                            setDraggedClassItem(null);
-                                            setDragOverCellKey(null);
-                                          }
-                                        : undefined
-                                    }
-                                    onClick={() => handleClassClick(labItem)}
-                                    style={{
-                                      backgroundColor: pastel.bg,
-                                      borderColor: pastel.border,
-                                      minHeight: `${fullLabMinHeight}px`
-                                    }}
-                                    className={`w-full h-full ${
-                                      isCompactCol ? 'p-2' : 'p-3'
-                                    } rounded-xl border text-[#171717] flex flex-col justify-between text-center transition-all hover:-translate-y-0.5 ${
-                                      isAdmin ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'
-                                    } min-w-0 overflow-hidden`}
-                                  >
-                                    <div className="flex items-center justify-center gap-1 text-[9.5px] font-mono-tabular font-bold text-[#171717]/85 w-full truncate">
-                                      {isAdmin && <GripVertical className="w-2.5 h-2.5 text-[#77766F] shrink-0" />}
-                                      <span className="truncate">{labItem.code}</span>
-                                      <span>·</span>
-                                      <span className="shrink-0">
-                                        LAB ({computedTiming.labDurationHoursLabel})
-                                      </span>
-                                      {labItem.isLocked && <Lock className="w-2.5 h-2.5 shrink-0" />}
-                                    </div>
-
-                                    <div className="my-auto py-1 font-serif-editorial text-xs sm:text-[13px] font-semibold leading-snug text-[#171717] line-clamp-3 break-words w-full">
-                                      {labItem.title}
-                                    </div>
-
-                                    <div className="w-full pt-1.5 border-t border-black/10 space-y-0.5 text-[9.5px] text-[#171717]/80 min-w-0">
-                                      <div className="font-medium truncate">
-                                        {effectivePerspective === 'instructor' ? labItem.cohort : labItem.prof}
-                                      </div>
-                                      <div className="font-mono-tabular font-semibold text-[#171717] truncate">
-                                        {labItem.room}
-                                        {effectivePerspective === 'master' ? ` · ${labItem.cohort}` : ''}
-                                      </div>
-                                      <div className="font-mono-tabular text-[9px] text-[#171717]/75 truncate">
-                                        {continuousWindow}
-                                      </div>
-                                      {effectivePerspective === 'master' && concurrentItems.length > 0 && (
-                                        <div className="text-[9px] font-mono-tabular font-semibold text-[#171717]/75 truncate">
-                                          +{concurrentItems.length} more
-                                        </div>
-                                      )}
-                                    </div>
-                                  </div>
-                                </td>
-                              );
-                            }
-
-                            // Standard 1-Slot Lecture Cell
-                            const classes = (scheduleData[time]?.[day] || []).filter(filterClass);
-                            const effDaySlot = getEffectiveSlotDisplayForDay(day, time, computedTiming);
-                            const isFridayClosed = day === 'Fri' && !effDaySlot.isOpen;
-                            const isInstructorBlackedOut =
-                              effectivePerspective === 'instructor' &&
-                              currentInstructorObj?.unavailableSlots.some(
-                                u => u.day === day && u.timeSlot === time
-                              );
-
-                            const visibleItems = classes.slice(0, 1);
-                            const extraCount = classes.length - visibleItems.length;
-
-                            const isDragOver = dragOverCellKey === cellKey;
-
-                            return (
-                              <td
-                                key={day}
-                                onDragOver={
-                                  isAdmin
-                                    ? e => {
-                                        e.preventDefault();
-                                        e.dataTransfer.dropEffect = 'move';
-                                        if (dragOverCellKey !== cellKey) setDragOverCellKey(cellKey);
-                                      }
-                                    : undefined
-                                }
-                                onDragLeave={
-                                  isAdmin
-                                    ? () => {
-                                        if (dragOverCellKey === cellKey) setDragOverCellKey(null);
-                                      }
-                                    : undefined
-                                }
-                                onDrop={
-                                  isAdmin
-                                    ? e => {
-                                        e.preventDefault();
-                                        handleDropOnSlot(day, time);
-                                      }
-                                    : undefined
-                                }
-                                className={`h-[76px] p-1 border-l border-[#E4E2DA] align-middle overflow-hidden transition-colors ${
-                                  isDragOver ? 'bg-[#B8F2E6]/60 ring-2 ring-inset ring-[#93DEC9]' : ''
-                                } ${
-                                  (isWeekend || isFridayClosed) && visibleItems.length === 0 ? 'bg-[#F7F6EF]/60' : ''
-                                }`}
-                              >
-                                {isFridayClosed && visibleItems.length === 0 && (
-                                  <div className="px-1.5 py-2 rounded-lg border border-dashed border-[#E4E2DA] text-[9.5px] text-[#77766F] text-center leading-tight truncate">
-                                    {computedTiming.fridaySchedule.mode === 'morning_only'
-                                      ? 'Jummah · Half-Day'
-                                      : 'Jummah Window'}
-                                  </div>
-                                )}
-
-                                {isInstructorBlackedOut && !isFridayClosed && (
-                                  <div className="p-1 rounded-lg bg-[#F7F6EF] border border-[#E4E2DA] text-[9.5px] text-[#77766F] text-center truncate">
-                                    Unavailable
-                                  </div>
-                                )}
-
-                                {visibleItems.map(cls => {
-                                  const pastel = getCoursePastel(cls.code);
-                                  const isLab = cls.sessionType === 'Lab' || (cls.spanSlots && cls.spanSlots > 1);
-                                  const showFridaySlotTime =
-                                    day === 'Fri' && effDaySlot.isOpen && effDaySlot.isFridaySpecial && !isLab;
-
-                                  return (
-                                    <div
-                                      key={cls.id}
-                                      draggable={isAdmin}
-                                      onDragStart={
-                                        isAdmin
-                                          ? e => {
-                                              e.dataTransfer.setData('text/plain', cls.id);
-                                              setDraggedClassItem(cls);
-                                            }
-                                          : undefined
-                                      }
-                                      onDragEnd={
-                                        isAdmin
-                                          ? () => {
-                                              setDraggedClassItem(null);
-                                              setDragOverCellKey(null);
-                                            }
-                                          : undefined
-                                      }
-                                      onClick={() => handleClassClick(cls)}
-                                      style={{
-                                        backgroundColor: pastel.bg,
-                                        borderColor: pastel.border
-                                      }}
-                                      className={`w-full h-full min-h-[66px] ${
-                                        isCompactCol ? 'px-1.5 py-1.5' : 'px-2 py-1.5'
-                                      } rounded-xl border text-[#171717] flex flex-col items-center justify-center text-center gap-0.5 transition-all hover:-translate-y-0.5 ${
-                                        isAdmin ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'
-                                      } min-w-0 overflow-hidden`}
-                                    >
-                                      <div className="font-semibold text-[11px] leading-tight text-[#171717] w-full truncate">
-                                        {cls.title}
-                                      </div>
-
-                                      <div className="text-[9.5px] font-mono-tabular font-bold text-[#171717]/80 w-full truncate flex items-center justify-center gap-1">
-                                        {isAdmin && <GripVertical className="w-2.5 h-2.5 text-[#77766F] shrink-0" />}
-                                        <span className="truncate">
-                                          {cls.code}{' '}
-                                          {isLab
-                                            ? `· Lab (${computedTiming.labDurationHoursLabel})`
-                                            : showFridaySlotTime
-                                            ? `· ${effDaySlot.period.replace(' AM', '').replace(' PM', '')}`
-                                            : ''}
-                                        </span>
-                                      </div>
-
-                                      <div className="w-full pt-0.5 border-t border-black/10 text-[9.5px] text-[#171717]/80 leading-tight min-w-0">
-                                        <div className="truncate">
-                                          {effectivePerspective === 'instructor' ? cls.cohort : cls.prof}
-                                        </div>
-                                        <div className="font-mono-tabular font-semibold text-[#171717] truncate">
-                                          {cls.room}
-                                          {effectivePerspective === 'master' ? ` · ${cls.cohort}` : ''}
-                                        </div>
-                                      </div>
-
-                                      {effectivePerspective === 'master' && extraCount > 0 && (
-                                        <div className="text-[8.5px] font-mono-tabular font-semibold text-[#171717]/75 text-center truncate">
-                                          +{extraCount} more
-                                        </div>
-                                      )}
-                                    </div>
-                                  );
-                                })}
-                              </td>
-                            );
-                          })}
-                        </tr>
-                      </React.Fragment>
-                    );
-                  })}
-                </tbody>
-              </table>
-            );
-          })()}
+                          {/* Footer: Staff (Instructor + Lab Engineer) + Room + Exact Time */}
+                          <div className="pt-1 border-t border-black/10 text-[9px] text-[#171717]/85 leading-tight space-y-0.5 min-w-0">
+                            <div className="truncate font-medium">
+                              {effectivePerspective === 'instructor' ? cls.cohort : cls.prof}
+                            </div>
+                            {isLab && cls.labEngineerName && (isTallBlock || heightPx >= 72) && (
+                              <div className="truncate text-[#171717]/80">
+                                Eng: <strong className="font-semibold">{cls.labEngineerName}</strong>
+                              </div>
+                            )}
+                            <div className="flex items-center justify-between gap-1 font-mono-tabular font-semibold text-[#171717] min-w-0">
+                              <span className="truncate">
+                                {cls.room}
+                                {effectivePerspective === 'master' ? ` · ${cls.cohort}` : ''}
+                              </span>
+                              {!isNarrowLane && (
+                                <span className="shrink-0 text-[8.5px] text-[#171717]/75">
+                                  {startTime24}–{endTime24}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
         </div>
       )}
 
@@ -1946,7 +2250,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
 
       {/* Conflict Inspector & Resolution Modal */}
       {conflictDialogData && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs no-print">
           <div className="bg-white border border-[#E4E2DA] rounded-2xl shadow-xl max-w-lg w-full overflow-hidden p-6 space-y-4">
             <div className="flex items-start justify-between border-b border-[#E4E2DA] pb-3">
               <div className="flex items-center gap-2">
@@ -1978,7 +2282,6 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
               </div>
             </div>
 
-            {/* Identified Conflicts List */}
             <div className="space-y-2">
               <div className="text-[11px] font-semibold uppercase tracking-wider text-[#77766F]">
                 Constraints &amp; Collisions ({conflictDialogData.conflicts.length})
@@ -2010,7 +2313,6 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
               </div>
             </div>
 
-            {/* Action Buttons */}
             <div className="flex flex-wrap items-center justify-end gap-2 pt-3 border-t border-[#E4E2DA]">
               <button
                 type="button"
@@ -2043,7 +2345,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
 
       {/* Swap Confirmation Modal */}
       {swapDialogData && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs no-print">
           <div className="bg-white border border-[#E4E2DA] rounded-2xl shadow-xl max-w-lg w-full overflow-hidden p-6 space-y-4">
             <div className="flex items-start justify-between border-b border-[#E4E2DA] pb-3">
               <div className="flex items-center gap-2">

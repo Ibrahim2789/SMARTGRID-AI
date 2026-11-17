@@ -736,6 +736,8 @@ export interface BackendFitnessBreakdown {
   workloadBalanceScore: number;
   fairnessScore: number;
   studentGapMinutesAvg?: number;
+  worstBatchSatisfaction?: number;
+  leastSatisfiedBatchScore?: number;
   batchSatisfactionByBatch?: Record<string, number>;
 }
 
@@ -743,15 +745,53 @@ export interface BackendOptimizationAssignment {
   roomId: string;
   day: string;
   startTime: string;
+  endTime?: string;
+  startMinutes?: number;
+  endMinutes?: number;
+  durationMinutes?: number;
+  instructorId?: string;
+  labEngineerId?: string;
   secondDay?: string;
   secondStartTime?: string;
   thirdDay?: string;
   thirdStartTime?: string;
 }
 
+export interface BackendOptimizationEntry {
+  sectionId?: string;
+  sessionId?: string;
+  courseId?: string;
+  courseCode?: string;
+  courseTitle?: string;
+  batchId?: string;
+  batchCode?: string;
+  sectionCode?: string;
+  instructorId?: string;
+  labEngineerId?: string;
+  roomId?: string;
+  day?: string;
+  startTime?: string;
+  endTime?: string;
+  startMinutes?: number;
+  endMinutes?: number;
+  durationMinutes?: number;
+  sessionType?: string;
+  componentType?: string;
+  slotSource?: string;
+  isSplitLab?: boolean;
+  isLocked?: boolean;
+}
+
+export interface BackendPreValidationReport {
+  valid?: boolean;
+  errors?: string[];
+  warnings?: string[];
+}
+
 export interface BackendOptimizationRunResult {
   runId: string;
   timetableVersionId: string;
+  status?: string;
   algorithm: string;
   feasible: boolean;
   hardConstraintViolations: number;
@@ -763,6 +803,9 @@ export interface BackendOptimizationRunResult {
   fitness: BackendFitnessBreakdown;
   fitnessHistory: number[];
   validationReport?: Record<string, unknown>;
+  preValidation?: BackendPreValidationReport;
+  timeConfig?: Record<string, unknown>;
+  entries?: BackendOptimizationEntry[];
   assignments: Record<string, BackendOptimizationAssignment>;
 }
 
@@ -1003,6 +1046,19 @@ export async function updateUniversitySettingsBackend(
     middayBreakStart?: string;
     middayBreakDuration?: number;
     labDurationMinutes?: number;
+    labSplitAllowed?: boolean;
+    fridayEnabled?: boolean;
+    fridayMode?: string;
+    fridayStartTime?: string;
+    fridayEndTime?: string;
+    fridayBreakStartTime?: string;
+    fridayBreakEndTime?: string;
+    fridayClosingTime?: string;
+    fridayCompressionScope?: string;
+    fridayPeriodLengthMinutes?: number;
+    fridayShortBreakMinutes?: number;
+    fridayAllowedBatches?: string[];
+    fridayAllowedDepartments?: string[];
   }
 ): Promise<{ message: string; university: Record<string, unknown> }> {
   return authorizedFetch<{ message: string; university: Record<string, unknown> }>(
@@ -1064,14 +1120,23 @@ export async function createCourseBackend(
     title: string;
     departmentCode?: string;
     batchId?: string;
+    semester?: number;
     instructorId?: string;
+    assignedInstructorId?: string;
+    assignedLabEngineerId?: string;
     type?: string;
+    courseType?: string;
     creditHours?: number;
+    lectureCredits?: number;
+    labCredits?: number;
+    lectureHours?: number;
+    labHours?: number;
     hoursPerWeek?: number;
     studentCount?: number;
     requiredRoomType?: string;
     requiredEquipment?: string[];
     sectionCode?: string;
+    labSessionMode?: string;
   }
 ): Promise<{ message: string; course: Record<string, unknown> | null }> {
   return authorizedFetch('/api/courses', currentUser, {
@@ -1102,6 +1167,7 @@ export async function createInstructorBackend(
     departmentCode?: string;
     designation?: string;
     specialization?: string;
+    staffRole?: string;
     maxWeeklyHours?: number;
     maxDailyClasses?: number;
   }
@@ -1137,6 +1203,7 @@ export async function createClassroomBackend(
     type?: string;
     equipment?: string[];
     isAvailable?: boolean;
+    assignedLabEngineerId?: string;
   }
 ): Promise<{ message: string; classroom: Record<string, unknown> | null }> {
   return authorizedFetch('/api/classrooms', currentUser, {
@@ -1283,11 +1350,32 @@ export interface SolveOptimizationApiResponse {
     totalScore?: number;
     studentSatisfaction?: number;
     instructorSatisfaction?: number;
+    compactnessScore?: number;
+    studentGapMinutesAvg?: number;
     fairnessScore?: number;
+    worstBatchSatisfaction?: number;
     executionTimeMs?: number;
   };
   fitnessHistory?: number[];
+  preValidation?: BackendPreValidationReport;
+  validationReport?: Record<string, unknown>;
+  timeConfig?: Record<string, unknown>;
+  entries?: BackendOptimizationEntry[];
   assignments?: Record<string, BackendOptimizationAssignment>;
+}
+
+export async function validateTimetableBackend(
+  currentUser: AuthenticatedVotingUser,
+  payload: Record<string, unknown>
+): Promise<{ valid: boolean; validationReport?: Record<string, unknown> }> {
+  return authorizedFetch<{ valid: boolean; validationReport?: Record<string, unknown> }>(
+    '/api/optimization/validate',
+    currentUser,
+    {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    }
+  );
 }
 
 export async function solveOptimizationApi(
@@ -1335,10 +1423,18 @@ export async function solveOptimizationApi(
       totalScore: result.fitness?.totalScore,
       studentSatisfaction: result.fitness?.studentSatisfaction,
       instructorSatisfaction: result.fitness?.instructorSatisfaction,
+      compactnessScore: result.fitness?.compactnessScore,
+      studentGapMinutesAvg: result.fitness?.studentGapMinutesAvg,
       fairnessScore: result.fitness?.fairnessScore,
+      worstBatchSatisfaction:
+        result.fitness?.worstBatchSatisfaction ?? result.fitness?.leastSatisfiedBatchScore,
       executionTimeMs: result.executionTimeMs
     },
     fitnessHistory: result.fitnessHistory,
+    preValidation: result.preValidation,
+    validationReport: result.validationReport,
+    timeConfig: result.timeConfig,
+    entries: result.entries,
     assignments: result.assignments
   };
 }

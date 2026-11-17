@@ -90,7 +90,14 @@ def list_courses(request: Request) -> Dict[str, Any]:
     enriched = []
     for r in rows:
         sess = sess_by_course.get(r["id"], {})
-        is_lab = int(r.get("lab_hours_per_week") or 0) > 0 and int(r.get("lecture_hours_per_week") or 0) == 0
+        lec_hrs = int(r.get("lecture_hours_per_week") or 0)
+        lab_hrs = int(r.get("lab_hours_per_week") or 0)
+        lec_cr = int(r.get("lecture_credit_hours") if r.get("lecture_credit_hours") is not None else lec_hrs)
+        lab_cr = int(r.get("lab_credit_hours") if r.get("lab_credit_hours") is not None else (round(lab_hrs / 3) if lab_hrs > 0 else 0))
+        ct = str(r.get("course_type") or "").lower()
+        if ct not in ("lecture", "lab", "lecture_lab"):
+            ct = "lecture_lab" if (lec_cr > 0 and lab_cr > 0) else ("lab" if lab_cr > 0 else "lecture")
+        is_lab = ct == "lab"
         ctype = sess.get("session_type") or ("Lab" if is_lab else "Theory")
         enriched.append(
             {
@@ -98,13 +105,14 @@ def list_courses(request: Request) -> Dict[str, Any]:
                 "university_id": r["institution_id"],
                 "department_code": dept_code_by_id.get(r.get("department_id") or "", "BSCS"),
                 "batch_id": sess.get("batch_id"),
-                "instructor_id": sess.get("instructor_id"),
+                "instructor_id": r.get("assigned_instructor_id") or sess.get("instructor_id"),
+                "lab_engineer_id": r.get("assigned_lab_engineer_id") or sess.get("lab_engineer_id"),
+                "course_type": ct,
+                "lecture_credit_hours": lec_cr,
+                "lab_credit_hours": lab_cr,
+                "lab_session_mode": r.get("lab_session_mode") or "continuous",
                 "type": ctype,
-                "hours_per_week": (
-                    int(r.get("lab_hours_per_week") or 3)
-                    if is_lab
-                    else int(r.get("lecture_hours_per_week") or r.get("credit_hours") or 3)
-                ),
+                "hours_per_week": lec_cr + (lab_cr * 3),
                 "student_count": sess.get("expected_students") or 60,
                 "required_room_type": sess.get("required_room_type") or ("lab" if is_lab else "lecture"),
                 "required_equipment": r.get("required_equipment") or [],
@@ -122,21 +130,53 @@ async def create_course(request: Request) -> Dict[str, Any]:
     title = str(body.get("title") or body.get("name") or "").strip()
     dept_code = str(body.get("departmentCode") or "BSCS").strip().upper()
     batch_id = str(body.get("batchId") or "batch-2k25-bscs").strip()
-    instructor_id = str(body.get("instructorId") or "inst-turing").strip()
-    ctype = str(body.get("type") or "Theory").strip()
-    credit_hours = int(body.get("creditHours") or (1 if ctype.lower() == "lab" else 3))
-    hours_per_week = int(body.get("hoursPerWeek") or (3 if ctype.lower() == "lab" else credit_hours))
+    instructor_id = str(body.get("assignedInstructorId") or body.get("instructorId") or "").strip()
+    lab_engineer_id = str(body.get("assignedLabEngineerId") or body.get("labEngineerId") or "").strip() or None
+
+    raw_ct = str(body.get("courseType") or body.get("type") or "lecture").strip().lower()
+    if raw_ct in ("theory", "lecture"):
+        course_type = "lecture"
+    elif raw_ct == "lab":
+        course_type = "lab"
+    elif raw_ct in ("lecture_lab", "lecture+lab", "both"):
+        course_type = "lecture_lab"
+    else:
+        course_type = "lecture"
+
+    if "lectureCredits" in body or "labCredits" in body:
+        lec_cr = max(0, int(body.get("lectureCredits") or 0))
+        lab_cr = max(0, int(body.get("labCredits") or 0))
+    else:
+        cr = max(1, int(body.get("creditHours") or (1 if course_type == "lab" else 3)))
+        if course_type == "lab":
+            lec_cr, lab_cr = 0, cr
+        elif course_type == "lecture_lab":
+            lec_cr = max(1, cr - 1)
+            lab_cr = 1
+        else:
+            lec_cr, lab_cr = cr, 0
+
+    if lec_cr > 0 and lab_cr > 0:
+        course_type = "lecture_lab"
+    elif lab_cr > 0 and lec_cr == 0:
+        course_type = "lab"
+    else:
+        course_type = "lecture"
+
+    lec_hours = lec_cr  # 1 CR = 1 lecture hour/week
+    lab_hours = lab_cr * 3  # 1 Lab CR = 3 scheduled lab hours/week
+    total_credits = max(1, lec_cr + lab_cr)
     student_count = int(body.get("studentCount") or 60)
-    raw_room_type = str(body.get("requiredRoomType") or ctype).strip().lower()
+    raw_room_type = str(body.get("requiredRoomType") or ("lab" if course_type == "lab" else "lecture")).strip().lower()
     req_room_type = "lab" if "lab" in raw_room_type else ("seminar" if "seminar" in raw_room_type else "lecture")
     req_eq = body.get("requiredEquipment") or []
+    lab_mode = str(body.get("labSessionMode") or "continuous")
 
     if not code or not title:
         raise HTTPException(status_code=400, detail={"error": "Course code and title are required."})
 
     course_id = body.get("id") or f"crs-{uuid.uuid4().hex[:8]}"
     current_iso = now_iso()
-    is_lab = ctype.lower() == "lab"
     client = require_supabase_client()
 
     try:
@@ -147,48 +187,95 @@ async def create_course(request: Request) -> Dict[str, Any]:
         )
         dept_id = dept["id"] if dept else None
 
-        inserted_courses = client.insert(
-            "courses",
-            {
-                "id": course_id,
-                "institution_id": uni_id,
-                "department_id": dept_id,
-                "code": code,
-                "title": title,
-                "credit_hours": credit_hours,
-                "lecture_hours_per_week": 0 if is_lab else hours_per_week,
-                "lab_hours_per_week": hours_per_week if is_lab else 0,
-                "is_compulsory": bool(body.get("isCompulsory", True)),
-                "required_equipment": req_eq,
-                "created_at": current_iso,
-            },
-            upsert=True,
-            on_conflict="id",
-        )
+        course_row = {
+            "id": course_id,
+            "institution_id": uni_id,
+            "department_id": dept_id,
+            "code": code,
+            "title": title,
+            "credit_hours": total_credits,
+            "lecture_hours_per_week": lec_hours,
+            "lab_hours_per_week": lab_hours,
+            "course_type": course_type,
+            "lecture_credit_hours": lec_cr,
+            "lab_credit_hours": lab_cr,
+            "assigned_instructor_id": instructor_id or None,
+            "assigned_lab_engineer_id": lab_engineer_id,
+            "lab_session_mode": lab_mode,
+            "is_compulsory": bool(body.get("isCompulsory", True)),
+            "required_equipment": req_eq,
+            "created_at": current_iso,
+        }
+        try:
+            inserted_courses = client.insert("courses", course_row, upsert=True, on_conflict="id")
+        except SupabaseQueryError:
+            core_row = {
+                k: course_row[k]
+                for k in (
+                    "id",
+                    "institution_id",
+                    "department_id",
+                    "code",
+                    "title",
+                    "credit_hours",
+                    "lecture_hours_per_week",
+                    "lab_hours_per_week",
+                    "is_compulsory",
+                    "required_equipment",
+                    "created_at",
+                )
+            }
+            inserted_courses = client.insert("courses", core_row, upsert=True, on_conflict="id")
+
         created = inserted_courses[0] if inserted_courses else None
         actual_course_id = created["id"] if created else course_id
 
-        session_type = "Lab" if is_lab else ("Tutorial" if ctype.lower() == "tutorial" else "Theory")
-        client.insert(
-            "course_sessions",
-            {
-                "id": f"sec-{actual_course_id}-a",
-                "institution_id": uni_id,
-                "course_id": actual_course_id,
-                "instructor_id": instructor_id or None,
-                "batch_id": batch_id,
-                "section_code": str(body.get("sectionCode") or "A"),
-                "session_type": session_type,
-                "sessions_per_week": 1 if is_lab else max(1, min(6, hours_per_week)),
-                "duration_minutes": 180 if is_lab else 50,
-                "expected_students": max(1, student_count),
-                "required_room_type": req_room_type,
-                "required_equipment": req_eq,
-                "created_at": current_iso,
-            },
-            upsert=True,
-            on_conflict="id",
-        )
+        sessions_to_save: List[Dict[str, Any]] = []
+        if lec_cr > 0:
+            sessions_to_save.append(
+                {
+                    "id": f"sec-{actual_course_id}-a-lec",
+                    "institution_id": uni_id,
+                    "course_id": actual_course_id,
+                    "instructor_id": instructor_id or None,
+                    "batch_id": batch_id,
+                    "section_code": str(body.get("sectionCode") or "A"),
+                    "session_type": "Theory",
+                    "component_type": "lecture",
+                    "sessions_per_week": lec_cr,
+                    "duration_minutes": 50,
+                    "expected_students": max(1, student_count),
+                    "required_room_type": "seminar" if req_room_type == "seminar" else "lecture",
+                    "required_equipment": req_eq,
+                    "created_at": current_iso,
+                }
+            )
+        if lab_cr > 0:
+            sessions_to_save.append(
+                {
+                    "id": f"sec-{actual_course_id}-a-lab",
+                    "institution_id": uni_id,
+                    "course_id": actual_course_id,
+                    "instructor_id": instructor_id or None,
+                    "lab_engineer_id": lab_engineer_id or instructor_id or None,
+                    "batch_id": batch_id,
+                    "section_code": str(body.get("sectionCode") or "A"),
+                    "session_type": "Lab",
+                    "component_type": "lab",
+                    "sessions_per_week": lab_cr,
+                    "duration_minutes": 180,
+                    "expected_students": max(1, student_count),
+                    "required_room_type": "lab",
+                    "required_equipment": req_eq,
+                    "created_at": current_iso,
+                }
+            )
+        for sess_row in sessions_to_save:
+            try:
+                client.insert("course_sessions", sess_row, upsert=True, on_conflict="id")
+            except SupabaseQueryError:
+                fallback_sess = {k: v for k, v in sess_row.items() if k not in ("lab_engineer_id", "component_type")}
+                client.insert("course_sessions", fallback_sess, upsert=True, on_conflict="id")
     except SupabaseQueryError as err:
         raise_supabase_http_error(err)
 
@@ -346,22 +433,23 @@ async def create_classroom(request: Request) -> Dict[str, Any]:
 
     try:
         if "lab" in raw_type:
-            inserted = client.insert(
-                "laboratories",
-                {
-                    "id": room_id,
-                    "institution_id": uni_id,
-                    "code": code,
-                    "name": name,
-                    "building": body.get("building") or "Engineering Lab Complex",
-                    "capacity": int(body.get("capacity") or 40),
-                    "lab_category": body.get("labCategory") or "Computing",
-                    "is_available": bool(body.get("isAvailable", True)),
-                    "created_at": current_iso,
-                },
-                upsert=True,
-                on_conflict="id",
-            )
+            lab_row = {
+                "id": room_id,
+                "institution_id": uni_id,
+                "code": code,
+                "name": name,
+                "building": body.get("building") or "Engineering Lab Complex",
+                "capacity": int(body.get("capacity") or 40),
+                "lab_category": body.get("labCategory") or "Computing",
+                "assigned_lab_engineer_id": body.get("assignedLabEngineerId") or None,
+                "is_available": bool(body.get("isAvailable", True)),
+                "created_at": current_iso,
+            }
+            try:
+                inserted = client.insert("laboratories", lab_row, upsert=True, on_conflict="id")
+            except SupabaseQueryError:
+                core_lab = {k: v for k, v in lab_row.items() if k != "assigned_lab_engineer_id"}
+                inserted = client.insert("laboratories", core_lab, upsert=True, on_conflict="id")
             room_kind = "laboratory"
         else:
             room_type = "auditorium" if "auditorium" in raw_type else ("seminar" if "seminar" in raw_type else "lecture")

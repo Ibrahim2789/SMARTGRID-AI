@@ -85,6 +85,19 @@ def publish_timetable_version(versionId: str, request: Request) -> Dict[str, Any
         if not existing:
             raise HTTPException(status_code=404, detail={"error": "Timetable version not found."})
 
+        hard_count = int(existing.get("hard_violations_count") or 0)
+        if hard_count > 0:
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "error": (
+                        f"Cannot publish timetable '{existing['name']}' because it has {hard_count} "
+                        "hard constraint violation(s). Resolve all conflicts before publishing."
+                    ),
+                    "hardViolations": hard_count,
+                },
+            )
+
         client.update(
             "timetable_versions",
             {"id": f"eq.{versionId}"},

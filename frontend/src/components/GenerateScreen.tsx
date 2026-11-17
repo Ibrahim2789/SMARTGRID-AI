@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { SmartGridNav, RouteType } from './SmartGridNav';
-import { useInstitutionalData, institutionalStore } from '../data/store';
+import { useInstitutionalData, institutionalStore, InstitutionalDataStore } from '../data/store';
 import { buildMatrixSchedule } from '../data/solverAdapter';
 import {
   computeAcademicScheduleConfig,
-  TimetableManagementPolicy
+  TimetableManagementPolicy,
+  validateAcademicTimingConfig
 } from '../types/institutional';
 import { exportTimetableToGoogleSheetsWorkbook } from '../utils/googleSheetsExport';
 import {
@@ -35,7 +36,8 @@ import {
   Cpu,
   Calendar,
   ShieldCheck,
-  CheckCircle2
+  CheckCircle2,
+  AlertTriangle
 } from 'lucide-react';
 
 interface GenerateScreenProps {
@@ -125,6 +127,11 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
     engineLabel?: string;
     scheduledSemestersLabel?: string;
     policyLabel?: string;
+    status?: 'published' | 'draft' | 'archived';
+    studentGapMinutesAvg?: number;
+    compactnessScore?: number;
+    worstBatchSatisfaction?: number;
+    warnings?: string[];
   } | null>(null);
 
   // Derive scoped academic hierarchy (Departments -> Semesters -> Batches -> Sections)
@@ -164,7 +171,9 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
 
   const scopedSections = useMemo(() => {
     const groupSet = new Set(scopedGroups.map(g => g.id));
-    return store.sections.filter(s => groupSet.has(s.studentGroupId));
+    return store.sections.filter(
+      s => groupSet.has(s.studentGroupId) || (s.sharedGroupIds || []).some(gid => groupSet.has(gid))
+    );
   }, [store.sections, scopedGroups]);
 
   // Extract distinct academic semester numbers (1st, 2nd, 3rd...) and batch cohorts (2K22, 2K23...) from scoped groups
@@ -233,84 +242,197 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
     }
   };
 
+  const buildFullBackendPayload = (
+    targetStore: InstitutionalDataStore,
+    targetGroups: typeof scopedGroups,
+    targetCourses: typeof scopedCourses,
+    targetSections: typeof scopedSections,
+    versionTitle: string,
+    algo: string
+  ) => ({
+    universityId: targetStore.institutionProfile?.id || institutionalStore.getCurrentInstitutionId(),
+    versionName: versionTitle,
+    algorithm: algo,
+    timeStructure: targetStore.timeStructure,
+    instructors: targetStore.instructors.map(i => ({
+      id: i.id,
+      name: i.name,
+      email: i.email,
+      departmentId: i.departmentId,
+      subDepartment: i.subDepartment,
+      staffRole: i.staffRole || 'faculty',
+      qualifiedCourseIds: i.qualifiedCourseIds || [],
+      maxWeeklyHours: i.maxWeeklyHours,
+      maxConsecutiveHours: i.maxConsecutiveHours,
+      preferredDays: i.preferredDays,
+      unavailableSlots: i.unavailableSlots || []
+    })),
+    courses: targetCourses.map(c => {
+      const courseType =
+        c.courseType ||
+        (c.requiredRoomType === 'lab' && c.lectureHours === 0
+          ? 'lab'
+          : c.labHours > 0
+          ? 'lecture_lab'
+          : 'lecture');
+      return {
+        id: c.id,
+        code: c.code,
+        title: c.title,
+        courseType,
+        type: courseType === 'lab' ? 'Lab' : 'Theory',
+        credits: c.creditHours || 3,
+        credit_hours: c.creditHours || 3,
+        lectureCredits: c.lectureCredits ?? c.lectureHours ?? (courseType === 'lab' ? 0 : c.creditHours || 3),
+        labCredits: c.labCredits ?? (c.labHours > 0 ? Math.max(1, Math.round(c.labHours / 3)) : courseType === 'lab' ? 1 : 0),
+        lectureHours: c.lectureHours,
+        labHours: c.labHours,
+        departmentId: c.departmentId,
+        assignedInstructorId: c.assignedInstructorId,
+        assignedLabEngineerId: c.assignedLabEngineerId,
+        assignedBatchId: c.assignedBatchId,
+        semester: c.semester,
+        labSessionMode: c.labSessionMode || (targetStore.timeStructure.labSplitAllowed ? 'split_allowed' : 'continuous'),
+        isElective: Boolean(c.isElective),
+        requiredRoomType: c.requiredRoomType,
+        requiredEquipment: []
+      };
+    }),
+    classrooms: targetStore.rooms.map(r => ({
+      id: r.id,
+      code: r.code,
+      name: r.name,
+      capacity: r.capacity,
+      type: r.type,
+      equipment: r.equipment,
+      isAvailable: r.isAvailable,
+      assignedLabEngineerId: r.assignedLabEngineerId
+    })),
+    studentGroups: targetGroups.map(g => ({
+      id: g.id,
+      code: g.code,
+      name: g.name,
+      size: g.size,
+      batchCode: g.batchCode,
+      departmentCode: g.departmentCode,
+      semester: g.semester,
+      section: g.section
+    })),
+    sections: targetSections.map(s => {
+      const isLab = s.sessionType === 'Lab' || Boolean(s.spanSlots && s.spanSlots > 1) || s.componentType === 'lab';
+      return {
+        id: s.id,
+        courseId: s.courseId,
+        instructorId: s.instructorId,
+        labEngineerId: s.labEngineerId,
+        studentGroupId: s.studentGroupId,
+        sharedGroupIds: s.sharedGroupIds || [],
+        sectionCode: s.sectionNumber || 'A',
+        sessionType: isLab ? 'Lab' : 'Theory',
+        componentType: s.componentType || (isLab ? 'lab' : 'lecture'),
+        isAtomicSession: s.isAtomicSession ?? true,
+        spanSlots: s.spanSlots || (isLab ? 3 : 1),
+        sessionsPerWeek: 1,
+        enrollment: s.expectedEnrollment || 45,
+        isLocked: Boolean(s.isLocked)
+      };
+    })
+  });
+
   const handleStartGeneration = () => {
+    institutionalStore.autoGenerateMissingSections();
+    const freshStore = institutionalStore.get();
+    const freshTiming = computeAcademicScheduleConfig(freshStore.timeStructure);
+    const timingValidation = validateAcademicTimingConfig(freshStore.timeStructure);
+
+    if (!timingValidation.valid) {
+      showAppPopup({
+        title: 'Invalid Academic Timing Configuration',
+        message: timingValidation.errors.join(' '),
+        variant: 'error'
+      });
+      return;
+    }
+
+    const freshGroups =
+      scopeMode === 'whole_university'
+        ? freshStore.studentGroups
+        : scopeMode === 'department_wise'
+        ? freshStore.studentGroups.filter(g => {
+            const prog = freshStore.programs.find(p => p.id === g.programId);
+            return prog?.departmentId === selectedDeptId;
+          })
+        : freshStore.studentGroups.filter(g => selectedGroupIds.includes(g.id));
+
+    const freshCourses =
+      scopeMode === 'department_wise' && selectedDeptId && selectedDeptId !== 'all'
+        ? freshStore.courses.filter(c => c.departmentId === selectedDeptId)
+        : freshStore.courses;
+
+    const freshGroupSet = new Set(freshGroups.map(g => g.id));
+    const freshSections = freshStore.sections.filter(
+      s => freshGroupSet.has(s.studentGroupId) || (s.sharedGroupIds || []).some(gid => freshGroupSet.has(gid))
+    );
+
+    if (freshSections.length === 0) {
+      showAppPopup({
+        title: 'No Schedulable Sessions Found',
+        message: 'Add courses, instructors, classrooms, and student batches/sections in Setup before generating a timetable.',
+        variant: 'error'
+      });
+      return;
+    }
+
     setIsGenerating(true);
     setSolverCompleted(false);
     setProgress(12);
     setSolverStepText(
-      `Loading university academic calendar (${selectedSemestersLabel}) & ${computedTiming.operatingHoursLabel} slot structure...`
+      `Loading university academic calendar (${selectedSemestersLabel}) & ${freshTiming.operatingHoursLabel} slot structure...`
     );
 
-    const targetGroupIds = scopedGroups.map(g => g.id);
+    const targetGroupIds = freshGroups.map(g => g.id);
     const defaultRunTitle =
       scenarioName.trim() ||
       (scopeMode === 'whole_university'
         ? `${selectedSemestersLabel} — Whole-University Schedule`
         : scopeMode === 'department_wise'
         ? `${selectedSemestersLabel} — ${
-            store.departments.find(d => d.id === selectedDeptId)?.code || 'Department'
+            freshStore.departments.find(d => d.id === selectedDeptId)?.code || 'Department'
           } Schedule`
         : `${selectedSemestersLabel} — Custom Cohort Schedule`);
-
-    const buildBackendPayload = () => ({
-      universityId: store.institutionProfile?.id || institutionalStore.getCurrentInstitutionId(),
-      versionName: `${defaultRunTitle}`,
-      algorithm: backendStrategy,
-      courses: scopedCourses.map(c => ({
-        id: c.id,
-        code: c.code,
-        title: c.title,
-        type: c.requiredRoomType === 'lab' || c.labHours > 0 ? 'Lab' : 'Theory',
-        credits: c.creditHours || 3,
-        credit_hours: c.creditHours || 3,
-        requiredEquipment: []
-      })),
-      classrooms: store.rooms.map(r => ({
-        id: r.id,
-        code: r.code,
-        name: r.name,
-        capacity: r.capacity,
-        type: r.type,
-        equipment: r.equipment,
-        isAvailable: r.isAvailable
-      })),
-      studentGroups: scopedGroups.map(g => ({
-        id: g.id,
-        code: g.code,
-        name: g.name,
-        size: g.size
-      })),
-      sections: scopedSections.map(s => ({
-        id: s.id,
-        courseId: s.courseId,
-        instructorId: s.instructorId,
-        studentGroupId: s.studentGroupId,
-        sectionCode: s.sectionNumber || 'A',
-        sessionType: s.sessionType === 'Lab' ? 'Lab' : 'Theory',
-        enrollment: s.expectedEnrollment || 45
-      }))
-    });
 
     if (solverEngineMode === 'backend_cpsat') {
       setTimeout(() => {
         setProgress(42);
         setSolverStepText(
-          `Submitting ${scopedSections.length} sections across ${scopedDepartments.length} department(s) to Python ${backendStrategy.toUpperCase()} solver...`
+          `Submitting ${freshSections.length} sessions across ${scopedDepartments.length} department(s) to Python ${backendStrategy.toUpperCase()} solver...`
         );
       }, 250);
 
-      solveOptimizationApi(buildBackendPayload(), currentUser)
+      solveOptimizationApi(
+        buildFullBackendPayload(
+          freshStore,
+          freshGroups,
+          freshCourses,
+          freshSections,
+          defaultRunTitle,
+          backendStrategy
+        ),
+        currentUser
+      )
         .then(apiRes => {
           setProgress(88);
           setSolverStepText(
-            `Applying ${apiRes.metrics.placedCount} conflict-free assignments (${apiRes.metrics.solverEngine})...`
+            `Applying ${apiRes.metrics.placedCount} session assignments (${apiRes.metrics.solverEngine})...`
           );
 
-          const hasAssignments =
-            apiRes.assignments && Object.keys(apiRes.assignments).length > 0;
-          const res = hasAssignments
+          const hasEntriesOrAssignments =
+            (apiRes.entries && apiRes.entries.length > 0) ||
+            (apiRes.assignments && Object.keys(apiRes.assignments).length > 0);
+          const res = hasEntriesOrAssignments
             ? institutionalStore.applyBackendOptimizationResult({
-                assignments: apiRes.assignments!,
+                assignments: apiRes.assignments || {},
+                entries: apiRes.entries,
                 strategyName: `${defaultRunTitle} (${backendStrategy})`,
                 algorithm: backendStrategy,
                 versionId: apiRes.timetableVersionId,
@@ -320,6 +442,7 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
                   studentSatisfaction: apiRes.metrics.studentSatisfaction,
                   instructorSatisfaction: apiRes.metrics.instructorSatisfaction,
                   roomUtilization: apiRes.metrics.roomUtilization,
+                  compactnessScore: apiRes.metrics.compactnessScore,
                   fairnessScore: apiRes.metrics.fairnessScore
                 },
                 conflictCount: apiRes.metrics.conflictCount,
@@ -336,6 +459,11 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
               });
 
           void institutionalStore.syncToBackend(currentUser);
+          const isFullyValid = res.conflictCount === 0 && res.unplacedCount === 0 && res.scenario.status === 'published';
+          const warningsList = [
+            ...(apiRes.preValidation?.errors || []),
+            ...(apiRes.preValidation?.warnings || [])
+          ];
 
           setTimeout(() => {
             setProgress(100);
@@ -349,19 +477,26 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
               scenarioName: res.scenario.name,
               engineLabel: apiRes.metrics.solverEngine,
               scheduledSemestersLabel: selectedSemestersLabel,
+              status: res.scenario.status,
+              studentGapMinutesAvg: apiRes.metrics.studentGapMinutesAvg,
+              compactnessScore: apiRes.metrics.compactnessScore ?? res.scenario.metrics.studentTransitScore,
+              worstBatchSatisfaction: apiRes.metrics.worstBatchSatisfaction,
+              warnings: warningsList,
               policyLabel:
                 scopeMode === 'whole_university'
                   ? 'Whole-University Integrated Policy'
                   : scopeMode === 'department_wise'
                   ? `Department-Wise Policy (${
-                      store.departments.find(d => d.id === selectedDeptId)?.name || 'Department'
+                      freshStore.departments.find(d => d.id === selectedDeptId)?.name || 'Department'
                     })`
-                  : `Custom Scope (${scopedGroups.length} Sections)`
+                  : `Custom Scope (${freshGroups.length} Sections)`
             });
             showAppPopup({
-              title: 'Hybrid AI Timetable Generated',
-              message: `Placed ${res.placedCount} sessions across ${selectedSemestersLabel} (${res.roomUtilization}% utilization · ${res.conflictCount} hard conflicts).`,
-              variant: 'success',
+              title: isFullyValid ? 'Hybrid AI Timetable Generated' : 'Timetable Saved as Draft (Review Required)',
+              message: isFullyValid
+                ? `Placed ${res.placedCount} sessions across ${selectedSemestersLabel} (${res.roomUtilization}% utilization · 0 hard conflicts).`
+                : `Placed ${res.placedCount} sessions (${res.unplacedCount} unplaced, ${res.conflictCount} hard conflicts). Saved as Draft until conflicts are resolved.`,
+              variant: isFullyValid ? 'success' : 'error',
               actions: [
                 {
                   label: 'Inspect Timetables',
@@ -382,6 +517,7 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
             strategyName: defaultRunTitle,
             forceRescheduleAll
           });
+          const isFullyValid = res.conflictCount === 0 && res.unplacedCount === 0;
           setProgress(100);
           setIsGenerating(false);
           setSolverCompleted(true);
@@ -393,15 +529,19 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
             scenarioName: res.scenario.name,
             engineLabel: 'TypeScript Combinatorial Engine (Fallback)',
             scheduledSemestersLabel: selectedSemestersLabel,
+            status: res.scenario.status,
+            compactnessScore: res.scenario.metrics.studentTransitScore,
             policyLabel:
               scopeMode === 'whole_university'
                 ? 'Whole-University Integrated Policy'
                 : 'Department-Wise Policy'
           });
           showAppPopup({
-            title: 'Timetable Generated',
-            message: `Placed ${res.placedCount} sessions across ${selectedSemestersLabel}.`,
-            variant: 'success',
+            title: isFullyValid ? 'Timetable Generated' : 'Draft Saved (Unplaced/Conflicts Detected)',
+            message: isFullyValid
+              ? `Placed ${res.placedCount} sessions across ${selectedSemestersLabel} with 0 hard conflicts.`
+              : `Placed ${res.placedCount} sessions (${res.unplacedCount} unplaced, ${res.conflictCount} conflicts). Saved as Draft.`,
+            variant: isFullyValid ? 'success' : 'error',
             actions: [
               {
                 label: 'Inspect Timetables',
@@ -417,7 +557,7 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
     setTimeout(() => {
       setProgress(48);
       setSolverStepText(
-        `Scheduling ${computedTiming.labDurationHoursLabel} continuous labs (${computedTiming.labSpanSlots} merged slots) & ${computedTiming.periodLengthMinutes}m lectures across ${scopedGroups.length} sections...`
+        `Scheduling ${freshTiming.labDurationHoursLabel} continuous labs (${freshTiming.labSpanSlots} merged slots) & ${freshTiming.periodLengthMinutes}m lectures across ${freshGroups.length} sections...`
       );
     }, 300);
 
@@ -425,8 +565,8 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
       setProgress(82);
       setSolverStepText(
         scopeMode === 'whole_university'
-          ? 'Verifying cross-department shared faculty, classroom, laboratory & section constraints...'
-          : 'Verifying departmental faculty, classroom, laboratory & section constraints...'
+          ? 'Minimizing student idle gaps & verifying cross-department faculty, lab engineer, room & section constraints...'
+          : 'Minimizing student idle gaps & verifying departmental faculty, lab engineer, room & section constraints...'
       );
     }, 620);
 
@@ -440,6 +580,7 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
         strategyName: defaultRunTitle,
         forceRescheduleAll
       });
+      const isFullyValid = res.conflictCount === 0 && res.unplacedCount === 0;
 
       setProgress(100);
       setIsGenerating(false);
@@ -452,19 +593,23 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
         scenarioName: res.scenario.name,
         engineLabel: 'Local Combinatorial Engine',
         scheduledSemestersLabel: selectedSemestersLabel,
+        status: res.scenario.status,
+        compactnessScore: res.scenario.metrics.studentTransitScore,
         policyLabel:
           scopeMode === 'whole_university'
             ? 'Whole-University Integrated Policy'
             : scopeMode === 'department_wise'
             ? `Department-Wise Policy (${
-                store.departments.find(d => d.id === selectedDeptId)?.name || 'Department'
+                freshStore.departments.find(d => d.id === selectedDeptId)?.name || 'Department'
               })`
-            : `Custom Scope (${scopedGroups.length} Sections)`
+            : `Custom Scope (${freshGroups.length} Sections)`
       });
       showAppPopup({
-        title: 'Timetable Generated',
-        message: `Placed ${res.placedCount} sessions across ${selectedSemestersLabel} with ${res.conflictCount} conflicts.`,
-        variant: 'success',
+        title: isFullyValid ? 'Timetable Generated' : 'Draft Saved (Unplaced/Conflicts Detected)',
+        message: isFullyValid
+          ? `Placed ${res.placedCount} sessions across ${selectedSemestersLabel} with 0 conflicts.`
+          : `Placed ${res.placedCount} sessions (${res.unplacedCount} unplaced, ${res.conflictCount} conflicts). Saved as Draft.`,
+        variant: isFullyValid ? 'success' : 'error',
         actions: [
           {
             label: 'Inspect Timetables',
@@ -487,42 +632,19 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
     }
     setIsComparingAlgos(true);
     try {
-      const res = await compareOptimizationAlgorithmsBackend(currentUser, {
-        universityId: store.institutionProfile?.id || institutionalStore.getCurrentInstitutionId(),
-        courses: scopedCourses.map(c => ({
-          id: c.id,
-          code: c.code,
-          title: c.title,
-          type: c.requiredRoomType === 'lab' || c.labHours > 0 ? 'Lab' : 'Theory',
-          credits: c.creditHours || 3,
-          credit_hours: c.creditHours || 3,
-          requiredEquipment: []
-        })),
-        classrooms: store.rooms.map(r => ({
-          id: r.id,
-          code: r.code,
-          name: r.name,
-          capacity: r.capacity,
-          type: r.type,
-          equipment: r.equipment,
-          isAvailable: r.isAvailable
-        })),
-        studentGroups: scopedGroups.map(g => ({
-          id: g.id,
-          code: g.code,
-          name: g.name,
-          size: g.size
-        })),
-        sections: scopedSections.map(s => ({
-          id: s.id,
-          courseId: s.courseId,
-          instructorId: s.instructorId,
-          studentGroupId: s.studentGroupId,
-          sectionCode: s.sectionNumber || 'A',
-          sessionType: s.sessionType === 'Lab' ? 'Lab' : 'Theory',
-          enrollment: s.expectedEnrollment || 45
-        }))
-      });
+      institutionalStore.autoGenerateMissingSections();
+      const freshStore = institutionalStore.get();
+      const res = await compareOptimizationAlgorithmsBackend(
+        currentUser,
+        buildFullBackendPayload(
+          freshStore,
+          scopedGroups,
+          scopedCourses,
+          scopedSections,
+          'Algorithm Benchmark',
+          backendStrategy
+        )
+      );
       const list = Array.isArray(res.comparison) ? res.comparison : [];
       setBenchmarkResults(list);
       showAppPopup({
@@ -1285,17 +1407,29 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
 
           {/* Conflict Analysis & Results */}
           {solverCompleted && lastSolverStats && (
-            <div className="p-4 rounded-xl sf-pastel-lime space-y-3.5">
+            <div
+              className={`p-4 rounded-xl space-y-3.5 border ${
+                lastSolverStats.conflictCount > 0 || lastSolverStats.unplacedCount > 0 || lastSolverStats.status === 'draft'
+                  ? 'bg-[#FFF6D6] border-[#E8D36B]'
+                  : 'sf-pastel-lime border-transparent'
+              }`}
+            >
               <div className="flex items-center gap-2.5">
                 <div className="w-6 h-6 rounded-full bg-[#171717] text-white flex items-center justify-center shrink-0">
-                  <Check className="w-3.5 h-3.5" />
+                  {lastSolverStats.conflictCount > 0 || lastSolverStats.unplacedCount > 0 ? (
+                    <AlertTriangle className="w-3.5 h-3.5 text-[#E8D36B]" />
+                  ) : (
+                    <Check className="w-3.5 h-3.5" />
+                  )}
                 </div>
                 <div className="min-w-0">
                   <div className="text-xs font-bold text-[#171717]">
-                    Timetable Synthesized
+                    {lastSolverStats.conflictCount > 0 || lastSolverStats.unplacedCount > 0 || lastSolverStats.status === 'draft'
+                      ? 'Draft Saved (Needs Review)'
+                      : 'Timetable Synthesized & Published'}
                   </div>
                   <div className="text-[11px] text-[#171717]/75 truncate">
-                    {lastSolverStats.scheduledSemestersLabel}
+                    {lastSolverStats.scheduledSemestersLabel} · {lastSolverStats.engineLabel || 'SmartGrid Solver'}
                   </div>
                 </div>
               </div>
@@ -1307,6 +1441,7 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
                   </div>
                   <div className="font-serif-editorial text-lg font-bold text-[#171717] font-mono-tabular">
                     {lastSolverStats.placedCount}
+                    {lastSolverStats.unplacedCount > 0 ? ` (${lastSolverStats.unplacedCount} unplaced)` : ''}
                   </div>
                 </div>
                 <div className="py-2 px-1">
@@ -1326,6 +1461,39 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
                   </div>
                 </div>
               </div>
+
+              {(lastSolverStats.compactnessScore !== undefined ||
+                lastSolverStats.studentGapMinutesAvg !== undefined ||
+                lastSolverStats.worstBatchSatisfaction !== undefined) && (
+                <div className="grid grid-cols-3 divide-x divide-black/10 border border-black/10 rounded-lg bg-white/45 text-center text-[11px] font-mono-tabular">
+                  <div className="py-1.5 px-1">
+                    <span className="text-[#57564F] block text-[9.5px] uppercase font-sans font-semibold">Compactness</span>
+                    <strong className="text-[#171717]">
+                      {lastSolverStats.compactnessScore !== undefined ? `${Number(lastSolverStats.compactnessScore).toFixed(1)}%` : '—'}
+                    </strong>
+                  </div>
+                  <div className="py-1.5 px-1">
+                    <span className="text-[#57564F] block text-[9.5px] uppercase font-sans font-semibold">Avg Gap</span>
+                    <strong className="text-[#171717]">
+                      {lastSolverStats.studentGapMinutesAvg !== undefined ? `${Number(lastSolverStats.studentGapMinutesAvg).toFixed(1)}m` : '—'}
+                    </strong>
+                  </div>
+                  <div className="py-1.5 px-1">
+                    <span className="text-[#57564F] block text-[9.5px] uppercase font-sans font-semibold">Worst Batch</span>
+                    <strong className="text-[#171717]">
+                      {lastSolverStats.worstBatchSatisfaction !== undefined ? `${Number(lastSolverStats.worstBatchSatisfaction).toFixed(1)}%` : '—'}
+                    </strong>
+                  </div>
+                </div>
+              )}
+
+              {lastSolverStats.warnings && lastSolverStats.warnings.length > 0 && (
+                <div className="text-[11px] text-[#57564F] bg-white/70 rounded-lg p-2.5 border border-black/10 space-y-1">
+                  {lastSolverStats.warnings.slice(0, 3).map((w, wIdx) => (
+                    <div key={wIdx}>• {w}</div>
+                  ))}
+                </div>
+              )}
 
               <div className="space-y-2">
                 <button
