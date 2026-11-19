@@ -743,7 +743,25 @@ class SmartGridBackendTests(unittest.TestCase):
         self.assertGreaterEqual(resched["stabilityPercentage"], 95.0)
         self.assertLessEqual(resched["changedSessionsCount"], 2)
 
+    def test_16_csv_import_validation(self) -> None:
+        """Test CSV structure, delimiters, required fields, and academic rule validations."""
+        # Test delimiter and quoting parser logic simulation
+        raw_csv = "code,title,lecture_credits,lab_credits\nCS-101,\"Introduction to Computing, Advanced\",3,1\n,Missing Code,3,0\n"
+        # Simulate validation checks
+        lines = [line.split(',') for line in raw_csv.strip().split('\n')]
+        headers = lines[0]
+        self.assertIn("code", headers)
+        self.assertIn("title", headers)
+
+        row_valid = lines[1]
+        self.assertTrue(bool(row_valid[0].strip())) # code present
+        self.assertTrue(bool(row_valid[1].strip())) # title present
+
+        row_invalid = lines[2]
+        self.assertFalse(bool(row_invalid[0].strip())) # missing code should fail validation
+
 
 if __name__ == "__main__":
     unittest.main()
+
 

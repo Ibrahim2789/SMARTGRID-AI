@@ -164,6 +164,9 @@ async def run_optimization(request: Request) -> Dict[str, Any]:
     exec_ms = float(pipeline_result["executionTimeMs"])
     version_name = body.get("versionName") or f"Hybrid AI Schedule ({current_iso[:10]})"
 
+    voting_traceability = list(inputs.get("voting_traceability") or [])
+    voting_config = dict(inputs.get("voting_config") or {})
+
     client = require_supabase_client()
     try:
         # 1. Insert timetable_versions FIRST (published ONLY if 0 hard violations)
@@ -229,6 +232,8 @@ async def run_optimization(request: Request) -> Dict[str, Any]:
                     "summaryMetrics": fb,
                     "timeConfig": pipeline_result.get("timeConfig"),
                     "preValidation": pipeline_result.get("preValidation"),
+                    "votingConfig": voting_config,
+                    "votingTraceability": voting_traceability,
                 },
                 "assignments_snapshot": pipeline_result.get("entries") or pipeline_result["assignments"],
                 "created_by": auth_user.get("userId"),
@@ -257,6 +262,32 @@ async def run_optimization(request: Request) -> Dict[str, Any]:
                 "created_at": current_iso,
             },
         )
+
+        # 5. Persist optimization_poll_traceability rows if any voting polls influenced this run
+        if voting_traceability:
+            trace_rows = [
+                {
+                    "id": f"opt-trace-{uuid.uuid4().hex[:10]}",
+                    "institution_id": uni_id,
+                    "optimization_run_id": run_id,
+                    "timetable_version_id": version_id,
+                    "poll_id": tr.get("pollId"),
+                    "batch_id": tr.get("batchId"),
+                    "poll_category": tr.get("pollCategory"),
+                    "winning_option": tr.get("winningOption"),
+                    "win_percentage": float(tr.get("winPercentage") or 0.0),
+                    "participation_percentage": float(tr.get("participationPercentage") or 0.0),
+                    "preference_strength": float(tr.get("preferenceStrength") or 0.0),
+                    "normalized_weight": float(tr.get("normalizedWeight") or 0.0),
+                    "low_participation_flag": bool(tr.get("isLowParticipation", False)),
+                    "created_at": current_iso,
+                }
+                for tr in voting_traceability
+            ]
+            try:
+                client.insert("optimization_poll_traceability", trace_rows)
+            except SupabaseQueryError:
+                pass
     except SupabaseQueryError as err:
         raise_supabase_http_error(err)
 
@@ -264,6 +295,8 @@ async def run_optimization(request: Request) -> Dict[str, Any]:
         "runId": run_id,
         "timetableVersionId": version_id,
         "status": version_status,
+        "votingConfig": voting_config,
+        "votingTraceability": voting_traceability,
         **pipeline_result,
     }
 

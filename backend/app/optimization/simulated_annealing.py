@@ -10,7 +10,11 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 from .chromosome import SessionGene, TimetableChromosome
 from .constraints import ScheduleSession, TimeSlotConfig
 from .fitness import evaluate_timetable_fitness, is_slot_blocked, normalize_unavailable_slots_map
-from .genetic_algorithm import _build_compatible_rooms_map
+from .genetic_algorithm import (
+    _build_compatible_rooms_map,
+    _slot_pref_penalty,
+    propose_fairness_swap_or_relocation,
+)
 
 
 def _generate_gap_aware_neighbor(
@@ -22,8 +26,10 @@ def _generate_gap_aware_neighbor(
     unavail_inst: Optional[Dict[str, List[Any]]] = None,
     unavail_room: Optional[Dict[str, List[Any]]] = None,
     comp_map: Optional[Dict[str, List[Dict[str, Any]]]] = None,
+    weights: Optional[Dict[str, float]] = None,
+    student_preferences: Optional[List[Dict[str, Any]]] = None,
 ) -> Optional[TimetableChromosome]:
-    """Propose a valid single-session move, biased toward closing student gaps without changing staff."""
+    """Propose a valid move (fairness swap/relocation when student_fairness > 0, or gap/preference-aware move) without changing staff."""
     unlocked = [s for s in sessions if not s.is_locked and s.session_id in chromo.genes]
     if not unlocked:
         return None
@@ -31,6 +37,31 @@ def _generate_gap_aware_neighbor(
     u_inst = unavail_inst or {}
     u_room = unavail_room or {}
     room_map = comp_map or _build_compatible_rooms_map(sessions, rooms)
+
+    w = weights or {}
+    fair_w = max(0.0, float(w.get("student_fairness", 0.25)))
+    pref_w = max(0.0, float(w.get("preferences", 0.15)))
+
+    if fair_w > 0.05 and rng.random() < min(0.65, 0.10 + fair_w * 0.55):
+        swap_neighbor = propose_fairness_swap_or_relocation(
+            chromo,
+            sessions,
+            rooms,
+            time_config,
+            rng,
+            unavail_inst=u_inst,
+            unavail_room=u_room,
+            comp_map=room_map,
+            student_preferences=student_preferences,
+        )
+        if swap_neighbor is not None:
+            return swap_neighbor
+
+    prefs_by_batch: Dict[str, Dict[str, Any]] = {}
+    for sp in student_preferences or []:
+        bid = str(sp.get("batch_id") or sp.get("batchId") or "")
+        if bid and bid not in prefs_by_batch:
+            prefs_by_batch[bid] = sp
 
     group_day_windows: Dict[tuple, List[tuple]] = defaultdict(list)
     staff_day_windows: Dict[tuple, List[tuple]] = defaultdict(list)
@@ -119,9 +150,11 @@ def _generate_gap_aware_neighbor(
                 continue
 
             if cohort_items:
-                local_cost = float(min(min(abs(st_m - ex_e), abs(ex_s - en_m)) for ex_s, ex_e in cohort_items))
+                gap_c = float(min(min(abs(st_m - ex_e), abs(ex_s - en_m)) for ex_s, ex_e in cohort_items))
             else:
-                local_cost = 15.0 + (st_m - time_config.day_start_min) * 0.05
+                gap_c = 15.0 + (st_m - time_config.day_start_min) * 0.05
+            pref_c = _slot_pref_penalty(sess, target_day, st_m, en_m, prefs_by_batch) * (0.5 + 4.0 * pref_w)
+            local_cost = gap_c + pref_c
 
             if local_cost < best_local_cost:
                 best_local_cost = local_cost
@@ -195,6 +228,8 @@ def run_simulated_annealing(
             unavail_inst=unavail_inst,
             unavail_room=unavail_room,
             comp_map=comp_map,
+            weights=weights,
+            student_preferences=student_preferences,
         )
         if neighbor is None:
             temp *= cooling_rate

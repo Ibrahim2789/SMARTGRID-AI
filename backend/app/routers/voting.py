@@ -368,33 +368,52 @@ async def submit_br_poll(request: Request) -> Dict[str, Any]:
 
     current_iso = now_iso()
     poll_id = f"poll-{uuid.uuid4()}"
-    scope = "submitting_batch" if target_scope == "submitting_batch" else "all_batches"
+    scope = "submitting_batch" if target_scope == "submitting_batch" else ("selected_batches" if target_scope == "selected_batches" else "all_batches")
     user_inst_id = auth_user.get("institutionId") or ""
 
-    try:
-        client.insert(
-            "polls",
-            {
-                "id": poll_id,
-                "title": clean_title,
-                "description": clean_description,
-                "batch_id": assignment["batch_id"],
-                "target_scope": scope,
-                "submitted_by_user_id": auth_user["userId"],
-                "submitted_by_name": assignment["user_name"],
-                "br_gender_role": assignment["gender_role"],
-                "status": "Pending",
-                "rejection_reason": None,
-                "result_visibility": "after_vote",
-                "start_at": None,
-                "end_at": end_at or None,
-                "published_at": None,
-                "closed_at": None,
-                "institution_id": user_inst_id,
-                "created_at": current_iso,
-                "updated_at": current_iso,
-            },
+    from app.optimization.preference_aggregator import ALLOWED_POLL_CATEGORIES
+    raw_cat = str(body.get("pollCategory") or body.get("poll_category") or "general_suggestion").strip().lower()
+    if raw_cat not in ALLOWED_POLL_CATEGORIES:
+        raise HTTPException(
+            status_code=400,
+            detail={"error": f"Invalid poll category '{raw_cat}'. Allowed: {', '.join(sorted(ALLOWED_POLL_CATEGORIES))}."},
         )
+    target_batch_ids = body.get("targetBatchIds") if isinstance(body.get("targetBatchIds"), list) else []
+
+    poll_row = {
+        "id": poll_id,
+        "title": clean_title,
+        "description": clean_description,
+        "batch_id": assignment["batch_id"],
+        "target_scope": scope,
+        "target_batch_ids": target_batch_ids,
+        "poll_category": raw_cat,
+        "optimizer_approval_status": "pending_review",
+        "submitted_by_user_id": auth_user["userId"],
+        "submitted_by_name": assignment["user_name"],
+        "br_gender_role": assignment["gender_role"],
+        "status": "Pending",
+        "rejection_reason": None,
+        "result_visibility": "after_vote",
+        "start_at": None,
+        "end_at": end_at or None,
+        "published_at": None,
+        "closed_at": None,
+        "institution_id": user_inst_id,
+        "created_at": current_iso,
+        "updated_at": current_iso,
+    }
+
+    try:
+        try:
+            client.insert("polls", poll_row)
+        except SupabaseQueryError:
+            fallback_row = {
+                k: v
+                for k, v in poll_row.items()
+                if k not in ("poll_category", "target_batch_ids", "optimizer_approval_status")
+            }
+            client.insert("polls", fallback_row)
         client.insert(
             "poll_options",
             [
@@ -776,3 +795,200 @@ def delete_poll(pollId: str, request: Request) -> Dict[str, Any]:
         raise_supabase_http_error(err)
 
     return {"message": "Question permanently removed."}
+
+
+@router.patch("/api/voting/admin/polls/{pollId}/optimizer-approval")
+async def update_poll_optimizer_approval(pollId: str, request: Request) -> Dict[str, Any]:
+    auth_user = require_auth_user(request, allowed_roles=["admin"])
+    body = await parse_json_body(request)
+    approval_status = str(body.get("approvalStatus") or "").strip()
+    rejection_reason = str(body.get("rejectionReason") or "").strip()
+
+    if approval_status not in ("pending_review", "approved_for_optimizer", "rejected_from_optimizer"):
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "Invalid approval status for optimizer integration."},
+        )
+
+    if approval_status == "rejected_from_optimizer" and not rejection_reason:
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "Please provide a reason for excluding this poll from the optimizer."},
+        )
+
+    current_iso = now_iso()
+    client = require_supabase_client()
+    try:
+        poll = client.select_one("polls", filters={"id": f"eq.{pollId}"})
+        if not poll:
+            raise HTTPException(status_code=404, detail={"error": "Poll not found."})
+
+        client.update(
+            "polls",
+            {"id": f"eq.{pollId}"},
+            {
+                "optimizer_approval_status": approval_status,
+                "optimizer_approved_by": auth_user.get("userId"),
+                "optimizer_approved_at": current_iso if approval_status == "approved_for_optimizer" else None,
+                "optimizer_rejection_reason": rejection_reason if approval_status == "rejected_from_optimizer" else None,
+                "updated_at": current_iso,
+            },
+        )
+    except SupabaseQueryError as err:
+        raise_supabase_http_error(err)
+
+    updated_polls = build_enriched_polls_for_user(auth_user)
+    updated_poll = next((p for p in updated_polls if p["id"] == pollId), None)
+    return {
+        "message": f"Poll optimizer approval status updated to {approval_status}.",
+        "poll": updated_poll,
+    }
+
+
+@router.get("/api/voting/admin/active-preferences")
+def get_active_preferences_overview(request: Request) -> Dict[str, Any]:
+    auth_user = require_auth_user(request)
+    uni_id = auth_user.get("institutionId") or ""
+    client = require_supabase_client()
+    try:
+        inst = client.select_one("institutions", filters={"id": f"eq.{uni_id}"}) or {}
+    except SupabaseQueryError:
+        inst = {}
+
+    inf_weight = float(inst.get("voting_preference_influence") or 0.65)
+    low_thresh = float(inst.get("low_participation_threshold") or 25.0)
+
+    from app.optimization.preference_aggregator import aggregate_approved_voting_preferences
+    agg = aggregate_approved_voting_preferences(uni_id, inf_weight, low_thresh)
+
+    return {
+        "useVotingPreferences": bool(inst.get("use_voting_preferences", True)),
+        "votingPreferenceInfluence": inf_weight,
+        "lowParticipationThreshold": low_thresh,
+        "batchPreferences": agg.get("batchPreferences", {}),
+        "traceability": agg.get("traceability", []),
+    }
+
+
+@router.get("/api/voting/admin/optimizer-config")
+def get_optimizer_voting_config(request: Request) -> Dict[str, Any]:
+    auth_user = require_auth_user(request)
+    uni_id = auth_user.get("institutionId") or ""
+    client = require_supabase_client()
+    try:
+        inst = client.select_one("institutions", filters={"id": f"eq.{uni_id}"}) or {}
+    except SupabaseQueryError:
+        inst = {}
+
+    return {
+        "useVotingPreferences": bool(inst.get("use_voting_preferences", True)),
+        "votingPreferenceInfluence": float(inst.get("voting_preference_influence") or 0.65),
+        "lowParticipationThreshold": float(inst.get("low_participation_threshold") or 25.0),
+    }
+
+
+@router.patch("/api/voting/admin/optimizer-config")
+async def update_optimizer_voting_config(request: Request) -> Dict[str, Any]:
+    auth_user = require_auth_user(request, allowed_roles=["admin"])
+    uni_id = auth_user.get("institutionId") or ""
+    body = await parse_json_body(request)
+
+    patch_data: Dict[str, Any] = {}
+    if "useVotingPreferences" in body:
+        patch_data["use_voting_preferences"] = bool(body["useVotingPreferences"])
+    if "votingPreferenceInfluence" in body:
+        patch_data["voting_preference_influence"] = float(body["votingPreferenceInfluence"])
+    if "lowParticipationThreshold" in body:
+        patch_data["low_participation_threshold"] = float(body["lowParticipationThreshold"])
+
+    client = require_supabase_client()
+    try:
+        client.update("institutions", {"id": f"eq.{uni_id}"}, patch_data)
+    except SupabaseQueryError as err:
+        raise_supabase_http_error(err)
+
+    return {"message": "Voting optimizer configuration updated successfully."}
+
+
+@router.post("/api/timetables/{versionId}/feedback", status_code=201)
+async def submit_timetable_feedback(versionId: str, request: Request) -> Dict[str, Any]:
+    auth_user = require_auth_user(request)
+    uni_id = auth_user.get("institutionId") or ""
+    body = await parse_json_body(request)
+
+    timings = int(body.get("timingsRating") or body.get("timings_rating") or 5)
+    compactness = int(body.get("compactnessRating") or body.get("compactness_rating") or 5)
+    gaps = int(body.get("gapsRating") or body.get("gaps_rating") or 5)
+    free_day = int(body.get("freeDayRating") or body.get("free_day_rating") or 5)
+    overall = int(body.get("overallRating") or body.get("overall_rating") or 5)
+    note = str(body.get("preferredAdjustmentNote") or body.get("preferred_adjustment_note") or "").strip()
+
+    client = require_supabase_client()
+    try:
+        tt = client.select_one("timetable_versions", filters={"id": f"eq.{versionId}", "institution_id": f"eq.{uni_id}"})
+        if not tt:
+            raise HTTPException(status_code=404, detail={"error": "Timetable version not found."})
+
+        feedback_id = f"fb-{uuid.uuid4().hex[:10]}"
+        current_iso = now_iso()
+        client.insert(
+            "timetable_feedback",
+            {
+                "id": feedback_id,
+                "institution_id": uni_id,
+                "timetable_version_id": versionId,
+                "user_id": auth_user["userId"],
+                "batch_id": auth_user.get("batchId"),
+                "section_code": auth_user.get("section"),
+                "timings_rating": timings,
+                "compactness_rating": compactness,
+                "gaps_rating": gaps,
+                "free_day_rating": free_day,
+                "overall_rating": overall,
+                "preferred_adjustment_note": note,
+                "created_at": current_iso,
+            },
+            upsert=True,
+            on_conflict="timetable_version_id,user_id",
+        )
+    except SupabaseQueryError as err:
+        raise_supabase_http_error(err)
+
+    return {"message": "Thank you! Your feedback has been recorded and will guide future optimization iterations."}
+
+
+@router.get("/api/timetables/{versionId}/feedback")
+def get_timetable_feedback(versionId: str, request: Request) -> Dict[str, Any]:
+    auth_user = require_auth_user(request)
+    uni_id = auth_user.get("institutionId") or ""
+    client = require_supabase_client()
+    try:
+        rows = client.select(
+            "timetable_feedback",
+            filters={"timetable_version_id": f"eq.{versionId}", "institution_id": f"eq.{uni_id}"},
+        )
+    except SupabaseQueryError as err:
+        raise_supabase_http_error(err)
+
+    total = len(rows)
+    if total == 0:
+        return {"totalFeedback": 0, "averages": {}, "feedback": []}
+
+    avg_timings = sum(r["timings_rating"] for r in rows) / total
+    avg_compact = sum(r["compactness_rating"] for r in rows) / total
+    avg_gaps = sum(r["gaps_rating"] for r in rows) / total
+    avg_free = sum(r["free_day_rating"] for r in rows) / total
+    avg_overall = sum(r["overall_rating"] for r in rows) / total
+
+    return {
+        "totalFeedback": total,
+        "averages": {
+            "timings": round(avg_timings, 2),
+            "compactness": round(avg_compact, 2),
+            "gaps": round(avg_gaps, 2),
+            "freeDay": round(avg_free, 2),
+            "overall": round(avg_overall, 2),
+        },
+        "feedback": rows,
+    }
+

@@ -91,6 +91,8 @@ def _student_slot_heuristic_score(
     eligible_days_count: int,
     gap_weight: float = 1.0,
     pref_weight: float = 1.0,
+    fair_urgency_mult: float = 1.0,
+    window_pref_scale: float = 1.0,
 ) -> float:
     """Lower score is better: strongly favors compact contiguous daily blocks without student gaps or duplicate course days."""
     score = 0.0
@@ -107,15 +109,16 @@ def _student_slot_heuristic_score(
     # 2. Student gap & day consolidation logic across all cohort keys (including shared electives)
     breaks = time_config.get_day_breaks(day)
     trans_break = time_config.friday_short_break if day == "Fri" else time_config.short_break_minutes
+    eff_gap_weight = gap_weight
 
     for gk in session.student_group_keys:
         existing = group_day_windows.get((gk, day), [])
         if not existing:
             active_days = group_days_active.get(gk, set())
             if len(active_days) >= 3 and day not in active_days:
-                score += 9.0 * gap_weight
+                score += 9.0 * eff_gap_weight
             else:
-                score += 3.0 * gap_weight
+                score += 3.0 * eff_gap_weight
         else:
             min_dist = min(
                 min(abs(start_min - ex_e), abs(ex_s - end_min))
@@ -127,34 +130,68 @@ def _student_slot_heuristic_score(
                 for ex_s, ex_e in existing
             )
             if min_dist <= trans_break + 5:
-                score -= 18.0 * gap_weight
+                score -= 18.0 * eff_gap_weight
             elif in_break_window and min_dist <= 95:
-                score -= 10.0 * gap_weight
+                score -= 10.0 * eff_gap_weight
             else:
-                score += min_dist * 0.45 * gap_weight
+                score += min_dist * 0.45 * eff_gap_weight
 
             total_day_mins = sum(e - s for s, e in existing) + (end_min - start_min)
             if total_day_mins > 300:
-                score += (total_day_mins - 300) * 0.15 * gap_weight
+                score += (total_day_mins - 300) * 0.15 * eff_gap_weight
 
-    # 3. Student preference window bias
+    # 3. Student preference window bias (scaled by preferenceStrength and fairness urgency when present)
     pref = student_prefs_by_batch.get(session.batch_id) or {}
-    if pref.get("avoid_early_8am", True) and start_min < 9 * 60:
-        score += 8.0 * pref_weight
-    if pref.get("avoid_late_after_4pm", True) and end_min > 16 * 60 + 15:
-        score += 9.0 * pref_weight
-    pref_win = str(pref.get("preferred_time_window") or "balanced")
-    if pref_win == "morning" and start_min >= 14 * 60:
-        score += 3.5 * pref_weight
-    elif pref_win == "afternoon" and start_min < 12 * 60:
-        score += 3.5 * pref_weight
-    elif pref_win == "balanced":
-        if start_min < 9 * 60 or end_min > 15 * 60 + 30:
-            score += 4.0 * pref_weight
+    if pref:
+        raw_strength = pref.get("preferenceStrength", pref.get("preference_strength"))
+        str_mult = 1.0 if raw_strength is None else max(0.0, float(raw_strength) / 0.65)
+        cat_strengths = pref.get("categoryStrengths") or {}
 
-    pref_free = str(pref.get("preferred_free_day") or "").strip()[:3].capitalize()
-    if pref_free and day == pref_free:
-        score += 12.0 * pref_weight
+        def _cm(c_key: str) -> float:
+            if c_key in cat_strengths:
+                return max(0.0, float(cat_strengths[c_key]) / 0.65)
+            return str_mult
+
+        pw = pref_weight * str_mult * fair_urgency_mult
+        if pw > 0.0:
+            if pref.get("avoid_early_8am", True) and start_min < 9 * 60:
+                score += 8.0 * pw
+            if pref.get("avoid_late_after_4pm", True) and end_min > 16 * 60 + 15:
+                score += 9.0 * pw
+
+            pref_lab_win = str(pref.get("preferred_lab_window") or pref.get("preferredLabWindow") or "").strip().lower()
+            if session.is_lab and pref_lab_win:
+                lab_pw = pref_weight * _cm("lab_timing_preferences") * fair_urgency_mult * window_pref_scale
+                if pref_lab_win == "morning":
+                    if start_min >= 12 * 60:
+                        score += 18.0 * lab_pw
+                    else:
+                        score -= 10.0 * lab_pw
+                elif pref_lab_win == "afternoon":
+                    if start_min < 12 * 60:
+                        score += 18.0 * lab_pw
+                    else:
+                        score -= 10.0 * lab_pw
+            else:
+                pref_win = str(pref.get("preferred_time_window") or "balanced")
+                win_pw = pref_weight * _cm("preferred_lecture_timing") * fair_urgency_mult * window_pref_scale
+                if pref_win == "morning":
+                    if start_min >= 12 * 60 + 30:
+                        score += 16.0 * win_pw
+                    else:
+                        score -= 8.0 * win_pw
+                elif pref_win == "afternoon":
+                    if start_min < 12 * 60:
+                        score += 16.0 * win_pw
+                    else:
+                        score -= 8.0 * win_pw
+                elif pref_win == "balanced":
+                    if start_min < 9 * 60 or end_min > 15 * 60 + 30:
+                        score += 4.0 * win_pw
+
+            pref_free = str(pref.get("preferred_free_day") or "").strip()[:3].capitalize()
+            if pref_free and day == pref_free:
+                score += 24.0 * pref_weight * _cm("preferred_free_day") * fair_urgency_mult
 
     # Slight bias against late-day slots when ties occur
     score += (start_min - time_config.day_start_min) * 0.008
@@ -185,6 +222,8 @@ def dsatur_construct_schedule(
     w = weights or {}
     gap_w = max(0.25, float(w.get("student_gap_minimization", 0.35)) / 0.35)
     pref_w = max(0.25, float(w.get("preferences", 0.15)) / 0.15)
+    raw_fair = max(0.0, float(w.get("student_fairness", 0.25)))
+    fair_w = raw_fair / 0.25
 
     prefs_by_batch: Dict[str, Dict[str, Any]] = {}
     for sp in student_preferences or []:
@@ -194,6 +233,67 @@ def dsatur_construct_schedule(
 
     graph = build_conflict_graph(sessions)
     sess_by_id = {s.session_id: s for s in sessions}
+    session_order = {s.session_id: idx for idx, s in enumerate(sessions)}
+
+    # Per-batch fairness tracking during constructive placement
+    batch_total_sessions: Dict[str, int] = defaultdict(int)
+    for s in sessions:
+        if not (s.is_locked and s.pinned_slot):
+            batch_total_sessions[s.batch_id] += 1
+    batch_hardship: Dict[str, float] = defaultdict(float)
+    batch_pref_granted: Dict[str, float] = defaultdict(float)
+
+    def _estimate_placement_deltas(sess_obj: ScheduleSession, day: str, st_m: int, en_m: int) -> Tuple[float, float]:
+        """Return (hardship_delta, pref_granted_delta) for placing sess_obj at (day, st_m, en_m)."""
+        hardship = 0.0
+        granted = 0.0
+        pref = prefs_by_batch.get(sess_obj.batch_id) or {}
+        if pref:
+            pref_free = str(pref.get("preferred_free_day") or "").strip()[:3].capitalize()
+            if pref_free and day == pref_free:
+                hardship += 3.0
+            if pref.get("avoid_early_8am", True) and st_m < 9 * 60:
+                hardship += 1.0
+            if pref.get("avoid_late_after_4pm", True) and en_m > 16 * 60 + 15:
+                hardship += 1.5
+            if sess_obj.is_lab:
+                p_lw = str(pref.get("preferred_lab_window") or pref.get("preferredLabWindow") or "").strip().lower()
+                if p_lw == "morning":
+                    if st_m >= 12 * 60:
+                        hardship += 2.0
+                    else:
+                        granted += 1.0
+                elif p_lw == "afternoon":
+                    if st_m < 12 * 60:
+                        hardship += 2.0
+                    else:
+                        granted += 1.0
+            else:
+                p_w = str(pref.get("preferred_time_window") or "balanced")
+                if p_w == "morning":
+                    if st_m >= 12 * 60 + 30:
+                        hardship += 1.5
+                    else:
+                        granted += 1.0
+                elif p_w == "afternoon":
+                    if st_m < 12 * 60:
+                        hardship += 1.5
+                    else:
+                        granted += 1.0
+        # Also penalize idle gaps created on same day for the cohort
+        breaks = time_config.get_day_breaks(day)
+        trans_b = time_config.friday_short_break if day == "Fri" else time_config.short_break_minutes
+        existing = group_busy.get((sess_obj.batch_id, day), [])
+        if existing:
+            min_d = min(min(abs(st_m - ex_e), abs(ex_s - en_m)) for ex_s, ex_e in existing)
+            in_b = any(
+                (ex_e <= b_s + 15 and st_m >= b_e - 15) or (en_m <= b_s + 15 and ex_s >= b_e - 15)
+                for b_s, b_e in breaks
+                for ex_s, ex_e in existing
+            )
+            if min_d > trans_b + 5 and not (in_b and min_d <= 95):
+                hardship += min(3.0, min_d / 60.0)
+        return hardship, granted
 
     # Dynamic occupancy tables
     staff_busy: Dict[Tuple[str, str], List[Tuple[int, int]]] = defaultdict(list)
@@ -237,7 +337,7 @@ def dsatur_construct_schedule(
 
     # Pre-filter compatible rooms
     compatible_rooms_by_session: Dict[str, List[Dict[str, Any]]] = {}
-    for sid in remaining_ids:
+    for sid in sorted(remaining_ids, key=lambda x: session_order[x]):
         sess = sess_by_id[sid]
         comp = [r for r in rooms if _is_room_compatible(sess, r)]
         if not comp:
@@ -256,8 +356,32 @@ def dsatur_construct_schedule(
             if nb in chromo.genes:
                 saturation[sid] += 1
 
-    # 2. DSatur iterative placement
+    # 2. DSatur iterative placement with deterministic tie-breaking and scarcity-moderated preference quotas
+    # Count per-window lecture demand vs non-free-day room-slot supply so moderation only activates on genuine contention
+    lec_rooms_cnt = max(1, sum(1 for r in rooms if r.get("is_available", r.get("isAvailable", True)) and "lab" not in str(r.get("type") or r.get("room_type") or "").lower()))
+    morn_demand = sum(
+        1 for sid in remaining_ids
+        if not sess_by_id[sid].is_lab and (prefs_by_batch.get(sess_by_id[sid].batch_id) or {}).get("preferred_time_window") == "morning"
+    )
+    aft_demand = sum(
+        1 for sid in remaining_ids
+        if not sess_by_id[sid].is_lab and (prefs_by_batch.get(sess_by_id[sid].batch_id) or {}).get("preferred_time_window") == "afternoon"
+    )
+    morn_slots_avail = lec_rooms_cnt * sum(
+        sum(1 for sl in time_config.get_day_slots(d) if sl.start_min < 12 * 60 + 30)
+        for d in time_config.working_days
+    )
+    aft_slots_avail = lec_rooms_cnt * sum(
+        sum(1 for sl in time_config.get_day_slots(d) if sl.start_min >= 12 * 60 + 30)
+        for d in time_config.working_days
+    )
+    morn_contested = morn_demand > int(morn_slots_avail * 0.85)
+    aft_contested = aft_demand > int(aft_slots_avail * 0.85)
+
     while remaining_ids:
+        remaining_batches = {sess_by_id[s].batch_id for s in remaining_ids}
+        min_batch_hardship = min((batch_hardship[b] for b in remaining_batches), default=0.0)
+
         next_sid = max(
             remaining_ids,
             key=lambda sid: (
@@ -266,10 +390,27 @@ def dsatur_construct_schedule(
                 sess_by_id[sid].duration_minutes,
                 len(graph[sid]),
                 -len(compatible_rooms_by_session[sid]),
+                -session_order[sid],
             ),
         )
         sess = sess_by_id[next_sid]
         remaining_ids.remove(next_sid)
+
+        excess_hardship = max(0.0, batch_hardship[sess.batch_id] - min_batch_hardship)
+        fair_urgency_mult = 1.0 + (0.20 * min(1.5, raw_fair) * min(2.0, excess_hardship) if raw_fair > 0.0 else 0.0)
+        tot_b = max(1, batch_total_sessions[sess.batch_id])
+        my_pref_ratio = batch_pref_granted[sess.batch_id] / tot_b
+        peer_min_ratio = min(
+            (batch_pref_granted[b] / max(1, batch_total_sessions[b]) for b in remaining_batches if b != sess.batch_id),
+            default=my_pref_ratio,
+        )
+        b_pref_win = (prefs_by_batch.get(sess.batch_id) or {}).get("preferred_time_window")
+        sess_contested = (b_pref_win == "morning" and morn_contested) or (b_pref_win == "afternoon" and aft_contested)
+        if raw_fair > 0.0 and sess_contested and my_pref_ratio >= 0.50 and my_pref_ratio > peer_min_ratio + 0.10:
+            # Attenuate excess scarce window claims smoothly as student_fairness rises without disabling preference/compactness
+            window_pref_scale = max(0.35, 1.0 - min(1.0, raw_fair) * (0.40 + 0.50 * (my_pref_ratio - peer_min_ratio)))
+        else:
+            window_pref_scale = 1.0
 
         candidate_rooms = list(compatible_rooms_by_session[next_sid])
         if randomize_ties:
@@ -314,6 +455,8 @@ def dsatur_construct_schedule(
                     eligible_days_count,
                     gap_weight=gap_w,
                     pref_weight=pref_w,
+                    fair_urgency_mult=fair_urgency_mult,
+                    window_pref_scale=window_pref_scale,
                 )
 
                 # Pick tightest available compatible room
@@ -337,6 +480,10 @@ def dsatur_construct_schedule(
 
         if best_choice is not None:
             _, b_day, b_slot, b_room, st_m, en_m, cov = best_choice
+            h_delta, g_delta = _estimate_placement_deltas(sess, b_day, st_m, en_m)
+            batch_hardship[sess.batch_id] += h_delta
+            batch_pref_granted[sess.batch_id] += g_delta
+
             gene = SessionGene(
                 session_id=next_sid,
                 day=b_day,

@@ -14,6 +14,7 @@ import {
 import {
   AuthenticatedVotingUser,
   PollDTO,
+  PollCategory,
   BatchDTO,
   fetchVotingOverview,
   submitBrQuestion
@@ -52,6 +53,7 @@ export const BrDashboardPage: React.FC<BrDashboardPageProps> = ({
     return d.toISOString().split('T')[0];
   });
   const [targetScope, setTargetScope] = useState<'all_batches' | 'submitting_batch'>('all_batches');
+  const [pollCategory, setPollCategory] = useState<PollCategory>('preferred_lecture_timing');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitBanner, setSubmitBanner] = useState<{
     type: 'success' | 'error';
@@ -131,7 +133,8 @@ export const BrDashboardPage: React.FC<BrDashboardPageProps> = ({
         description,
         options: trimmedOptions,
         endAt: endIso,
-        targetScope
+        targetScope,
+        pollCategory
       });
       setPolls(prev => [result.poll, ...prev]);
       setTitle('');
@@ -391,6 +394,23 @@ export const BrDashboardPage: React.FC<BrDashboardPageProps> = ({
                     </option>
                   </select>
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-[#171717] mb-1.5">
+                  Timetable Optimization Category
+                </label>
+                <select
+                  value={pollCategory}
+                  onChange={e => setPollCategory(e.target.value as PollCategory)}
+                  className="input-field h-10 text-xs"
+                >
+                  <option value="preferred_lecture_timing">Preferred Lecture Timing Window</option>
+                  <option value="preferred_free_day">Preferred Free / Light Day</option>
+                  <option value="lab_timing_preferences">Lab Session Window Preference</option>
+                  <option value="break_schedule_preference">Break &amp; Daily Compactness Preference</option>
+                  <option value="general_suggestion">General Academic Suggestion (Advisory)</option>
+                </select>
               </div>
 
               <button

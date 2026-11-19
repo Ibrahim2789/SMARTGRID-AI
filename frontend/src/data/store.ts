@@ -232,6 +232,24 @@ export interface FeedbackPollItem {
   createdAt: string;
 }
 
+export interface LocalImportHistoryRecord {
+  id: string;
+  institutionId: string;
+  userName: string;
+  userEmail: string;
+  category: string;
+  fileName: string;
+  duplicateMode: 'skip' | 'update' | 'stop';
+  status: 'completed' | 'partial' | 'failed' | 'rolled_back';
+  totalRows: number;
+  createdCount: number;
+  updatedCount: number;
+  skippedCount: number;
+  failedCount: number;
+  durationMs: number;
+  createdAt: string;
+}
+
 export interface InstitutionalDataStore {
   institutionProfile?: InstitutionProfile;
   selectedClassGroupId?: string;
@@ -250,6 +268,7 @@ export interface InstitutionalDataStore {
   scenarios: TimetableScenario[];
   auditLogs: AuditLogEntry[];
   feedbackPolls?: FeedbackPollItem[];
+  importHistory?: LocalImportHistoryRecord[];
 }
 
 const ACTIVE_INST_KEY = 'smartgrid_active_inst_id_v6';
@@ -1246,8 +1265,25 @@ export const institutionalStore = {
     notifyListeners();
   },
 
+  recordImportHistory(entry: Omit<LocalImportHistoryRecord, 'id' | 'institutionId' | 'createdAt'>): LocalImportHistoryRecord {
+    const record: LocalImportHistoryRecord = {
+      ...entry,
+      id: `imp-loc-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      institutionId: currentInstitutionId,
+      createdAt: new Date().toISOString()
+    };
+    currentStore = {
+      ...currentStore,
+      importHistory: [record, ...(currentStore.importHistory || [])].slice(0, 50)
+    };
+    notifyListeners();
+    return record;
+  },
+
   importBulkCatalogData(payload: {
-    mode: 'merge' | 'replace';
+    mode?: 'merge' | 'replace';
+    duplicateMode?: 'skip' | 'update' | 'stop';
+    skipSync?: boolean;
     departments?: Array<{ code: string; name: string; school?: string; subDepartments?: string[] }>;
     rooms?: Array<{
       code: string;
@@ -1256,6 +1292,19 @@ export const institutionalStore = {
       type: Room['type'];
       buildingName?: string;
       equipment?: string[];
+      isAvailable?: boolean;
+      assignedLabEngineerKey?: string;
+    }>;
+    laboratories?: Array<{
+      code: string;
+      name: string;
+      capacity: number;
+      buildingName?: string;
+      labCategory?: string;
+      departmentKey?: string;
+      assignedLabEngineerKey?: string;
+      equipment?: string[];
+      isAvailable?: boolean;
     }>;
     courses?: Array<{
       code: string;
@@ -1268,6 +1317,9 @@ export const institutionalStore = {
       requiredRoomType?: Room['type'];
       departmentKey?: string;
       subDepartment?: string;
+      assignedInstructorKey?: string;
+      assignedLabEngineerKey?: string;
+      labSessionMode?: Course['labSessionMode'];
       isElective?: boolean;
       electivePoolName?: string;
     }>;
@@ -1292,6 +1344,21 @@ export const institutionalStore = {
       homeRoom?: string;
       departmentKey?: string;
     }>;
+    enrollments?: Array<{
+      courseCode: string;
+      batchCode: string;
+      section?: string;
+    }>;
+    courseAssignments?: Array<{
+      courseCode: string;
+      batchCode: string;
+      sectionCode?: string;
+      instructorKey: string;
+      labEngineerKey?: string;
+      sessionType?: 'Lecture' | 'Lab';
+      sessionsPerWeek?: number;
+      expectedStudents?: number;
+    }>;
     sectionLinks?: Array<{
       courseCode: string;
       cohortCode: string;
@@ -1299,24 +1366,34 @@ export const institutionalStore = {
       isLab?: boolean;
     }>;
   }): {
+    created: number;
+    updated: number;
+    skipped: number;
+    failed: number;
     departmentsAdded: number;
     roomsAdded: number;
+    laboratoriesAdded: number;
     coursesAdded: number;
     instructorsAdded: number;
     cohortsAdded: number;
+    enrollmentsAdded: number;
+    assignmentsAdded: number;
     totalImported: number;
   } {
-    const mode = payload.mode;
+    const mode = payload.mode || 'merge';
+    const duplicateMode: 'skip' | 'update' | 'stop' =
+      payload.duplicateMode || (mode === 'replace' ? 'update' : 'skip');
     const now = Date.now();
     const palette = ['#1E3A8A', '#047857', '#B45309', '#6D28D9', '#0F766E', '#BE123C'];
 
     let nextDepartments = mode === 'replace' && payload.departments?.length ? [] : [...currentStore.departments];
     let nextPrograms = mode === 'replace' && payload.departments?.length ? [] : [...currentStore.programs];
     let nextBuildings = [...currentStore.buildings];
-    let nextRooms = mode === 'replace' && payload.rooms?.length ? [] : [...currentStore.rooms];
+    let nextRooms = mode === 'replace' && (payload.rooms?.length || payload.laboratories?.length) ? [] : [...currentStore.rooms];
     let nextCourses = mode === 'replace' && payload.courses?.length ? [] : [...currentStore.courses];
     let nextInstructors = mode === 'replace' && payload.instructors?.length ? [] : [...currentStore.instructors];
     let nextGroups = mode === 'replace' && payload.cohorts?.length ? [] : [...currentStore.studentGroups];
+    let nextSections = [...currentStore.sections];
 
     const ensureBuilding = (buildingName?: string): string => {
       const targetName = (buildingName || '').trim();
@@ -1334,6 +1411,13 @@ export const institutionalStore = {
       };
       nextBuildings = [...nextBuildings, created];
       return created.id;
+    };
+
+    const findDept = (deptKey?: string): Department | undefined => {
+      const raw = (deptKey || '').trim();
+      if (!raw) return undefined;
+      const low = raw.toLowerCase();
+      return nextDepartments.find(d => d.code.toLowerCase() === low || d.name.toLowerCase() === low);
     };
 
     const ensureDepartment = (deptKey?: string, explicitName?: string, school?: string): string => {
@@ -1387,16 +1471,27 @@ export const institutionalStore = {
       return progId;
     };
 
+    const findInstructor = (key?: string): Instructor | undefined => {
+      const clean = (key || '').trim().toLowerCase();
+      if (!clean) return undefined;
+      return (
+        nextInstructors.find(i => i.email.trim().toLowerCase() === clean) ||
+        nextInstructors.find(i => i.name.trim().toLowerCase() === clean)
+      );
+    };
+
+    let created = 0;
+    let updated = 0;
+    let skipped = 0;
+    const failed = 0;
+
+    // 1. Departments
     let departmentsAdded = 0;
     (payload.departments || []).forEach(d => {
       const code = d.code.trim().toUpperCase();
       const name = d.name.trim();
       if (!code && !name) return;
-      const existing = nextDepartments.find(
-        ex =>
-          (code && ex.code.toUpperCase() === code) ||
-          (name && ex.name.toLowerCase() === name.toLowerCase())
-      );
+      const existing = nextDepartments.find(ex => ex.code.toUpperCase() === code);
       if (!existing) {
         const createdId = ensureDepartment(code || name, name || code, d.school);
         if (d.subDepartments && d.subDepartments.length > 0) {
@@ -1407,103 +1502,112 @@ export const institutionalStore = {
           );
         }
         departmentsAdded++;
-      } else if (d.subDepartments && d.subDepartments.length > 0) {
-        const mergedSubs = Array.from(new Set([...(existing.subDepartments || []), ...d.subDepartments]));
+        created++;
+      } else if (duplicateMode === 'update') {
+        const mergedSubs =
+          d.subDepartments && d.subDepartments.length > 0
+            ? Array.from(new Set([...(existing.subDepartments || []), ...d.subDepartments]))
+            : existing.subDepartments;
         nextDepartments = nextDepartments.map(dep =>
-          dep.id === existing.id ? { ...dep, subDepartments: mergedSubs } : dep
+          dep.id === existing.id
+            ? {
+                ...dep,
+                name: name || dep.name,
+                school: d.school?.trim() || dep.school,
+                subDepartments: mergedSubs
+              }
+            : dep
         );
+        updated++;
+      } else {
+        skipped++;
       }
     });
 
+    // 2. Classrooms & Laboratories
     let roomsAdded = 0;
-    const seenRoomCodes = new Set(nextRooms.map(r => r.code.toUpperCase()));
-    (payload.rooms || []).forEach((r, idx) => {
+    let laboratoriesAdded = 0;
+    const combinedRooms = [
+      ...(payload.rooms || []).map(r => ({ ...r, _isLabCategory: r.type === 'lab' })),
+      ...(payload.laboratories || []).map(l => ({
+        code: l.code,
+        name: l.name,
+        capacity: l.capacity,
+        type: 'lab' as Room['type'],
+        buildingName: l.buildingName,
+        equipment: l.equipment,
+        isAvailable: l.isAvailable,
+        assignedLabEngineerKey: l.assignedLabEngineerKey,
+        _isLabCategory: true
+      }))
+    ];
+
+    combinedRooms.forEach((r, idx) => {
       const code = r.code.trim().toUpperCase();
-      if (!code || seenRoomCodes.has(code)) return;
-      seenRoomCodes.add(code);
+      if (!code) return;
       const bldId = ensureBuilding(r.buildingName);
-      nextRooms = [
-        ...nextRooms,
-        {
-          id: `room-imp-${now}-${idx}`,
-          name: (r.name || `${code} (${r.type === 'lab' ? 'Laboratory' : 'Lecture Hall'})`).trim(),
-          code,
-          capacity: Math.max(1, Number(r.capacity) || 50),
-          type: r.type || 'lecture',
-          buildingId: bldId,
-          equipment:
-            r.equipment && r.equipment.length > 0
-              ? r.equipment
-              : r.type === 'lab'
-              ? ['Specialized Workstations', 'Safety System']
-              : ['Projector', 'Whiteboard'],
-          isAccessible: true,
-          isAvailable: true
-        }
-      ];
-      roomsAdded++;
+      const engObj = findInstructor(r.assignedLabEngineerKey);
+      const existing = nextRooms.find(ex => ex.code.toUpperCase() === code);
+
+      if (!existing) {
+        nextRooms = [
+          ...nextRooms,
+          {
+            id: `${r._isLabCategory ? 'lab' : 'room'}-imp-${now}-${idx}`,
+            name: (r.name || `${code} (${r.type === 'lab' ? 'Laboratory' : 'Lecture Hall'})`).trim(),
+            code,
+            capacity: Math.max(1, Number(r.capacity) || 50),
+            type: r.type || 'lecture',
+            buildingId: bldId,
+            equipment:
+              r.equipment && r.equipment.length > 0
+                ? r.equipment
+                : r.type === 'lab'
+                ? ['Specialized Workstations', 'Safety System']
+                : ['Projector', 'Whiteboard'],
+            isAccessible: true,
+            isAvailable: r.isAvailable ?? true,
+            assignedLabEngineerId: engObj?.id
+          }
+        ];
+        if (r._isLabCategory) laboratoriesAdded++;
+        else roomsAdded++;
+        created++;
+      } else if (duplicateMode === 'update') {
+        nextRooms = nextRooms.map(rm =>
+          rm.id === existing.id
+            ? {
+                ...rm,
+                name: (r.name || rm.name).trim(),
+                capacity: Math.max(1, Number(r.capacity) || rm.capacity),
+                type: r.type || rm.type,
+                buildingId: bldId || rm.buildingId,
+                equipment: r.equipment && r.equipment.length > 0 ? r.equipment : rm.equipment,
+                isAvailable: r.isAvailable ?? rm.isAvailable,
+                assignedLabEngineerId: engObj?.id ?? rm.assignedLabEngineerId
+              }
+            : rm
+        );
+        updated++;
+      } else {
+        skipped++;
+      }
     });
 
-    let coursesAdded = 0;
-    const seenCourseCodes = new Set(nextCourses.map(c => c.code.toUpperCase()));
-    (payload.courses || []).forEach((c, idx) => {
-      const code = c.code.trim().toUpperCase();
-      const title = c.title.trim();
-      if (!code || seenCourseCodes.has(code)) return;
-      seenCourseCodes.add(code);
-      const deptId = ensureDepartment(c.departmentKey);
-      const isPureLab = Boolean(c.isLab || c.requiredRoomType === 'lab' || code.endsWith('-L'));
-      const lecCr =
-        c.lectureCredits !== undefined
-          ? Math.max(0, Number(c.lectureCredits) || 0)
-          : isPureLab
-          ? 0
-          : Math.max(1, Number(c.creditHours) || 3);
-      const labCr =
-        c.labCredits !== undefined
-          ? Math.max(0, Number(c.labCredits) || 0)
-          : isPureLab
-          ? Math.max(1, Number(c.creditHours) || 1)
-          : 0;
-      const lecHours = lecCr * 1; // 1 credit = 1 lecture contact hour/week
-      const labHours = labCr * 3; // 1 credit = 3 continuous lab hours/week
-      const totalCr = Math.max(1, lecCr + labCr);
-      const weekly = Math.max(1, Number(c.weeklyContactHours) || lecHours + labHours);
-      nextCourses = [
-        ...nextCourses,
-        {
-          id: `crs-imp-${now}-${idx}`,
-          departmentId: deptId,
-          code,
-          title: title || code,
-          creditHours: totalCr,
-          lectureCredits: lecCr,
-          labCredits: labCr,
-          lectureHours: lecHours,
-          labHours: labHours,
-          weeklyContactHours: weekly,
-          requiredRoomType: c.requiredRoomType || (isPureLab && lecCr === 0 ? 'lab' : 'lecture'),
-          isElective: Boolean(c.isElective),
-          electivePoolName: c.electivePoolName?.trim() || undefined
-        }
-      ];
-      coursesAdded++;
-    });
-
+    // 3. Instructors (match by email first, never fragile name alone when email exists)
     let instructorsAdded = 0;
-    const seenInstKeys = new Set(
-      nextInstructors.flatMap(i => [i.name.trim().toLowerCase(), i.email.trim().toLowerCase()])
-    );
     (payload.instructors || []).forEach((inst, idx) => {
       const name = inst.name.trim();
-      const email = (
-        inst.email?.trim() ||
-        `${name.toLowerCase().replace(/[^a-z0-9]+/g, '.').replace(/^\.|\.$/g, '')}@university.edu`
-      ).toLowerCase();
-      if (!name || seenInstKeys.has(name.toLowerCase()) || seenInstKeys.has(email)) return;
-      seenInstKeys.add(name.toLowerCase());
-      seenInstKeys.add(email);
-      const deptId = ensureDepartment(inst.departmentKey);
+      const explicitEmail = inst.email?.trim().toLowerCase();
+      if (!name && !explicitEmail) return;
+      const email =
+        explicitEmail ||
+        `${name.toLowerCase().replace(/[^a-z0-9]+/g, '.').replace(/^\.|\.$/g, '')}@university.edu`;
+      const existing = explicitEmail
+        ? nextInstructors.find(i => i.email.trim().toLowerCase() === explicitEmail)
+        : nextInstructors.find(i => i.name.trim().toLowerCase() === name.toLowerCase());
+
+      const deptId = findDept(inst.departmentKey)?.id || ensureDepartment(inst.departmentKey);
       if (inst.subDepartment?.trim()) {
         const subName = inst.subDepartment.trim();
         nextDepartments = nextDepartments.map(dep =>
@@ -1521,64 +1625,263 @@ export const institutionalStore = {
       const qualifiedIds = (inst.qualifiedCourseCodes || [])
         .map(cc => nextCourses.find(c => c.code.toUpperCase() === cc.trim().toUpperCase())?.id)
         .filter((id): id is string => Boolean(id));
-      nextInstructors = [
-        ...nextInstructors,
-        {
-          id: `inst-imp-${now}-${idx}`,
-          departmentId: deptId,
-          subDepartment: inst.subDepartment?.trim() || undefined,
-          staffRole: inferredRole,
-          qualifiedCourseIds: qualifiedIds,
-          name,
-          email,
-          title: inst.title?.trim() || (inferredRole === 'lab_engineer' ? 'Lab Engineer' : 'Assistant Professor'),
-          maxWeeklyHours: Math.max(1, Number(inst.maxWeeklyHours) || (inferredRole === 'lab_engineer' ? 18 : 14)),
-          maxConsecutiveHours: 3,
-          preferredDays:
-            currentStore.timeStructure.workingDays?.length > 0
-              ? [...currentStore.timeStructure.workingDays]
-              : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'],
-          unavailableSlots: []
-        }
-      ];
-      instructorsAdded++;
+
+      if (!existing) {
+        nextInstructors = [
+          ...nextInstructors,
+          {
+            id: `inst-imp-${now}-${idx}`,
+            departmentId: deptId,
+            subDepartment: inst.subDepartment?.trim() || undefined,
+            staffRole: inferredRole,
+            qualifiedCourseIds: qualifiedIds,
+            name: name || email.split('@')[0],
+            email,
+            title: inst.title?.trim() || (inferredRole === 'lab_engineer' ? 'Lab Engineer' : 'Assistant Professor'),
+            maxWeeklyHours: Math.max(1, Number(inst.maxWeeklyHours) || (inferredRole === 'lab_engineer' ? 18 : 14)),
+            maxConsecutiveHours: 3,
+            preferredDays:
+              currentStore.timeStructure.workingDays?.length > 0
+                ? [...currentStore.timeStructure.workingDays]
+                : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'],
+            unavailableSlots: []
+          }
+        ];
+        instructorsAdded++;
+        created++;
+      } else if (duplicateMode === 'update') {
+        nextInstructors = nextInstructors.map(cur =>
+          cur.id === existing.id
+            ? {
+                ...cur,
+                name: name || cur.name,
+                departmentId: deptId || cur.departmentId,
+                subDepartment: inst.subDepartment?.trim() || cur.subDepartment,
+                staffRole: inst.staffRole || cur.staffRole,
+                title: inst.title?.trim() || cur.title,
+                maxWeeklyHours: inst.maxWeeklyHours ? Math.max(1, Number(inst.maxWeeklyHours)) : cur.maxWeeklyHours,
+                qualifiedCourseIds: qualifiedIds.length > 0 ? qualifiedIds : cur.qualifiedCourseIds
+              }
+            : cur
+        );
+        updated++;
+      } else {
+        skipped++;
+      }
     });
 
+    // 4. Courses
+    let coursesAdded = 0;
+    (payload.courses || []).forEach((c, idx) => {
+      const code = c.code.trim().toUpperCase();
+      const title = c.title.trim();
+      if (!code) return;
+      const existing = nextCourses.find(ex => ex.code.toUpperCase() === code);
+      const deptId = findDept(c.departmentKey)?.id || ensureDepartment(c.departmentKey);
+      const isPureLab = Boolean(c.isLab || c.requiredRoomType === 'lab' || code.endsWith('-L'));
+      const lecCr =
+        c.lectureCredits !== undefined
+          ? Math.max(0, Number(c.lectureCredits) || 0)
+          : isPureLab
+          ? 0
+          : Math.max(1, Number(c.creditHours) || 3);
+      const labCr =
+        c.labCredits !== undefined
+          ? Math.max(0, Number(c.labCredits) || 0)
+          : isPureLab
+          ? Math.max(1, Number(c.creditHours) || 1)
+          : 0;
+      const lecHours = lecCr * 1;
+      const labHours = labCr * 3;
+      const totalCr = Math.max(1, lecCr + labCr);
+      const weekly = Math.max(1, Number(c.weeklyContactHours) || lecHours + labHours);
+      const assignedInst = findInstructor(c.assignedInstructorKey);
+      const assignedLabEng = findInstructor(c.assignedLabEngineerKey);
+
+      if (!existing) {
+        nextCourses = [
+          ...nextCourses,
+          {
+            id: `crs-imp-${now}-${idx}`,
+            departmentId: deptId,
+            subDepartment: c.subDepartment?.trim() || undefined,
+            code,
+            title: title || code,
+            courseType: lecCr > 0 && labCr > 0 ? 'lecture_lab' : labCr > 0 ? 'lab' : 'lecture',
+            creditHours: totalCr,
+            lectureCredits: lecCr,
+            labCredits: labCr,
+            lectureHours: lecHours,
+            labHours: labHours,
+            weeklyContactHours: weekly,
+            requiredRoomType: c.requiredRoomType || (isPureLab && lecCr === 0 ? 'lab' : 'lecture'),
+            assignedInstructorId: assignedInst?.id,
+            assignedLabEngineerId: assignedLabEng?.id,
+            labSessionMode: c.labSessionMode || 'continuous',
+            isElective: Boolean(c.isElective),
+            electivePoolName: c.electivePoolName?.trim() || undefined
+          }
+        ];
+        coursesAdded++;
+        created++;
+      } else if (duplicateMode === 'update') {
+        nextCourses = nextCourses.map(cur =>
+          cur.id === existing.id
+            ? {
+                ...cur,
+                title: title || cur.title,
+                departmentId: deptId || cur.departmentId,
+                subDepartment: c.subDepartment?.trim() || cur.subDepartment,
+                creditHours: totalCr,
+                lectureCredits: lecCr,
+                labCredits: labCr,
+                lectureHours: lecHours,
+                labHours: labHours,
+                weeklyContactHours: weekly,
+                assignedInstructorId: assignedInst?.id ?? cur.assignedInstructorId,
+                assignedLabEngineerId: assignedLabEng?.id ?? cur.assignedLabEngineerId,
+                isElective: c.isElective !== undefined ? Boolean(c.isElective) : cur.isElective,
+                electivePoolName: c.electivePoolName?.trim() || cur.electivePoolName
+              }
+            : cur
+        );
+        updated++;
+      } else {
+        skipped++;
+      }
+    });
+
+    // 5. Cohorts / Batches & Sections
     let cohortsAdded = 0;
-    const seenCohortCodes = new Set(nextGroups.map(g => g.code.toUpperCase()));
     (payload.cohorts || []).forEach((g, idx) => {
       const code = g.code.trim().toUpperCase();
-      if (!code || seenCohortCodes.has(code)) return;
-      seenCohortCodes.add(code);
+      if (!code) return;
+      const existing = nextGroups.find(ex => ex.code.toUpperCase() === code);
       const codeParts = code.split('-');
-      const deptId = ensureDepartment(g.departmentKey || (codeParts.length >= 2 ? codeParts[1] : undefined));
+      const deptId = findDept(g.departmentKey)?.id || ensureDepartment(g.departmentKey || (codeParts.length >= 2 ? codeParts[1] : undefined));
       const deptObj = nextDepartments.find(d => d.id === deptId);
       const programId = ensureProgramForDept(deptId);
       const batchCode = (g.batchCode || (codeParts.length >= 2 ? codeParts[0] : '')).trim().toUpperCase() || undefined;
       const section = (g.section || (codeParts.length >= 3 ? codeParts[2] : '')).trim().toUpperCase() || undefined;
       const departmentCode = (g.departmentKey || deptObj?.code || (codeParts.length >= 2 ? codeParts[1] : '')).trim().toUpperCase() || undefined;
-      nextGroups = [
-        ...nextGroups,
-        {
-          id: `grp-imp-${now}-${idx}`,
-          programId,
-          batchCode,
-          departmentCode,
-          section,
-          name: (g.name || (batchCode && section ? `${batchCode} ${departmentCode || ''} Section ${section}`.trim() : `Cohort ${code}`)).trim(),
-          code,
-          year: Math.max(1, Number(g.year) || 1),
-          semester: g.semester ? Math.max(1, Number(g.semester)) : undefined,
-          size: Math.max(1, Number(g.size) || 45),
-          homeRoom: g.homeRoom?.trim() || nextRooms[0]?.code || undefined,
-          sharedCourseIds: []
-        }
-      ];
-      cohortsAdded++;
+      const resolvedName = (g.name || (batchCode && section ? `${batchCode} ${departmentCode || ''} Section ${section}`.trim() : `Cohort ${code}`)).trim();
+
+      if (!existing) {
+        nextGroups = [
+          ...nextGroups,
+          {
+            id: `grp-imp-${now}-${idx}`,
+            programId,
+            batchCode,
+            departmentCode,
+            section,
+            name: resolvedName,
+            code,
+            year: Math.max(1, Number(g.year) || 1),
+            semester: g.semester ? Math.max(1, Number(g.semester)) : undefined,
+            size: Math.max(1, Number(g.size) || 45),
+            homeRoom: g.homeRoom?.trim() || undefined,
+            sharedCourseIds: []
+          }
+        ];
+        cohortsAdded++;
+        created++;
+      } else if (duplicateMode === 'update') {
+        nextGroups = nextGroups.map(cur =>
+          cur.id === existing.id
+            ? {
+                ...cur,
+                name: g.name?.trim() || cur.name,
+                departmentCode: departmentCode || cur.departmentCode,
+                year: g.year ? Math.max(1, Number(g.year)) : cur.year,
+                semester: g.semester ? Math.max(1, Number(g.semester)) : cur.semester,
+                size: g.size ? Math.max(1, Number(g.size)) : cur.size,
+                homeRoom: g.homeRoom?.trim() || cur.homeRoom
+              }
+            : cur
+        );
+        updated++;
+      } else {
+        skipped++;
+      }
     });
 
-    let nextSections = [...currentStore.sections];
+    // 6. Enrollments (link courses onto studentGroups.sharedCourseIds cleanly)
+    let enrollmentsAdded = 0;
+    (payload.enrollments || []).forEach(enr => {
+      const course = nextCourses.find(c => c.code.toUpperCase() === enr.courseCode.trim().toUpperCase());
+      const group = nextGroups.find(g => g.code.toUpperCase() === enr.batchCode.trim().toUpperCase());
+      if (!course || !group) return;
+      const hasCourse = (group.sharedCourseIds || []).includes(course.id);
+      if (!hasCourse) {
+        nextGroups = nextGroups.map(g =>
+          g.id === group.id
+            ? { ...g, sharedCourseIds: [...(g.sharedCourseIds || []), course.id] }
+            : g
+        );
+        enrollmentsAdded++;
+        created++;
+      } else {
+        skipped++;
+      }
+    });
+
+    // 7. Course Assignments & Section Links
+    let assignmentsAdded = 0;
     const activeTerm = currentStore.terms.find(t => t.status === 'active') || currentStore.terms[0];
+    const termId = activeTerm?.id || 'term-spring-2026';
+
+    (payload.courseAssignments || []).forEach((assign, idx) => {
+      const course = nextCourses.find(c => c.code.toUpperCase() === assign.courseCode.trim().toUpperCase());
+      const group = nextGroups.find(g => g.code.toUpperCase() === assign.batchCode.trim().toUpperCase());
+      const inst = findInstructor(assign.instructorKey);
+      if (!course || !group || !inst) return;
+      const labEng = findInstructor(assign.labEngineerKey);
+      const secCode = (assign.sectionCode || group.section || 'A').toUpperCase();
+      const sType = assign.sessionType === 'Lab' ? 'Lab' : 'Lecture';
+
+      const existing = nextSections.find(
+        s =>
+          s.courseId === course.id &&
+          s.studentGroupId === group.id &&
+          s.sectionNumber.toUpperCase() === secCode &&
+          (s.sessionType || 'Lecture') === sType
+      );
+      if (!existing) {
+        nextSections = [
+          ...nextSections,
+          {
+            id: `sec-imp-${now}-${idx}`,
+            courseId: course.id,
+            termId,
+            sectionNumber: secCode,
+            expectedEnrollment: assign.expectedStudents || group.size || 45,
+            instructorId: inst.id,
+            labEngineerId: labEng?.id,
+            studentGroupId: group.id,
+            sessionType: sType,
+            spanSlots: sType === 'Lab' ? 3 : 1
+          }
+        ];
+        assignmentsAdded++;
+        created++;
+      } else if (duplicateMode === 'update') {
+        nextSections = nextSections.map(s =>
+          s.id === existing.id
+            ? {
+                ...s,
+                instructorId: inst.id,
+                labEngineerId: labEng?.id ?? s.labEngineerId,
+                expectedEnrollment: assign.expectedStudents || s.expectedEnrollment
+              }
+            : s
+        );
+        updated++;
+      } else {
+        skipped++;
+      }
+    });
+
     if (activeTerm && payload.sectionLinks && payload.sectionLinks.length > 0) {
       const existingPairKeys = new Set(
         nextSections.map(s => `${s.courseId}::${s.studentGroupId}::${s.sessionType || 'Lecture'}`)
@@ -1600,11 +1903,10 @@ export const institutionalStore = {
         const pairKey = `${course.id}::${group.id}::${sessionType}`;
         if (existingPairKeys.has(pairKey)) return;
         existingPairKeys.add(pairKey);
-        // Intentionally unscheduled (no assignedSlot): timetable is only built when user clicks Generate
         nextSections = [
           ...nextSections,
           {
-            id: `sec-imp-${now}-${idx}`,
+            id: `sec-lnk-${now}-${idx}`,
             courseId: course.id,
             termId: activeTerm.id,
             sectionNumber: isLab ? '01-Lab' : '01-Lec',
@@ -1630,23 +1932,31 @@ export const institutionalStore = {
       sections: nextSections
     };
 
-    const totalImported =
-      departmentsAdded + roomsAdded + coursesAdded + instructorsAdded + cohortsAdded;
+    const totalImported = created + updated;
     this.addAuditLog(
       'create',
       'scenario',
       'bulk-csv-import',
-      `Imported catalog data (${departmentsAdded} depts, ${roomsAdded} rooms, ${coursesAdded} courses, ${instructorsAdded} faculty, ${cohortsAdded} cohorts). No timetable generated automatically.`
+      `Imported catalog data (${created} created, ${updated} updated, ${skipped} skipped). No timetable generated automatically.`
     );
     notifyListeners();
-    void this.syncToBackend();
+    if (!payload.skipSync) {
+      void this.syncToBackend();
+    }
 
     return {
+      created,
+      updated,
+      skipped,
+      failed,
       departmentsAdded,
       roomsAdded,
+      laboratoriesAdded,
       coursesAdded,
       instructorsAdded,
       cohortsAdded,
+      enrollmentsAdded,
+      assignmentsAdded,
       totalImported
     };
   },

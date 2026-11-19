@@ -369,6 +369,10 @@ def build_enriched_polls_for_user(auth_user: Dict[str, Any]) -> List[Dict[str, A
                 "batchName": batch_info.get("name") or poll["batch_id"],
                 "departmentCode": batch_info.get("department_code") or "GEN",
                 "targetScope": poll["target_scope"],
+                "targetBatchIds": poll.get("target_batch_ids") or [],
+                "pollCategory": poll.get("poll_category") or "general_suggestion",
+                "optimizerApprovalStatus": poll.get("optimizer_approval_status") or "pending_review",
+                "optimizerRejectionReason": poll.get("optimizer_rejection_reason"),
                 "submittedByUserId": poll["submitted_by_user_id"],
                 "submittedByName": poll["submitted_by_name"],
                 "brGenderRole": poll["br_gender_role"],
@@ -466,6 +470,71 @@ def load_university_optimization_inputs(
         raise_supabase_http_error(err)
 
     db_student_prefs = _safe_select("student_preferences", {"institution_id": f"eq.{university_id}"})
+    
+    # Integrate approved BR voting preferences if enabled in institution settings or body override
+    use_voting = bool(
+        body["useVotingPreferences"]
+        if "useVotingPreferences" in body
+        else inst_row.get("use_voting_preferences", True)
+    )
+    inf_weight = float(
+        body["votingPreferenceInfluence"]
+        if "votingPreferenceInfluence" in body and body["votingPreferenceInfluence"] is not None
+        else (inst_row.get("voting_preference_influence") if inst_row.get("voting_preference_influence") is not None else 0.65)
+    )
+    low_thresh = float(
+        body["lowParticipationThreshold"]
+        if "lowParticipationThreshold" in body and body["lowParticipationThreshold"] is not None
+        else (inst_row.get("low_participation_threshold") if inst_row.get("low_participation_threshold") is not None else 25.0)
+    )
+    voting_traceability: List[Dict[str, Any]] = []
+    voting_excluded: List[Dict[str, Any]] = []
+    voting_config: Dict[str, Any] = {
+        "useVotingPreferences": use_voting,
+        "votingPreferenceInfluence": inf_weight,
+        "lowParticipationThreshold": low_thresh,
+    }
+
+    if use_voting and university_id and inf_weight > 0.0:
+        try:
+            from app.optimization.preference_aggregator import aggregate_approved_voting_preferences
+            agg_res = aggregate_approved_voting_preferences(university_id, inf_weight, low_thresh)
+            batch_prefs_map = agg_res.get("batchPreferences", {})
+            voting_traceability = list(agg_res.get("traceability") or [])
+            voting_excluded = list(agg_res.get("excluded") or [])
+            if batch_prefs_map:
+                pref_by_batch: Dict[str, Dict[str, Any]] = {
+                    str(p.get("batch_id") or p.get("batchId")): p
+                    for p in db_student_prefs
+                    if p.get("batch_id") or p.get("batchId")
+                }
+                for b_id, prefs in batch_prefs_map.items():
+                    if b_id in pref_by_batch:
+                        existing = pref_by_batch[b_id]
+                        cats = prefs.get("categoryStrengths") or {}
+                        if "preferred_lecture_timing" in cats:
+                            existing["preferred_time_window"] = prefs.get("preferred_time_window", existing.get("preferred_time_window"))
+                            existing["avoid_early_8am"] = prefs.get("avoid_early_8am", existing.get("avoid_early_8am"))
+                            existing["avoid_late_after_4pm"] = prefs.get("avoid_late_after_4pm", existing.get("avoid_late_after_4pm"))
+                        if "preferred_free_day" in cats and prefs.get("preferred_free_day"):
+                            existing["preferred_free_day"] = prefs["preferred_free_day"]
+                        if "lab_timing_preferences" in cats:
+                            existing["preferred_lab_window"] = prefs.get("preferred_lab_window")
+                        if "break_schedule_preference" in cats:
+                            existing["break_schedule_preference"] = prefs.get("break_schedule_preference")
+                            existing["max_acceptable_gap_minutes"] = prefs.get("max_acceptable_gap_minutes", existing.get("max_acceptable_gap_minutes"))
+                        existing["preferenceStrength"] = prefs.get("preferenceStrength", 0.0)
+                        existing["categoryStrengths"] = cats
+                        existing["source"] = "manual+voting_poll"
+                    else:
+                        db_student_prefs.append({
+                            "batch_id": b_id,
+                            "institution_id": university_id,
+                            **prefs,
+                        })
+        except Exception:
+            pass
+
     db_inst_prefs = _safe_select("instructor_preferences", {"institution_id": f"eq.{university_id}"})
     db_inst_avails = _safe_select("instructor_availability", {"institution_id": f"eq.{university_id}"})
 
@@ -733,4 +802,7 @@ def load_university_optimization_inputs(
         "unavailable_room_slots": body.get("unavailableRoomSlots") or {},
         "time_config": time_config,
         "weights": weights,
+        "voting_traceability": voting_traceability,
+        "voting_excluded": voting_excluded,
+        "voting_config": voting_config,
     }

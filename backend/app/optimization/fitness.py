@@ -415,32 +415,62 @@ def evaluate_timetable_fitness(
         b_score -= gstats["lateCount"] * 3.0
         b_score -= max(0.0, (100.0 - gstats["compactness"]) * 0.25)
 
-        # Student submitted preferences
+        # Student submitted & voted preferences
         batch_prefs = prefs_by_batch.get(gid) or global_student_prefs
         if batch_prefs:
             batch_items = group_schedule[gid]
             pref_pen = 0.0
             for sp in batch_prefs:
+                raw_strength = sp.get("preferenceStrength", sp.get("preference_strength"))
+                base_mult = 1.0 if raw_strength is None else max(0.0, float(raw_strength) / 0.65)
+                if base_mult <= 0.0:
+                    continue
+                cat_strengths = sp.get("categoryStrengths") or {}
+
+                def _cat_mult(cat_key: str) -> float:
+                    if cat_key in cat_strengths:
+                        return max(0.0, float(cat_strengths[cat_key]) / 0.65)
+                    return base_mult
+
                 pref_win = str(sp.get("preferred_time_window") or sp.get("preferredTimeWindow") or "balanced")
                 avoid_early = bool(sp.get("avoid_early_8am", sp.get("avoidEarly8am", True)))
                 avoid_late = bool(sp.get("avoid_late_after_4pm", sp.get("avoidLateAfter4pm", True)))
                 max_gap_pref = int(sp.get("max_acceptable_gap_minutes") or sp.get("maxAcceptableGapMinutes") or 60)
                 pref_free_day = str(sp.get("preferred_free_day") or sp.get("preferredFreeDay") or "").strip()[:3].capitalize()
+                pref_lab_win = str(sp.get("preferred_lab_window") or sp.get("preferredLabWindow") or "").strip().lower()
+                pref_break = str(sp.get("break_schedule_preference") or sp.get("breakSchedulePreference") or "").strip().lower()
+
+                win_m = _cat_mult("preferred_lecture_timing")
+                free_m = _cat_mult("preferred_free_day")
+                lab_m = _cat_mult("lab_timing_preferences")
+                brk_m = _cat_mult("break_schedule_preference")
 
                 if gstats["longestGapMinutes"] > max_gap_pref:
-                    pref_pen += 4.0
+                    pref_pen += 4.0 * brk_m
+                if pref_break == "compact" and gstats["compactness"] < 92.0:
+                    pref_pen += (92.0 - gstats["compactness"]) * 0.25 * brk_m
+                elif pref_break == "balanced" and gstats["overlongRuns"] > 0:
+                    pref_pen += gstats["overlongRuns"] * 3.0 * brk_m
                 if pref_free_day and any(g.day == pref_free_day for _, g in batch_items):
-                    pref_pen += 3.0
-                for _, g in batch_items:
+                    pref_pen += 4.5 * free_m
+                for sess_obj, g in batch_items:
                     if avoid_early and g.start_min < 9 * 60:
-                        pref_pen += 1.5
+                        pref_pen += 1.5 * base_mult
                     if avoid_late and g.end_min > 16 * 60 + 15:
-                        pref_pen += 1.5
-                    if pref_win == "morning" and g.start_min >= 14 * 60:
-                        pref_pen += 0.8
-                    elif pref_win == "afternoon" and g.start_min < 12 * 60:
-                        pref_pen += 0.8
-            b_score -= min(18.0, pref_pen / max(1, len(batch_prefs)))
+                        pref_pen += 1.5 * base_mult
+                    if sess_obj.is_lab and pref_lab_win:
+                        if pref_lab_win == "morning" and g.start_min >= 12 * 60:
+                            pref_pen += 2.2 * lab_m
+                        elif pref_lab_win == "afternoon" and g.start_min < 12 * 60:
+                            pref_pen += 2.2 * lab_m
+                        elif pref_lab_win == "continuous_block" and sess_obj.is_split_lab:
+                            pref_pen += 2.5 * lab_m
+                    else:
+                        if pref_win == "morning" and g.start_min >= 12 * 60 + 30:
+                            pref_pen += 1.4 * win_m
+                        elif pref_win == "afternoon" and g.start_min < 12 * 60:
+                            pref_pen += 1.4 * win_m
+            b_score -= min(22.0, pref_pen / max(1, len(batch_prefs)))
 
         # Reward keeping attendance days compact when weekly load is small
         weekly_session_count = len(group_schedule[gid])
@@ -452,17 +482,28 @@ def evaluate_timetable_fitness(
         batch_scores[gid] = round(max(0.0, min(100.0, b_score)), 2)
 
     if batch_scores:
-        avg_student_sat = sum(batch_scores.values()) / len(batch_scores)
-        least_satisfied_batch = min(batch_scores.values())
+        sorted_scores = sorted(batch_scores.values())
+        avg_student_sat = sum(sorted_scores) / len(sorted_scores)
+        least_satisfied_batch = sorted_scores[0]
+        bottom_pair_mean = sum(sorted_scores[: min(2, len(sorted_scores))]) / min(2, len(sorted_scores))
+        score_spread = sorted_scores[-1] - sorted_scores[0]
         idle_values = [v["totalIdleMinutes"] for v in per_batch_gaps.values()]
         fairness_spread = max(idle_values) - min(idle_values) if idle_values else 0
         fairness_score = max(
             0.0,
-            min(100.0, least_satisfied_batch * 0.7 + avg_student_sat * 0.3 - fairness_spread * 0.05),
+            min(
+                100.0,
+                least_satisfied_batch * 0.70
+                + avg_student_sat * 0.30
+                - fairness_spread * 0.05
+                - score_spread * 0.10,
+            ),
         )
     else:
         avg_student_sat = 100.0
         least_satisfied_batch = 100.0
+        bottom_pair_mean = 100.0
+        score_spread = 0.0
         fairness_score = 100.0
 
     # Same-course daily spread penalty
@@ -515,8 +556,6 @@ def evaluate_timetable_fitness(
     # --- Preference Satisfaction Metric (incorporating student & instructor preference weights) ---
     pref_score = 100.0
     if batch_scores or inst_scores:
-        # Student & instructor preference alignment already penalizes deviations in batch_scores / inst_scores;
-        # compute standalone preference compliance index so `w_pref` directly shapes totalScore.
         pref_penalties: List[float] = []
         for gid in per_batch_gaps:
             batch_prefs = prefs_by_batch.get(gid) or global_student_prefs
@@ -525,40 +564,73 @@ def evaluate_timetable_fitness(
             batch_items = group_schedule[gid]
             gstats = per_batch_gaps[gid]
             for sp in batch_prefs:
+                raw_strength = sp.get("preferenceStrength", sp.get("preference_strength"))
+                base_mult = 1.0 if raw_strength is None else max(0.0, float(raw_strength) / 0.65)
+                if base_mult <= 0.0:
+                    continue
+                cat_strengths = sp.get("categoryStrengths") or {}
+
+                def _cat_m(cat_key: str) -> float:
+                    if cat_key in cat_strengths:
+                        return max(0.0, float(cat_strengths[cat_key]) / 0.65)
+                    return base_mult
+
                 p_pen = 0.0
                 pref_win = str(sp.get("preferred_time_window") or sp.get("preferredTimeWindow") or "balanced")
                 avoid_early = bool(sp.get("avoid_early_8am", sp.get("avoidEarly8am", True)))
                 avoid_late = bool(sp.get("avoid_late_after_4pm", sp.get("avoidLateAfter4pm", True)))
                 max_gap_pref = int(sp.get("max_acceptable_gap_minutes") or sp.get("maxAcceptableGapMinutes") or 60)
                 pref_free_day = str(sp.get("preferred_free_day") or sp.get("preferredFreeDay") or "").strip()[:3].capitalize()
+                pref_lab_win = str(sp.get("preferred_lab_window") or sp.get("preferredLabWindow") or "").strip().lower()
+                pref_break = str(sp.get("break_schedule_preference") or sp.get("breakSchedulePreference") or "").strip().lower()
+
+                win_m = _cat_m("preferred_lecture_timing")
+                free_m = _cat_m("preferred_free_day")
+                lab_m = _cat_m("lab_timing_preferences")
+                brk_m = _cat_m("break_schedule_preference")
+
                 if gstats["longestGapMinutes"] > max_gap_pref:
-                    p_pen += 10.0
+                    p_pen += 10.0 * brk_m
+                if pref_break == "compact" and gstats["compactness"] < 92.0:
+                    p_pen += (92.0 - gstats["compactness"]) * 0.5 * brk_m
+                elif pref_break == "balanced" and gstats["overlongRuns"] > 0:
+                    p_pen += gstats["overlongRuns"] * 5.0 * brk_m
                 if pref_free_day and any(g.day == pref_free_day for _, g in batch_items):
-                    p_pen += 8.0
-                for _, g in batch_items:
+                    p_pen += 10.0 * free_m
+                for sess_obj, g in batch_items:
                     if avoid_early and g.start_min < 9 * 60:
-                        p_pen += 4.0
+                        p_pen += 4.0 * base_mult
                     if avoid_late and g.end_min > 16 * 60 + 15:
-                        p_pen += 4.0
-                    if pref_win == "morning" and g.start_min >= 14 * 60:
-                        p_pen += 2.5
-                    elif pref_win == "afternoon" and g.start_min < 12 * 60:
-                        p_pen += 2.5
-                pref_penalties.append(min(50.0, p_pen))
+                        p_pen += 4.0 * base_mult
+                    if sess_obj.is_lab and pref_lab_win:
+                        if pref_lab_win == "morning" and g.start_min >= 12 * 60:
+                            p_pen += 5.0 * lab_m
+                        elif pref_lab_win == "afternoon" and g.start_min < 12 * 60:
+                            p_pen += 5.0 * lab_m
+                        elif pref_lab_win == "continuous_block" and sess_obj.is_split_lab:
+                            p_pen += 5.0 * lab_m
+                    else:
+                        if pref_win == "morning" and g.start_min >= 12 * 60 + 30:
+                            p_pen += 3.5 * win_m
+                        elif pref_win == "afternoon" and g.start_min < 12 * 60:
+                            p_pen += 3.5 * win_m
+                pref_penalties.append(min(60.0, p_pen))
         if pref_penalties:
             pref_score = max(0.0, 100.0 - (sum(pref_penalties) / len(pref_penalties)))
 
-    # Combine Student-First Total Score
-    w_gap_term = 0.42 + w_student_gap * 0.15
-    w_fair_term = 0.18 + w_student_fair * 0.12
-    w_inst_term = 0.10 + w_inst_load * 0.05
-    w_room_term = 0.06 + w_room_util * 0.05
+    # Combine Student-First Total Score (zero hidden baseline leakage when student_fairness == 0.0)
+    w_gap_term = 0.42 + max(0.0, w_student_gap) * 0.15
+    w_fair_term = max(0.0, w_student_fair) * 0.85
+    w_inst_term = 0.10 + max(0.0, w_inst_load) * 0.05
+    w_room_term = 0.06 + max(0.0, w_room_util) * 0.05
     w_comp_term = 0.10
     w_pref_term = max(0.02, w_pref * 0.12)
 
+    rawlsian_fair_obj = least_satisfied_batch * 0.80 + bottom_pair_mean * 0.20
+
     soft_score = (
         avg_student_sat * w_gap_term
-        + least_satisfied_batch * w_fair_term
+        + rawlsian_fair_obj * w_fair_term
         + instructor_sat * w_inst_term
         + room_util_score * w_room_term
         + gap_report["avgCompactness"] * w_comp_term
@@ -569,6 +641,24 @@ def evaluate_timetable_fitness(
 
     # Hard penalty strictly dominates so any conflict drops score sharply below feasible schedules
     total_score = round(max(0.0, normalized_soft - hard_violations * 18.0), 2)
+
+    best_batch_score = max(batch_scores.values()) if batch_scores else 100.0
+    objective_breakdown = {
+        "weights": {
+            "studentGapTerm": round(w_gap_term, 4),
+            "studentFairnessTerm": round(w_fair_term, 4),
+            "instructorTerm": round(w_inst_term, 4),
+            "roomUtilTerm": round(w_room_term, 4),
+            "compactnessTerm": round(w_comp_term, 4),
+            "preferenceTerm": round(w_pref_term, 4),
+            "weightNorm": round(weight_norm, 4),
+        },
+        "fairnessSharePct": round((w_fair_term / max(0.1, weight_norm)) * 100.0, 2),
+        "rawlsianFairObjective": round(rawlsian_fair_obj, 2),
+        "fairnessWeightedContribution": round((rawlsian_fair_obj * w_fair_term) / max(0.1, weight_norm), 2),
+        "studentMeanWeightedContribution": round((avg_student_sat * w_gap_term) / max(0.1, weight_norm), 2),
+        "preferenceWeightedContribution": round((pref_score * w_pref_term) / max(0.1, weight_norm), 2),
+    }
 
     metrics = {
         "totalScore": total_score,
@@ -586,10 +676,13 @@ def evaluate_timetable_fitness(
         "workloadBalanceScore": round(instructor_sat, 2),
         "fairnessScore": round(fairness_score, 2),
         "leastSatisfiedBatchScore": round(least_satisfied_batch, 2),
+        "bestBatchSatisfactionScore": round(best_batch_score, 2),
+        "satisfactionSpread": round(score_spread, 2),
         "roomUtilization": round(room_util_score, 2),
         "batchBreakdown": batch_scores,
         "batchSatisfactionByBatch": batch_scores,
         "batchGapBreakdown": per_batch_gaps,
+        "objectiveBreakdown": objective_breakdown,
         "hardViolations": hard_violations,
         "violationReasons": violation_reasons[:25],
     }

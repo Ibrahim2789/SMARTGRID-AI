@@ -23,8 +23,10 @@ router = APIRouter(tags=["rescheduling"])
 
 ALLOWED_DISRUPTION_TYPES = {
     "instructor_unavailable",
+    "lab_engineer_unavailable",
     "room_unavailable",
     "lab_unavailable",
+    "forced_course_move",
     "operating_hours_changed",
     "capacity_or_equipment_changed",
     "admin_slot_adjustment",

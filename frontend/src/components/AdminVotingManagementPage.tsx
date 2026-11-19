@@ -42,11 +42,16 @@ import {
   BrGenderRole,
   PollStatus,
   ResultVisibility,
+  OptimizerApprovalStatus,
+  OptimizerVotingConfigDTO,
   fetchVotingOverview,
   createBatchAdmin,
   createBrAccountAdmin,
   updateBrAccountAdmin,
   updatePollStatusAdmin,
+  updatePollOptimizerApprovalAdmin,
+  fetchOptimizerVotingConfigAdmin,
+  updateOptimizerVotingConfigAdmin,
   deletePollAdmin,
   loginWithBackend
 } from '../services/votingApi';
@@ -124,6 +129,14 @@ export const AdminVotingManagementPage: React.FC<AdminVotingManagementPageProps>
   const [resettingBr, setResettingBr] = useState<BrAccountDTO | null>(null);
   const [resetPasswordInput, setResetPasswordInput] = useState('BR-Reset@2026');
 
+  // Optimizer Voting Integration Config
+  const [optConfig, setOptConfig] = useState<OptimizerVotingConfigDTO>({
+    useVotingPreferences: true,
+    votingPreferenceInfluence: 0.65,
+    lowParticipationThreshold: 25
+  });
+  const [savingOptConfig, setSavingOptConfig] = useState(false);
+
   useEffect(() => {
     setSubView(initialSubView);
   }, [initialSubView]);
@@ -137,12 +150,18 @@ export const AdminVotingManagementPage: React.FC<AdminVotingManagementPageProps>
       setLoading(true);
     }
     try {
-      const data = await fetchVotingOverview(currentUserRef.current);
+      const [data, cfg] = await Promise.all([
+        fetchVotingOverview(currentUserRef.current),
+        fetchOptimizerVotingConfigAdmin(currentUserRef.current).catch(() => null)
+      ]);
       hasLoadedOnceRef.current = true;
       setPolls(data.polls);
       setBatches(data.batches);
       setBrAccounts(data.brAccounts || []);
       setBrFormBatchId(prev => prev || (data.batches.length > 0 ? data.batches[0].id : ''));
+      if (cfg) {
+        setOptConfig(cfg);
+      }
     } catch (err) {
       showAdminPopup(
         'error',
@@ -208,6 +227,43 @@ export const AdminVotingManagementPage: React.FC<AdminVotingManagementPageProps>
         'error',
         err instanceof Error ? err.message : 'Failed to remove question.'
       );
+    }
+  };
+
+  const handleOptimizerApproval = async (
+    pollId: string,
+    approvalStatus: OptimizerApprovalStatus
+  ) => {
+    try {
+      const res = await updatePollOptimizerApprovalAdmin(currentUser, pollId, {
+        approvalStatus,
+        rejectionReason:
+          approvalStatus === 'rejected_from_optimizer'
+            ? 'Excluded by Registrar from timetable optimization scoring.'
+            : undefined
+      });
+      setPolls(prev => prev.map(p => (p.id === pollId ? res.poll : p)));
+      showAdminPopup('success', res.message, 'Optimizer Integration Updated');
+    } catch (err) {
+      showAdminPopup(
+        'error',
+        err instanceof Error ? err.message : 'Failed to update optimizer approval.'
+      );
+    }
+  };
+
+  const handleSaveOptimizerConfig = async () => {
+    setSavingOptConfig(true);
+    try {
+      const res = await updateOptimizerVotingConfigAdmin(currentUser, optConfig);
+      showAdminPopup('success', res.message, 'Optimizer Config Saved');
+    } catch (err) {
+      showAdminPopup(
+        'error',
+        err instanceof Error ? err.message : 'Failed to save optimizer voting config.'
+      );
+    } finally {
+      setSavingOptConfig(false);
     }
   };
 
@@ -756,6 +812,68 @@ export const AdminVotingManagementPage: React.FC<AdminVotingManagementPageProps>
             </div>
           </div>
 
+          {/* Optimizer Voting Integration Controls */}
+          <div className="bg-white border border-[#E4E2DA] rounded-2xl p-4 flex flex-wrap items-center justify-between gap-4">
+            <label className="inline-flex items-center gap-2 text-xs font-semibold text-[#171717] cursor-pointer">
+              <input
+                type="checkbox"
+                checked={optConfig.useVotingPreferences}
+                onChange={e =>
+                  setOptConfig(prev => ({ ...prev, useVotingPreferences: e.target.checked }))
+                }
+                className="rounded border-[#E4E2DA]"
+              />
+              <span>Feed Approved Closed Polls into Timetable Optimizer</span>
+            </label>
+
+            <div className="flex flex-wrap items-center gap-3 text-xs">
+              <label className="inline-flex items-center gap-1.5 text-[#57564F]">
+                <span>Influence Weight:</span>
+                <input
+                  type="number"
+                  min={0}
+                  max={1}
+                  step={0.05}
+                  value={optConfig.votingPreferenceInfluence}
+                  onChange={e =>
+                    setOptConfig(prev => ({
+                      ...prev,
+                      votingPreferenceInfluence: Number(e.target.value)
+                    }))
+                  }
+                  className="w-16 h-8 px-2 rounded-lg border border-[#E4E2DA] bg-[#F7F6EF] font-mono-tabular text-[#171717]"
+                />
+              </label>
+
+              <label className="inline-flex items-center gap-1.5 text-[#57564F]">
+                <span>Low-Turnout Threshold (%):</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={100}
+                  step={1}
+                  value={optConfig.lowParticipationThreshold}
+                  onChange={e =>
+                    setOptConfig(prev => ({
+                      ...prev,
+                      lowParticipationThreshold: Number(e.target.value)
+                    }))
+                  }
+                  className="w-16 h-8 px-2 rounded-lg border border-[#E4E2DA] bg-[#F7F6EF] font-mono-tabular text-[#171717]"
+                />
+              </label>
+
+              <button
+                type="button"
+                disabled={savingOptConfig}
+                onClick={handleSaveOptimizerConfig}
+                className="btn-primary py-1.5 px-3.5 text-xs font-semibold disabled:opacity-50"
+              >
+                {savingOptConfig ? 'Saving...' : 'Save Optimizer Policy'}
+              </button>
+            </div>
+          </div>
+
           {/* Questions Moderation Cards */}
           <div className="space-y-5">
             {filteredPolls.map(poll => {
@@ -940,6 +1058,34 @@ export const AdminVotingManagementPage: React.FC<AdminVotingManagementPageProps>
                         <Lock className="w-3.5 h-3.5" />
                         <span>Close Voting</span>
                       </button>
+                    )}
+
+                    {poll.status === 'Closed' && (
+                      <>
+                        {poll.optimizerApprovalStatus !== 'approved_for_optimizer' ? (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleOptimizerApproval(poll.id, 'approved_for_optimizer')
+                            }
+                            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#B7F77C] hover:bg-[#a6ec68] text-[#171717] text-xs font-bold cursor-pointer"
+                          >
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            <span>Approve for Optimizer</span>
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleOptimizerApproval(poll.id, 'rejected_from_optimizer')
+                            }
+                            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#EDEAE0] hover:bg-[#E4E2DA] text-[#171717] text-xs font-semibold cursor-pointer"
+                          >
+                            <XCircle className="w-3.5 h-3.5" />
+                            <span>Optimizer Approved (Exclude)</span>
+                          </button>
+                        )}
+                      </>
                     )}
 
                     <button

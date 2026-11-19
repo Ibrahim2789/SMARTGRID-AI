@@ -2,6 +2,16 @@ export type VotingRole = 'Registrar' | 'Admin' | 'BR' | 'Student' | 'Faculty';
 export type BrGenderRole = 'male' | 'female';
 export type PollStatus = 'Pending' | 'Approved' | 'Rejected' | 'Published' | 'Closed';
 export type ResultVisibility = 'always' | 'after_vote' | 'after_close';
+export type PollCategory =
+  | 'preferred_lecture_timing'
+  | 'preferred_free_day'
+  | 'lab_timing_preferences'
+  | 'break_schedule_preference'
+  | 'general_suggestion';
+export type OptimizerApprovalStatus =
+  | 'pending_review'
+  | 'approved_for_optimizer'
+  | 'rejected_from_optimizer';
 
 export interface AuthenticatedVotingUser {
   id?: string;
@@ -56,6 +66,10 @@ export interface PollDTO {
   batchName: string;
   departmentCode: string;
   targetScope: 'all_batches' | 'submitting_batch';
+  targetBatchIds?: string[];
+  pollCategory?: PollCategory;
+  optimizerApprovalStatus?: OptimizerApprovalStatus;
+  optimizerRejectionReason?: string | null;
   submittedByUserId: string;
   submittedByName: string;
   brGenderRole: BrGenderRole;
@@ -479,6 +493,7 @@ export async function submitBrQuestion(
     options: string[];
     endAt?: string | null;
     targetScope?: 'all_batches' | 'submitting_batch';
+    pollCategory?: PollCategory;
   }
 ): Promise<{ message: string; poll: PollDTO }> {
   return authorizedFetch<{ message: string; poll: PollDTO }>(
@@ -596,6 +611,65 @@ export async function deletePollAdmin(
       method: 'DELETE'
     }
   );
+}
+
+export interface OptimizerVotingConfigDTO {
+  useVotingPreferences: boolean;
+  votingPreferenceInfluence: number;
+  lowParticipationThreshold: number;
+}
+
+export async function updatePollOptimizerApprovalAdmin(
+  currentUser: AuthenticatedVotingUser,
+  pollId: string,
+  payload: {
+    approvalStatus: OptimizerApprovalStatus;
+    rejectionReason?: string;
+  }
+): Promise<{ message: string; poll: PollDTO }> {
+  return authorizedFetch(
+    `/api/voting/admin/polls/${encodeURIComponent(pollId)}/optimizer-approval`,
+    currentUser,
+    {
+      method: 'PATCH',
+      body: JSON.stringify(payload)
+    }
+  );
+}
+
+export async function fetchOptimizerVotingConfigAdmin(
+  currentUser: AuthenticatedVotingUser
+): Promise<OptimizerVotingConfigDTO> {
+  return authorizedFetch<OptimizerVotingConfigDTO>(
+    '/api/voting/admin/optimizer-config',
+    currentUser
+  );
+}
+
+export async function updateOptimizerVotingConfigAdmin(
+  currentUser: AuthenticatedVotingUser,
+  payload: Partial<OptimizerVotingConfigDTO>
+): Promise<{ message: string }> {
+  return authorizedFetch<{ message: string }>(
+    '/api/voting/admin/optimizer-config',
+    currentUser,
+    {
+      method: 'PATCH',
+      body: JSON.stringify(payload)
+    }
+  );
+}
+
+export async function fetchActiveVotingPreferencesAdmin(
+  currentUser: AuthenticatedVotingUser
+): Promise<{
+  useVotingPreferences: boolean;
+  votingPreferenceInfluence: number;
+  lowParticipationThreshold: number;
+  batchPreferences: Record<string, Record<string, unknown>>;
+  traceability: Array<Record<string, unknown>>;
+}> {
+  return authorizedFetch('/api/voting/admin/active-preferences', currentUser);
 }
 
 // =========================================================
@@ -1007,7 +1081,14 @@ export async function fetchInstitutionDataApi(
   institutionId: string
 ): Promise<Record<string, unknown> | null> {
   try {
-    const res = await fetch(`/api/institutions/${encodeURIComponent(institutionId)}/data`);
+    const stored = getStoredUser();
+    const headers: Record<string, string> = {};
+    if (stored?.token) {
+      headers.Authorization = `Bearer ${stored.token}`;
+    }
+    const res = await fetch(`/api/institutions/${encodeURIComponent(institutionId)}/data`, {
+      headers
+    });
     if (!res.ok) return null;
     const json = await res.json().catch(() => ({ data: null }));
     return json && typeof json.data === 'object' && json.data !== null

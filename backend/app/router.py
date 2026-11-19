@@ -10,6 +10,7 @@ from app.routers import (
     auth,
     catalog,
     health,
+    imports,
     institutions,
     optimization,
     preferences,
@@ -26,6 +27,7 @@ api_router.include_router(institutions.router)
 api_router.include_router(auth.router)
 api_router.include_router(voting.router)
 api_router.include_router(catalog.router)
+api_router.include_router(imports.router)
 api_router.include_router(preferences.router)
 api_router.include_router(optimization.router)
 api_router.include_router(timetables.router)

@@ -14,10 +14,22 @@ from fastapi_compat import APIRouter, HTTPException, Request
 router = APIRouter(tags=["catalog"])
 
 
+def _scoped_uni_id(auth_user: Dict[str, Any], requested_uni_id: str) -> str:
+    user_inst = str(auth_user.get("institutionId") or "").strip()
+    role = str(auth_user.get("role") or "").lower()
+    req = str(requested_uni_id or "").strip()
+    if req and role != "super_admin" and user_inst and req != user_inst:
+        raise HTTPException(
+            status_code=403,
+            detail={"error": "Access denied: Cross-institution catalog access is prohibited."},
+        )
+    return req or user_inst
+
+
 @router.get("/api/departments")
 def list_departments(request: Request) -> Dict[str, Any]:
     auth_user = require_auth_user(request)
-    uni_id = get_query_param(request, "universityId", "") or auth_user.get("institutionId") or ""
+    uni_id = _scoped_uni_id(auth_user, get_query_param(request, "universityId", ""))
     client = require_supabase_client()
     try:
         rows = client.select("departments", filters={"institution_id": f"eq.{uni_id}"}, order="code.asc")
@@ -37,9 +49,9 @@ def list_departments(request: Request) -> Dict[str, Any]:
 
 @router.post("/api/departments", status_code=201)
 async def create_department(request: Request) -> Dict[str, Any]:
-    auth_user = require_auth_user(request, allowed_roles=["admin"])
+    auth_user = require_auth_user(request, allowed_roles=["admin", "university_admin", "super_admin", "timetable_manager"])
     body = await parse_json_body(request)
-    uni_id = body.get("universityId") or auth_user.get("institutionId") or ""
+    uni_id = _scoped_uni_id(auth_user, str(body.get("universityId") or ""))
     code = str(body.get("code") or "").strip().upper()
     name = str(body.get("name") or "").strip()
     if not code or not name:
@@ -72,7 +84,7 @@ async def create_department(request: Request) -> Dict[str, Any]:
 @router.get("/api/courses")
 def list_courses(request: Request) -> Dict[str, Any]:
     auth_user = require_auth_user(request)
-    uni_id = get_query_param(request, "universityId", "") or auth_user.get("institutionId") or ""
+    uni_id = _scoped_uni_id(auth_user, get_query_param(request, "universityId", ""))
     client = require_supabase_client()
     try:
         rows = client.select("courses", filters={"institution_id": f"eq.{uni_id}"}, order="code.asc")
@@ -123,9 +135,9 @@ def list_courses(request: Request) -> Dict[str, Any]:
 
 @router.post("/api/courses", status_code=201)
 async def create_course(request: Request) -> Dict[str, Any]:
-    auth_user = require_auth_user(request, allowed_roles=["admin"])
+    auth_user = require_auth_user(request, allowed_roles=["admin", "university_admin", "super_admin", "timetable_manager"])
     body = await parse_json_body(request)
-    uni_id = body.get("universityId") or auth_user.get("institutionId") or ""
+    uni_id = _scoped_uni_id(auth_user, str(body.get("universityId") or ""))
     code = str(body.get("code") or "").strip().upper()
     title = str(body.get("title") or body.get("name") or "").strip()
     dept_code = str(body.get("departmentCode") or "BSCS").strip().upper()
@@ -285,7 +297,7 @@ async def create_course(request: Request) -> Dict[str, Any]:
 @router.get("/api/instructors")
 def list_instructors(request: Request) -> Dict[str, Any]:
     auth_user = require_auth_user(request)
-    uni_id = get_query_param(request, "universityId", "") or auth_user.get("institutionId") or ""
+    uni_id = _scoped_uni_id(auth_user, get_query_param(request, "universityId", ""))
     client = require_supabase_client()
     try:
         rows = client.select("instructors", filters={"institution_id": f"eq.{uni_id}"}, order="name.asc")
@@ -322,9 +334,9 @@ def list_instructors(request: Request) -> Dict[str, Any]:
 
 @router.post("/api/instructors", status_code=201)
 async def create_instructor(request: Request) -> Dict[str, Any]:
-    auth_user = require_auth_user(request, allowed_roles=["admin"])
+    auth_user = require_auth_user(request, allowed_roles=["admin", "university_admin", "super_admin", "timetable_manager"])
     body = await parse_json_body(request)
-    uni_id = body.get("universityId") or auth_user.get("institutionId") or ""
+    uni_id = _scoped_uni_id(auth_user, str(body.get("universityId") or ""))
     name = str(body.get("name") or "").strip()
     dept_code = str(body.get("departmentCode") or "BSCS").strip().upper()
     if not name:
@@ -375,7 +387,7 @@ async def create_instructor(request: Request) -> Dict[str, Any]:
 @router.get("/api/classrooms")
 def list_classrooms(request: Request) -> Dict[str, Any]:
     auth_user = require_auth_user(request)
-    uni_id = get_query_param(request, "universityId", "") or auth_user.get("institutionId") or ""
+    uni_id = _scoped_uni_id(auth_user, get_query_param(request, "universityId", ""))
     client = require_supabase_client()
     try:
         classrooms = client.select("classrooms", filters={"institution_id": f"eq.{uni_id}"}, order="name.asc")
@@ -417,9 +429,9 @@ def list_classrooms(request: Request) -> Dict[str, Any]:
 
 @router.post("/api/classrooms", status_code=201)
 async def create_classroom(request: Request) -> Dict[str, Any]:
-    auth_user = require_auth_user(request, allowed_roles=["admin"])
+    auth_user = require_auth_user(request, allowed_roles=["admin", "university_admin", "super_admin", "timetable_manager"])
     body = await parse_json_body(request)
-    uni_id = body.get("universityId") or auth_user.get("institutionId") or ""
+    uni_id = _scoped_uni_id(auth_user, str(body.get("universityId") or ""))
     name = str(body.get("name") or "").strip()
     if not name:
         raise HTTPException(status_code=400, detail={"error": "Classroom name is required."})
@@ -500,7 +512,7 @@ async def create_classroom(request: Request) -> Dict[str, Any]:
 @router.get("/api/students")
 def list_students(request: Request) -> Dict[str, Any]:
     auth_user = require_auth_user(request)
-    uni_id = get_query_param(request, "universityId", "") or auth_user.get("institutionId") or ""
+    uni_id = _scoped_uni_id(auth_user, get_query_param(request, "universityId", ""))
     batch_id = get_query_param(request, "batchId", "")
     client = require_supabase_client()
 

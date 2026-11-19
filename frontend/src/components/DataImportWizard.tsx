@@ -1,28 +1,54 @@
-import React, { useState, useRef } from 'react';
-import { motion, AnimatePresence, MotionConfig } from 'motion/react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { motion, MotionConfig } from 'motion/react';
 import ExcelJS from 'exceljs';
 import {
-  Upload,
-  FileSpreadsheet,
-  CheckCircle2,
+  AlertCircle,
   AlertTriangle,
-  ArrowRight,
   ArrowLeft,
-  Download,
-  X,
+  ArrowRight,
   Check,
-  Layers
+  CheckCircle2,
+  Clock,
+  Download,
+  FileSpreadsheet,
+  FileWarning,
+  History,
+  Layers,
+  RefreshCw,
+  ShieldAlert,
+  Sparkles,
+  Upload,
+  X
 } from 'lucide-react';
 import { institutionalStore } from '../data/store';
-import { RoomType, StaffRole } from '../types/institutional';
+import { getStoredUser } from '../services/votingApi';
+import {
+  commitImportBackendApi,
+  fetchImportHistoryBackendApi,
+  fetchImportTemplateApi,
+  ImportApiError,
+  ImportHistoryEntry,
+  validateImportBackendApi
+} from '../services/importApi';
+import {
+  buildErrorReportCsv,
+  buildStorePayloadFromValidatedRows,
+  CATEGORY_SCHEMAS,
+  ColumnMappingDetail,
+  CsvFormatError,
+  detectImportColumnMappings,
+  DuplicateHandlingMode,
+  ExistingStoreSnapshot,
+  generateTemplateCsv,
+  ImportCategory,
+  MAX_CSV_FILE_BYTES,
+  parseCsvTextStrict,
+  ValidatedRow,
+  validateImportPreviewLocal,
+  ValidationReport
+} from '../utils/csvImport';
 
-export type ImportCategory =
-  | 'all'
-  | 'departments'
-  | 'rooms'
-  | 'courses'
-  | 'instructors'
-  | 'cohorts';
+export type { ImportCategory };
 
 interface DataImportWizardProps {
   onClose?: () => void;
@@ -30,2252 +56,1952 @@ interface DataImportWizardProps {
   defaultCategory?: ImportCategory;
 }
 
-interface FieldDef {
-  key: string;
-  label: string;
-  group: string;
-  sample: string;
-  synonyms: string[];
-}
-
-interface ParsedRow {
-  index: number;
-  data: Record<string, string>;
-  extractedSummary: string[];
-  errors: string[];
-  isValid: boolean;
-}
-
-interface ExtractedPayload {
-  departments: Array<{ code: string; name: string; school?: string; subDepartments?: string[] }>;
-  rooms: Array<{
-    code: string;
-    name?: string;
-    capacity: number;
-    type: RoomType;
-    buildingName?: string;
-    equipment?: string[];
-  }>;
-  courses: Array<{
-    code: string;
-    title: string;
-    creditHours?: number;
-    lectureCredits?: number;
-    labCredits?: number;
-    weeklyContactHours?: number;
-    isLab?: boolean;
-    requiredRoomType?: RoomType;
-    departmentKey?: string;
-    subDepartment?: string;
-    isElective?: boolean;
-    electivePoolName?: string;
-  }>;
-  instructors: Array<{
-    name: string;
-    email?: string;
-    title?: string;
-    staffRole?: StaffRole;
-    subDepartment?: string;
-    qualifiedCourseCodes?: string[];
-    maxWeeklyHours?: number;
-    departmentKey?: string;
-  }>;
-  cohorts: Array<{
-    code: string;
-    name?: string;
-    batchCode?: string;
-    section?: string;
-    size?: number;
-    year?: number;
-    semester?: number;
-    homeRoom?: string;
-    departmentKey?: string;
-  }>;
-  sectionLinks: Array<{
-    courseCode: string;
-    cohortCode: string;
-    instructorName?: string;
-    isLab?: boolean;
-  }>;
-}
+type WizardStep = 'category' | 'upload' | 'mapping' | 'preview' | 'results';
+type RowFilter = 'all' | 'error' | 'warning' | 'duplicate' | 'ready';
 
 const CALM_EASE: [number, number, number, number] = [0.22, 1, 0.36, 1];
 
-const ALL_IN_ONE_FIELDS: FieldDef[] = [
-  // Record classification (optional, for mixed stacked CSVs)
-  {
-    key: 'recordType',
-    label: 'Row Entity Type (optional)',
-    group: 'Row Classifier',
-    sample: '',
-    synonyms: ['record_type', 'entity_type', 'category', 'entity', 'kind', 'table', 'section_type']
-  },
-  {
-    key: 'genericCode',
-    label: 'Generic Code / ID (if mixed rows)',
-    group: 'Row Classifier',
-    sample: '',
-    synonyms: ['generic_code', 'entity_code', 'record_code']
-  },
-  {
-    key: 'genericName',
-    label: 'Generic Name / Title (if mixed rows)',
-    group: 'Row Classifier',
-    sample: '',
-    synonyms: ['generic_name', 'entity_name', 'record_name']
-  },
-  // Departments
-  {
-    key: 'deptCode',
-    label: 'Department Code',
-    group: 'Departments',
-    sample: 'CS',
-    synonyms: ['dept_code', 'department_code', 'dept', 'department']
-  },
-  {
-    key: 'deptName',
-    label: 'Department Name',
-    group: 'Departments',
-    sample: 'Computer Science',
-    synonyms: ['dept_name', 'department_name', 'school_department', 'faculty_dept']
-  },
-  {
-    key: 'school',
-    label: 'School / Division',
-    group: 'Departments',
-    sample: 'School of Computing',
-    synonyms: ['school', 'division', 'college', 'faculty_school']
-  },
-  {
-    key: 'subDepartment',
-    label: 'Sub-Department / Wing',
-    group: 'Departments',
-    sample: 'AI & Data Systems',
-    synonyms: ['sub_department', 'subdepartment', 'sub_dept', 'subdept', 'specialization', 'wing', 'unit', 'track', 'sub_departments']
-  },
-  // Rooms & Labs
-  {
-    key: 'roomCode',
-    label: 'Room / Lab Code',
-    group: 'Rooms & Labs',
-    sample: 'HALL-101',
-    synonyms: ['room_code', 'room', 'classroom', 'hall', 'room_no', 'room_number', 'lab_code', 'facility_code']
-  },
-  {
-    key: 'roomName',
-    label: 'Room / Facility Name',
-    group: 'Rooms & Labs',
-    sample: 'Turing Lecture Hall',
-    synonyms: ['room_name', 'facility', 'facility_name', 'hall_name']
-  },
-  {
-    key: 'roomCapacity',
-    label: 'Room Capacity',
-    group: 'Rooms & Labs',
-    sample: '60',
-    synonyms: ['room_capacity', 'capacity', 'seats', 'max_students', 'cap']
-  },
-  {
-    key: 'roomType',
-    label: 'Room Type (lecture/lab)',
-    group: 'Rooms & Labs',
-    sample: 'lecture',
-    synonyms: ['room_type', 'facility_type', 'room_kind']
-  },
-  {
-    key: 'building',
-    label: 'Building Name',
-    group: 'Rooms & Labs',
-    sample: 'Science Complex',
-    synonyms: ['building', 'bld', 'building_name', 'block', 'location']
-  },
-  {
-    key: 'equipment',
-    label: 'Equipment List',
-    group: 'Rooms & Labs',
-    sample: 'Projector, Whiteboard',
-    synonyms: ['equipment', 'features', 'facilities', 'amenities', 'resources']
-  },
-  // Courses
-  {
-    key: 'courseCode',
-    label: 'Course Code',
-    group: 'Courses',
-    sample: 'CS-101',
-    synonyms: ['course_code', 'course', 'course_id', 'subject_code', 'course_no', 'subject_id']
-  },
-  {
-    key: 'courseTitle',
-    label: 'Course Title',
-    group: 'Courses',
-    sample: 'Introduction to Computing',
-    synonyms: ['course_title', 'course_name', 'subject', 'subject_name', 'subject_title']
-  },
-  {
-    key: 'creditHours',
-    label: 'Credit Hours',
-    group: 'Courses',
-    sample: '3',
-    synonyms: ['credit_hours', 'credits', 'credit', 'cr_hrs', 'cr', 'units']
-  },
-  {
-    key: 'lectureCredits',
-    label: 'Lecture Credits (1cr = 1h)',
-    group: 'Courses',
-    sample: '3',
-    synonyms: ['lecture_credits', 'theory_credits', 'lec_credits', 'lec_cr', 'theory_cr']
-  },
-  {
-    key: 'labCredits',
-    label: 'Lab Credits (1cr = 3h Lab)',
-    group: 'Courses',
-    sample: '1',
-    synonyms: ['lab_credits', 'practical_credits', 'lab_cr', 'practical_cr']
-  },
-  {
-    key: 'weeklyHours',
-    label: 'Weekly Contact Hours',
-    group: 'Courses',
-    sample: '3',
-    synonyms: ['weekly_hours', 'contact_hours', 'hours_per_week', 'weekly_contact_hours', 'hours']
-  },
-  {
-    key: 'isLab',
-    label: 'Is Lab Course (yes/no)',
-    group: 'Courses',
-    sample: 'no',
-    synonyms: ['is_lab', 'lab', 'practical', 'is_practical']
-  },
-  {
-    key: 'isElective',
-    label: 'Is Elective (yes/no)',
-    group: 'Courses',
-    sample: 'no',
-    synonyms: ['is_elective', 'elective', 'optional_course']
-  },
-  {
-    key: 'electivePoolName',
-    label: 'Elective Pool Name',
-    group: 'Courses',
-    sample: 'AI & Security Track',
-    synonyms: ['elective_pool', 'elective_pool_name', 'elective_group', 'pool_name']
-  },
-  // Faculty / Instructors & Lab Engineers
-  {
-    key: 'instructorName',
-    label: 'Instructor / Lab Eng. Name',
-    group: 'Faculty',
-    sample: 'Dr. Ayesha Khan',
-    synonyms: [
-      'instructor_name',
-      'instructor',
-      'faculty_name',
-      'faculty',
-      'professor',
-      'teacher',
-      'lecturer',
-      'teacher_name',
-      'prof',
-      'lab_engineer'
-    ]
-  },
-  {
-    key: 'instructorEmail',
-    label: 'Instructor Email',
-    group: 'Faculty',
-    sample: 'ayesha.khan@university.edu',
-    synonyms: ['instructor_email', 'faculty_email', 'email', 'email_address', 'mail', 'teacher_email']
-  },
-  {
-    key: 'instructorTitle',
-    label: 'Academic Rank / Title',
-    group: 'Faculty',
-    sample: 'Associate Professor',
-    synonyms: ['instructor_title', 'designation', 'rank', 'position', 'role']
-  },
-  {
-    key: 'staffRole',
-    label: 'Staff Role (faculty/lab_engineer)',
-    group: 'Faculty',
-    sample: 'faculty',
-    synonyms: ['staff_role', 'role_type', 'instructor_role', 'teacher_type']
-  },
-  {
-    key: 'qualifiedCourses',
-    label: 'Qualified Course Codes',
-    group: 'Faculty',
-    sample: 'CS-101; CS-201',
-    synonyms: ['qualified_courses', 'eligible_courses', 'qualified_subjects', 'subjects', 'can_teach']
-  },
-  {
-    key: 'maxWeeklyHours',
-    label: 'Max Weekly Hours',
-    group: 'Faculty',
-    sample: '12',
-    synonyms: ['max_weekly_hours', 'max_hours', 'weekly_cap', 'workload_cap', 'max_teaching_hours']
-  },
-  // Cohorts / Batches & Sections
-  {
-    key: 'cohortCode',
-    label: 'Cohort / Section Code',
-    group: 'Cohorts & Batches',
-    sample: '2K24-BSCS-A',
-    synonyms: [
-      'cohort_code',
-      'section_code',
-      'cohort',
-      'group',
-      'student_group',
-      'class',
-      'class_code'
-    ]
-  },
-  {
-    key: 'batchCode',
-    label: 'Batch Name (e.g. 2K24)',
-    group: 'Cohorts & Batches',
-    sample: '2K24',
-    synonyms: ['batch', 'batch_code', 'batch_name', 'intake']
-  },
-  {
-    key: 'sectionLetter',
-    label: 'Section(s) (e.g. A or A,B,C)',
-    group: 'Cohorts & Batches',
-    sample: 'A, B, C',
-    synonyms: ['section', 'sections', 'section_letter', 'sec']
-  },
-  {
-    key: 'cohortName',
-    label: 'Cohort / Section Name',
-    group: 'Cohorts & Batches',
-    sample: '2K24 BSCS Section A',
-    synonyms: ['cohort_name', 'group_name', 'class_name']
-  },
-  {
-    key: 'cohortSize',
-    label: 'Enrollment Size',
-    group: 'Cohorts & Batches',
-    sample: '45',
-    synonyms: ['cohort_size', 'enrollment', 'student_count', 'students', 'size', 'batch_size']
-  },
-  {
-    key: 'cohortYear',
-    label: 'Study Year (1-4)',
-    group: 'Cohorts & Batches',
-    sample: '2',
-    synonyms: ['study_year', 'year', 'batch_year', 'academic_year']
-  },
-  {
-    key: 'cohortSemester',
-    label: 'Semester Number',
-    group: 'Cohorts & Batches',
-    sample: '3',
-    synonyms: ['semester', 'sem', 'term_number']
-  },
-  {
-    key: 'homeRoom',
-    label: 'Home Classroom',
-    group: 'Cohorts & Batches',
-    sample: 'HALL-101',
-    synonyms: ['home_room', 'default_room', 'homeroom']
-  }
+const CATEGORY_ORDER: ImportCategory[] = [
+  'departments',
+  'rooms',
+  'laboratories',
+  'instructors',
+  'courses',
+  'cohorts',
+  'enrollments',
+  'course_assignments',
+  'all'
 ];
 
-const CATEGORY_SCHEMAS: Record<
-  Exclude<ImportCategory, 'all'>,
-  {
-    title: string;
-    description: string;
-    requiredFields: Array<{ key: string; label: string; sample: string; synonyms: string[] }>;
-    optionalFields: Array<{ key: string; label: string; sample: string; synonyms: string[] }>;
-  }
-> = {
-  departments: {
-    title: 'Academic Departments',
-    description: 'Academic departments, short codes, and parent schools or divisions.',
-    requiredFields: [
-      {
-        key: 'code',
-        label: 'Department Code',
-        sample: 'CS',
-        synonyms: ['code', 'dept_code', 'department_code', 'dept']
-      },
-      {
-        key: 'name',
-        label: 'Department Name',
-        sample: 'Computer Science',
-        synonyms: ['name', 'dept_name', 'department_name', 'department', 'title']
-      }
-    ],
-    optionalFields: [
-      {
-        key: 'school',
-        label: 'School / Faculty',
-        sample: 'School of Computing',
-        synonyms: ['school', 'division', 'college', 'faculty']
-      },
-      {
-        key: 'subDepartments',
-        label: 'Sub-Departments (semicolon/comma)',
-        sample: 'AI & ML; Networks & Security',
-        synonyms: ['sub_departments', 'subdepartments', 'sub_department', 'divisions', 'tracks', 'units']
-      }
-    ]
-  },
-  rooms: {
-    title: 'Rooms & Laboratories',
-    description: 'Classrooms, lecture halls, computer labs, and specialized workshops.',
-    requiredFields: [
-      {
-        key: 'code',
-        label: 'Room Code / Number',
-        sample: 'HALL-101',
-        synonyms: ['room', 'room_code', 'code', 'room_number', 'classroom', 'hall', 'room_no']
-      },
-      {
-        key: 'capacity',
-        label: 'Seating Capacity',
-        sample: '60',
-        synonyms: ['capacity', 'seats', 'size', 'max_students', 'cap']
-      }
-    ],
-    optionalFields: [
-      {
-        key: 'name',
-        label: 'Facility Name',
-        sample: 'Turing Lecture Hall',
-        synonyms: ['name', 'room_name', 'facility', 'description', 'title']
-      },
-      {
-        key: 'type',
-        label: 'Facility Type (lecture/lab/studio/seminar)',
-        sample: 'lecture',
-        synonyms: ['type', 'room_type', 'kind', 'category']
-      },
-      {
-        key: 'building',
-        label: 'Building Name',
-        sample: 'Science Complex',
-        synonyms: ['building', 'bld', 'building_name', 'block', 'location']
-      },
-      {
-        key: 'equipment',
-        label: 'Equipment / Facilities',
-        sample: 'Projector, Audio',
-        synonyms: ['equipment', 'features', 'facilities', 'amenities', 'resources']
-      }
-    ]
-  },
-  courses: {
-    title: 'Courses & Curriculum',
-    description: 'Academic subjects, course codes, credit hours, and lecture/lab breakdown.',
-    requiredFields: [
-      {
-        key: 'code',
-        label: 'Course Code',
-        sample: 'CS-101',
-        synonyms: ['code', 'course_code', 'course_id', 'subject_code', 'course_no', 'id']
-      },
-      {
-        key: 'title',
-        label: 'Course Title',
-        sample: 'Introduction to Computing',
-        synonyms: ['title', 'name', 'course_title', 'course_name', 'subject', 'description']
-      }
-    ],
-    optionalFields: [
-      {
-        key: 'creditHours',
-        label: 'Credit Hours',
-        sample: '3',
-        synonyms: ['credit_hours', 'credits', 'credit', 'cr_hrs', 'units']
-      },
-      {
-        key: 'lectureCredits',
-        label: 'Lecture Credits (1cr = 1h/wk)',
-        sample: '3',
-        synonyms: ['lecture_credits', 'theory_credits', 'lec_credits', 'lec_cr']
-      },
-      {
-        key: 'labCredits',
-        label: 'Lab Credits (1cr = 3h lab/wk)',
-        sample: '1',
-        synonyms: ['lab_credits', 'practical_credits', 'lab_cr', 'practical_cr']
-      },
-      {
-        key: 'weeklyHours',
-        label: 'Weekly Contact Hours',
-        sample: '6',
-        synonyms: [
-          'weekly_hours',
-          'contact_hours',
-          'hours_per_week',
-          'weekly_contact_hours',
-          'duration',
-          'hours'
-        ]
-      },
-      {
-        key: 'roomType',
-        label: 'Required Room Type (lecture/lab)',
-        sample: 'lecture',
-        synonyms: ['room_type', 'required_room', 'room_kind', 'facility_type']
-      },
-      {
-        key: 'department',
-        label: 'Department Code / Name',
-        sample: 'CS',
-        synonyms: ['department', 'dept', 'dept_code', 'department_name']
-      },
-      {
-        key: 'isLab',
-        label: 'Is Practical Lab (yes/no)',
-        sample: 'no',
-        synonyms: ['is_lab', 'lab', 'practical', 'is_practical']
-      },
-      {
-        key: 'isElective',
-        label: 'Is Elective Course (yes/no)',
-        sample: 'no',
-        synonyms: ['is_elective', 'elective', 'optional']
-      },
-      {
-        key: 'electivePoolName',
-        label: 'Elective Pool / Track Name',
-        sample: 'AI Track',
-        synonyms: ['elective_pool', 'elective_pool_name', 'elective_group', 'pool_name']
-      }
-    ]
-  },
-  instructors: {
-    title: 'Faculty & Lab Engineers',
-    description: 'Professors, lecturers, lab engineers, sub-departments, and qualified subjects.',
-    requiredFields: [
-      {
-        key: 'name',
-        label: 'Full Name',
-        sample: 'Dr. Ayesha Khan',
-        synonyms: [
-          'name',
-          'instructor_name',
-          'faculty_name',
-          'full_name',
-          'professor',
-          'teacher',
-          'instructor',
-          'lecturer',
-          'lab_engineer'
-        ]
-      }
-    ],
-    optionalFields: [
-      {
-        key: 'email',
-        label: 'Email Address',
-        sample: 'faculty@university.edu',
-        synonyms: ['email', 'email_address', 'mail', 'institutional_email', 'instructor_email']
-      },
-      {
-        key: 'title',
-        label: 'Academic Title / Designation',
-        sample: 'Associate Professor',
-        synonyms: ['title', 'designation', 'rank', 'position', 'role']
-      },
-      {
-        key: 'staffRole',
-        label: 'Staff Role (faculty/lab_engineer)',
-        sample: 'faculty',
-        synonyms: ['staff_role', 'role_type', 'instructor_role', 'teacher_type']
-      },
-      {
-        key: 'department',
-        label: 'Department Code / Name',
-        sample: 'CS',
-        synonyms: ['department', 'dept', 'dept_code', 'department_name']
-      },
-      {
-        key: 'subDepartment',
-        label: 'Sub-Department / Wing',
-        sample: 'AI & ML',
-        synonyms: ['sub_department', 'subdepartment', 'sub_dept', 'track', 'unit', 'wing']
-      },
-      {
-        key: 'qualifiedCourses',
-        label: 'Qualified Course Codes',
-        sample: 'CS-101; CS-201',
-        synonyms: ['qualified_courses', 'eligible_courses', 'qualified_subjects', 'subjects', 'can_teach']
-      },
-      {
-        key: 'maxWeeklyHours',
-        label: 'Max Weekly Teaching Hours',
-        sample: '12',
-        synonyms: [
-          'max_weekly_hours',
-          'max_hours',
-          'weekly_cap',
-          'workload_cap',
-          'max_teaching_hours'
-        ]
-      }
-    ]
-  },
-  cohorts: {
-    title: 'Batches, Fields & Sections',
-    description: 'Degree batches (e.g. 2K24), fields (e.g. BSCS), and sections (A, B, C). Each section gets its own timetable.',
-    requiredFields: [
-      {
-        key: 'code',
-        label: 'Batch / Section Code',
-        sample: '2K24-BSCS-A',
-        synonyms: [
-          'code',
-          'cohort_code',
-          'section_code',
-          'batch_code',
-          'cohort',
-          'batch',
-          'group'
-        ]
-      }
-    ],
-    optionalFields: [
-      {
-        key: 'sectionLetter',
-        label: 'Section(s) (e.g. A or A,B,C)',
-        sample: 'A, B, C',
-        synonyms: ['section', 'sections', 'section_letter', 'sec']
-      },
-      {
-        key: 'name',
-        label: 'Cohort Name',
-        sample: '2K24 BSCS Section A',
-        synonyms: ['name', 'cohort_name', 'batch_name', 'group_name', 'description']
-      },
-      {
-        key: 'size',
-        label: 'Class Enrollment Size',
-        sample: '45',
-        synonyms: ['size', 'enrollment', 'student_count', 'students', 'capacity']
-      },
-      {
-        key: 'year',
-        label: 'Study Year (1-4)',
-        sample: '2',
-        synonyms: ['year', 'batch_year', 'academic_year', 'study_year']
-      },
-      {
-        key: 'homeRoom',
-        label: 'Designated Home Classroom',
-        sample: 'HALL-101',
-        synonyms: ['home_room', 'default_room', 'homeroom', 'classroom', 'room']
-      },
-      {
-        key: 'department',
-        label: 'Field / Department Code',
-        sample: 'BSCS',
-        synonyms: ['department', 'dept', 'dept_code', 'program', 'field']
-      }
-    ]
-  }
-};
+const STEP_LABELS: Array<{ id: WizardStep; num: number; label: string }> = [
+  { id: 'category', num: 1, label: 'Category' },
+  { id: 'upload', num: 2, label: 'Upload File' },
+  { id: 'mapping', num: 3, label: 'Map Columns' },
+  { id: 'preview', num: 4, label: 'Validate & Duplicates' },
+  { id: 'results', num: 5, label: 'Import Summary' }
+];
 
-function normalizeHeader(h: string): string {
-  return h
-    .replace(/^\uFEFF/, '')
-    .trim()
-    .toLowerCase()
-    .replace(/[\s\-_/]+/g, '');
+function triggerCsvDownload(fileName: string, csvContent: string): void {
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
-function detectDelimiter(text: string): ',' | ';' | '\t' {
-  const firstLine = text.split(/\r?\n/).find(l => l.trim().length > 0) || '';
-  let commas = 0;
-  let semis = 0;
-  let tabs = 0;
-  let inQuotes = false;
-  for (let i = 0; i < firstLine.length; i++) {
-    const ch = firstLine[i];
-    if (ch === '"') {
-      inQuotes = !inQuotes;
-    } else if (!inQuotes) {
-      if (ch === ',') commas++;
-      else if (ch === ';') semis++;
-      else if (ch === '\t') tabs++;
-    }
-  }
-  if (tabs > commas && tabs >= semis) return '\t';
-  if (semis > commas) return ';';
-  return ',';
-}
-
-function parseDelimitedMatrix(raw: string): string[][] {
-  const cleanText = raw.replace(/^\uFEFF/, '');
-  if (!cleanText.trim()) return [];
-  const delimiter = detectDelimiter(cleanText);
-
-  const rows: string[][] = [];
-  let row: string[] = [];
-  let current = '';
-  let inQuotes = false;
-
-  for (let i = 0; i < cleanText.length; i++) {
-    const ch = cleanText[i];
-    const next = cleanText[i + 1];
-
-    if (inQuotes) {
-      if (ch === '"' && next === '"') {
-        current += '"';
-        i++;
-      } else if (ch === '"') {
-        inQuotes = false;
-      } else {
-        current += ch;
-      }
-    } else {
-      if (ch === '"' && current.trim().length === 0) {
-        current = '';
-        inQuotes = true;
-      } else if (ch === delimiter) {
-        row.push(current.trim());
-        current = '';
-      } else if (ch === '\r' && next === '\n') {
-        row.push(current.trim());
-        if (row.some(cell => cell.length > 0)) rows.push(row);
-        row = [];
-        current = '';
-        i++;
-      } else if (ch === '\n' || ch === '\r') {
-        row.push(current.trim());
-        if (row.some(cell => cell.length > 0)) rows.push(row);
-        row = [];
-        current = '';
-      } else {
-        current += ch;
-      }
-    }
-  }
-
-  row.push(current.trim());
-  if (row.some(cell => cell.length > 0)) {
-    rows.push(row);
-  }
-  return rows;
-}
-
-function parseRoomType(raw?: string): RoomType {
-  const v = (raw || 'lecture').toLowerCase();
-  if (v.includes('lab')) return 'lab';
-  if (v.includes('studio')) return 'studio';
-  if (v.includes('seminar')) return 'seminar';
-  return 'lecture';
-}
-
-function excelCellToString(v: unknown): string {
-  if (v === null || v === undefined) return '';
-  if (typeof v === 'object') {
-    const obj = v as Record<string, unknown>;
+function excelCellToString(value: unknown): string {
+  if (value === null || value === undefined) return '';
+  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  if (typeof value === 'object') {
+    const obj = value as Record<string, unknown>;
     if (Array.isArray(obj.richText)) {
       return obj.richText
-        .map(part => (typeof part === 'object' && part && 'text' in part ? String((part as { text: unknown }).text) : ''))
+        .map(part =>
+          typeof part === 'object' && part && 'text' in part
+            ? String((part as { text: unknown }).text ?? '')
+            : ''
+        )
         .join('')
         .trim();
     }
     if ('text' in obj) return String(obj.text ?? '').trim();
     if ('result' in obj) return String(obj.result ?? '').trim();
   }
-  return String(v).trim();
+  return String(value).trim();
 }
 
-function inferSheetCategory(sheetName: string): Exclude<ImportCategory, 'all'> | null {
-  const lower = sheetName.toLowerCase();
-  if (lower.includes('dept') || lower.includes('department')) return 'departments';
-  if (lower.includes('room') || lower.includes('lab') || lower.includes('hall')) return 'rooms';
-  if (lower.includes('course') || lower.includes('subject')) return 'courses';
-  if (lower.includes('inst') || lower.includes('facul') || lower.includes('teach')) return 'instructors';
-  if (lower.includes('cohort') || lower.includes('batch') || lower.includes('section') || lower.includes('group')) {
-    return 'cohorts';
+function extractSheetTable(worksheet: ExcelJS.Worksheet): { headers: string[]; rows: string[][] } {
+  const matrix: string[][] = [];
+  let maxCols = 0;
+
+  worksheet.eachRow({ includeEmpty: false }, row => {
+    const rawValues = row.values;
+    const cells: string[] = [];
+    if (Array.isArray(rawValues)) {
+      // ExcelJS row.values is 1-indexed (index 0 is undefined)
+      for (let c = 1; c < rawValues.length; c++) {
+        cells.push(excelCellToString(rawValues[c]));
+      }
+    }
+    if (cells.some(cell => cell !== '')) {
+      maxCols = Math.max(maxCols, cells.length);
+      matrix.push(cells);
+    }
+  });
+
+  if (matrix.length === 0) {
+    throw new CsvFormatError(`Worksheet "${worksheet.name}" is empty.`);
   }
-  return null;
+
+  const rawHeaders = matrix[0].slice(0, maxCols).map((h, i) => h.trim() || `Column_${i + 1}`);
+  while (rawHeaders.length < maxCols) {
+    rawHeaders.push(`Column_${rawHeaders.length + 1}`);
+  }
+  const seen = new Map<string, number>();
+  const uniqueHeaders = rawHeaders.map(h => {
+    const cnt = (seen.get(h) || 0) + 1;
+    seen.set(h, cnt);
+    return cnt === 1 ? h : `${h} (${cnt})`;
+  });
+
+  const dataRows = matrix.slice(1).filter(r => r.some(c => c !== ''));
+  if (dataRows.length === 0) {
+    throw new CsvFormatError(
+      `Worksheet "${worksheet.name}" has column headers but 0 data rows.`
+    );
+  }
+
+  const normalizedRows = dataRows.map(r => {
+    const padded = r.slice(0, uniqueHeaders.length);
+    while (padded.length < uniqueHeaders.length) padded.push('');
+    return padded;
+  });
+
+  return { headers: uniqueHeaders, rows: normalizedRows };
+}
+
+function getStoreSnapshot(): ExistingStoreSnapshot {
+  const s = institutionalStore.get();
+  return {
+    departments: s.departments,
+    rooms: s.rooms,
+    courses: s.courses,
+    instructors: s.instructors,
+    studentGroups: s.studentGroups,
+    sections: s.sections
+  };
+}
+
+function makeIdempotencyKey(
+  category: string,
+  fileName: string,
+  rowCount: number
+): string {
+  const rand = Math.random().toString(36).slice(2, 10);
+  return `imp-${category}-${rowCount}-${fileName.slice(0, 12).replace(/[^a-zA-Z0-9]/g, '')}-${Date.now()}-${rand}`;
 }
 
 export const DataImportWizard: React.FC<DataImportWizardProps> = ({
   onClose,
   onSuccess,
-  defaultCategory = 'all'
+  defaultCategory = 'courses'
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const currentUser = getStoredUser();
 
-  const [category, setCategory] = useState<ImportCategory>(defaultCategory);
-  const [step, setStep] = useState<'upload' | 'mapping' | 'preview' | 'completed'>('upload');
-  const [rawText, setRawText] = useState<string>('');
+  const [activeTab, setActiveTab] = useState<'wizard' | 'history'>('wizard');
+  const [step, setStep] = useState<WizardStep>('category');
+  const [category, setCategory] = useState<ImportCategory>(
+    CATEGORY_SCHEMAS[defaultCategory] ? defaultCategory : 'courses'
+  );
+
+  // Source data state
   const [fileName, setFileName] = useState<string>('');
-  const [isDragging, setIsDragging] = useState(false);
-  const [csvHeaders, setCsvHeaders] = useState<string[]>([]);
-  const [rawRows, setRawRows] = useState<string[][]>([]);
+  const [rawCsvText, setRawCsvText] = useState<string>('');
+  const [pasteInput, setPasteInput] = useState<string>('');
+  const [showPasteBox, setShowPasteBox] = useState<boolean>(false);
+  const [isDragging, setIsDragging] = useState<boolean>(false);
+  const [parseError, setParseError] = useState<string | null>(null);
+
+  // Workbook multi-sheet state (.xlsx)
+  const [sheetTables, setSheetTables] = useState<
+    Record<string, { headers: string[]; rows: string[][] }>
+  >({});
+  const [activeSheetName, setActiveSheetName] = useState<string>('');
+
+  // Parsed tabular data & mapping state
+  const [headers, setHeaders] = useState<string[]>([]);
+  const [rows, setRows] = useState<string[][]>([]);
   const [columnMappings, setColumnMappings] = useState<Record<string, string>>({});
-  const [parsedData, setParsedData] = useState<ParsedRow[]>([]);
-  const [extractedPreview, setExtractedPreview] = useState<ExtractedPayload>({
-    departments: [],
-    rooms: [],
-    courses: [],
-    instructors: [],
-    cohorts: [],
-    sectionLinks: []
+
+  // Validation & Duplicate handling state
+  const [duplicateMode, setDuplicateMode] = useState<DuplicateHandlingMode>('skip');
+  const [atomicMode, setAtomicMode] = useState<boolean>(false);
+  const [confirmUpdates, setConfirmUpdates] = useState<boolean>(false);
+  const [validationReport, setValidationReport] = useState<ValidationReport | null>(null);
+  const [backendErrorCsv, setBackendErrorCsv] = useState<string>('');
+  const [validationModeNote, setValidationModeNote] = useState<string | null>(null);
+  const [isValidating, setIsValidating] = useState<boolean>(false);
+  const [rowFilter, setRowFilter] = useState<RowFilter>('all');
+
+  // Commit & Result state
+  const [idempotencyKey, setIdempotencyKey] = useState<string>('');
+  const [isCommitting, setIsCommitting] = useState<boolean>(false);
+  const [commitProgress, setCommitProgress] = useState<{ pct: number; label: string }>({
+    pct: 0,
+    label: ''
   });
-  const [importMode, setImportMode] = useState<'merge' | 'replace'>('merge');
-  const [importResult, setImportResult] = useState<{
-    summary: string;
-    departmentsAdded: number;
-    roomsAdded: number;
-    coursesAdded: number;
-    instructorsAdded: number;
-    cohortsAdded: number;
+  const [commitError, setCommitError] = useState<string | null>(null);
+  const [commitResult, setCommitResult] = useState<{
+    status: 'completed' | 'partial' | 'failed' | 'rolled_back';
+    message: string;
+    persistenceMode: 'supabase' | 'local_fallback';
+    idempotentReplay: boolean;
+    durationMs: number;
+    counts: {
+      totalRows: number;
+      created: number;
+      updated: number;
+      skipped: number;
+      failed: number;
+    };
+    errorCsv: string;
   } | null>(null);
-  const [importError, setImportError] = useState<string | null>(null);
 
-  const getFieldsForCategory = (cat: ImportCategory) => {
-    if (cat === 'all') return ALL_IN_ONE_FIELDS;
-    const schema = CATEGORY_SCHEMAS[cat];
-    return [
-      ...schema.requiredFields.map(f => ({ ...f, group: 'Required' })),
-      ...schema.optionalFields.map(f => ({ ...f, group: 'Optional' }))
-    ];
+  // History state
+  const [historyLoading, setHistoryLoading] = useState<boolean>(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const [historyEntries, setHistoryEntries] = useState<ImportHistoryEntry[]>([]);
+
+  const mappingResult = useMemo(
+    () =>
+      headers.length > 0
+        ? detectImportColumnMappings(headers, category, columnMappings)
+        : null,
+    [headers, category, columnMappings]
+  );
+
+  // Re-run auto detection cleanly when category changes while keeping existing rows
+  const handleSelectCategory = (nextCat: ImportCategory) => {
+    setCategory(nextCat);
+    setParseError(null);
+    setCommitError(null);
+    if (headers.length > 0) {
+      const detected = detectImportColumnMappings(headers, nextCat);
+      setColumnMappings(detected.mapping);
+      setValidationReport(null);
+    }
   };
 
-  const autoDetectMappingsFor = (headers: string[], cat: ImportCategory) => {
-    const mappings: Record<string, string> = {};
-    const fields = getFieldsForCategory(cat);
-    const usedTargets = new Set<string>();
-
-    // Pass 1: Exact or strong partial synonym match
-    headers.forEach(h => {
-      const cleanHeader = normalizeHeader(h);
-      if (!cleanHeader) {
-        mappings[h] = '';
+  const handleDownloadTemplate = async (targetCat: ImportCategory) => {
+    setParseError(null);
+    const fallbackCsv = generateTemplateCsv(targetCat);
+    const fallbackName = `smartgrid_${targetCat}_template.csv`;
+    if (currentUser?.token) {
+      try {
+        const res = await fetchImportTemplateApi(currentUser, targetCat);
+        triggerCsvDownload(res.fileName || fallbackName, res.csvText || fallbackCsv);
         return;
+      } catch {
+        // Fallback safely to identical local template generator
       }
-
-      let match = fields.find(f => {
-        if (usedTargets.has(f.key)) return false;
-        const cleanKey = normalizeHeader(f.key);
-        if (cleanKey === cleanHeader) return true;
-        return f.synonyms.some(s => normalizeHeader(s) === cleanHeader);
-      });
-
-      if (!match && cat === 'all') {
-        match = fields.find(f => {
-          if (usedTargets.has(f.key)) return false;
-          return f.synonyms.some(s => {
-            const ns = normalizeHeader(s);
-            return ns.length >= 4 && (cleanHeader.includes(ns) || ns.includes(cleanHeader));
-          });
-        });
-      }
-
-      if (match) {
-        mappings[h] = match.key;
-        usedTargets.add(match.key);
-      } else {
-        mappings[h] = '';
-      }
-    });
-
-    // Pass 2 (All-in-One): Disambiguate bare headers like code, name, title, type, id
-    if (cat === 'all') {
-      const hasMapped = (k: string) => usedTargets.has(k);
-      const isStackedMixed = hasMapped('recordType');
-
-      const assignIfAvailable = (header: string, targetKey: string) => {
-        if (!usedTargets.has(targetKey)) {
-          mappings[header] = targetKey;
-          usedTargets.add(targetKey);
-          return true;
-        }
-        return false;
-      };
-
-      headers.forEach(h => {
-        if (mappings[h]) return;
-        const clean = normalizeHeader(h);
-        if (!clean) return;
-
-        if (isStackedMixed) {
-          if (clean === 'code' || clean === 'id' || clean === 'shortcode') {
-            assignIfAvailable(h, 'genericCode');
-          } else if (clean === 'name' || clean === 'title' || clean === 'fullname' || clean === 'label') {
-            assignIfAvailable(h, 'genericName');
-          } else if (clean === 'type') {
-            assignIfAvailable(h, 'recordType');
-          }
-          return;
-        }
-
-        // Single-entity CSV uploaded under All-in-One tab: infer entity from sibling headers
-        const looksRoom = hasMapped('roomCapacity') || hasMapped('roomType') || hasMapped('building') || hasMapped('equipment');
-        const looksCourse = hasMapped('creditHours') || hasMapped('weeklyHours') || hasMapped('isLab') || hasMapped('courseTitle');
-        const looksInstructor = hasMapped('instructorEmail') || hasMapped('maxWeeklyHours') || hasMapped('instructorTitle');
-        const looksCohort = hasMapped('cohortSize') || hasMapped('cohortYear') || hasMapped('cohortSemester') || hasMapped('homeRoom');
-
-        if (clean === 'code' || clean === 'id') {
-          if (looksRoom && !hasMapped('roomCode')) assignIfAvailable(h, 'roomCode');
-          else if (looksCourse && !hasMapped('courseCode')) assignIfAvailable(h, 'courseCode');
-          else if (looksCohort && !hasMapped('cohortCode')) assignIfAvailable(h, 'cohortCode');
-          else if (!hasMapped('deptCode')) assignIfAvailable(h, 'deptCode');
-        } else if (clean === 'name' || clean === 'fullname') {
-          if (looksInstructor && !hasMapped('instructorName')) assignIfAvailable(h, 'instructorName');
-          else if (looksRoom && !hasMapped('roomName')) assignIfAvailable(h, 'roomName');
-          else if (looksCohort && !hasMapped('cohortName')) assignIfAvailable(h, 'cohortName');
-          else if (looksCourse && !hasMapped('courseTitle')) assignIfAvailable(h, 'courseTitle');
-          else if (!hasMapped('deptName')) assignIfAvailable(h, 'deptName');
-        } else if (clean === 'title') {
-          if (looksCourse && !hasMapped('courseTitle')) assignIfAvailable(h, 'courseTitle');
-          else if (looksInstructor && !hasMapped('instructorTitle')) assignIfAvailable(h, 'instructorTitle');
-          else if (!hasMapped('courseTitle')) assignIfAvailable(h, 'courseTitle');
-        } else if (clean === 'type') {
-          if ((looksRoom || hasMapped('roomCode')) && !hasMapped('roomType')) {
-            assignIfAvailable(h, 'roomType');
-          } else if (!hasMapped('recordType')) {
-            assignIfAvailable(h, 'recordType');
-          }
-        }
-      });
     }
-
-    return mappings;
+    triggerCsvDownload(fallbackName, fallbackCsv);
   };
 
-  const buildExtractionAndPreview = (
-    cat: ImportCategory,
-    headers: string[],
-    rows: string[][],
-    mappings: Record<string, string>
+  const applyParsedTable = (
+    name: string,
+    parsedHeaders: string[],
+    parsedRows: string[][],
+    rawCsv: string
   ) => {
-    const deptsMap = new Map<string, ExtractedPayload['departments'][number]>();
-    const roomsMap = new Map<string, ExtractedPayload['rooms'][number]>();
-    const coursesMap = new Map<string, ExtractedPayload['courses'][number]>();
-    const instructorsMap = new Map<string, ExtractedPayload['instructors'][number]>();
-    const cohortsMap = new Map<string, ExtractedPayload['cohorts'][number]>();
-    const sectionLinksMap = new Map<string, ExtractedPayload['sectionLinks'][number]>();
-
-    const parseBoolFlag = (v?: string) => {
-      const s = (v || '').trim().toLowerCase();
-      return s === 'yes' || s === 'true' || s === '1' || s === 'y' || s === 'elective';
-    };
-
-    const parseStaffRoleVal = (roleRaw?: string, titleRaw?: string): StaffRole => {
-      const combined = `${roleRaw || ''} ${titleRaw || ''}`.toLowerCase();
-      return combined.includes('lab') || combined.includes('engineer') ? 'lab_engineer' : 'faculty';
-    };
-
-    const parseCourseSpec = (
-      code: string,
-      title: string,
-      rowObj: {
-        creditHours?: string;
-        lectureCredits?: string;
-        labCredits?: string;
-        weeklyHours?: string;
-        isLab?: string;
-        roomType?: string;
-      departmentKey?: string;
-      isElective?: string;
-      electivePoolName?: string;
-    }
-    ): ExtractedPayload['courses'][number] => {
-      const explicitLabFlag =
-        parseBoolFlag(rowObj.isLab) ||
-        code.endsWith('-L') ||
-        (rowObj.roomType || '').toLowerCase().includes('lab');
-      const hasExplicitLec = rowObj.lectureCredits !== undefined && rowObj.lectureCredits !== '';
-      const hasExplicitLab = rowObj.labCredits !== undefined && rowObj.labCredits !== '';
-      const lecCr = hasExplicitLec
-        ? Math.max(0, Number(rowObj.lectureCredits) || 0)
-        : explicitLabFlag
-          ? 0
-          : Number(rowObj.creditHours) || 3;
-      const labCr = hasExplicitLab
-        ? Math.max(0, Number(rowObj.labCredits) || 0)
-        : explicitLabFlag
-          ? Number(rowObj.creditHours) || 1
-          : 0;
-      const totalCr = lecCr + labCr || Number(rowObj.creditHours) || (explicitLabFlag ? 1 : 3);
-      const calcContact = lecCr * 1 + labCr * 3;
-      const weeklyContactHours = Number(rowObj.weeklyHours) || calcContact || (explicitLabFlag ? 3 : 3);
-      const isPureLab = labCr > 0 && lecCr === 0;
-      return {
-        code,
-        title,
-        creditHours: totalCr,
-        lectureCredits: lecCr,
-        labCredits: labCr,
-        weeklyContactHours,
-        isLab: isPureLab || explicitLabFlag,
-        requiredRoomType: isPureLab || explicitLabFlag ? 'lab' : 'lecture',
-        departmentKey: rowObj.departmentKey,
-        isElective: parseBoolFlag(rowObj.isElective),
-        electivePoolName: rowObj.electivePoolName || undefined
-      };
-    };
-
-    const expandCohortEntries = (opts: {
-      rawCode?: string;
-      batchCode?: string;
-      sectionLetter?: string;
-      deptKey?: string;
-      name?: string;
-      size?: number;
-      year?: number;
-      semester?: number;
-      homeRoom?: string;
-    }): ExtractedPayload['cohorts'][number][] => {
-      const baseCode = (opts.rawCode || '').trim().toUpperCase();
-      const rawBatch = (opts.batchCode || '').trim().toUpperCase();
-      const rawDept = (opts.deptKey || '').trim().toUpperCase();
-      const secList = (opts.sectionLetter || '')
-        .split(/[;,/]/)
-        .map(s => s.trim().toUpperCase())
-        .filter(Boolean);
-
-      if (secList.length > 0 && (rawBatch || (baseCode && !baseCode.includes('-')))) {
-        const batch = rawBatch || baseCode;
-        return secList.map(sec => {
-          const fullCode = rawDept ? `${batch}-${rawDept}-${sec}` : `${batch}-${sec}`;
-          return {
-            code: fullCode,
-            batchCode: batch,
-            section: sec,
-            name: opts.name && secList.length === 1 ? opts.name : `${batch} ${rawDept} Section ${sec}`.trim(),
-            size: opts.size || 45,
-            year: opts.year || 1,
-            semester: opts.semester,
-            homeRoom: opts.homeRoom,
-            departmentKey: opts.deptKey
-          };
-        });
-      }
-
-      const finalCode = baseCode || (rawBatch && rawDept ? `${rawBatch}-${rawDept}-A` : rawBatch);
-      if (!finalCode) return [];
-      const parts = finalCode.split('-');
-      return [
-        {
-          code: finalCode,
-          batchCode: rawBatch || (parts.length >= 2 ? parts[0] : undefined),
-          section: secList[0] || (parts.length >= 3 ? parts[2] : undefined),
-          name: opts.name || `Cohort ${finalCode}`,
-          size: opts.size || 45,
-          year: opts.year || 1,
-          semester: opts.semester,
-          homeRoom: opts.homeRoom,
-          departmentKey: opts.deptKey || (parts.length >= 2 ? parts[1] : undefined)
-        }
-      ];
-    };
-
-    const parsed: ParsedRow[] = rows.map((row, rIdx) => {
-      const rowData: Record<string, string> = {};
-      const errors: string[] = [];
-      const extractedSummary: string[] = [];
-
-      headers.forEach((h, hIdx) => {
-        const target = mappings[h];
-        if (target) {
-          rowData[target] = (row[hIdx] ?? '').trim();
-        }
-      });
-
-      if (cat === 'all') {
-        const rowType = (rowData.recordType || '').toLowerCase().trim();
-        const fallbackCode = (rowData.genericCode || '').trim();
-        const fallbackName = (rowData.genericName || '').trim();
-
-        // Support stacked/typed rows using generic fallback columns if present
-        if (rowType.includes('dept') || rowType.includes('department')) {
-          const code = (rowData.deptCode || fallbackCode || rowData.courseCode || rowData.roomCode || '').toUpperCase();
-          const name = rowData.deptName || fallbackName || rowData.courseTitle || rowData.roomName || code;
-          if (code || name) {
-            const key = (code || name).toUpperCase();
-            const subs = rowData.subDepartment
-              ? rowData.subDepartment.split(/[;,]/).map(s => s.trim()).filter(Boolean)
-              : undefined;
-            deptsMap.set(key, { code: code || key.slice(0, 6), name, school: rowData.school, subDepartments: subs });
-            extractedSummary.push(`Dept ${code || name}`);
-          }
-        } else if (rowType.includes('room') || rowType.includes('lab') || rowType.includes('hall')) {
-          const code = (rowData.roomCode || fallbackCode || rowData.courseCode || rowData.cohortCode || '').toUpperCase();
-          if (code) {
-            const cap = Number(rowData.roomCapacity || rowData.cohortSize || 50);
-            if (Number.isNaN(cap) || cap <= 0) errors.push('Invalid room capacity');
-            else {
-              roomsMap.set(code, {
-                code,
-                name: rowData.roomName || fallbackName,
-                capacity: cap,
-                type: parseRoomType(rowData.roomType),
-                buildingName: rowData.building,
-                equipment: rowData.equipment
-                  ? rowData.equipment.split(/[;,]/).map(s => s.trim()).filter(Boolean)
-                  : undefined
-              });
-              extractedSummary.push(`Room ${code}`);
-            }
-          }
-        } else if (rowType.includes('course') || rowType.includes('subject')) {
-          const code = (rowData.courseCode || fallbackCode || rowData.roomCode || '').toUpperCase();
-          const title = rowData.courseTitle || fallbackName || code;
-          if (code) {
-            coursesMap.set(
-              code,
-              parseCourseSpec(code, title, {
-                creditHours: rowData.creditHours,
-                lectureCredits: rowData.lectureCredits,
-                labCredits: rowData.labCredits,
-                weeklyHours: rowData.weeklyHours,
-                isLab: rowData.isLab,
-                roomType: rowData.roomType,
-                departmentKey: rowData.deptCode || rowData.deptName,
-                isElective: rowData.isElective,
-                electivePoolName: rowData.electivePoolName
-              })
-            );
-            extractedSummary.push(`Course ${code}`);
-          }
-        } else if (
-          rowType.includes('inst') ||
-          rowType.includes('facul') ||
-          rowType.includes('teach') ||
-          rowType.includes('prof') ||
-          rowType.includes('engineer')
-        ) {
-          const name = rowData.instructorName || fallbackName || rowData.courseTitle || '';
-          if (name) {
-            const staffRole = parseStaffRoleVal(rowData.staffRole, rowData.instructorTitle);
-            instructorsMap.set(name.toLowerCase(), {
-              name,
-              email: rowData.instructorEmail,
-              title: rowData.instructorTitle || (staffRole === 'lab_engineer' ? 'Lab Engineer' : undefined),
-              staffRole,
-              subDepartment: rowData.subDepartment || undefined,
-              qualifiedCourseCodes: rowData.qualifiedCourses
-                ? rowData.qualifiedCourses.split(/[;,]/).map(s => s.trim().toUpperCase()).filter(Boolean)
-                : undefined,
-              maxWeeklyHours: Number(rowData.maxWeeklyHours) || 14,
-              departmentKey: rowData.deptCode || rowData.deptName
-            });
-            extractedSummary.push(`${staffRole === 'lab_engineer' ? 'Lab Eng.' : 'Faculty'} ${name}`);
-          }
-        } else if (
-          rowType.includes('cohort') ||
-          rowType.includes('batch') ||
-          rowType.includes('section') ||
-          rowType.includes('group')
-        ) {
-          const entries = expandCohortEntries({
-            rawCode: rowData.cohortCode || fallbackCode || rowData.courseCode,
-            batchCode: rowData.batchCode,
-            sectionLetter: rowData.sectionLetter,
-            deptKey: rowData.deptCode || rowData.deptName,
-            name: rowData.cohortName || fallbackName,
-            size: Number(rowData.cohortSize || 45) || 45,
-            year: Number(rowData.cohortYear || 1) || 1,
-            semester: rowData.cohortSemester ? Number(rowData.cohortSemester) : undefined,
-            homeRoom: rowData.homeRoom || rowData.roomCode
-          });
-          entries.forEach(entry => {
-            cohortsMap.set(entry.code, entry);
-            extractedSummary.push(`Cohort ${entry.code}`);
-          });
-        } else {
-          // Combined master row: extract EVERY mapped entity present in this row
-          if (rowData.deptCode || rowData.deptName) {
-            const code = (rowData.deptCode || rowData.deptName).trim().toUpperCase();
-            const name = (rowData.deptName || rowData.deptCode).trim();
-            const existingDept = deptsMap.get(code);
-            const subDept = rowData.subDepartment?.trim();
-            if (!existingDept) {
-              deptsMap.set(code, {
-                code: code.length <= 8 ? code : code.slice(0, 6),
-                name,
-                school: rowData.school,
-                subDepartments: subDept ? [subDept] : undefined
-              });
-              extractedSummary.push(`Dept ${code}`);
-            } else if (subDept && !(existingDept.subDepartments || []).includes(subDept)) {
-              existingDept.subDepartments = [...(existingDept.subDepartments || []), subDept];
-            }
-          }
-
-          if (rowData.roomCode) {
-            const code = rowData.roomCode.toUpperCase();
-            const rawCap = rowData.roomCapacity;
-            const cap = rawCap ? Number(rawCap) : 50;
-            if (rawCap && (Number.isNaN(cap) || cap <= 0)) {
-              errors.push(`Invalid room capacity "${rawCap}"`);
-            } else if (!roomsMap.has(code)) {
-              roomsMap.set(code, {
-                code,
-                name: rowData.roomName,
-                capacity: cap,
-                type: parseRoomType(rowData.roomType),
-                buildingName: rowData.building,
-                equipment: rowData.equipment
-                  ? rowData.equipment.split(/[;,]/).map(s => s.trim()).filter(Boolean)
-                  : undefined
-              });
-              extractedSummary.push(`Room ${code}`);
-            }
-          }
-
-          let extractedCourseCode = '';
-          let extractedIsLab = false;
-          if (rowData.courseCode || rowData.courseTitle) {
-            const code = (
-              rowData.courseCode ||
-              rowData.courseTitle.replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 8)
-            ).toUpperCase();
-            extractedCourseCode = code;
-            const title = rowData.courseTitle || code;
-            const parsedCourse = parseCourseSpec(code, title, {
-              creditHours: rowData.creditHours,
-              lectureCredits: rowData.lectureCredits,
-              labCredits: rowData.labCredits,
-              weeklyHours: rowData.weeklyHours,
-              isLab: rowData.isLab,
-              roomType: rowData.roomType,
-              departmentKey: rowData.deptCode || rowData.deptName,
-              isElective: rowData.isElective,
-              electivePoolName: rowData.electivePoolName
-            });
-            extractedIsLab = Boolean(parsedCourse.isLab);
-            if (code && !coursesMap.has(code)) {
-              coursesMap.set(code, parsedCourse);
-              extractedSummary.push(`Course ${code}`);
-            }
-          }
-
-          if (rowData.instructorName) {
-            const name = rowData.instructorName.trim();
-            const staffRole = parseStaffRoleVal(rowData.staffRole, rowData.instructorTitle);
-            if (name && !instructorsMap.has(name.toLowerCase())) {
-              instructorsMap.set(name.toLowerCase(), {
-                name,
-                email: rowData.instructorEmail,
-                title: rowData.instructorTitle || (staffRole === 'lab_engineer' ? 'Lab Engineer' : undefined),
-                staffRole,
-                subDepartment: rowData.subDepartment || undefined,
-                qualifiedCourseCodes: rowData.qualifiedCourses
-                  ? rowData.qualifiedCourses.split(/[;,]/).map(s => s.trim().toUpperCase()).filter(Boolean)
-                  : extractedCourseCode
-                    ? [extractedCourseCode]
-                    : undefined,
-                maxWeeklyHours: Number(rowData.maxWeeklyHours) || 14,
-                departmentKey: rowData.deptCode || rowData.deptName
-              });
-              extractedSummary.push(`${staffRole === 'lab_engineer' ? 'Lab Eng.' : 'Faculty'} ${name}`);
-            } else if (name && extractedCourseCode) {
-              const existingInst = instructorsMap.get(name.toLowerCase());
-              if (existingInst) {
-                const prev = existingInst.qualifiedCourseCodes || [];
-                if (!prev.includes(extractedCourseCode)) {
-                  existingInst.qualifiedCourseCodes = [...prev, extractedCourseCode];
-                }
-              }
-            }
-          }
-
-          if (rowData.cohortCode || rowData.batchCode) {
-            const entries = expandCohortEntries({
-              rawCode: rowData.cohortCode,
-              batchCode: rowData.batchCode,
-              sectionLetter: rowData.sectionLetter,
-              deptKey: rowData.deptCode || rowData.deptName,
-              name: rowData.cohortName,
-              size: Number(rowData.cohortSize || 45) || 45,
-              year: Number(rowData.cohortYear || 1) || 1,
-              semester: rowData.cohortSemester ? Number(rowData.cohortSemester) : undefined,
-              homeRoom: rowData.homeRoom || rowData.roomCode
-            });
-            entries.forEach(entry => {
-              if (!cohortsMap.has(entry.code)) {
-                cohortsMap.set(entry.code, entry);
-                extractedSummary.push(`Cohort ${entry.code}`);
-              }
-              if (extractedCourseCode) {
-                const linkKey = `${extractedCourseCode}::${entry.code}::${extractedIsLab ? 'lab' : 'lec'}`;
-                if (!sectionLinksMap.has(linkKey)) {
-                  sectionLinksMap.set(linkKey, {
-                    courseCode: extractedCourseCode,
-                    cohortCode: entry.code,
-                    instructorName: rowData.instructorName?.trim() || undefined,
-                    isLab: extractedIsLab
-                  });
-                }
-              }
-            });
-          }
-        }
-
-        if (extractedSummary.length === 0 && errors.length === 0) {
-          errors.push('No recognized fields mapped in this row');
-        }
-      } else {
-        const schema = CATEGORY_SCHEMAS[cat];
-        schema.requiredFields.forEach(req => {
-          const val = rowData[req.key];
-          if (!val || val.length === 0) {
-            errors.push(`Missing "${req.label}"`);
-          }
-        });
-
-        if (cat === 'rooms' && rowData.capacity) {
-          const cap = Number(rowData.capacity);
-          if (Number.isNaN(cap) || cap <= 0) {
-            errors.push('Capacity must be a positive number');
-          }
-        }
-
-        if (errors.length === 0) {
-          if (cat === 'departments') {
-            const code = rowData.code.toUpperCase();
-            const subs = rowData.subDepartments
-              ? rowData.subDepartments.split(/[;,]/).map(s => s.trim()).filter(Boolean)
-              : undefined;
-            deptsMap.set(code, { code, name: rowData.name, school: rowData.school, subDepartments: subs });
-            extractedSummary.push(`Dept ${code}`);
-          } else if (cat === 'rooms') {
-            const code = rowData.code.toUpperCase();
-            roomsMap.set(code, {
-              code,
-              name: rowData.name,
-              capacity: Number(rowData.capacity) || 50,
-              type: parseRoomType(rowData.type),
-              buildingName: rowData.building,
-              equipment: rowData.equipment
-                ? rowData.equipment.split(/[;,]/).map(s => s.trim()).filter(Boolean)
-                : undefined
-            });
-            extractedSummary.push(`Room ${code}`);
-          } else if (cat === 'courses') {
-            const code = rowData.code.toUpperCase();
-            coursesMap.set(
-              code,
-              parseCourseSpec(code, rowData.title, {
-                creditHours: rowData.creditHours,
-                lectureCredits: rowData.lectureCredits,
-                labCredits: rowData.labCredits,
-                weeklyHours: rowData.weeklyHours,
-                isLab: rowData.isLab,
-                roomType: rowData.roomType,
-                departmentKey: rowData.department,
-                isElective: rowData.isElective,
-                electivePoolName: rowData.electivePoolName
-              })
-            );
-            extractedSummary.push(`Course ${code}`);
-          } else if (cat === 'instructors') {
-            const name = rowData.name.trim();
-            const staffRole = parseStaffRoleVal(rowData.staffRole, rowData.title);
-            instructorsMap.set(name.toLowerCase(), {
-              name,
-              email: rowData.email,
-              title: rowData.title || (staffRole === 'lab_engineer' ? 'Lab Engineer' : undefined),
-              staffRole,
-              subDepartment: rowData.subDepartment || undefined,
-              qualifiedCourseCodes: rowData.qualifiedCourses
-                ? rowData.qualifiedCourses.split(/[;,]/).map(s => s.trim().toUpperCase()).filter(Boolean)
-                : undefined,
-              maxWeeklyHours: Number(rowData.maxWeeklyHours) || 14,
-              departmentKey: rowData.department
-            });
-            extractedSummary.push(`${staffRole === 'lab_engineer' ? 'Lab Eng.' : 'Faculty'} ${name}`);
-          } else if (cat === 'cohorts') {
-            const entries = expandCohortEntries({
-              rawCode: rowData.code,
-              batchCode: rowData.batchCode,
-              sectionLetter: rowData.sectionLetter,
-              deptKey: rowData.department,
-              name: rowData.name,
-              size: Number(rowData.size) || 45,
-              year: Number(rowData.year) || 1,
-              homeRoom: rowData.homeRoom
-            });
-            entries.forEach(entry => {
-              cohortsMap.set(entry.code, entry);
-              extractedSummary.push(`Cohort ${entry.code}`);
-            });
-          }
-        }
-      }
-
-      return {
-        index: rIdx + 1,
-        data: rowData,
-        extractedSummary,
-        errors,
-        isValid: errors.length === 0
-      };
-    });
-
-    setParsedData(parsed);
-    setExtractedPreview({
-      departments: Array.from(deptsMap.values()),
-      rooms: Array.from(roomsMap.values()),
-      courses: Array.from(coursesMap.values()),
-      instructors: Array.from(instructorsMap.values()),
-      cohorts: Array.from(cohortsMap.values()),
-      sectionLinks: Array.from(sectionLinksMap.values())
-    });
-  };
-
-  const processCSVContent = (content: string, catOverride?: ImportCategory) => {
-    const activeCat = catOverride ?? category;
-    setRawText(content);
-    setImportError(null);
-    const matrix = parseDelimitedMatrix(content);
-    if (matrix.length < 2) {
-      setImportError('The file appears empty or does not have a header row plus data rows.');
-      return;
-    }
-
-    const headers = matrix[0].map(h => h.replace(/^\uFEFF/, '').trim());
-    const dataRows = matrix.slice(1);
-    setCsvHeaders(headers);
-    setRawRows(dataRows);
-
-    const detected = autoDetectMappingsFor(headers, activeCat);
-    setColumnMappings(detected);
-    buildExtractionAndPreview(activeCat, headers, dataRows, detected);
+    const detected = detectImportColumnMappings(parsedHeaders, category);
+    setFileName(name);
+    setRawCsvText(rawCsv);
+    setHeaders(parsedHeaders);
+    setRows(parsedRows);
+    setColumnMappings(detected.mapping);
+    setValidationReport(null);
+    setBackendErrorCsv('');
+    setConfirmUpdates(false);
+    setCommitError(null);
+    setParseError(null);
+    setIdempotencyKey(makeIdempotencyKey(category, name, parsedRows.length));
     setStep('mapping');
   };
 
-  const processExcelWorkbook = async (buffer: ArrayBuffer, name: string) => {
-    setImportError(null);
-    try {
-      const wb = new ExcelJS.Workbook();
-      await wb.xlsx.load(buffer);
+  const handleFileUpload = async (file: File) => {
+    setParseError(null);
+    setCommitError(null);
+    setSheetTables({});
+    setActiveSheetName('');
 
-      const nonEmptySheets = wb.worksheets.filter(ws => ws.rowCount >= 2);
-      if (nonEmptySheets.length === 0) {
-        setImportError('No data rows found in the uploaded Excel workbook.');
-        return;
-      }
+    const lowerName = file.name.toLowerCase();
+    const isExcel = lowerName.endsWith('.xlsx');
+    const isDelimited =
+      lowerName.endsWith('.csv') || lowerName.endsWith('.tsv') || lowerName.endsWith('.txt');
 
-      // Single sheet: go through normal mapping + preview wizard
-      if (nonEmptySheets.length === 1) {
-        const ws = nonEmptySheets[0];
-        const matrix: string[][] = [];
-        ws.eachRow({ includeEmpty: false }, row => {
-          const vals = Array.isArray(row.values) ? row.values.slice(1) : [];
-          matrix.push(vals.map(excelCellToString));
-        });
-
-        const csvLike = matrix
-          .map(r => r.map(c => `"${c.replace(/"/g, '""')}"`).join(','))
-          .join('\n');
-        setFileName(name);
-        processCSVContent(csvLike, category);
-        return;
-      }
-
-      // Multi-sheet workbook: extract every sheet automatically into unified All-in-One preview
-      const combinedDepts: ExtractedPayload['departments'] = [];
-      const combinedRooms: ExtractedPayload['rooms'] = [];
-      const combinedCourses: ExtractedPayload['courses'] = [];
-      const combinedInstructors: ExtractedPayload['instructors'] = [];
-      const combinedCohorts: ExtractedPayload['cohorts'] = [];
-      const combinedSectionLinks: ExtractedPayload['sectionLinks'] = [];
-      const previewRows: ParsedRow[] = [];
-
-      nonEmptySheets.forEach(ws => {
-        const matrix: string[][] = [];
-        ws.eachRow({ includeEmpty: false }, row => {
-          const vals = Array.isArray(row.values) ? row.values.slice(1) : [];
-          matrix.push(vals.map(excelCellToString));
-        });
-        if (matrix.length < 2) return;
-        const sheetCat: ImportCategory = inferSheetCategory(ws.name) || 'all';
-        const headers = matrix[0];
-        const rows = matrix.slice(1);
-        const mappings = autoDetectMappingsFor(headers, sheetCat);
-
-        rows.forEach(r => {
-          const rowData: Record<string, string> = {};
-          headers.forEach((h, hIdx) => {
-            const target = mappings[h];
-            if (target) rowData[target] = (r[hIdx] ?? '').trim();
-          });
-
-          const summary: string[] = [];
-          if (sheetCat === 'departments' && (rowData.code || rowData.name)) {
-            const code = (rowData.code || rowData.name).toUpperCase();
-            const subs = rowData.subDepartments
-              ? rowData.subDepartments.split(/[;,]/).map(s => s.trim()).filter(Boolean)
-              : undefined;
-            combinedDepts.push({ code, name: rowData.name || code, school: rowData.school, subDepartments: subs });
-            summary.push(`Dept ${code}`);
-          } else if (sheetCat === 'rooms' && rowData.code) {
-            const code = rowData.code.toUpperCase();
-            combinedRooms.push({
-              code,
-              name: rowData.name,
-              capacity: Number(rowData.capacity) || 50,
-              type: parseRoomType(rowData.type),
-              buildingName: rowData.building
-            });
-            summary.push(`Room ${code}`);
-          } else if (sheetCat === 'courses' && rowData.code) {
-            const code = rowData.code.toUpperCase();
-            const isLab =
-              (rowData.isLab && rowData.isLab.toLowerCase().startsWith('y')) ||
-              code.endsWith('-L');
-            const lecCr = rowData.lectureCredits ? Number(rowData.lectureCredits) : isLab ? 0 : Number(rowData.creditHours) || 3;
-            const labCr = rowData.labCredits ? Number(rowData.labCredits) : isLab ? Number(rowData.creditHours) || 1 : 0;
-            combinedCourses.push({
-              code,
-              title: rowData.title || code,
-              creditHours: lecCr + labCr || Number(rowData.creditHours) || (isLab ? 1 : 3),
-              lectureCredits: lecCr,
-              labCredits: labCr,
-              weeklyContactHours: Number(rowData.weeklyHours) || lecCr * 1 + labCr * 3 || 3,
-              isLab,
-              requiredRoomType: isLab ? 'lab' : 'lecture',
-              departmentKey: rowData.department,
-              subDepartment: rowData.subDepartment || undefined,
-              isElective: (rowData.isElective || '').toLowerCase().startsWith('y'),
-              electivePoolName: rowData.electivePoolName || undefined
-            });
-            summary.push(`Course ${code}`);
-          } else if (sheetCat === 'instructors' && rowData.name) {
-            const isLabEng = `${rowData.staffRole || ''} ${rowData.title || ''}`.toLowerCase().includes('lab') ||
-              `${rowData.staffRole || ''} ${rowData.title || ''}`.toLowerCase().includes('engineer');
-            combinedInstructors.push({
-              name: rowData.name,
-              email: rowData.email,
-              title: rowData.title || (isLabEng ? 'Lab Engineer' : undefined),
-              staffRole: isLabEng ? 'lab_engineer' : 'faculty',
-              subDepartment: rowData.subDepartment || undefined,
-              qualifiedCourseCodes: rowData.qualifiedCourses
-                ? rowData.qualifiedCourses.split(/[;,]/).map(s => s.trim().toUpperCase()).filter(Boolean)
-                : undefined,
-              maxWeeklyHours: Number(rowData.maxWeeklyHours) || 14,
-              departmentKey: rowData.department
-            });
-            summary.push(`${isLabEng ? 'Lab Eng.' : 'Faculty'} ${rowData.name}`);
-          } else if (sheetCat === 'cohorts' && rowData.code) {
-            const code = rowData.code.toUpperCase();
-            combinedCohorts.push({
-              code,
-              name: rowData.name,
-              size: Number(rowData.size) || 45,
-              year: Number(rowData.year) || 1,
-              homeRoom: rowData.homeRoom,
-              departmentKey: rowData.department
-            });
-            summary.push(`Cohort ${code}`);
-          } else if (sheetCat === 'all') {
-            if (rowData.deptCode || rowData.deptName) {
-              const code = (rowData.deptCode || rowData.deptName).toUpperCase();
-              const subDept = rowData.subDepartment?.trim();
-              combinedDepts.push({
-                code: code.slice(0, 8),
-                name: rowData.deptName || code,
-                school: rowData.school,
-                subDepartments: subDept ? [subDept] : undefined
-              });
-              summary.push(`Dept ${code}`);
-            }
-            if (rowData.roomCode) {
-              const code = rowData.roomCode.toUpperCase();
-              combinedRooms.push({
-                code,
-                name: rowData.roomName,
-                capacity: Number(rowData.roomCapacity) || 50,
-                type: parseRoomType(rowData.roomType),
-                buildingName: rowData.building
-              });
-              summary.push(`Room ${code}`);
-            }
-            if (rowData.courseCode || rowData.courseTitle) {
-              const code = (rowData.courseCode || rowData.courseTitle).toUpperCase();
-              const isLab =
-                (rowData.isLab && rowData.isLab.toLowerCase().startsWith('y')) || code.endsWith('-L');
-              const lecCr = rowData.lectureCredits ? Number(rowData.lectureCredits) : isLab ? 0 : Number(rowData.creditHours) || 3;
-              const labCr = rowData.labCredits ? Number(rowData.labCredits) : isLab ? Number(rowData.creditHours) || 1 : 0;
-              combinedCourses.push({
-                code,
-                title: rowData.courseTitle || code,
-                creditHours: lecCr + labCr || Number(rowData.creditHours) || (isLab ? 1 : 3),
-                lectureCredits: lecCr,
-                labCredits: labCr,
-                weeklyContactHours: Number(rowData.weeklyHours) || lecCr * 1 + labCr * 3 || 3,
-                isLab,
-                requiredRoomType: isLab ? 'lab' : 'lecture',
-                departmentKey: rowData.deptCode || rowData.deptName,
-                subDepartment: rowData.subDepartment || undefined,
-                isElective: (rowData.isElective || '').toLowerCase().startsWith('y'),
-                electivePoolName: rowData.electivePoolName || undefined
-              });
-              summary.push(`Course ${code}`);
-            }
-            if (rowData.instructorName) {
-              const isLabEng = `${rowData.staffRole || ''} ${rowData.instructorTitle || ''}`.toLowerCase().includes('lab') ||
-                `${rowData.staffRole || ''} ${rowData.instructorTitle || ''}`.toLowerCase().includes('engineer');
-              combinedInstructors.push({
-                name: rowData.instructorName,
-                email: rowData.instructorEmail,
-                title: rowData.instructorTitle || (isLabEng ? 'Lab Engineer' : undefined),
-                staffRole: isLabEng ? 'lab_engineer' : 'faculty',
-                subDepartment: rowData.subDepartment || undefined,
-                qualifiedCourseCodes: rowData.qualifiedCourses
-                  ? rowData.qualifiedCourses.split(/[;,]/).map(s => s.trim().toUpperCase()).filter(Boolean)
-                  : undefined,
-                maxWeeklyHours: Number(rowData.maxWeeklyHours) || 14,
-                departmentKey: rowData.deptCode || rowData.deptName
-              });
-              summary.push(`${isLabEng ? 'Lab Eng.' : 'Faculty'} ${rowData.instructorName}`);
-            }
-            if (rowData.cohortCode) {
-              const code = rowData.cohortCode.toUpperCase();
-              combinedCohorts.push({
-                code,
-                name: rowData.cohortName,
-                size: Number(rowData.cohortSize) || 45,
-                year: Number(rowData.cohortYear) || 1,
-                homeRoom: rowData.homeRoom || rowData.roomCode,
-                departmentKey: rowData.deptCode || rowData.deptName
-              });
-              summary.push(`Cohort ${code}`);
-              if (rowData.courseCode) {
-                combinedSectionLinks.push({
-                  courseCode: rowData.courseCode.toUpperCase(),
-                  cohortCode: code,
-                  instructorName: rowData.instructorName || undefined,
-                  isLab: Boolean(rowData.isLab && rowData.isLab.toLowerCase().startsWith('y'))
-                });
-              }
-            }
-          }
-
-          if (summary.length > 0) {
-            previewRows.push({
-              index: previewRows.length + 1,
-              data: { ...rowData, _sheet: ws.name },
-              extractedSummary: summary,
-              errors: [],
-              isValid: true
-            });
-          }
-        });
-      });
-
-      setCategory('all');
-      setFileName(name);
-      setCsvHeaders(['_sheet']);
-      setRawRows([]);
-      setParsedData(previewRows);
-      setExtractedPreview({
-        departments: combinedDepts,
-        rooms: combinedRooms,
-        courses: combinedCourses,
-        instructors: combinedInstructors,
-        cohorts: combinedCohorts,
-        sectionLinks: combinedSectionLinks
-      });
-      setStep('preview');
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      setImportError(`Could not read Excel file: ${msg}`);
+    if (!isExcel && !isDelimited) {
+      setParseError(
+        `Unsupported file format "${file.name}". Please upload a .csv, .tsv, or .xlsx file.`
+      );
+      return;
     }
-  };
 
-  const handleFileObject = (file: File) => {
-    setFileName(file.name);
-    setImportError(null);
-    const lower = file.name.toLowerCase();
+    if (file.size === 0) {
+      setParseError(`"${file.name}" is empty (0 bytes).`);
+      return;
+    }
 
-    if (lower.endsWith('.xlsx')) {
-      const reader = new FileReader();
-      reader.onload = evt => {
-        const buffer = evt.target?.result;
-        if (buffer instanceof ArrayBuffer) {
-          void processExcelWorkbook(buffer, file.name);
+    if (file.size > MAX_CSV_FILE_BYTES) {
+      setParseError(
+        `"${file.name}" (${(file.size / (1024 * 1024)).toFixed(2)} MB) exceeds the 5 MB upload limit.`
+      );
+      return;
+    }
+
+    if (isExcel) {
+      try {
+        const buffer = await file.arrayBuffer();
+        const workbook = new ExcelJS.Workbook();
+        await workbook.xlsx.load(buffer);
+        if (workbook.worksheets.length === 0) {
+          setParseError('Excel workbook contains no readable worksheets.');
+          return;
         }
+        const tables: Record<string, { headers: string[]; rows: string[][] }> = {};
+        const errors: string[] = [];
+        for (const ws of workbook.worksheets) {
+          try {
+            tables[ws.name] = extractSheetTable(ws);
+          } catch (err) {
+            errors.push((err as Error).message);
+          }
+        }
+        const validSheetNames = Object.keys(tables);
+        if (validSheetNames.length === 0) {
+          setParseError(errors[0] || 'No valid data rows found in any worksheet.');
+          return;
+        }
+        // Prefer a sheet whose name matches current category keywords
+        const preferred =
+          validSheetNames.find(n => n.toLowerCase().includes(category.replace('_', ''))) ||
+          validSheetNames[0];
+        setSheetTables(tables);
+        setActiveSheetName(preferred);
+        applyParsedTable(
+          `${file.name} (${preferred})`,
+          tables[preferred].headers,
+          tables[preferred].rows,
+          ''
+        );
+      } catch (err) {
+        setParseError(
+          `Could not parse Excel workbook: ${(err as Error).message || 'corrupted .xlsx file'}.`
+        );
+      }
+      return;
+    }
+
+    try {
+      const text = await file.text();
+      const parsed = parseCsvTextStrict(text);
+      applyParsedTable(file.name, parsed.headers, parsed.rows, text);
+    } catch (err) {
+      setParseError((err as Error).message || 'Unable to parse CSV file.');
+    }
+  };
+
+  const handleParsePastedText = () => {
+    setParseError(null);
+    setSheetTables({});
+    setActiveSheetName('');
+    try {
+      const parsed = parseCsvTextStrict(pasteInput);
+      applyParsedTable('pasted_data.csv', parsed.headers, parsed.rows, pasteInput);
+      setShowPasteBox(false);
+    } catch (err) {
+      setParseError((err as Error).message || 'Unable to parse pasted data.');
+    }
+  };
+
+  const handleSwitchExcelSheet = (sheetName: string) => {
+    const tbl = sheetTables[sheetName];
+    if (!tbl) return;
+    setActiveSheetName(sheetName);
+    const baseName = fileName.replace(/\s+\([^)]+\)$/, '');
+    const detected = detectImportColumnMappings(tbl.headers, category);
+    setFileName(`${baseName} (${sheetName})`);
+    setHeaders(tbl.headers);
+    setRows(tbl.rows);
+    setColumnMappings(detected.mapping);
+    setValidationReport(null);
+    setIdempotencyKey(makeIdempotencyKey(category, `${baseName}_${sheetName}`, tbl.rows.length));
+  };
+
+  const handleManualColumnChange = (csvHeader: string, newTarget: string) => {
+    setColumnMappings(prev => ({
+      ...prev,
+      [csvHeader]: newTarget
+    }));
+  };
+
+  const runValidation = async (targetMode: DuplicateHandlingMode = duplicateMode) => {
+    if (headers.length === 0 || rows.length === 0) return;
+    setIsValidating(true);
+    setCommitError(null);
+    setValidationModeNote(null);
+
+    const activeMap = mappingResult?.mapping || columnMappings;
+    const localReport = validateImportPreviewLocal({
+      category,
+      duplicateMode: targetMode,
+      headers,
+      rows,
+      columnMappings: activeMap,
+      storeSnapshot: getStoreSnapshot()
+    });
+
+    if (!currentUser?.token) {
+      setValidationReport(localReport);
+      setBackendErrorCsv(
+        localReport.summary.errorRows > 0
+          ? buildErrorReportCsv(localReport.headers, localReport.rows)
+          : ''
+      );
+      setValidationModeNote(
+        'Validated against current browser catalog (sign in as administrator to validate live PostgreSQL constraints).'
+      );
+      setIsValidating(false);
+      return;
+    }
+
+    try {
+      const remote = await validateImportBackendApi(currentUser, {
+        category,
+        duplicateMode: targetMode,
+        institutionId: institutionalStore.getCurrentInstitutionId(),
+        csvText: rawCsvText || undefined,
+        headers: rawCsvText ? undefined : headers,
+        rows: rawCsvText ? undefined : rows,
+        columnMappings: activeMap
+      });
+      setValidationReport(remote);
+      setBackendErrorCsv(remote.errorCsv || '');
+      setValidationModeNote('Validated against live Supabase PostgreSQL database & foreign keys.');
+    } catch (err) {
+      if (err instanceof ImportApiError && err.status === 503) {
+        setValidationReport(localReport);
+        setBackendErrorCsv(
+          localReport.summary.errorRows > 0
+            ? buildErrorReportCsv(localReport.headers, localReport.rows)
+            : ''
+        );
+        setValidationModeNote(
+          'Live database connection unavailable (503). Validated against local catalog workspace.'
+        );
+      } else if (err instanceof ImportApiError && (err.status === 401 || err.status === 403)) {
+        setCommitError(err.message);
+        setValidationReport(localReport);
+      } else {
+        setValidationReport(localReport);
+        setValidationModeNote(
+          `Backend preview fallback (${(err as Error).message}); validated against local catalog.`
+        );
+      }
+    } finally {
+      setIsValidating(false);
+    }
+  };
+
+  const handleProceedToValidation = async () => {
+    if (!mappingResult) return;
+    if (
+      mappingResult.missingRequiredFields.length > 0 ||
+      mappingResult.conflictingMappings.length > 0
+    ) {
+      return;
+    }
+    setStep('preview');
+    await runValidation(duplicateMode);
+  };
+
+  const handleChangeDuplicateMode = async (nextMode: DuplicateHandlingMode) => {
+    setDuplicateMode(nextMode);
+    setConfirmUpdates(false);
+    setCommitError(null);
+    await runValidation(nextMode);
+  };
+
+  const filteredRows: ValidatedRow[] = useMemo(() => {
+    if (!validationReport) return [];
+    const list = validationReport.rows;
+    if (rowFilter === 'all') return list;
+    if (rowFilter === 'error') return list.filter(r => r.status === 'error');
+    if (rowFilter === 'warning') {
+      return list.filter(r => r.status === 'warning' || r.warnings.length > 0);
+    }
+    if (rowFilter === 'duplicate') {
+      return list.filter(
+        r =>
+          r.status === 'duplicate_skip' ||
+          r.status === 'duplicate_update' ||
+          r.errors.some(e => e.kind === 'duplicate')
+      );
+    }
+    return list.filter(r => r.status === 'ready');
+  }, [validationReport, rowFilter]);
+
+  const handleDownloadErrors = () => {
+    if (!validationReport) return;
+    const csv =
+      backendErrorCsv || buildErrorReportCsv(validationReport.headers, validationReport.rows);
+    const cleanBase = (fileName || category).replace(/\.[^.]+$/, '');
+    triggerCsvDownload(`${cleanBase}_errors.csv`, csv);
+  };
+
+  const handleCommitImport = async () => {
+    if (!validationReport || isCommitting) return;
+    if (!validationReport.canProceed) return;
+    if (atomicMode && validationReport.summary.errorRows > 0) return;
+    if (
+      duplicateMode === 'update' &&
+      validationReport.summary.updateCount > 0 &&
+      !confirmUpdates
+    ) {
+      return;
+    }
+
+    setIsCommitting(true);
+    setCommitError(null);
+    setCommitProgress({
+      pct: 15,
+      label: currentUser?.token
+        ? 'Re-validating & committing staged chunks to Supabase...'
+        : 'Applying validated records to workspace store...'
+    });
+
+    const activeMap = mappingResult?.mapping || columnMappings;
+    const effectiveKey =
+      idempotencyKey || makeIdempotencyKey(category, fileName || category, rows.length);
+    setIdempotencyKey(effectiveKey);
+    const storePayload = buildStorePayloadFromValidatedRows(validationReport);
+
+    const runLocalCommit = (mode: 'supabase' | 'local_fallback', overrideCounts?: {
+      totalRows: number;
+      created: number;
+      updated: number;
+      skipped: number;
+      failed: number;
+    }, durationMs = 25, errorCsvOut = '', idempotentReplay = false, messageOut?: string) => {
+      const started = performance.now();
+      const localRes = institutionalStore.importBulkCatalogData({
+        ...storePayload,
+        duplicateMode,
+        skipSync: mode === 'supabase'
+      });
+      const elapsed = Math.max(durationMs, Math.round(performance.now() - started));
+      const counts = overrideCounts || {
+        totalRows: validationReport.summary.totalRows,
+        created: localRes.created,
+        updated: localRes.updated,
+        skipped: localRes.skipped + validationReport.summary.skipCount,
+        failed: validationReport.summary.errorRows
       };
-      reader.readAsArrayBuffer(file);
-      return;
-    }
+      const statusVal: 'completed' | 'partial' =
+        counts.failed > 0 ? 'partial' : 'completed';
 
-    const reader = new FileReader();
-    reader.onload = evt => {
-      const text = (evt.target?.result as string) || '';
-      processCSVContent(text);
+      if (mode === 'local_fallback') {
+        institutionalStore.recordImportHistory({
+          userName: currentUser?.name || 'Administrator',
+          userEmail: currentUser?.email || '',
+          category,
+          fileName: fileName || `${category}.csv`,
+          duplicateMode,
+          status: statusVal,
+          totalRows: counts.totalRows,
+          createdCount: counts.created,
+          updatedCount: counts.updated,
+          skippedCount: counts.skipped,
+          failedCount: counts.failed,
+          durationMs: elapsed
+        });
+      }
+
+      const finalMsg =
+        messageOut ||
+        `Imported ${counts.created} new, updated ${counts.updated}, skipped ${counts.skipped}, rejected ${counts.failed} rows.`;
+
+      setCommitProgress({ pct: 100, label: 'Completed' });
+      setCommitResult({
+        status: statusVal,
+        message: finalMsg,
+        persistenceMode: mode,
+        idempotentReplay,
+        durationMs: elapsed,
+        counts,
+        errorCsv:
+          errorCsvOut ||
+          (counts.failed > 0
+            ? buildErrorReportCsv(validationReport.headers, validationReport.rows)
+            : '')
+      });
+      setStep('results');
+      onSuccess?.(finalMsg);
     };
-    reader.readAsText(file);
-  };
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = '';
-    if (!file) return;
-    handleFileObject(file);
-  };
-
-  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(false);
-    const file = e.dataTransfer.files?.[0];
-    if (file) {
-      handleFileObject(file);
-    }
-  };
-
-  const handleUpdateMapping = (header: string, targetKey: string) => {
-    const updated = { ...columnMappings, [header]: targetKey };
-    setColumnMappings(updated);
-    buildExtractionAndPreview(category, csvHeaders, rawRows, updated);
-  };
-
-  const handleDownloadSampleTemplate = (cat: ImportCategory) => {
-    let headerRow = '';
-    let sampleRows: string[] = [];
-
-    if (cat === 'all') {
-      headerRow =
-        'dept_code,dept_name,sub_department,course_code,course_title,lecture_credits,lab_credits,is_elective,instructor_name,staff_role,qualified_courses,instructor_email,room_code,room_capacity,room_type,cohort_code,cohort_size,year';
-      sampleRows = [
-        'CS,Computer Science,AI & Data Systems,CS-101,Foundations of Computing,3,0,no,Dr. Ayesha Khan,faculty,CS-101,ayesha.khan@university.edu,HALL-101,60,lecture,2K26-CS-A,45,1',
-        'CS,Computer Science,AI & Data Systems,CS-101-L,Computing Lab,0,1,no,Engr. Bilal Ahmed,lab_engineer,CS-101-L,bilal.ahmed@university.edu,LAB-01,40,lab,2K26-CS-A,45,1'
-      ];
-    } else {
-      const schema = CATEGORY_SCHEMAS[cat];
-      const headers = [...schema.requiredFields, ...schema.optionalFields];
-      headerRow = headers.map(h => h.key).join(',');
-      sampleRows = [headers.map(h => `"${h.sample}"`).join(',')];
-    }
-
-    const blob = new Blob([`${headerRow}\n${sampleRows.join('\n')}\n`], {
-      type: 'text/csv;charset=utf-8;'
-    });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `smartgrid_${cat}_template.csv`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  };
-
-  const handleCommitImport = () => {
-    setImportError(null);
-    const hasExtracted =
-      extractedPreview.departments.length > 0 ||
-      extractedPreview.rooms.length > 0 ||
-      extractedPreview.courses.length > 0 ||
-      extractedPreview.instructors.length > 0 ||
-      extractedPreview.cohorts.length > 0;
-
-    if (!hasExtracted) {
-      setImportError('No valid records were extracted. Please check your column mapping.');
+    if (!currentUser?.token) {
+      runLocalCommit('local_fallback');
+      setIsCommitting(false);
       return;
     }
 
-    const res = institutionalStore.importBulkCatalogData({
-      mode: importMode,
-      departments: extractedPreview.departments,
-      rooms: extractedPreview.rooms,
-      courses: extractedPreview.courses,
-      instructors: extractedPreview.instructors,
-      cohorts: extractedPreview.cohorts,
-      sectionLinks: extractedPreview.sectionLinks
-    });
+    try {
+      setCommitProgress({
+        pct: 45,
+        label: `Writing ${validationReport.summary.validRows} verified row(s) in transactional chunks...`
+      });
 
-    const parts: string[] = [];
-    if (res.departmentsAdded > 0) parts.push(`${res.departmentsAdded} departments`);
-    if (res.roomsAdded > 0) parts.push(`${res.roomsAdded} rooms`);
-    if (res.coursesAdded > 0) parts.push(`${res.coursesAdded} courses`);
-    if (res.instructorsAdded > 0) parts.push(`${res.instructorsAdded} faculty`);
-    if (res.cohortsAdded > 0) parts.push(`${res.cohortsAdded} cohorts`);
+      const res = await commitImportBackendApi(currentUser, {
+        category,
+        duplicateMode,
+        institutionId: institutionalStore.getCurrentInstitutionId(),
+        fileName: fileName || `${category}.csv`,
+        confirmUpdates,
+        atomic: atomicMode,
+        idempotencyKey: effectiveKey,
+        csvText: rawCsvText || undefined,
+        headers: rawCsvText ? undefined : headers,
+        rows: rawCsvText ? undefined : rows,
+        columnMappings: activeMap
+      });
 
-    const summaryText =
-      parts.length > 0
-        ? `Imported ${parts.join(', ')}.`
-        : 'All records matched existing entries (no duplicates added).';
-
-    setImportResult({
-      summary: summaryText,
-      departmentsAdded: res.departmentsAdded,
-      roomsAdded: res.roomsAdded,
-      coursesAdded: res.coursesAdded,
-      instructorsAdded: res.instructorsAdded,
-      cohortsAdded: res.cohortsAdded
-    });
-    setStep('completed');
-    onSuccess?.(summaryText);
+      runLocalCommit(
+        'supabase',
+        res.counts,
+        res.durationMs,
+        res.errorCsv,
+        res.idempotentReplay,
+        res.message
+      );
+    } catch (err) {
+      if (err instanceof ImportApiError && err.status === 503) {
+        // Explicit fallback ONLY when Supabase database is unconfigured (503)
+        runLocalCommit('local_fallback');
+      } else {
+        setCommitError(
+          (err as Error).message ||
+            'Backend import rejected or rolled back cleanly. No partial records were stored.'
+        );
+      }
+    } finally {
+      setIsCommitting(false);
+    }
   };
 
-  const validCount = parsedData.filter(r => r.isValid).length;
-  const invalidCount = parsedData.length - validCount;
-  const currentFields = getFieldsForCategory(category);
-  const groupedFieldNames = Array.from(new Set(currentFields.map(f => f.group)));
+  const loadImportHistory = async () => {
+    setHistoryLoading(true);
+    setHistoryError(null);
+    const localRecords: ImportHistoryEntry[] = (institutionalStore.get().importHistory || []).map(
+      rec => ({
+        id: rec.id,
+        institutionId: rec.institutionId,
+        userId: null,
+        userName: rec.userName,
+        userEmail: rec.userEmail,
+        category: rec.category,
+        fileName: rec.fileName,
+        duplicateMode: rec.duplicateMode,
+        status: rec.status,
+        totalRows: rec.totalRows,
+        createdCount: rec.createdCount,
+        updatedCount: rec.updatedCount,
+        skippedCount: rec.skippedCount,
+        failedCount: rec.failedCount,
+        durationMs: rec.durationMs,
+        errorSummary: [],
+        createdAt: rec.createdAt
+      })
+    );
 
-  const totalExtractedCount =
-    extractedPreview.departments.length +
-    extractedPreview.rooms.length +
-    extractedPreview.courses.length +
-    extractedPreview.instructors.length +
-    extractedPreview.cohorts.length;
+    if (!currentUser?.token) {
+      setHistoryEntries(localRecords);
+      setHistoryLoading(false);
+      return;
+    }
+
+    try {
+      const remote = await fetchImportHistoryBackendApi(
+        currentUser,
+        institutionalStore.getCurrentInstitutionId(),
+        30
+      );
+      const seenIds = new Set(remote.map(r => r.id));
+      const merged = [...remote, ...localRecords.filter(l => !seenIds.has(l.id))];
+      setHistoryEntries(merged);
+    } catch (err) {
+      setHistoryEntries(localRecords);
+      if (!(err instanceof ImportApiError && err.status === 503)) {
+        setHistoryError((err as Error).message);
+      }
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'history') {
+      void loadImportHistory();
+    }
+  }, [activeTab]);
+
+  const resetForAnotherImport = () => {
+    setStep('category');
+    setFileName('');
+    setRawCsvText('');
+    setHeaders([]);
+    setRows([]);
+    setColumnMappings({});
+    setValidationReport(null);
+    setCommitResult(null);
+    setCommitError(null);
+    setParseError(null);
+    setConfirmUpdates(false);
+    setSheetTables({});
+    setActiveSheetName('');
+  };
+
+  const canAdvanceFromMapping =
+    Boolean(mappingResult) &&
+    mappingResult!.missingRequiredFields.length === 0 &&
+    mappingResult!.conflictingMappings.length === 0 &&
+    rows.length > 0;
+
+  const canExecuteCommit =
+    Boolean(validationReport) &&
+    validationReport!.canProceed &&
+    !(atomicMode && validationReport!.summary.errorRows > 0) &&
+    !(
+      duplicateMode === 'update' &&
+      validationReport!.summary.updateCount > 0 &&
+      !confirmUpdates
+    ) &&
+    !isValidating &&
+    !isCommitting;
+
+  const currentSchema = CATEGORY_SCHEMAS[category];
 
   return (
     <MotionConfig reducedMotion="user">
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        transition={{ duration: 0.2, ease: CALM_EASE }}
-        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#171717]/45 backdrop-blur-xs"
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-[#171717]/45 backdrop-blur-xs"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Academic CSV Data Import System"
       >
         <motion.div
-          initial={{ opacity: 0, scale: 0.97, y: 10 }}
+          initial={{ opacity: 0, scale: 0.98, y: 10 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
-          transition={{ duration: 0.26, ease: CALM_EASE }}
-          className="w-full max-w-4xl max-h-[92vh] flex flex-col bg-white border border-[#E4E2DA] rounded-2xl shadow-2xl overflow-hidden"
+          transition={{ duration: 0.25, ease: CALM_EASE }}
+          className="w-full max-w-6xl max-h-[92vh] flex flex-col bg-[#F7F6EF] border border-[#E4E2DA] rounded-2xl shadow-2xl overflow-hidden text-[#171717]"
         >
-          {/* Header */}
-          <div className="px-6 py-4 border-b border-[#E4E2DA] flex items-center justify-between bg-[#F7F6EF]/60">
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-lg bg-[#171717] text-white flex items-center justify-center">
-                <Upload className="w-4 h-4" />
+          {/* Top Bar */}
+          <header className="flex flex-wrap items-center justify-between gap-3 px-6 py-4 bg-white border-b border-[#E4E2DA]">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-9 h-9 rounded-xl bg-[#171717] text-white flex items-center justify-center shrink-0">
+                <FileSpreadsheet className="w-4.5 h-4.5" />
               </div>
-              <div>
-                <h2 className="font-serif-editorial text-lg text-[#171717] font-semibold leading-tight">
-                  Academic Data Importer
+              <div className="min-w-0">
+                <h2 className="font-serif-editorial text-xl font-semibold leading-tight text-[#171717]">
+                  Academic CSV Data Import
                 </h2>
-                <p className="text-[11px] text-[#77766F]">
-                  Import a unified CSV/Excel file for everything or choose a specific catalog table.
+                <p className="text-xs text-[#77766F] truncate">
+                  Workspace:{' '}
+                  <span className="font-medium text-[#171717]">
+                    {institutionalStore.get().institutionProfile?.name || 'SmartGrid University'}
+                  </span>
+                  {' · '}
+                  <span className="font-mono-tabular">
+                    {institutionalStore.getCurrentInstitutionId()}
+                  </span>
                 </p>
               </div>
             </div>
-            {onClose && (
-              <button
-                type="button"
-                onClick={onClose}
-                className="p-1.5 rounded-lg text-[#77766F] hover:text-[#171717] hover:bg-black/5 cursor-pointer"
-                aria-label="Close importer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            )}
-          </div>
 
-          {/* Category Tabs */}
-          {step !== 'completed' && (
-            <div className="px-6 py-2.5 bg-white border-b border-[#E4E2DA] flex flex-wrap items-center justify-between gap-2">
-              <div className="flex flex-wrap items-center gap-1 p-1 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] text-xs font-medium">
-                {(
-                  [
-                    { id: 'all' as const, label: 'All-in-One CSV' },
-                    { id: 'departments' as const, label: 'Departments' },
-                    { id: 'rooms' as const, label: 'Rooms & Labs' },
-                    { id: 'courses' as const, label: 'Courses' },
-                    { id: 'instructors' as const, label: 'Faculty' },
-                    { id: 'cohorts' as const, label: 'Cohorts' }
-                  ] as const
-                ).map(t => (
-                  <button
-                    key={t.id}
-                    type="button"
-                    onClick={() => {
-                      setCategory(t.id);
-                      setStep('upload');
-                      setParsedData([]);
-                      setCsvHeaders([]);
-                      setRawRows([]);
-                      setImportError(null);
-                    }}
-                    className={`px-3 py-1.5 rounded-lg transition-colors cursor-pointer whitespace-nowrap ${
-                      category === t.id
-                        ? 'bg-[#171717] text-white font-semibold'
-                        : 'text-[#77766F] hover:text-[#171717]'
-                    }`}
-                  >
-                    {t.label}
-                  </button>
-                ))}
+            <div className="flex items-center gap-2">
+              <div className="inline-flex p-1 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA]">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('wizard')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
+                    activeTab === 'wizard'
+                      ? 'bg-[#171717] text-white'
+                      : 'text-[#77766F] hover:text-[#171717]'
+                  }`}
+                >
+                  Import Wizard
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('history')}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
+                    activeTab === 'history'
+                      ? 'bg-[#171717] text-white'
+                      : 'text-[#77766F] hover:text-[#171717]'
+                  }`}
+                >
+                  <History className="w-3.5 h-3.5" />
+                  <span>Import History</span>
+                </button>
               </div>
+              {onClose && (
+                <button
+                  type="button"
+                  onClick={onClose}
+                  aria-label="Close import modal"
+                  className="p-2 rounded-lg text-[#77766F] hover:text-[#171717] hover:bg-[#F7F6EF] transition-colors cursor-pointer"
+                >
+                  <X className="w-4.5 h-4.5" />
+                </button>
+              )}
+            </div>
+          </header>
 
-              <button
-                type="button"
-                onClick={() => handleDownloadSampleTemplate(category)}
-                className="btn-secondary h-8 px-3 text-xs inline-flex items-center gap-1.5 shrink-0"
-              >
-                <Download className="w-3.5 h-3.5" />
-                <span>Sample CSV</span>
-              </button>
+          {/* Stepper Bar */}
+          {activeTab === 'wizard' && (
+            <div className="px-6 py-3 bg-[#F7F6EF] border-b border-[#E4E2DA] overflow-x-auto">
+              <ol className="flex items-center justify-between gap-2 min-w-[600px]">
+                {STEP_LABELS.map((item, idx) => {
+                  const activeIdx = STEP_LABELS.findIndex(s => s.id === step);
+                  const isCurrent = item.id === step;
+                  const isDone = idx < activeIdx || step === 'results';
+                  return (
+                    <li key={item.id} className="flex items-center gap-2 flex-1 last:flex-none">
+                      <button
+                        type="button"
+                        disabled={idx > activeIdx && !(idx <= 1 && headers.length > 0)}
+                        onClick={() => {
+                          if (idx < activeIdx && step !== 'results') {
+                            setStep(item.id);
+                          }
+                        }}
+                        className={`flex items-center gap-2 text-left transition-colors ${
+                          idx < activeIdx && step !== 'results'
+                            ? 'cursor-pointer'
+                            : 'cursor-default'
+                        }`}
+                      >
+                        <span
+                          className={`w-6 h-6 rounded-full text-[11px] font-mono-tabular font-semibold flex items-center justify-center border ${
+                            isCurrent
+                              ? 'bg-[#171717] text-white border-[#171717]'
+                              : isDone
+                              ? 'bg-[#B8F2E6] text-[#171717] border-[#0F766E]/30'
+                              : 'bg-white text-[#77766F] border-[#E4E2DA]'
+                          }`}
+                        >
+                          {isDone && !isCurrent ? <Check className="w-3.5 h-3.5" /> : item.num}
+                        </span>
+                        <span
+                          className={`text-xs font-medium whitespace-nowrap ${
+                            isCurrent ? 'text-[#171717] font-semibold' : 'text-[#77766F]'
+                          }`}
+                        >
+                          {item.label}
+                        </span>
+                      </button>
+                      {idx < STEP_LABELS.length - 1 && (
+                        <div className="flex-1 h-px bg-[#E4E2DA] mx-1" />
+                      )}
+                    </li>
+                  );
+                })}
+              </ol>
             </div>
           )}
 
-          {/* Content Body */}
+          {/* Scrollable Body */}
           <div className="flex-1 overflow-y-auto p-6 space-y-5">
-            {importError && (
-              <div className="px-4 py-2.5 rounded-xl bg-[#FEF2F2] border border-[#F5B5B5] text-[#8B1E1E] text-xs flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4 shrink-0" />
-                <span>{importError}</span>
-              </div>
-            )}
-
-            <AnimatePresence mode="wait">
-              {step === 'upload' && (
-                <motion.div
-                  key="import-upload"
-                  initial={{ opacity: 0, x: 16 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: -16 }}
-                  transition={{ duration: 0.22, ease: CALM_EASE }}
-                  className="space-y-5"
-                >
-                  {/* Drag/Drop Box */}
-                  <div
-                    onClick={() => fileInputRef.current?.click()}
-                    onDragOver={e => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      setIsDragging(true);
-                    }}
-                    onDragLeave={e => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      setIsDragging(false);
-                    }}
-                    onDrop={handleDrop}
-                    className={`border-2 border-dashed rounded-2xl p-9 text-center flex flex-col items-center justify-center gap-3 transition-all cursor-pointer ${
-                      isDragging
-                        ? 'border-[#171717] bg-[#B8EEEE]/25'
-                        : 'border-[#E4E2DA] hover:border-[#171717] bg-[#F7F6EF]/50 hover:bg-[#F7F6EF]'
-                    }`}
+            {activeTab === 'history' ? (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <h3 className="font-serif-editorial text-lg font-semibold">
+                      University Import Audit History
+                    </h3>
+                    <p className="text-xs text-[#77766F]">
+                      Record of bulk CSV and Excel imports executed for this institution.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void loadImportHistory()}
+                    className="btn-secondary h-8 text-xs"
+                    disabled={historyLoading}
                   >
-                    <div className="w-12 h-12 rounded-2xl bg-white border border-[#E4E2DA] flex items-center justify-center text-[#171717] shadow-2xs">
-                      <FileSpreadsheet className="w-6 h-6 text-[#171717]" />
-                    </div>
-                    <div>
-                      <div className="text-sm font-semibold text-[#171717]">
-                        Click to select CSV or Excel (.xlsx), or drag and drop here
-                      </div>
-                      <div className="text-xs text-[#77766F] mt-1">
-                        {category === 'all'
-                          ? 'Accepts one master CSV/Excel containing departments, rooms, courses, faculty, and cohorts together.'
-                          : `Accepts .csv, .tsv, or .xlsx files for ${CATEGORY_SCHEMAS[category].title}.`}
-                      </div>
-                    </div>
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept=".csv,.tsv,.txt,.xlsx,text/csv,text/plain,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                      onChange={handleFileSelect}
-                      className="hidden"
-                    />
+                    <RefreshCw className={`w-3.5 h-3.5 ${historyLoading ? 'animate-spin' : ''}`} />
+                    <span>Refresh</span>
+                  </button>
+                </div>
+
+                {historyError && (
+                  <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900">
+                    {historyError}
                   </div>
+                )}
 
-                  {/* Or paste CSV text */}
-                  <div className="space-y-2">
-                    <label className="text-xs font-medium text-[#171717] flex items-center justify-between">
-                      <span>Or paste CSV / tab-separated spreadsheet rows directly:</span>
-                      <span className="text-[11px] text-[#77766F]">Headers in line 1</span>
-                    </label>
-                    <textarea
-                      rows={4}
-                      value={rawText}
-                      onChange={e => setRawText(e.target.value)}
-                      placeholder={
-                        category === 'all'
-                          ? `dept_code,course_code,course_title,instructor_name,room_code,room_capacity,cohort_code,cohort_size\nCS,CS-101,Intro to Computing,Dr. Ayesha Khan,HALL-101,60,2K26-CS-A,45`
-                          : `code,capacity,name,type\nHALL-101,60,Lecture Hall A,lecture`
-                      }
-                      className="input-field min-h-[104px] py-2.5 text-xs font-mono-tabular"
-                    />
-                    <button
-                      type="button"
-                      disabled={!rawText.trim()}
-                      onClick={() => processCSVContent(rawText)}
-                      className="btn-primary h-9 text-xs"
-                    >
-                      <span>Inspect &amp; Map Columns</span>
-                      <ArrowRight className="w-3.5 h-3.5" />
-                    </button>
+                {historyLoading ? (
+                  <div className="sf-card-white p-10 text-center text-xs text-[#77766F]">
+                    Loading import history...
                   </div>
-                </motion.div>
-              )}
-
-              {step === 'mapping' && (
-                <motion.div
-                  key="import-mapping"
-                  initial={{ opacity: 0, x: 20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: -20 }}
-                  transition={{ duration: 0.24, ease: CALM_EASE }}
-                  className="space-y-5"
-                >
-                  <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-[#E4E2DA]">
-                    <div>
-                      <h3 className="font-serif-editorial text-base text-[#171717] font-semibold">
-                        Column Mapping ·{' '}
-                        {category === 'all' ? 'All-in-One Master File' : CATEGORY_SCHEMAS[category].title}
-                      </h3>
-                      <p className="text-xs text-[#77766F]">
-                        File: <strong className="text-[#171717]">{fileName || 'Pasted Data'}</strong>{' '}
-                        ({rawRows.length} rows detected · {totalExtractedCount} unique records ready)
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setStep('upload')}
-                        className="btn-secondary h-8 px-3 text-xs"
-                      >
-                        <ArrowLeft className="w-3.5 h-3.5" />
-                        <span>Back</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setStep('preview')}
-                        className="btn-primary h-8 px-4 text-xs"
-                      >
-                        <span>Preview ({totalExtractedCount} records)</span>
-                        <ArrowRight className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
+                ) : historyEntries.length === 0 ? (
+                  <div className="sf-card-white p-10 text-center space-y-2">
+                    <History className="w-7 h-7 text-[#77766F] mx-auto" />
+                    <p className="text-sm font-medium text-[#171717]">No imports recorded yet</p>
+                    <p className="text-xs text-[#77766F]">
+                      Completed imports will appear here with row counts, duplicate mode, and status.
+                    </p>
                   </div>
-
-                  {/* Extracted Entity Summary Bar */}
-                  <div className="p-3 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] flex flex-wrap items-center gap-3 text-xs font-mono-tabular text-[#171717]">
-                    <span className="font-sans font-semibold text-[#57564F]">Detected:</span>
-                    <span>{extractedPreview.departments.length} Depts</span>
-                    <span>·</span>
-                    <span>{extractedPreview.rooms.length} Rooms</span>
-                    <span>·</span>
-                    <span>{extractedPreview.courses.length} Courses</span>
-                    <span>·</span>
-                    <span>{extractedPreview.instructors.length} Faculty</span>
-                    <span>·</span>
-                    <span>{extractedPreview.cohorts.length} Cohorts</span>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {csvHeaders.map(header => {
-                      const currentMapped = columnMappings[header] || '';
-                      return (
-                        <div
-                          key={header}
-                          className="p-3 rounded-xl border border-[#E4E2DA] bg-[#F7F6EF]/50 flex items-center justify-between gap-3"
-                        >
-                          <div className="min-w-0">
-                            <div className="text-xs font-mono-tabular font-bold text-[#171717] truncate">
-                              {header}
-                            </div>
-                            <div className="text-[11px] text-[#77766F] truncate">
-                              Sample: {rawRows[0]?.[csvHeaders.indexOf(header)] || '—'}
-                            </div>
-                          </div>
-
-                          <select
-                            value={currentMapped}
-                            onChange={e => handleUpdateMapping(header, e.target.value)}
-                            className="input-field h-8 text-xs w-52 bg-white shrink-0"
-                          >
-                            <option value="">(Ignore / Skip Column)</option>
-                            {groupedFieldNames.map(group => (
-                              <optgroup key={group} label={group}>
-                                {currentFields
-                                  .filter(f => f.group === group)
-                                  .map(f => (
-                                    <option key={f.key} value={f.key}>
-                                      {f.label}
-                                    </option>
-                                  ))}
-                              </optgroup>
-                            ))}
-                          </select>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </motion.div>
-              )}
-
-              {step === 'preview' && (
-                <motion.div
-                  key="import-preview"
-                  initial={{ opacity: 0, x: 20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: -20 }}
-                  transition={{ duration: 0.24, ease: CALM_EASE }}
-                  className="space-y-5"
-                >
-                  {/* Validation Summary Bar */}
-                  <div className="p-4 rounded-xl border flex flex-wrap items-center justify-between gap-3 bg-[#F7F6EF] border-[#E4E2DA]">
-                    <div className="space-y-1">
-                      <div className="flex flex-wrap items-center gap-3 text-xs">
-                        <span className="font-semibold text-[#171717]">
-                          {validCount} valid rows · {totalExtractedCount} unique records extracted
-                        </span>
-                        {invalidCount > 0 && (
-                          <span className="font-semibold text-[#D32F2F]">
-                            {invalidCount} rows with issues
-                          </span>
-                        )}
-                      </div>
-                      <div className="text-[11px] font-mono-tabular text-[#57564F]">
-                        {extractedPreview.departments.length} Depts · {extractedPreview.rooms.length}{' '}
-                        Rooms · {extractedPreview.courses.length} Courses ·{' '}
-                        {extractedPreview.instructors.length} Faculty ·{' '}
-                        {extractedPreview.cohorts.length} Cohorts
-                      </div>
-                    </div>
-
-                    <div className="flex flex-wrap items-center gap-2.5">
-                      <select
-                        value={importMode}
-                        onChange={e => setImportMode(e.target.value as 'merge' | 'replace')}
-                        className="input-field h-8 text-xs py-0 px-2.5 w-auto bg-white"
-                      >
-                        <option value="merge">Merge (Add new &amp; keep existing)</option>
-                        <option value="replace">Replace imported categories</option>
-                      </select>
-
-                      {csvHeaders.length > 0 && csvHeaders[0] !== '_sheet' && (
-                        <button
-                          type="button"
-                          onClick={() => setStep('mapping')}
-                          className="btn-secondary h-8 px-3 text-xs"
-                        >
-                          Edit Mapping
-                        </button>
-                      )}
-
-                      <button
-                        type="button"
-                        onClick={handleCommitImport}
-                        disabled={totalExtractedCount === 0}
-                        className="btn-primary h-8 px-4 text-xs font-semibold"
-                      >
-                        <Check className="w-3.5 h-3.5" />
-                        <span>Import {totalExtractedCount} Records</span>
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Preview Table */}
-                  <div className="border border-[#E4E2DA] rounded-xl overflow-hidden overflow-x-auto max-h-72">
+                ) : (
+                  <div className="sf-card-white overflow-x-auto">
                     <table className="w-full text-left border-collapse text-xs">
-                      <thead className="bg-[#F7F6EF] border-b border-[#E4E2DA] sticky top-0">
-                        <tr>
-                          <th className="py-2 px-3 font-semibold text-[#77766F] w-12">#</th>
-                          <th className="py-2 px-3 font-semibold text-[#77766F]">Status</th>
-                          <th className="py-2 px-3 font-semibold text-[#171717]">
-                            Extracted Entities
-                          </th>
-                          <th className="py-2 px-3 font-semibold text-[#77766F]">Values</th>
+                      <thead>
+                        <tr className="border-b border-[#E4E2DA] bg-[#F7F6EF] text-[#77766F]">
+                          <th className="py-2.5 px-3 font-medium">Timestamp</th>
+                          <th className="py-2.5 px-3 font-medium">File</th>
+                          <th className="py-2.5 px-3 font-medium">Category</th>
+                          <th className="py-2.5 px-3 font-medium">Admin</th>
+                          <th className="py-2.5 px-3 font-medium">Mode</th>
+                          <th className="py-2.5 px-3 font-medium">Status</th>
+                          <th className="py-2.5 px-3 font-medium text-right">Created</th>
+                          <th className="py-2.5 px-3 font-medium text-right">Updated</th>
+                          <th className="py-2.5 px-3 font-medium text-right">Skipped</th>
+                          <th className="py-2.5 px-3 font-medium text-right">Failed</th>
+                          <th className="py-2.5 px-3 font-medium text-right">Duration</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-[#E4E2DA]">
-                        {parsedData.slice(0, 60).map(row => (
-                          <tr
-                            key={row.index}
-                            className={row.isValid ? 'hover:bg-black/2' : 'bg-[#FEE2E2]/35'}
-                          >
-                            <td className="py-2 px-3 font-mono-tabular text-[#77766F]">
-                              {row.index}
+                        {historyEntries.map(item => (
+                          <tr key={item.id} className="hover:bg-[#F7F6EF]/60">
+                            <td className="py-2.5 px-3 font-mono-tabular whitespace-nowrap text-[#77766F]">
+                              {new Date(item.createdAt).toLocaleString()}
                             </td>
-                            <td className="py-2 px-3 whitespace-nowrap">
-                              {row.isValid ? (
-                                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#2E7D32]">
-                                  <CheckCircle2 className="w-3.5 h-3.5" />
-                                  <span>Ready</span>
-                                </span>
-                              ) : (
-                                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#D32F2F]">
-                                  <AlertTriangle className="w-3.5 h-3.5" />
-                                  <span>{row.errors[0]}</span>
-                                </span>
-                              )}
+                            <td className="py-2.5 px-3 font-medium text-[#171717]">
+                              {item.fileName}
                             </td>
-                            <td className="py-2 px-3 font-mono-tabular text-[11px] text-[#171717]">
-                              {row.extractedSummary.join(' · ') || '—'}
+                            <td className="py-2.5 px-3">
+                              {CATEGORY_SCHEMAS[item.category as ImportCategory]?.shortLabel ||
+                                item.category}
                             </td>
-                            <td className="py-2 px-3 text-[11px] text-[#57564F] truncate max-w-md">
-                              {Object.entries(row.data)
-                                .filter(([k, v]) => v && k !== '_sheet')
-                                .map(([k, v]) => `${k}: ${v}`)
-                                .join(' | ') || '—'}
+                            <td className="py-2.5 px-3 text-[#77766F]">{item.userName}</td>
+                            <td className="py-2.5 px-3 capitalize">{item.duplicateMode}</td>
+                            <td className="py-2.5 px-3">
+                              <span
+                                className={`inline-flex items-center px-2 py-0.5 rounded-md border text-[11px] font-medium ${
+                                  item.status === 'completed'
+                                    ? 'bg-[#B8F2E6]/50 border-emerald-700/20 text-emerald-950'
+                                    : item.status === 'partial'
+                                    ? 'bg-amber-50 border-amber-300 text-amber-900'
+                                    : 'bg-rose-50 border-rose-300 text-rose-900'
+                                }`}
+                              >
+                                {item.status}
+                              </span>
+                            </td>
+                            <td className="py-2.5 px-3 text-right font-mono-tabular text-emerald-800 font-medium">
+                              {item.createdCount}
+                            </td>
+                            <td className="py-2.5 px-3 text-right font-mono-tabular text-sky-800">
+                              {item.updatedCount}
+                            </td>
+                            <td className="py-2.5 px-3 text-right font-mono-tabular text-[#77766F]">
+                              {item.skippedCount}
+                            </td>
+                            <td className="py-2.5 px-3 text-right font-mono-tabular text-rose-700">
+                              {item.failedCount}
+                            </td>
+                            <td className="py-2.5 px-3 text-right font-mono-tabular text-[#77766F]">
+                              {item.durationMs}ms
                             </td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
                   </div>
-                  {parsedData.length > 60 && (
-                    <div className="text-center text-xs text-[#77766F]">
-                      Showing first 60 rows of {parsedData.length} rows.
-                    </div>
-                  )}
-                </motion.div>
-              )}
-
-              {step === 'completed' && (
-                <motion.div
-                  key="import-completed"
-                  initial={{ opacity: 0, scale: 0.96 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  transition={{ duration: 0.25, ease: CALM_EASE }}
-                  className="py-10 text-center space-y-4"
-                >
-                  <div className="w-14 h-14 rounded-2xl bg-[#B8F2E6] text-[#171717] border border-[#8FDCC9] flex items-center justify-center mx-auto">
-                    <CheckCircle2 className="w-7 h-7 text-[#1E5631]" />
+                )}
+              </div>
+            ) : step === 'category' ? (
+              <div className="space-y-4">
+                <div className="flex flex-wrap items-end justify-between gap-3">
+                  <div>
+                    <h3 className="font-serif-editorial text-lg font-semibold">
+                      1. Choose Academic Data Category
+                    </h3>
+                    <p className="text-xs text-[#77766F]">
+                      Select the dataset you want to import. Each category validates required columns,
+                      data types, unique identifiers, and foreign-key references.
+                    </p>
                   </div>
-                  <h3 className="font-serif-editorial text-2xl text-[#171717]">
-                    Catalog Import Completed
-                  </h3>
-                  <p className="text-sm text-[#57564F] max-w-md mx-auto">
-                    {importResult?.summary}
+                  <button
+                    type="button"
+                    onClick={() => void handleDownloadTemplate(category)}
+                    className="btn-secondary h-8 text-xs"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>Download {currentSchema.shortLabel} Template</span>
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {CATEGORY_ORDER.map(catId => {
+                    const schema = CATEGORY_SCHEMAS[catId];
+                    const selected = category === catId;
+                    const reqFields = schema.fields.filter(f => f.required);
+                    return (
+                      <button
+                        key={catId}
+                        type="button"
+                        onClick={() => handleSelectCategory(catId)}
+                        className={`text-left p-4 rounded-xl border transition-all cursor-pointer ${
+                          selected
+                            ? 'bg-white border-[#171717] ring-1 ring-[#171717] shadow-xs'
+                            : 'bg-white/80 border-[#E4E2DA] hover:border-[#171717]/40 hover:bg-white'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <span className="text-sm font-semibold text-[#171717]">
+                            {schema.title}
+                          </span>
+                          {selected && (
+                            <span className="w-5 h-5 rounded-full bg-[#171717] text-white flex items-center justify-center shrink-0">
+                              <Check className="w-3 h-3" />
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-[#77766F] mt-1 leading-relaxed">
+                          {schema.description}
+                        </p>
+                        <div className="mt-3 pt-2.5 border-t border-[#E4E2DA] flex flex-wrap items-center justify-between gap-1 text-[11px]">
+                          <span className="text-[#77766F]">
+                            Key:{' '}
+                            <span className="font-mono-tabular text-[#171717]">
+                              {schema.stableKeyLabel}
+                            </span>
+                          </span>
+                          <span className="font-mono-tabular text-[#77766F]">
+                            {reqFields.length > 0
+                              ? `${reqFields.length} required`
+                              : 'Multi-entity'}
+                          </span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : step === 'upload' ? (
+              <div className="space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h3 className="font-serif-editorial text-lg font-semibold">
+                      2. Upload {currentSchema.title} CSV or Excel File
+                    </h3>
+                    <p className="text-xs text-[#77766F]">
+                      Required fields:{' '}
+                      <span className="font-medium text-[#171717]">
+                        {currentSchema.fields
+                          .filter(f => f.required)
+                          .map(f => f.label)
+                          .join(', ') || 'At least one entity identifier per row'}
+                      </span>
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void handleDownloadTemplate(category)}
+                    className="btn-secondary h-8 text-xs"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>Download CSV Template</span>
+                  </button>
+                </div>
+
+                {parseError && (
+                  <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 flex items-start gap-2.5 text-xs text-rose-900">
+                    <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-semibold">File Could Not Be Parsed</p>
+                      <p className="mt-0.5">{parseError}</p>
+                    </div>
+                  </div>
+                )}
+
+                <div
+                  onDragOver={e => {
+                    e.preventDefault();
+                    setIsDragging(true);
+                  }}
+                  onDragLeave={() => setIsDragging(false)}
+                  onDrop={e => {
+                    e.preventDefault();
+                    setIsDragging(false);
+                    const file = e.dataTransfer.files?.[0];
+                    if (file) void handleFileUpload(file);
+                  }}
+                  className={`sf-card-white p-8 text-center border-2 border-dashed transition-colors ${
+                    isDragging
+                      ? 'border-[#171717] bg-[#F7F6EF]'
+                      : 'border-[#CFCBC0] hover:border-[#171717]/60'
+                  }`}
+                >
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".csv,.tsv,.txt,.xlsx"
+                    className="hidden"
+                    onChange={e => {
+                      const f = e.target.files?.[0];
+                      if (f) void handleFileUpload(f);
+                      e.target.value = '';
+                    }}
+                  />
+                  <div className="w-11 h-11 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] flex items-center justify-center mx-auto mb-3">
+                    <Upload className="w-5 h-5 text-[#171717]" />
+                  </div>
+                  <p className="text-sm font-semibold text-[#171717]">
+                    {fileName
+                      ? `Loaded "${fileName}" (${rows.length} rows, ${headers.length} columns)`
+                      : 'Drag and drop your CSV or Excel (.xlsx) file here'}
                   </p>
-                  <div className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] text-xs text-[#57564F]">
-                    <Layers className="w-3.5 h-3.5 text-[#171717]" />
-                    <span>
-                      Your catalog is saved. Go to <strong>Generate Timetable</strong> when you are
-                      ready to build your schedule.
+                  <p className="text-xs text-[#77766F] mt-1">
+                    Supports UTF-8 CSV (comma, semicolon, tab-delimited) and .xlsx workbooks up to 5
+                    MB / 10,000 rows.
+                  </p>
+                  <div className="mt-4 flex flex-wrap items-center justify-center gap-2.5">
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="btn-primary h-9 text-xs"
+                    >
+                      <Upload className="w-3.5 h-3.5" />
+                      <span>{fileName ? 'Replace File' : 'Select File from Computer'}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowPasteBox(prev => !prev)}
+                      className="btn-secondary h-9 text-xs"
+                    >
+                      <span>{showPasteBox ? 'Hide Paste Box' : 'Paste CSV / Spreadsheet Text'}</span>
+                    </button>
+                  </div>
+                </div>
+
+                {showPasteBox && (
+                  <div className="sf-card-white p-4 space-y-3">
+                    <label className="block text-xs font-semibold text-[#171717]">
+                      Paste CSV or Tab-Separated Content (Row 1 must be headers)
+                    </label>
+                    <textarea
+                      value={pasteInput}
+                      onChange={e => setPasteInput(e.target.value)}
+                      rows={6}
+                      placeholder={generateTemplateCsv(category)}
+                      className="w-full p-3 rounded-xl border border-[#E4E2DA] bg-[#F7F6EF] font-mono-tabular text-xs focus:outline-none focus:border-[#171717]"
+                    />
+                    <div className="flex justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={handleParsePastedText}
+                        disabled={!pasteInput.trim()}
+                        className="btn-primary h-8 text-xs"
+                      >
+                        Parse Pasted Rows
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Template Column Quick Reference */}
+                <div className="sf-card-white p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-semibold text-[#171717]">
+                      Expected Columns for {currentSchema.title}
+                    </span>
+                    <span className="text-[11px] text-[#77766F]">
+                      Custom column headers can be mapped in the next step
                     </span>
                   </div>
-                  <div className="pt-3 flex items-center justify-center gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                    {currentSchema.fields.map(field => (
+                      <div
+                        key={field.key}
+                        className="px-2.5 py-1.5 rounded-lg bg-[#F7F6EF] border border-[#E4E2DA] flex items-center justify-between gap-2 text-[11px]"
+                      >
+                        <span className="font-medium text-[#171717] truncate">
+                          {field.label}
+                          {field.required && <span className="text-rose-600 ml-0.5">*</span>}
+                        </span>
+                        <span className="font-mono-tabular text-[#77766F] shrink-0">
+                          {field.sample}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : step === 'mapping' ? (
+              <div className="space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h3 className="font-serif-editorial text-lg font-semibold">
+                      3. Review & Adjust Column Mapping
+                    </h3>
+                    <p className="text-xs text-[#77766F]">
+                      File: <span className="font-medium text-[#171717]">{fileName}</span> ({rows.length}{' '}
+                      data rows). Confirm each spreadsheet header maps cleanly to a SmartGrid field.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
                     <button
                       type="button"
                       onClick={() => {
-                        setStep('upload');
-                        setParsedData([]);
-                        setCsvHeaders([]);
-                        setRawRows([]);
-                        setRawText('');
+                        const redetected = detectImportColumnMappings(headers, category);
+                        setColumnMappings(redetected.mapping);
                       }}
-                      className="btn-secondary h-9 text-xs"
+                      className="btn-secondary h-8 text-xs"
                     >
-                      Import Another File
+                      <Sparkles className="w-3.5 h-3.5" />
+                      <span>Re-Detect Columns</span>
                     </button>
-                    {onClose && (
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="btn-secondary h-8 text-xs"
+                    >
+                      <span>Replace File</span>
+                    </button>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept=".csv,.tsv,.txt,.xlsx"
+                      className="hidden"
+                      onChange={e => {
+                        const f = e.target.files?.[0];
+                        if (f) void handleFileUpload(f);
+                        e.target.value = '';
+                      }}
+                    />
+                  </div>
+                </div>
+
+                {Object.keys(sheetTables).length > 1 && (
+                  <div className="sf-card-white p-3 flex flex-wrap items-center gap-2 text-xs">
+                    <span className="font-medium text-[#77766F]">Excel Worksheet:</span>
+                    {Object.keys(sheetTables).map(sName => (
+                      <button
+                        key={sName}
+                        type="button"
+                        onClick={() => handleSwitchExcelSheet(sName)}
+                        className={`px-2.5 py-1 rounded-lg border text-xs cursor-pointer ${
+                          activeSheetName === sName
+                            ? 'bg-[#171717] text-white border-[#171717]'
+                            : 'bg-[#F7F6EF] text-[#171717] border-[#E4E2DA]'
+                        }`}
+                      >
+                        {sName} ({sheetTables[sName].rows.length} rows)
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {mappingResult && mappingResult.conflictingMappings.length > 0 && (
+                  <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 flex items-start gap-2.5 text-xs text-rose-900">
+                    <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-semibold">Conflicting Target Field Mapping Detected</p>
+                      <p className="mt-0.5">
+                        Multiple CSV columns are mapped to the same field:{' '}
+                        {mappingResult.conflictingMappings
+                          .map(c => `${c.targetField} (${c.headers.join(', ')})`)
+                          .join('; ')}
+                        . Assign each column to a distinct SmartGrid field or Ignore one.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {mappingResult && mappingResult.missingRequiredFields.length > 0 && (
+                  <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 flex items-start gap-2.5 text-xs text-rose-900">
+                    <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-semibold">Missing Required Column Mappings</p>
+                      <p className="mt-0.5">
+                        Map the following required fields before running validation:{' '}
+                        <span className="font-semibold">
+                          {mappingResult.missingRequiredFields.map(f => f.label).join(', ')}
+                        </span>
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                <div className="sf-card-white overflow-x-auto">
+                  <table className="w-full text-left border-collapse text-xs">
+                    <thead>
+                      <tr className="border-b border-[#E4E2DA] bg-[#F7F6EF] text-[#77766F]">
+                        <th className="py-2.5 px-3 font-medium">Uploaded Header</th>
+                        <th className="py-2.5 px-3 font-medium">Sample Values</th>
+                        <th className="py-2.5 px-3 font-medium">Detection Status</th>
+                        <th className="py-2.5 px-3 font-medium">Target SmartGrid Field</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#E4E2DA]">
+                      {(mappingResult?.details || []).map((detail: ColumnMappingDetail, colIdx) => {
+                        const sampleVals = rows
+                          .slice(0, 2)
+                          .map(r => r[colIdx])
+                          .filter(Boolean)
+                          .join(' | ');
+                        const isConflict = mappingResult?.conflictingMappings.some(c =>
+                          c.headers.includes(detail.header)
+                        );
+                        return (
+                          <tr key={detail.header} className="hover:bg-[#F7F6EF]/60">
+                            <td className="py-2.5 px-3 font-mono-tabular font-medium text-[#171717]">
+                              {detail.header}
+                            </td>
+                            <td className="py-2.5 px-3 text-[#77766F] max-w-[220px] truncate">
+                              {sampleVals || <span className="italic">empty</span>}
+                            </td>
+                            <td className="py-2.5 px-3">
+                              <span
+                                className={`inline-flex items-center px-2 py-0.5 rounded-md border text-[11px] font-medium ${
+                                  isConflict
+                                    ? 'bg-rose-50 border-rose-300 text-rose-900'
+                                    : detail.confidence === 'exact' ||
+                                      detail.confidence === 'synonym' ||
+                                      detail.confidence === 'manual'
+                                    ? 'bg-[#B8F2E6]/45 border-emerald-700/20 text-emerald-950'
+                                    : detail.confidence === 'uncertain'
+                                    ? 'bg-amber-50 border-amber-300 text-amber-900'
+                                    : 'bg-[#F7F6EF] border-[#E4E2DA] text-[#77766F]'
+                                }`}
+                                title={detail.reason}
+                              >
+                                {isConflict
+                                  ? 'Conflict'
+                                  : detail.confidence === 'exact'
+                                  ? 'Exact Match'
+                                  : detail.confidence === 'synonym'
+                                  ? 'Synonym Auto'
+                                  : detail.confidence === 'manual'
+                                  ? 'Manual Override'
+                                  : detail.confidence === 'uncertain'
+                                  ? 'Needs Review'
+                                  : 'Unmapped'}
+                              </span>
+                            </td>
+                            <td className="py-2 px-3">
+                              <select
+                                aria-label={`Map column ${detail.header}`}
+                                value={detail.targetField}
+                                onChange={e =>
+                                  handleManualColumnChange(detail.header, e.target.value)
+                                }
+                                className={`input-field h-8 text-xs py-1 ${
+                                  isConflict ? 'border-rose-400' : ''
+                                }`}
+                              >
+                                <option value="">-- Ignore / Do Not Import --</option>
+                                {currentSchema.fields.map(field => (
+                                  <option key={field.key} value={field.key}>
+                                    {field.label}
+                                    {field.required ? ' * (Required)' : ''}
+                                  </option>
+                                ))}
+                              </select>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ) : step === 'preview' ? (
+              <div className="space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h3 className="font-serif-editorial text-lg font-semibold">
+                      4. Validation Preview & Duplicate Handling
+                    </h3>
+                    {validationModeNote && (
+                      <p className="text-xs text-[#77766F]">{validationModeNote}</p>
+                    )}
+                  </div>
+                  {validationReport && validationReport.summary.errorRows > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleDownloadErrors}
+                      className="btn-secondary h-8 text-xs border-rose-300 text-rose-900"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      <span>Download Error CSV ({validationReport.summary.errorRows})</span>
+                    </button>
+                  )}
+                </div>
+
+                {isValidating && (
+                  <div className="sf-card-white p-8 text-center text-xs text-[#77766F]">
+                    Validating {rows.length} rows against schema types, duplicates, and foreign keys...
+                  </div>
+                )}
+
+                {!isValidating && validationReport && (
+                  <>
+                    {/* Summary KPI Cards */}
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
+                      <div className="sf-card-stat">
+                        <p className="text-[11px] text-[#77766F]">Total Rows</p>
+                        <p className="text-xl font-semibold font-mono-tabular mt-0.5">
+                          {validationReport.summary.totalRows}
+                        </p>
+                      </div>
+                      <div className="sf-card-stat">
+                        <p className="text-[11px] text-emerald-800">Ready to Import</p>
+                        <p className="text-xl font-semibold font-mono-tabular text-emerald-900 mt-0.5">
+                          {validationReport.summary.validRows}
+                        </p>
+                      </div>
+                      <div className="sf-card-stat">
+                        <p className="text-[11px] text-amber-800">Warnings</p>
+                        <p className="text-xl font-semibold font-mono-tabular text-amber-900 mt-0.5">
+                          {validationReport.summary.warningRows}
+                        </p>
+                      </div>
+                      <div className="sf-card-stat">
+                        <p className="text-[11px] text-rose-700">Blocking Errors</p>
+                        <p className="text-xl font-semibold font-mono-tabular text-rose-700 mt-0.5">
+                          {validationReport.summary.errorRows}
+                        </p>
+                      </div>
+                      <div className="sf-card-stat">
+                        <p className="text-[11px] text-[#77766F]">Duplicates</p>
+                        <p className="text-xl font-semibold font-mono-tabular mt-0.5">
+                          {validationReport.summary.duplicateRows}
+                        </p>
+                      </div>
+                      <div className="sf-card-stat">
+                        <p className="text-[11px] text-[#77766F]">Issue Breakdown</p>
+                        <p className="text-[11px] font-mono-tabular text-[#171717] mt-1">
+                          Req: {validationReport.summary.missingRequiredCount} · Type:{' '}
+                          {validationReport.summary.invalidTypeCount} · FK:{' '}
+                          {validationReport.summary.invalidFkCount}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Duplicate Strategy & Safety Options */}
+                    <div className="sf-card-white p-4 space-y-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <p className="text-xs font-semibold text-[#171717]">
+                            Duplicate Record Strategy
+                          </p>
+                          <p className="text-[11px] text-[#77766F]">
+                            Choose how SmartGrid handles rows whose stable identifier already exists
+                            or appears multiple times in the file.
+                          </p>
+                        </div>
+                        <label className="inline-flex items-center gap-2 text-xs text-[#171717] cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={atomicMode}
+                            onChange={e => setAtomicMode(e.target.checked)}
+                            className="rounded border-[#CFCBC0]"
+                          />
+                          <span>Strict Atomic Import (reject entire file if any row fails)</span>
+                        </label>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                        {[
+                          {
+                            mode: 'skip' as DuplicateHandlingMode,
+                            title: 'Skip Duplicates',
+                            desc: 'Keep existing records untouched and skip conflicting rows.'
+                          },
+                          {
+                            mode: 'update' as DuplicateHandlingMode,
+                            title: 'Update Existing Records',
+                            desc: 'Review exact field changes below and confirm overwriting matches.'
+                          },
+                          {
+                            mode: 'stop' as DuplicateHandlingMode,
+                            title: 'Stop & Resolve Conflicts',
+                            desc: 'Abort entire import if any duplicate or validation error exists.'
+                          }
+                        ].map(opt => (
+                          <button
+                            key={opt.mode}
+                            type="button"
+                            onClick={() => void handleChangeDuplicateMode(opt.mode)}
+                            className={`text-left p-3 rounded-xl border transition-all cursor-pointer ${
+                              duplicateMode === opt.mode
+                                ? 'bg-[#F7F6EF] border-[#171717] ring-1 ring-[#171717]'
+                                : 'bg-white border-[#E4E2DA] hover:border-[#171717]/40'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-semibold text-[#171717]">
+                                {opt.title}
+                              </span>
+                              {duplicateMode === opt.mode && (
+                                <Check className="w-3.5 h-3.5 text-[#171717]" />
+                              )}
+                            </div>
+                            <p className="text-[11px] text-[#77766F] mt-1">{opt.desc}</p>
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* Field-Level Diff Confirmation for Update Mode */}
+                      {duplicateMode === 'update' && validationReport.summary.updateCount > 0 && (
+                        <div className="p-3.5 rounded-xl bg-amber-50/70 border border-amber-200 space-y-2.5">
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="text-xs font-semibold text-amber-950">
+                              Field-Level Diff Preview ({validationReport.summary.updateCount} record
+                              {validationReport.summary.updateCount === 1 ? '' : 's'} will be updated)
+                            </p>
+                          </div>
+                          {validationReport.fieldDiffs.length > 0 && (
+                            <div className="max-h-36 overflow-y-auto bg-white rounded-lg border border-amber-200 divide-y divide-amber-100 text-[11px]">
+                              {validationReport.fieldDiffs.slice(0, 25).map(entry => (
+                                <div
+                                  key={`${entry.row}-${entry.identifier}`}
+                                  className="px-3 py-1.5 flex flex-wrap items-center gap-2"
+                                >
+                                  <span className="font-mono-tabular font-semibold text-[#171717]">
+                                    Row {entry.row} ({entry.identifier})
+                                  </span>
+                                  {entry.diffs.length === 0 ? (
+                                    <span className="text-[#77766F]">
+                                      Matching record values unchanged
+                                    </span>
+                                  ) : (
+                                    entry.diffs.map(d => (
+                                      <span
+                                        key={d.field}
+                                        className="px-1.5 py-0.5 rounded bg-[#F7F6EF] border border-[#E4E2DA] font-mono-tabular"
+                                      >
+                                        {d.label}: "{String(d.before ?? '')}" {'->'} "
+                                        {String(d.after ?? '')}"
+                                      </span>
+                                    ))
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          <label className="flex items-center gap-2 text-xs font-medium text-amber-950 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={confirmUpdates}
+                              onChange={e => setConfirmUpdates(e.target.checked)}
+                            />
+                            <span>
+                              I confirm overwriting {validationReport.summary.updateCount} existing
+                              university record(s) with the updated CSV values.
+                            </span>
+                          </label>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Blocking Banners */}
+                    {validationReport.blockingReason && (
+                      <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 flex items-start gap-2.5 text-xs text-rose-900">
+                        <ShieldAlert className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                        <div>
+                          <p className="font-semibold">Import Blocked Before Execution</p>
+                          <p className="mt-0.5">{validationReport.blockingReason}</p>
+                        </div>
+                      </div>
+                    )}
+
+                    {atomicMode && validationReport.summary.errorRows > 0 && (
+                      <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 flex items-start gap-2.5 text-xs text-rose-900">
+                        <FileWarning className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                        <div>
+                          <p className="font-semibold">Strict Atomic Mode Active</p>
+                          <p className="mt-0.5">
+                            Resolve all {validationReport.summary.errorRows} failing row(s) or
+                            uncheck Strict Atomic Import to import only the{' '}
+                            {validationReport.summary.validRows} valid row(s).
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {commitError && (
+                      <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 flex items-start gap-2.5 text-xs text-rose-900">
+                        <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                        <div>
+                          <p className="font-semibold">Commit Aborted</p>
+                          <p className="mt-0.5">{commitError}</p>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Row Filter Bar */}
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {[
+                          { id: 'all' as RowFilter, label: `All (${validationReport.rows.length})` },
+                          {
+                            id: 'error' as RowFilter,
+                            label: `Errors (${validationReport.summary.errorRows})`
+                          },
+                          {
+                            id: 'warning' as RowFilter,
+                            label: `Warnings (${validationReport.summary.warningRows})`
+                          },
+                          {
+                            id: 'duplicate' as RowFilter,
+                            label: `Duplicates (${validationReport.summary.duplicateRows})`
+                          },
+                          {
+                            id: 'ready' as RowFilter,
+                            label: `Ready (${validationReport.summary.createCount})`
+                          }
+                        ].map(tab => (
+                          <button
+                            key={tab.id}
+                            type="button"
+                            onClick={() => setRowFilter(tab.id)}
+                            className={`px-3 py-1 rounded-lg border text-xs font-medium cursor-pointer ${
+                              rowFilter === tab.id
+                                ? 'bg-[#171717] text-white border-[#171717]'
+                                : 'bg-white text-[#77766F] border-[#E4E2DA] hover:text-[#171717]'
+                            }`}
+                          >
+                            {tab.label}
+                          </button>
+                        ))}
+                      </div>
+                      <span className="text-[11px] text-[#77766F]">
+                        Showing {Math.min(filteredRows.length, 150)} of {filteredRows.length} rows
+                      </span>
+                    </div>
+
+                    {/* Detailed Row Validation Table */}
+                    <div className="sf-card-white overflow-x-auto max-h-72 overflow-y-auto">
+                      <table className="w-full text-left border-collapse text-xs">
+                        <thead className="sticky top-0 bg-[#F7F6EF] border-b border-[#E4E2DA] text-[#77766F]">
+                          <tr>
+                            <th className="py-2 px-3 font-medium">Row</th>
+                            <th className="py-2 px-3 font-medium">Identifier</th>
+                            <th className="py-2 px-3 font-medium">Status</th>
+                            <th className="py-2 px-3 font-medium">Action</th>
+                            <th className="py-2 px-3 font-medium">Problems & Suggested Fix</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-[#E4E2DA]">
+                          {filteredRows.slice(0, 150).map(r => (
+                            <tr
+                              key={r.rowNumber}
+                              className={
+                                r.status === 'error'
+                                  ? 'bg-rose-50/40'
+                                  : r.status === 'warning' || r.status === 'duplicate_skip'
+                                  ? 'bg-amber-50/30'
+                                  : 'hover:bg-[#F7F6EF]/50'
+                              }
+                            >
+                              <td className="py-2 px-3 font-mono-tabular text-[#77766F]">
+                                {r.rowNumber}
+                              </td>
+                              <td className="py-2 px-3 font-mono-tabular font-medium text-[#171717]">
+                                {r.identifier}
+                              </td>
+                              <td className="py-2 px-3">
+                                <span
+                                  className={`inline-flex items-center px-2 py-0.5 rounded-md border text-[11px] font-medium ${
+                                    r.status === 'ready'
+                                      ? 'bg-[#B8F2E6]/45 border-emerald-700/20 text-emerald-950'
+                                      : r.status === 'duplicate_update'
+                                      ? 'bg-sky-50 border-sky-200 text-sky-900'
+                                      : r.status === 'duplicate_skip' || r.status === 'warning'
+                                      ? 'bg-amber-50 border-amber-200 text-amber-900'
+                                      : 'bg-rose-50 border-rose-200 text-rose-900'
+                                  }`}
+                                >
+                                  {r.status}
+                                </span>
+                              </td>
+                              <td className="py-2 px-3 capitalize text-[#77766F]">{r.action}</td>
+                              <td className="py-2 px-3 space-y-1">
+                                {r.errors.map((err, eIdx) => (
+                                  <div key={eIdx} className="text-rose-900">
+                                    <span className="font-mono-tabular font-semibold">
+                                      [{err.column}]
+                                    </span>{' '}
+                                    {err.message}{' '}
+                                    <span className="text-[#77766F]">— Fix: {err.suggestion}</span>
+                                  </div>
+                                ))}
+                                {r.warnings.map((w, wIdx) => (
+                                  <div key={wIdx} className="text-amber-900">
+                                    <span className="font-mono-tabular font-semibold">
+                                      [{w.column}]
+                                    </span>{' '}
+                                    {w.message}
+                                  </div>
+                                ))}
+                                {r.errors.length === 0 && r.warnings.length === 0 && (
+                                  <span className="text-[#77766F]">Passed all validation checks</span>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {isCommitting && (
+                      <div className="sf-card-white p-4 space-y-2">
+                        <div className="flex items-center justify-between text-xs font-medium">
+                          <span>{commitProgress.label}</span>
+                          <span className="font-mono-tabular">{commitProgress.pct}%</span>
+                        </div>
+                        <div className="h-2 rounded-full bg-[#F7F6EF] overflow-hidden border border-[#E4E2DA]">
+                          <div
+                            className="h-full bg-[#171717] transition-all duration-300"
+                            style={{ width: `${commitProgress.pct}%` }}
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            ) : (
+              /* Step 5: Import Results */
+              commitResult && (
+                <div className="space-y-5">
+                  <div className="sf-card-white p-6 flex flex-wrap items-start justify-between gap-4">
+                    <div className="flex items-start gap-3.5">
+                      <div
+                        className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                          commitResult.status === 'completed'
+                            ? 'bg-[#B8F2E6] text-[#171717]'
+                            : 'bg-amber-100 text-amber-900'
+                        }`}
+                      >
+                        <CheckCircle2 className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h3 className="font-serif-editorial text-xl font-semibold text-[#171717]">
+                            Import {commitResult.status === 'completed' ? 'Completed' : 'Finished with Skipped Errors'}
+                          </h3>
+                          {commitResult.idempotentReplay && (
+                            <span className="px-2 py-0.5 rounded-md border border-[#E4E2DA] bg-[#F7F6EF] text-[11px] font-medium">
+                              Idempotent Replay
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-[#77766F] mt-1">{commitResult.message}</p>
+                        <p className="text-[11px] text-[#77766F] mt-1 flex items-center gap-1.5">
+                          <Clock className="w-3.5 h-3.5" />
+                          <span>
+                            Processed in {commitResult.durationMs}ms · Persistence:{' '}
+                            {commitResult.persistenceMode === 'supabase'
+                              ? 'Supabase PostgreSQL (Verified)'
+                              : 'Local Workspace Storage (Remote Supabase unconfigured or offline)'}
+                          </span>
+                        </p>
+                      </div>
+                    </div>
+
+                    {commitResult.counts.failed > 0 && commitResult.errorCsv && (
                       <button
                         type="button"
-                        onClick={onClose}
-                        className="btn-primary h-9 text-xs font-semibold"
+                        onClick={() => {
+                          const cleanBase = (fileName || category).replace(/\.[^.]+$/, '');
+                          triggerCsvDownload(`${cleanBase}_errors.csv`, commitResult.errorCsv);
+                        }}
+                        className="btn-secondary h-9 text-xs border-rose-300 text-rose-900"
                       >
-                        Done
+                        <Download className="w-3.5 h-3.5" />
+                        <span>Download Error CSV ({commitResult.counts.failed} rows)</span>
                       </button>
                     )}
                   </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                    <div className="sf-card-stat">
+                      <p className="text-[11px] text-[#77766F]">Total Processed</p>
+                      <p className="text-2xl font-semibold font-mono-tabular mt-1">
+                        {commitResult.counts.totalRows}
+                      </p>
+                    </div>
+                    <div className="sf-card-stat">
+                      <p className="text-[11px] text-emerald-800">Created</p>
+                      <p className="text-2xl font-semibold font-mono-tabular text-emerald-900 mt-1">
+                        {commitResult.counts.created}
+                      </p>
+                    </div>
+                    <div className="sf-card-stat">
+                      <p className="text-[11px] text-sky-800">Updated</p>
+                      <p className="text-2xl font-semibold font-mono-tabular text-sky-900 mt-1">
+                        {commitResult.counts.updated}
+                      </p>
+                    </div>
+                    <div className="sf-card-stat">
+                      <p className="text-[11px] text-amber-800">Skipped</p>
+                      <p className="text-2xl font-semibold font-mono-tabular text-amber-900 mt-1">
+                        {commitResult.counts.skipped}
+                      </p>
+                    </div>
+                    <div className="sf-card-stat">
+                      <p className="text-[11px] text-rose-700">Failed</p>
+                      <p className="text-2xl font-semibold font-mono-tabular text-rose-700 mt-1">
+                        {commitResult.counts.failed}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )
+            )}
           </div>
+
+          {/* Sticky Footer */}
+          <footer className="flex flex-wrap items-center justify-between gap-3 px-6 py-4 bg-white border-t border-[#E4E2DA]">
+            {activeTab === 'history' ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('wizard')}
+                  className="btn-secondary h-9 text-xs"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                  <span>Back to Import Wizard</span>
+                </button>
+                {onClose && (
+                  <button type="button" onClick={onClose} className="btn-primary h-9 text-xs">
+                    <span>Close</span>
+                  </button>
+                )}
+              </>
+            ) : step === 'category' ? (
+              <>
+                <div className="text-xs text-[#77766F] flex items-center gap-1.5">
+                  <Layers className="w-3.5 h-3.5" />
+                  <span>Selected: {currentSchema.title}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  {onClose && (
+                    <button type="button" onClick={onClose} className="btn-secondary h-9 text-xs">
+                      Cancel
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setStep('upload')}
+                    className="btn-primary h-9 text-xs"
+                  >
+                    <span>Next: Upload CSV / Excel</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </>
+            ) : step === 'upload' ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setStep('category')}
+                  className="btn-secondary h-9 text-xs"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                  <span>Back</span>
+                </button>
+                <div className="flex items-center gap-2">
+                  {headers.length > 0 && rows.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setStep('mapping')}
+                      className="btn-primary h-9 text-xs"
+                    >
+                      <span>Continue to Column Mapping ({rows.length} rows)</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              </>
+            ) : step === 'mapping' ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setStep('upload')}
+                  className="btn-secondary h-9 text-xs"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                  <span>Back to Upload</span>
+                </button>
+                <button
+                  type="button"
+                  disabled={!canAdvanceFromMapping}
+                  onClick={() => void handleProceedToValidation()}
+                  className="btn-primary h-9 text-xs"
+                >
+                  <span>Next: Validate & Preview</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              </>
+            ) : step === 'preview' ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setStep('mapping')}
+                  disabled={isCommitting}
+                  className="btn-secondary h-9 text-xs"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                  <span>Adjust Column Mapping</span>
+                </button>
+                <button
+                  type="button"
+                  disabled={!canExecuteCommit}
+                  onClick={() => void handleCommitImport()}
+                  className="btn-primary h-9 text-xs"
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span>
+                    {isCommitting
+                      ? 'Importing...'
+                      : validationReport
+                      ? `Import ${validationReport.summary.validRows} Verified Row${
+                          validationReport.summary.validRows === 1 ? '' : 's'
+                        }`
+                      : 'Run Import'}
+                  </span>
+                </button>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={resetForAnotherImport}
+                    className="btn-secondary h-9 text-xs"
+                  >
+                    <Upload className="w-3.5 h-3.5" />
+                    <span>Import Another File</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('history')}
+                    className="btn-secondary h-9 text-xs"
+                  >
+                    <History className="w-3.5 h-3.5" />
+                    <span>View Import History</span>
+                  </button>
+                </div>
+                {onClose && (
+                  <button type="button" onClick={onClose} className="btn-primary h-9 text-xs">
+                    <span>Done</span>
+                  </button>
+                )}
+              </>
+            )}
+          </footer>
         </motion.div>
-      </motion.div>
+      </div>
     </MotionConfig>
   );
 };

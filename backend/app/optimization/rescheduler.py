@@ -161,7 +161,7 @@ def generate_rescheduling_proposal(
     target_days = affected_days or list(time_config.working_days)
     target_slots = affected_start_times or time_config.generate_daily_lecture_slots()
 
-    if disruption_type == "instructor_unavailable":
+    if disruption_type in ("instructor_unavailable", "lab_engineer_unavailable"):
         for d in target_days:
             for st in target_slots:
                 disr_inst_tuples.add((affected_resource_id, d, st))
@@ -172,17 +172,28 @@ def generate_rescheduling_proposal(
                 disr_room_tuples.add((affected_resource_id, d, st))
                 disr_unavail_room.setdefault(affected_resource_id, []).append(f"{d}-{st}")
 
-    # Identify directly affected sessions (instructor, lab engineer, or room)
+    # Identify directly affected sessions (instructor, lab engineer, room, or forced course/section move)
     affected_session_ids: Set[str] = set()
     for sess in sessions:
         day, st, rm_id = original_genes[sess.session_id]
         covered = time_config.covered_lecture_slots(st, sess.is_lab, day=day)
-        if disruption_type == "instructor_unavailable" and affected_resource_id in sess.staff_ids:
+        if disruption_type in ("instructor_unavailable", "lab_engineer_unavailable") and affected_resource_id in sess.staff_ids:
             if any((affected_resource_id, day, c_st) in disr_inst_tuples for c_st in covered):
                 affected_session_ids.add(sess.session_id)
         elif disruption_type in ("room_unavailable", "lab_unavailable") and rm_id == affected_resource_id:
             if any((rm_id, day, c_st) in disr_room_tuples for c_st in covered):
                 affected_session_ids.add(sess.session_id)
+        elif disruption_type in ("forced_course_move", "admin_slot_adjustment") and affected_resource_id in (
+            sess.course_id,
+            sess.course_code,
+            sess.section_id,
+            sess.session_id,
+        ):
+            if day in target_days and any(c_st in target_slots for c_st in covered):
+                affected_session_ids.add(sess.session_id)
+                for st_id in sess.staff_ids:
+                    for c_st in covered:
+                        disr_unavail_inst.setdefault(st_id, []).append(f"{day}-{c_st}")
 
     # Run Tabu Search repair
     repaired_chrom = run_tabu_search_reschedule(

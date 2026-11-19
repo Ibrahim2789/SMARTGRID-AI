@@ -28,6 +28,7 @@ def compare_optimization_algorithms(
     instructor_preferences: Optional[List[Dict[str, Any]]] = None,
     unavailable_instructor_slots: Optional[Any] = None,
     unavailable_room_slots: Optional[Any] = None,
+    seed: int = 42,
 ) -> Dict[str, Any]:
     algorithms = [
         ("dsatur_only", "DSatur Graph Coloring Initial Schedule"),
@@ -54,6 +55,7 @@ def compare_optimization_algorithms(
             instructor_preferences=instructor_preferences,
             unavailable_instructor_slots=unavailable_instructor_slots,
             unavailable_room_slots=unavailable_room_slots,
+            seed=seed,
         )
         score = float(res["fitness"]["totalScore"])
         if baseline_score is None:

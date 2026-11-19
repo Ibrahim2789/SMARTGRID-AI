@@ -172,6 +172,7 @@ def run_hybrid_timetable_pipeline(
     instructor_preferences: Optional[List[Dict[str, Any]]] = None,
     unavailable_instructor_slots: Optional[Any] = None,
     unavailable_room_slots: Optional[Any] = None,
+    seed: int = 42,
 ) -> Dict[str, Any]:
     t0 = time.perf_counter()
     cfg = time_config or TimeSlotConfig()
@@ -232,7 +233,7 @@ def run_hybrid_timetable_pipeline(
             unavailable_room_slots=unavail_room,
             student_preferences=student_preferences,
             weights=w_dict,
-            seed=42,
+            seed=seed,
         )
         evaluate_timetable_fitness(
             best_chrom,
@@ -261,6 +262,7 @@ def run_hybrid_timetable_pipeline(
             seed_with_dsatur=False,
             population_size=10,
             generations=10,
+            seed=seed,
         )
         best_chrom = ga_res["chromosome"]
         fitness_history = ga_res["convergence_history"]
@@ -278,6 +280,7 @@ def run_hybrid_timetable_pipeline(
             seed_with_dsatur=False,
             population_size=10,
             generations=10,
+            seed=seed,
         )
         sa_res = run_simulated_annealing(
             initial_chromosome=ga_res["chromosome"],
@@ -290,6 +293,7 @@ def run_hybrid_timetable_pipeline(
             instructor_preferences=instructor_preferences,
             unavailable_instructor_slots=unavail_inst,
             unavailable_room_slots=unavail_room,
+            seed=seed + 1,
         )
         best_chrom = sa_res["chromosome"]
         fitness_history = ga_res["convergence_history"] + sa_res["convergence_history"]
@@ -304,7 +308,7 @@ def run_hybrid_timetable_pipeline(
             unavailable_room_slots=unavail_room,
             student_preferences=student_preferences,
             weights=w_dict,
-            seed=42,
+            seed=seed,
         )
         ga_res = run_genetic_algorithm(
             sessions=sessions,
@@ -320,6 +324,7 @@ def run_hybrid_timetable_pipeline(
             seed_with_dsatur=True,
             population_size=12,
             generations=12,
+            seed=seed + 1,
         )
         sa_res = run_simulated_annealing(
             initial_chromosome=ga_res["chromosome"],
@@ -332,6 +337,7 @@ def run_hybrid_timetable_pipeline(
             instructor_preferences=instructor_preferences,
             unavailable_instructor_slots=unavail_inst,
             unavailable_room_slots=unavail_room,
+            seed=seed + 2,
         )
         best_chrom = sa_res["chromosome"]
         fitness_history = ga_res["convergence_history"] + sa_res["convergence_history"]

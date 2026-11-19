@@ -125,8 +125,30 @@ async def register_institution(request: Request) -> Dict[str, Any]:
 
 
 @router.get("/api/institutions/{id}/data")
-def get_institution_data(id: str) -> Dict[str, Any]:
+def get_institution_data(id: str, request: Request) -> Dict[str, Any]:
+    from app.deps import get_header
+
+    auth_hdr = get_header(request, "Authorization").strip()
     client = require_supabase_client()
+    if auth_hdr:
+        auth_user = require_auth_user(request)
+        user_inst_id = str(auth_user.get("institutionId") or "").strip()
+        if auth_user.get("role") != "super_admin" and user_inst_id and id != user_inst_id:
+            raise HTTPException(
+                status_code=403,
+                detail={"error": "Access denied: Cross-institution data access is prohibited."},
+            )
+    else:
+        try:
+            inst = client.select_one("institutions", filters={"id": f"eq.{id}"}, select="id,is_sample")
+        except SupabaseQueryError as err:
+            raise_supabase_http_error(err)
+        if not inst or not bool(inst.get("is_sample")):
+            raise HTTPException(
+                status_code=401,
+                detail={"error": "Authentication required to access university workspace data."},
+            )
+
     try:
         row = client.select_one("institution_data", filters={"institution_id": f"eq.{id}"}, select="payload")
     except SupabaseQueryError as err:
@@ -138,7 +160,13 @@ def get_institution_data(id: str) -> Dict[str, Any]:
 
 @router.post("/api/institutions/{id}/data")
 async def save_institution_data(id: str, request: Request) -> Dict[str, Any]:
-    require_auth_user(request)
+    auth_user = require_auth_user(request, allowed_roles=["admin", "university_admin", "super_admin", "timetable_manager"])
+    user_inst_id = str(auth_user.get("institutionId") or "").strip()
+    if auth_user.get("role") != "super_admin" and user_inst_id and id != user_inst_id:
+        raise HTTPException(
+            status_code=403,
+            detail={"error": "Access denied: Cross-institution data updates are prohibited."},
+        )
     body = await parse_json_body(request)
     data = body.get("data")
     if data is None:
@@ -176,7 +204,13 @@ def get_universities() -> Dict[str, Any]:
 async def update_university_settings(universityId: str, request: Request) -> Dict[str, Any]:
     from app.optimization.constraints import canonicalize_working_days
 
-    require_auth_user(request, allowed_roles=["admin"])
+    auth_user = require_auth_user(request, allowed_roles=["admin", "university_admin", "super_admin"])
+    user_inst_id = str(auth_user.get("institutionId") or "").strip()
+    if auth_user.get("role") != "super_admin" and user_inst_id and universityId != user_inst_id:
+        raise HTTPException(
+            status_code=403,
+            detail={"error": "Access denied: Cross-institution settings changes are prohibited."},
+        )
     body = await parse_json_body(request)
     client = require_supabase_client()
 
