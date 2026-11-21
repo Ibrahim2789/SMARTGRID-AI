@@ -63,22 +63,82 @@ No fake credentials are embedded in the repository. Follow these steps to provis
 2. Under **Authentication** $\rightarrow$ **URL Configuration**, set your Site URL (e.g., `http://localhost:3000`).
 
 ### Step 5: Configure Environment Variables
-1. Copy `.env.example` to `.env`:
+1. From the project root, copy `.env.example` to `.env`:
+
+   **Windows PowerShell:**
+   ```powershell
+   Copy-Item .env.example .env
+   ```
+
+   **macOS/Linux:**
    ```bash
    cp .env.example .env
    ```
 2. Fill in `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_DB_URL`, and `SMARTGRID_AUTH_SECRET`.
 
 ### Step 6: Install Dependencies & Run the Backend and Frontend
-1. Install Python dependencies (if running in a local virtual environment):
-   ```bash
-   pip install -r backend/requirements.txt
+1. Create and activate a Python virtual environment from the project root:
+
+   **Windows PowerShell:**
+   ```powershell
+   py -m venv .venv
+   .\.venv\Scripts\Activate.ps1
+   python -m pip install --upgrade pip
+   python -m pip install -r backend/requirements.txt
    ```
-2. Install Node/Vite frontend dependencies and start the full-stack server (which proxies `/api/*` to the Python FastAPI server on port `8001`):
+
+   **macOS/Linux:**
+   ```bash
+   python3 -m venv .venv
+   source .venv/bin/activate
+   python3 -m pip install --upgrade pip
+   python3 -m pip install -r backend/requirements.txt
+   ```
+
+2. Install the Node.js dependencies:
    ```bash
    npm install
+   ```
+
+3. Start the full-stack development server:
+   ```bash
    npm run dev
    ```
+   This runs the Express gateway and Vite frontend on `http://localhost:3000` and starts the Python FastAPI backend on port `8001`.
+
+### Additional Run Commands
+
+Run the frontend and backend in one command for development:
+
+```bash
+npm run dev
+```
+
+Run the FastAPI backend separately:
+
+**Windows PowerShell:**
+```powershell
+cd backend
+python main.py
+```
+
+**macOS/Linux:**
+```bash
+cd backend
+python3 main.py
+```
+
+Build the production frontend:
+
+```bash
+npm run build
+```
+
+Run the production Express server after building:
+
+```bash
+npm start
+```
 
 ### Step 7: Verify Database & Optimization Endpoints
 - Check backend health: `GET http://localhost:3000/api/health`
