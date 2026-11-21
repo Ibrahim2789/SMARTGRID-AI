@@ -10,6 +10,13 @@ import {
   getEffectiveSlotDisplayForDay
 } from '../types/institutional';
 import { showAppPopup } from './ToastPopupHost';
+import {
+  getStoredUser,
+  updateSectionSlotBackend,
+  swapSectionsBackend,
+  toggleSectionLockBackend,
+  patchTimetableEntriesBackend
+} from '../services/votingApi';
 
 export interface ClassItem {
   id: string;
@@ -129,54 +136,129 @@ export const ClassDetailsModal: React.FC<ClassDetailsModalProps> = ({
       ? computedTiming.fridaySchedule.validBasePeriods
       : computedTiming.periods;
 
-  const handleSaveSlotChange = () => {
+  const handleSaveSlotChange = async () => {
     if (!isStoreBacked) return;
-    institutionalStore.updateSectionSlot(classItem.id, {
+    const storedUser = getStoredUser();
+    if (!storedUser?.token) {
+      showAppPopup({
+        title: 'Sign-In Required',
+        message: 'Sign in as an administrator to persist timetable slot edits to Supabase.',
+        variant: 'error'
+      });
+      return;
+    }
+
+    const nextSlot = {
       day: selectedDay,
       timeSlot: selectedPeriod,
       roomId: selectedRoomId
-    });
-    void institutionalStore.syncToBackend();
-    const newRoom = store.rooms.find(r => r.id === selectedRoomId);
-    const labWindow = isLab
-      ? (getLabBlockByStartPeriod(selectedPeriod, store.timeStructure, selectedDay)?.continuousLabel || selectedPeriod)
-      : getEffectiveSlotDisplayForDay(selectedDay, selectedPeriod, computedTiming).period;
-    const msg = `Rescheduled ${classItem.code} to ${selectedDay} · ${labWindow} in ${newRoom?.code || 'selected room'}.`;
-    setSavedNotice(msg);
-    showAppPopup({ title: 'Session Rescheduled', message: msg, variant: 'success' });
-    setIsReassigning(false);
-    setTimeout(() => {
-      onClose();
-    }, 900);
+    };
+
+    try {
+      await updateSectionSlotBackend(storedUser, classItem.id, nextSlot);
+      const activeVersionId = store.scenarios[0]?.id;
+      if (activeVersionId) {
+        await patchTimetableEntriesBackend(storedUser, activeVersionId, {
+          updates: [
+            {
+              sectionId: classItem.id,
+              day: selectedDay,
+              startTime: selectedPeriod,
+              roomId: selectedRoomId
+            }
+          ]
+        });
+      }
+      institutionalStore.updateSectionSlot(classItem.id, nextSlot);
+      const newRoom = store.rooms.find(r => r.id === selectedRoomId);
+      const labWindow = isLab
+        ? getLabBlockByStartPeriod(selectedPeriod, store.timeStructure, selectedDay)?.continuousLabel ||
+          selectedPeriod
+        : getEffectiveSlotDisplayForDay(selectedDay, selectedPeriod, computedTiming).period;
+      const msg = `Rescheduled ${classItem.code} to ${selectedDay} · ${labWindow} in ${newRoom?.code || 'selected room'}.`;
+      setSavedNotice(msg);
+      showAppPopup({ title: 'Session Rescheduled', message: msg, variant: 'success' });
+      setIsReassigning(false);
+      setTimeout(() => {
+        onClose();
+      }, 900);
+    } catch (err) {
+      showAppPopup({
+        title: 'Reschedule Failed',
+        message: err instanceof Error ? err.message : 'Unable to save slot reassignment to Supabase.',
+        variant: 'error'
+      });
+    }
   };
 
-  const otherSections = store.sections.filter(s =>
-    s.id !== classItem.id &&
-    Boolean(s.assignedSlot) &&
-    (s.studentGroupId === classItem.studentGroupId || !classItem.studentGroupId)
+  const otherSections = store.sections.filter(
+    s =>
+      s.id !== classItem.id &&
+      Boolean(s.assignedSlot) &&
+      (s.studentGroupId === classItem.studentGroupId || !classItem.studentGroupId)
   );
 
-  const handleExecuteSwap = () => {
+  const handleExecuteSwap = async () => {
     if (!selectedSwapSectionId) return;
-    const res = institutionalStore.swapSectionSlots(classItem.id, selectedSwapSectionId);
-    void institutionalStore.syncToBackend();
-    setSavedNotice(res.message);
-    showAppPopup({ title: 'Sessions Swapped', message: res.message, variant: 'success' });
-    setIsSwapping(false);
-    setTimeout(() => {
-      onClose();
-    }, 1000);
+    const storedUser = getStoredUser();
+    if (!storedUser?.token) {
+      showAppPopup({
+        title: 'Sign-In Required',
+        message: 'Sign in as an administrator to persist slot swaps to Supabase.',
+        variant: 'error'
+      });
+      return;
+    }
+
+    try {
+      await swapSectionsBackend(storedUser, classItem.id, selectedSwapSectionId);
+      const res = institutionalStore.swapSectionSlots(classItem.id, selectedSwapSectionId);
+      setSavedNotice(res.message);
+      showAppPopup({ title: 'Sessions Swapped', message: res.message, variant: 'success' });
+      setIsSwapping(false);
+      setTimeout(() => {
+        onClose();
+      }, 1000);
+    } catch (err) {
+      showAppPopup({
+        title: 'Swap Failed',
+        message: err instanceof Error ? err.message : 'Unable to persist slot swap to Supabase.',
+        variant: 'error'
+      });
+    }
   };
 
-  const handleToggleLock = () => {
+  const handleToggleLock = async () => {
     if (!isStoreBacked) return;
-    institutionalStore.toggleSectionLock(classItem.id);
-    void institutionalStore.syncToBackend();
-    const msg = isLocked
-      ? `${classItem.code} unlocked for future solver runs.`
-      : `${classItem.code} locked to current room and slot.`;
-    setSavedNotice(msg);
-    showAppPopup({ title: isLocked ? 'Session Unlocked' : 'Session Locked', message: msg, variant: 'info' });
+    const storedUser = getStoredUser();
+    if (!storedUser?.token) {
+      showAppPopup({
+        title: 'Sign-In Required',
+        message: 'Sign in as an administrator to pin/unpin slots in Supabase.',
+        variant: 'error'
+      });
+      return;
+    }
+
+    try {
+      const result = await toggleSectionLockBackend(storedUser, classItem.id, !isLocked);
+      institutionalStore.toggleSectionLock(classItem.id);
+      const msg = result.isLocked
+        ? `${classItem.code} locked to current room and slot.`
+        : `${classItem.code} unlocked for future solver runs.`;
+      setSavedNotice(msg);
+      showAppPopup({
+        title: result.isLocked ? 'Session Locked' : 'Session Unlocked',
+        message: msg,
+        variant: 'info'
+      });
+    } catch (err) {
+      showAppPopup({
+        title: 'Lock Update Failed',
+        message: err instanceof Error ? err.message : 'Unable to update lock state in Supabase.',
+        variant: 'error'
+      });
+    }
   };
 
   const shortBreakSummary =

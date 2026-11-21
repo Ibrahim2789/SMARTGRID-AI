@@ -1,4 +1,4 @@
-"""Batch-scoped voting, BR question submissions, and Admin BR/poll governance endpoints (Supabase PostgreSQL)."""
+"""Batch-scoped voting, BR question submissions, community schedule proposals, and Admin BR/poll governance endpoints (Supabase PostgreSQL)."""
 
 from __future__ import annotations
 
@@ -10,12 +10,21 @@ from typing import Any, Dict, List, Set
 
 from app.database.supabase import SupabaseQueryError, require_supabase_client
 from app.deps import (
+    ADMIN_ROLES,
+    CATALOG_MANAGER_ROLES,
+    assert_institution_access,
     build_enriched_polls_for_user,
+    get_query_param,
     get_user_auth_context,
+    is_missing_table_error,
     parse_json_body,
     raise_supabase_http_error,
     require_auth_user,
+    safe_json_loads,
+    scoped_uni_id,
+    write_audit_log,
 )
+import json
 from database import hash_password, now_iso
 from fastapi_compat import APIRouter, HTTPException, Request
 
@@ -28,6 +37,7 @@ def get_voting_overview(request: Request) -> Dict[str, Any]:
     polls = build_enriched_polls_for_user(auth_user)
     user_inst_id = auth_user.get("institutionId") or ""
     client = require_supabase_client()
+    is_admin = auth_user.get("role") in ADMIN_ROLES
 
     try:
         batches = client.select(
@@ -62,7 +72,7 @@ def get_voting_overview(request: Request) -> Dict[str, Any]:
                         "credential_hint": u.get("credential_hint"),
                     }
                 )
-        elif auth_user["role"] == "admin":
+        elif is_admin:
             all_users = client.select(
                 "users",
                 filters={"institution_id": f"eq.{user_inst_id}"},
@@ -136,7 +146,7 @@ def get_voting_overview(request: Request) -> Dict[str, Any]:
                         "name": male_br["user_name"],
                         "email": male_br["user_email"],
                         "isActive": bool(male_br["user_is_active"]),
-                        "credentialHint": male_br.get("credential_hint") if auth_user["role"] == "admin" else None,
+                        "credentialHint": male_br.get("credential_hint") if is_admin else None,
                         "assignedAt": male_br["assigned_at"],
                     }
                     if male_br
@@ -149,7 +159,7 @@ def get_voting_overview(request: Request) -> Dict[str, Any]:
                         "name": female_br["user_name"],
                         "email": female_br["user_email"],
                         "isActive": bool(female_br["user_is_active"]),
-                        "credentialHint": female_br.get("credential_hint") if auth_user["role"] == "admin" else None,
+                        "credentialHint": female_br.get("credential_hint") if is_admin else None,
                         "assignedAt": female_br["assigned_at"],
                     }
                     if female_br
@@ -159,7 +169,7 @@ def get_voting_overview(request: Request) -> Dict[str, Any]:
         )
 
     br_accounts: List[Dict[str, Any]] = []
-    if auth_user["role"] == "admin":
+    if is_admin:
         batch_by_id = {b["id"]: b for b in batches}
         for u in all_users:
             if u.get("role") != "br":
@@ -209,6 +219,7 @@ async def cast_vote(pollId: str, request: Request) -> Dict[str, Any]:
         poll = client.select_one("polls", filters={"id": f"eq.{pollId}"})
         if not poll:
             raise HTTPException(status_code=404, detail={"error": "Voting question not found."})
+        assert_institution_access(auth_user, poll.get("institution_id"))
 
         if poll["status"] != "Published":
             raise HTTPException(
@@ -238,6 +249,13 @@ async def cast_vote(pollId: str, request: Request) -> Dict[str, Any]:
                 status_code=403,
                 detail={"error": "This poll is restricted to students of the submitting batch."},
             )
+        if poll.get("target_scope") == "selected_batches":
+            allowed_batches = safe_json_loads(poll.get("target_batch_ids"), [])
+            if allowed_batches and auth_user.get("batchId") not in allowed_batches:
+                raise HTTPException(
+                    status_code=403,
+                    detail={"error": "This poll is restricted to selected batches."},
+                )
 
         option_row = client.select_one(
             "poll_options",
@@ -314,7 +332,9 @@ async def submit_br_poll(request: Request) -> Dict[str, Any]:
                     "error": "You do not have an active Batch Representative assignment. Please contact the Administrator."
                 },
             )
-        batch_row = client.select_one("batches", filters={"id": f"eq.{assign_row['batch_id']}"}, select="code,name")
+        batch_row = client.select_one("batches", filters={"id": f"eq.{assign_row['batch_id']}"}, select="code,name,institution_id")
+        if batch_row:
+            assert_institution_access(auth_user, batch_row.get("institution_id"))
         user_row = client.select_one("users", filters={"id": f"eq.{auth_user['userId']}"}, select="name")
     except SupabaseQueryError as err:
         raise_supabase_http_error(err)
@@ -368,7 +388,12 @@ async def submit_br_poll(request: Request) -> Dict[str, Any]:
 
     current_iso = now_iso()
     poll_id = f"poll-{uuid.uuid4()}"
-    scope = "submitting_batch" if target_scope == "submitting_batch" else ("selected_batches" if target_scope == "selected_batches" else "all_batches")
+    has_poll_ext = getattr(client, "has_column", lambda t, c: True)("polls", "optimizer_approval_status")
+    scope = (
+        "submitting_batch"
+        if target_scope == "submitting_batch"
+        else ("selected_batches" if (target_scope == "selected_batches" and has_poll_ext) else "all_batches")
+    )
     user_inst_id = auth_user.get("institutionId") or ""
 
     from app.optimization.preference_aggregator import ALLOWED_POLL_CATEGORIES
@@ -405,15 +430,7 @@ async def submit_br_poll(request: Request) -> Dict[str, Any]:
     }
 
     try:
-        try:
-            client.insert("polls", poll_row)
-        except SupabaseQueryError:
-            fallback_row = {
-                k: v
-                for k, v in poll_row.items()
-                if k not in ("poll_category", "target_batch_ids", "optimizer_approval_status")
-            }
-            client.insert("polls", fallback_row)
+        client.insert("polls", poll_row)
         client.insert(
             "poll_options",
             [
@@ -426,6 +443,27 @@ async def submit_br_poll(request: Request) -> Dict[str, Any]:
                 for idx, label in enumerate(clean_options)
             ],
         )
+        if not has_poll_ext:
+            client.insert(
+                "feedback",
+                {
+                    "id": str(uuid.uuid4()),
+                    "institution_id": user_inst_id,
+                    "user_id": auth_user["userId"],
+                    "category": f"poll_meta:{poll_id}",
+                    "rating": 5,
+                    "comment": json.dumps(
+                        {
+                            "poll_id": poll_id,
+                            "poll_category": raw_cat,
+                            "target_batch_ids": target_batch_ids,
+                            "target_scope": target_scope or scope,
+                            "optimizer_approval_status": "pending_review",
+                        }
+                    ),
+                    "created_at": current_iso,
+                },
+            )
     except SupabaseQueryError as err:
         raise_supabase_http_error(err)
 
@@ -440,7 +478,7 @@ async def submit_br_poll(request: Request) -> Dict[str, Any]:
 
 @router.post("/api/voting/admin/batches", status_code=201)
 async def create_admin_batch(request: Request) -> Dict[str, Any]:
-    auth_user = require_auth_user(request, allowed_roles=["admin"])
+    auth_user = require_auth_user(request, allowed_roles=ADMIN_ROLES)
     body = await parse_json_body(request)
 
     clean_code = str(body.get("code") or "").strip().upper()
@@ -497,7 +535,7 @@ async def create_admin_batch(request: Request) -> Dict[str, Any]:
 
 @router.post("/api/voting/admin/br-accounts", status_code=201)
 async def create_br_account(request: Request) -> Dict[str, Any]:
-    auth_user = require_auth_user(request, allowed_roles=["admin"])
+    auth_user = require_auth_user(request, allowed_roles=ADMIN_ROLES)
     body = await parse_json_body(request)
 
     clean_name = str(body.get("name") or "").strip()
@@ -532,9 +570,10 @@ async def create_br_account(request: Request) -> Dict[str, Any]:
 
     client = require_supabase_client()
     try:
-        batch_row = client.select_one("batches", filters={"id": f"eq.{batch_id}"}, select="id,code,name")
+        batch_row = client.select_one("batches", filters={"id": f"eq.{batch_id}"}, select="id,code,name,institution_id")
         if not batch_row:
             raise HTTPException(status_code=404, detail={"error": "Selected batch does not exist."})
+        assert_institution_access(auth_user, batch_row.get("institution_id"))
 
         existing_email = client.select_one("users", filters={"email": f"ilike.{clean_email}"}, select="id")
         if existing_email:
@@ -569,7 +608,7 @@ async def create_br_account(request: Request) -> Dict[str, Any]:
         gender_label = "Male" if gender_role == "male" else "Female"
         display_label = f"{clean_name} ({gender_label} BR · {batch_row['code']})"
 
-        admin_inst_id = auth_user.get("institutionId") or ""
+        admin_inst_id = batch_row.get("institution_id") or auth_user.get("institutionId") or ""
         admin_inst_row = client.select_one("institutions", filters={"id": f"eq.{admin_inst_id}"}, select="name")
         admin_inst_name = admin_inst_row["name"] if admin_inst_row else ""
 
@@ -622,7 +661,7 @@ async def create_br_account(request: Request) -> Dict[str, Any]:
 
 @router.patch("/api/voting/admin/br-accounts/{userId}")
 async def update_br_account(userId: str, request: Request) -> Dict[str, Any]:
-    auth_user = require_auth_user(request, allowed_roles=["admin"])
+    auth_user = require_auth_user(request, allowed_roles=ADMIN_ROLES)
     body = await parse_json_body(request)
     action = body.get("action")
     new_password = str(body.get("newPassword") or "").strip()
@@ -634,6 +673,7 @@ async def update_br_account(userId: str, request: Request) -> Dict[str, Any]:
         br_user = client.select_one("users", filters={"id": f"eq.{userId}", "role": "eq.br"})
         if not br_user:
             raise HTTPException(status_code=404, detail={"error": "Batch Representative account not found."})
+        assert_institution_access(auth_user, br_user.get("institution_id"))
 
         current_iso = now_iso()
 
@@ -687,6 +727,11 @@ async def update_br_account(userId: str, request: Request) -> Dict[str, Any]:
         if action == "assign_slot":
             if not batch_id or not gender_role:
                 raise HTTPException(status_code=400, detail={"error": "batchId and genderRole are required."})
+            target_batch = client.select_one("batches", filters={"id": f"eq.{batch_id}"}, select="id,institution_id")
+            if not target_batch:
+                raise HTTPException(status_code=404, detail={"error": "Target batch not found."})
+            assert_institution_access(auth_user, target_batch.get("institution_id"))
+
             client.update(
                 "br_assignments",
                 {"batch_id": f"eq.{batch_id}", "gender_role": f"eq.{gender_role}"},
@@ -719,7 +764,7 @@ async def update_br_account(userId: str, request: Request) -> Dict[str, Any]:
 
 @router.patch("/api/voting/admin/polls/{pollId}/status")
 async def update_poll_status(pollId: str, request: Request) -> Dict[str, Any]:
-    auth_user = require_auth_user(request, allowed_roles=["admin"])
+    auth_user = require_auth_user(request, allowed_roles=ADMIN_ROLES)
     body = await parse_json_body(request)
     client = require_supabase_client()
 
@@ -727,6 +772,7 @@ async def update_poll_status(pollId: str, request: Request) -> Dict[str, Any]:
         existing = client.select_one("polls", filters={"id": f"eq.{pollId}"})
         if not existing:
             raise HTTPException(status_code=404, detail={"error": "Question not found."})
+        assert_institution_access(auth_user, existing.get("institution_id"))
 
         next_status = body.get("status") or existing["status"]
         rejection_reason = str(body.get("rejectionReason") or "").strip()
@@ -785,12 +831,14 @@ async def update_poll_status(pollId: str, request: Request) -> Dict[str, Any]:
 
 @router.delete("/api/voting/admin/polls/{pollId}")
 def delete_poll(pollId: str, request: Request) -> Dict[str, Any]:
-    require_auth_user(request, allowed_roles=["admin"])
+    auth_user = require_auth_user(request, allowed_roles=ADMIN_ROLES)
     client = require_supabase_client()
     try:
-        deleted = client.delete("polls", {"id": f"eq.{pollId}"})
-        if not deleted:
+        existing = client.select_one("polls", filters={"id": f"eq.{pollId}"})
+        if not existing:
             raise HTTPException(status_code=404, detail={"error": "Question not found."})
+        assert_institution_access(auth_user, existing.get("institution_id"))
+        client.delete("polls", {"id": f"eq.{pollId}"})
     except SupabaseQueryError as err:
         raise_supabase_http_error(err)
 
@@ -799,7 +847,7 @@ def delete_poll(pollId: str, request: Request) -> Dict[str, Any]:
 
 @router.patch("/api/voting/admin/polls/{pollId}/optimizer-approval")
 async def update_poll_optimizer_approval(pollId: str, request: Request) -> Dict[str, Any]:
-    auth_user = require_auth_user(request, allowed_roles=["admin"])
+    auth_user = require_auth_user(request, allowed_roles=ADMIN_ROLES)
     body = await parse_json_body(request)
     approval_status = str(body.get("approvalStatus") or "").strip()
     rejection_reason = str(body.get("rejectionReason") or "").strip()
@@ -822,6 +870,7 @@ async def update_poll_optimizer_approval(pollId: str, request: Request) -> Dict[
         poll = client.select_one("polls", filters={"id": f"eq.{pollId}"})
         if not poll:
             raise HTTPException(status_code=404, detail={"error": "Poll not found."})
+        assert_institution_access(auth_user, poll.get("institution_id"))
 
         client.update(
             "polls",
@@ -834,6 +883,39 @@ async def update_poll_optimizer_approval(pollId: str, request: Request) -> Dict[
                 "updated_at": current_iso,
             },
         )
+        if not getattr(client, "has_column", lambda t, c: True)("polls", "optimizer_approval_status"):
+            meta_cat = f"poll_meta:{pollId}"
+            existing_meta = client.select_one(
+                "feedback",
+                filters={"institution_id": f"eq.{poll['institution_id']}", "category": f"eq.{meta_cat}"},
+                order="created_at.desc",
+            )
+            parsed_meta = safe_json_loads(existing_meta.get("comment"), {}) if existing_meta else {}
+            if not isinstance(parsed_meta, dict):
+                parsed_meta = {}
+            parsed_meta.update(
+                {
+                    "poll_id": pollId,
+                    "optimizer_approval_status": approval_status,
+                    "optimizer_rejection_reason": rejection_reason if approval_status == "rejected_from_optimizer" else None,
+                    "optimizer_approved_at": current_iso if approval_status == "approved_for_optimizer" else None,
+                }
+            )
+            if existing_meta:
+                client.update("feedback", {"id": f"eq.{existing_meta['id']}"}, {"comment": json.dumps(parsed_meta)})
+            else:
+                client.insert(
+                    "feedback",
+                    {
+                        "id": str(uuid.uuid4()),
+                        "institution_id": poll["institution_id"],
+                        "user_id": auth_user.get("userId"),
+                        "category": meta_cat,
+                        "rating": 5,
+                        "comment": json.dumps(parsed_meta),
+                        "created_at": current_iso,
+                    },
+                )
     except SupabaseQueryError as err:
         raise_supabase_http_error(err)
 
@@ -848,12 +930,12 @@ async def update_poll_optimizer_approval(pollId: str, request: Request) -> Dict[
 @router.get("/api/voting/admin/active-preferences")
 def get_active_preferences_overview(request: Request) -> Dict[str, Any]:
     auth_user = require_auth_user(request)
-    uni_id = auth_user.get("institutionId") or ""
+    uni_id = scoped_uni_id(auth_user, get_query_param(request, "universityId", ""))
     client = require_supabase_client()
     try:
         inst = client.select_one("institutions", filters={"id": f"eq.{uni_id}"}) or {}
-    except SupabaseQueryError:
-        inst = {}
+    except SupabaseQueryError as err:
+        raise_supabase_http_error(err)
 
     inf_weight = float(inst.get("voting_preference_influence") or 0.65)
     low_thresh = float(inst.get("low_participation_threshold") or 25.0)
@@ -873,12 +955,12 @@ def get_active_preferences_overview(request: Request) -> Dict[str, Any]:
 @router.get("/api/voting/admin/optimizer-config")
 def get_optimizer_voting_config(request: Request) -> Dict[str, Any]:
     auth_user = require_auth_user(request)
-    uni_id = auth_user.get("institutionId") or ""
+    uni_id = scoped_uni_id(auth_user, get_query_param(request, "universityId", ""))
     client = require_supabase_client()
     try:
         inst = client.select_one("institutions", filters={"id": f"eq.{uni_id}"}) or {}
-    except SupabaseQueryError:
-        inst = {}
+    except SupabaseQueryError as err:
+        raise_supabase_http_error(err)
 
     return {
         "useVotingPreferences": bool(inst.get("use_voting_preferences", True)),
@@ -889,8 +971,8 @@ def get_optimizer_voting_config(request: Request) -> Dict[str, Any]:
 
 @router.patch("/api/voting/admin/optimizer-config")
 async def update_optimizer_voting_config(request: Request) -> Dict[str, Any]:
-    auth_user = require_auth_user(request, allowed_roles=["admin"])
-    uni_id = auth_user.get("institutionId") or ""
+    auth_user = require_auth_user(request, allowed_roles=ADMIN_ROLES)
+    uni_id = scoped_uni_id(auth_user, "")
     body = await parse_json_body(request)
 
     patch_data: Dict[str, Any] = {}
@@ -903,7 +985,8 @@ async def update_optimizer_voting_config(request: Request) -> Dict[str, Any]:
 
     client = require_supabase_client()
     try:
-        client.update("institutions", {"id": f"eq.{uni_id}"}, patch_data)
+        if patch_data:
+            client.update("institutions", {"id": f"eq.{uni_id}"}, patch_data)
     except SupabaseQueryError as err:
         raise_supabase_http_error(err)
 
@@ -924,33 +1007,50 @@ async def submit_timetable_feedback(versionId: str, request: Request) -> Dict[st
     note = str(body.get("preferredAdjustmentNote") or body.get("preferred_adjustment_note") or "").strip()
 
     client = require_supabase_client()
+    feedback_id = f"fb-{uuid.uuid4().hex[:10]}"
+    current_iso = now_iso()
+    fb_payload = {
+        "id": feedback_id,
+        "institution_id": uni_id,
+        "timetable_version_id": versionId,
+        "user_id": auth_user["userId"],
+        "batch_id": auth_user.get("batchId"),
+        "section_code": auth_user.get("section"),
+        "timings_rating": timings,
+        "compactness_rating": compactness,
+        "gaps_rating": gaps,
+        "free_day_rating": free_day,
+        "overall_rating": overall,
+        "preferred_adjustment_note": note,
+        "created_at": current_iso,
+    }
     try:
         tt = client.select_one("timetable_versions", filters={"id": f"eq.{versionId}", "institution_id": f"eq.{uni_id}"})
         if not tt:
             raise HTTPException(status_code=404, detail={"error": "Timetable version not found."})
 
-        feedback_id = f"fb-{uuid.uuid4().hex[:10]}"
-        current_iso = now_iso()
-        client.insert(
-            "timetable_feedback",
-            {
-                "id": feedback_id,
-                "institution_id": uni_id,
-                "timetable_version_id": versionId,
-                "user_id": auth_user["userId"],
-                "batch_id": auth_user.get("batchId"),
-                "section_code": auth_user.get("section"),
-                "timings_rating": timings,
-                "compactness_rating": compactness,
-                "gaps_rating": gaps,
-                "free_day_rating": free_day,
-                "overall_rating": overall,
-                "preferred_adjustment_note": note,
-                "created_at": current_iso,
-            },
-            upsert=True,
-            on_conflict="timetable_version_id,user_id",
-        )
+        try:
+            client.insert(
+                "timetable_feedback",
+                fb_payload,
+                upsert=True,
+                on_conflict="timetable_version_id,user_id",
+            )
+        except SupabaseQueryError as tbl_err:
+            if not is_missing_table_error(tbl_err):
+                raise
+            client.insert(
+                "feedback",
+                {
+                    "id": str(uuid.uuid4()),
+                    "institution_id": uni_id,
+                    "user_id": auth_user["userId"],
+                    "category": f"timetable_feedback:{versionId}",
+                    "rating": max(1, min(5, overall)),
+                    "comment": json.dumps(fb_payload),
+                    "created_at": current_iso,
+                },
+            )
     except SupabaseQueryError as err:
         raise_supabase_http_error(err)
 
@@ -963,10 +1063,25 @@ def get_timetable_feedback(versionId: str, request: Request) -> Dict[str, Any]:
     uni_id = auth_user.get("institutionId") or ""
     client = require_supabase_client()
     try:
-        rows = client.select(
-            "timetable_feedback",
-            filters={"timetable_version_id": f"eq.{versionId}", "institution_id": f"eq.{uni_id}"},
-        )
+        try:
+            rows = client.select(
+                "timetable_feedback",
+                filters={"timetable_version_id": f"eq.{versionId}", "institution_id": f"eq.{uni_id}"},
+            )
+        except SupabaseQueryError as tbl_err:
+            if not is_missing_table_error(tbl_err):
+                raise
+            fb_rows = client.select(
+                "feedback",
+                filters={"institution_id": f"eq.{uni_id}", "category": f"eq.timetable_feedback:{versionId}"},
+                order="created_at.desc",
+            )
+            rows = [
+                parsed
+                for r in fb_rows
+                for parsed in [safe_json_loads(r.get("comment"), None)]
+                if isinstance(parsed, dict)
+            ]
     except SupabaseQueryError as err:
         raise_supabase_http_error(err)
 
@@ -992,3 +1107,218 @@ def get_timetable_feedback(versionId: str, request: Request) -> Dict[str, Any]:
         "feedback": rows,
     }
 
+
+# ============================================================================
+# COMMUNITY SCHEDULE PROPOSALS (FEEDBACK PROPOSALS IN SCHEDULE_PROPOSALS OR FEEDBACK)
+# ============================================================================
+
+def _map_schedule_proposal(row: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "id": row["id"],
+        "title": row["title"],
+        "category": row.get("category") or "General",
+        "description": row["description"],
+        "targetSlot": row.get("target_slot") or row.get("targetSlot") or "",
+        "submittedBy": row.get("submitted_by") or row.get("submittedBy") or "Campus Community",
+        "createdAt": row.get("created_at") or row.get("createdAt") or now_iso(),
+        "status": row.get("status") or "Open",
+        "votesApprove": int(row.get("votes_approve") if row.get("votes_approve") is not None else (row.get("votesApprove") or 0)),
+        "votesRevise": int(row.get("votes_revise") if row.get("votes_revise") is not None else (row.get("votesRevise") or 0)),
+        "voters": safe_json_loads(row.get("voters"), {}),
+    }
+
+
+@router.get("/api/feedback/proposals")
+def list_schedule_proposals(request: Request) -> Dict[str, Any]:
+    auth_user = require_auth_user(request)
+    uni_id = scoped_uni_id(auth_user, get_query_param(request, "universityId", ""))
+    client = require_supabase_client()
+    try:
+        try:
+            rows = client.select(
+                "schedule_proposals",
+                filters={"institution_id": f"eq.{uni_id}"},
+                order="created_at.desc",
+                limit=50,
+            )
+            return {"proposals": [_map_schedule_proposal(r) for r in rows]}
+        except SupabaseQueryError as tbl_err:
+            if not is_missing_table_error(tbl_err):
+                raise
+            fb_rows = client.select(
+                "feedback",
+                filters={"institution_id": f"eq.{uni_id}", "category": "eq.schedule_proposal"},
+                order="created_at.desc",
+                limit=50,
+            )
+            mapped: List[Dict[str, Any]] = []
+            for fb in fb_rows:
+                parsed = safe_json_loads(fb.get("comment"), None)
+                if isinstance(parsed, dict) and parsed.get("title"):
+                    mapped.append(_map_schedule_proposal({**parsed, "createdAt": parsed.get("createdAt") or fb.get("created_at")}))
+            return {"proposals": mapped}
+    except SupabaseQueryError as err:
+        raise_supabase_http_error(err)
+
+
+@router.post("/api/feedback/proposals", status_code=201)
+async def create_schedule_proposal(request: Request) -> Dict[str, Any]:
+    auth_user = require_auth_user(request)
+    body = await parse_json_body(request)
+    uni_id = scoped_uni_id(auth_user, str(body.get("universityId") or ""))
+
+    title = str(body.get("title") or "").strip()
+    description = str(body.get("description") or "").strip()
+    category = str(body.get("category") or "General").strip()
+    target_slot = str(body.get("targetSlot") or "").strip()
+
+    if len(title) < 3 or len(description) < 5:
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "Proposal title and description are required."},
+        )
+
+    prop_id = str(body.get("id") or f"sprop-{uuid.uuid4().hex[:8]}")
+    current_iso = now_iso()
+    submitted_by_name = str(body.get("submittedBy") or auth_user.get("name") or "Campus Member")
+    client = require_supabase_client()
+    try:
+        try:
+            inserted = client.insert(
+                "schedule_proposals",
+                {
+                    "id": prop_id,
+                    "institution_id": uni_id,
+                    "title": title,
+                    "category": category,
+                    "description": description,
+                    "target_slot": target_slot,
+                    "submitted_by": submitted_by_name,
+                    "submitted_by_user_id": auth_user.get("userId"),
+                    "status": "Open",
+                    "votes_approve": 0,
+                    "votes_revise": 0,
+                    "voters": {},
+                    "created_at": current_iso,
+                    "updated_at": current_iso,
+                },
+            )
+            row = inserted[0] if inserted else None
+            mapped = _map_schedule_proposal(row) if row else None
+        except SupabaseQueryError as tbl_err:
+            if not is_missing_table_error(tbl_err):
+                raise
+            prop_obj = {
+                "id": prop_id,
+                "title": title,
+                "category": category,
+                "description": description,
+                "targetSlot": target_slot,
+                "submittedBy": submitted_by_name,
+                "status": "Open",
+                "votesApprove": 0,
+                "votesRevise": 0,
+                "voters": {},
+                "createdAt": current_iso,
+            }
+            client.insert(
+                "feedback",
+                {
+                    "id": str(uuid.uuid4()),
+                    "institution_id": uni_id,
+                    "user_id": auth_user.get("userId"),
+                    "category": "schedule_proposal",
+                    "rating": 5,
+                    "comment": json.dumps(prop_obj),
+                    "created_at": current_iso,
+                },
+            )
+            mapped = prop_obj
+        write_audit_log(
+            client,
+            uni_id,
+            auth_user,
+            "create",
+            "scenario",
+            prop_id,
+            f"Submitted community schedule proposal '{title}'",
+        )
+    except SupabaseQueryError as err:
+        raise_supabase_http_error(err)
+
+    return {"message": "Proposal submitted to Supabase.", "proposal": mapped}
+
+
+@router.post("/api/feedback/proposals/{proposalId}/vote")
+async def vote_schedule_proposal(proposalId: str, request: Request) -> Dict[str, Any]:
+    auth_user = require_auth_user(request)
+    body = await parse_json_body(request)
+    vote = str(body.get("vote") or "").strip().lower()
+    if vote not in ("approve", "revise"):
+        raise HTTPException(status_code=400, detail={"error": "Vote must be 'approve' or 'revise'."})
+
+    client = require_supabase_client()
+    try:
+        try:
+            existing = client.select_one("schedule_proposals", filters={"id": f"eq.{proposalId}"})
+            if not existing:
+                raise HTTPException(status_code=404, detail={"error": "Schedule proposal not found."})
+            assert_institution_access(auth_user, existing.get("institution_id"))
+
+            voters = safe_json_loads(existing.get("voters"), {})
+            if not isinstance(voters, dict):
+                voters = {}
+            voter_key = str(auth_user.get("userId") or "user")
+            voters[voter_key] = vote
+            approve_cnt = sum(1 for v in voters.values() if v == "approve")
+            revise_cnt = sum(1 for v in voters.values() if v == "revise")
+
+            updated_rows = client.update(
+                "schedule_proposals",
+                {"id": f"eq.{proposalId}"},
+                {
+                    "voters": voters,
+                    "votes_approve": approve_cnt,
+                    "votes_revise": revise_cnt,
+                    "updated_at": now_iso(),
+                },
+            )
+            row = updated_rows[0] if updated_rows else existing
+            return {"message": "Vote recorded.", "proposal": _map_schedule_proposal(row)}
+        except SupabaseQueryError as tbl_err:
+            if not is_missing_table_error(tbl_err):
+                raise
+            fb_rows = client.select(
+                "feedback",
+                filters={"category": "eq.schedule_proposal"},
+                order="created_at.desc",
+                limit=200,
+            )
+            target_fb = None
+            target_prop = None
+            for fb in fb_rows:
+                parsed = safe_json_loads(fb.get("comment"), None)
+                if isinstance(parsed, dict) and parsed.get("id") == proposalId:
+                    target_fb = fb
+                    target_prop = parsed
+                    break
+            if not target_fb or not target_prop:
+                raise HTTPException(status_code=404, detail={"error": "Schedule proposal not found."})
+            assert_institution_access(auth_user, target_fb.get("institution_id"))
+
+            voters = target_prop.get("voters") if isinstance(target_prop.get("voters"), dict) else {}
+            voter_key = str(auth_user.get("userId") or "user")
+            voters[voter_key] = vote
+            approve_cnt = sum(1 for v in voters.values() if v == "approve")
+            revise_cnt = sum(1 for v in voters.values() if v == "revise")
+            target_prop["voters"] = voters
+            target_prop["votesApprove"] = approve_cnt
+            target_prop["votesRevise"] = revise_cnt
+            client.update(
+                "feedback",
+                {"id": f"eq.{target_fb['id']}"},
+                {"comment": json.dumps(target_prop)},
+            )
+            return {"message": "Vote recorded.", "proposal": _map_schedule_proposal(target_prop)}
+    except SupabaseQueryError as err:
+        raise_supabase_http_error(err)

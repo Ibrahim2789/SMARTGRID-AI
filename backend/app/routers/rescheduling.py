@@ -7,11 +7,16 @@ from typing import Any, Dict
 
 from app.database.supabase import SupabaseQueryError, require_supabase_client
 from app.deps import (
+    ADMIN_ROLES,
+    CATALOG_MANAGER_ROLES,
+    assert_institution_access,
     get_query_param,
     load_university_optimization_inputs,
     parse_json_body,
     raise_supabase_http_error,
     require_auth_user,
+    scoped_uni_id,
+    write_audit_log,
 )
 from app.optimization.rescheduler import generate_rescheduling_proposal
 from app.optimization.scheduler import run_hybrid_timetable_pipeline
@@ -35,9 +40,12 @@ ALLOWED_DISRUPTION_TYPES = {
 
 @router.post("/api/rescheduling/disruptions")
 async def report_disruption_and_reschedule(request: Request) -> Dict[str, Any]:
-    auth_user = require_auth_user(request, allowed_roles=["admin", "faculty", "br"])
+    auth_user = require_auth_user(
+        request,
+        allowed_roles=[*CATALOG_MANAGER_ROLES, "faculty", "instructor", "br"],
+    )
     body = await parse_json_body(request)
-    uni_id = body.get("universityId") or auth_user.get("institutionId") or ""
+    uni_id = scoped_uni_id(auth_user, str(body.get("universityId") or ""))
 
     raw_type = str(body.get("type") or body.get("disruptionType") or "instructor_unavailable").strip()
     disruption_type = raw_type if raw_type in ALLOWED_DISRUPTION_TYPES else "admin_slot_adjustment"
@@ -118,12 +126,19 @@ async def report_disruption_and_reschedule(request: Request) -> Dict[str, Any]:
     current_iso = now_iso()
 
     try:
+        has_sync = getattr(client, "has_column", lambda t, c: True)("timetable_entries", "slot_source")
+        db_disruption_type = disruption_type
+        if not has_sync:
+            if disruption_type == "lab_engineer_unavailable":
+                db_disruption_type = "instructor_unavailable"
+            elif disruption_type == "forced_course_move":
+                db_disruption_type = "admin_slot_adjustment"
         client.insert(
             "disruptions",
             {
                 "id": disruption_id,
                 "institution_id": uni_id,
-                "disruption_type": disruption_type,
+                "disruption_type": db_disruption_type,
                 "affected_resource_id": affected_resource_id,
                 "affected_days": [str(d) for d in affected_days],
                 "affected_start_times": [str(s) for s in affected_start_times],
@@ -171,6 +186,15 @@ async def report_disruption_and_reschedule(request: Request) -> Dict[str, Any]:
                 "created_at": current_iso,
             },
         )
+        write_audit_log(
+            client,
+            uni_id,
+            auth_user,
+            "create",
+            "scenario",
+            proposal_id,
+            f"Reported disruption ({disruption_type}) and generated Tabu Search proposal {proposal_id}",
+        )
     except SupabaseQueryError as err:
         raise_supabase_http_error(err)
 
@@ -182,10 +206,44 @@ async def report_disruption_and_reschedule(request: Request) -> Dict[str, Any]:
     }
 
 
+@router.get("/api/rescheduling/disruptions")
+def list_disruptions(request: Request) -> Dict[str, Any]:
+    auth_user = require_auth_user(request)
+    uni_id = scoped_uni_id(auth_user, get_query_param(request, "universityId", ""))
+    client = require_supabase_client()
+    try:
+        disruptions = client.select(
+            "disruptions",
+            filters={"institution_id": f"eq.{uni_id}"},
+            order="created_at.desc",
+            limit=50,
+        )
+    except SupabaseQueryError as err:
+        raise_supabase_http_error(err)
+    return {"disruptions": disruptions}
+
+
+@router.get("/api/rescheduling/history")
+def list_rescheduling_history(request: Request) -> Dict[str, Any]:
+    auth_user = require_auth_user(request)
+    uni_id = scoped_uni_id(auth_user, get_query_param(request, "universityId", ""))
+    client = require_supabase_client()
+    try:
+        history = client.select(
+            "rescheduling_history",
+            filters={"institution_id": f"eq.{uni_id}"},
+            order="created_at.desc",
+            limit=50,
+        )
+    except SupabaseQueryError as err:
+        raise_supabase_http_error(err)
+    return {"history": history}
+
+
 @router.get("/api/rescheduling/proposals")
 def list_rescheduling_proposals(request: Request) -> Dict[str, Any]:
     auth_user = require_auth_user(request)
-    uni_id = get_query_param(request, "universityId", "") or auth_user.get("institutionId") or ""
+    uni_id = scoped_uni_id(auth_user, get_query_param(request, "universityId", ""))
     client = require_supabase_client()
 
     try:
@@ -227,8 +285,7 @@ def list_rescheduling_proposals(request: Request) -> Dict[str, Any]:
 
 @router.post("/api/rescheduling/proposals/{proposalId}/approve")
 def approve_rescheduling_proposal(proposalId: str, request: Request) -> Dict[str, Any]:
-    auth_user = require_auth_user(request, allowed_roles=["admin"])
-    uni_id = auth_user.get("institutionId") or ""
+    auth_user = require_auth_user(request, allowed_roles=ADMIN_ROLES)
     current_iso = now_iso()
     client = require_supabase_client()
 
@@ -236,6 +293,8 @@ def approve_rescheduling_proposal(proposalId: str, request: Request) -> Dict[str
         prop = client.select_one("rescheduling_proposals", filters={"id": f"eq.{proposalId}"})
         if not prop:
             raise HTTPException(status_code=404, detail={"error": "Rescheduling proposal not found."})
+        assert_institution_access(auth_user, prop.get("institution_id"))
+        uni_id = prop["institution_id"]
 
         client.update(
             "rescheduling_proposals",
@@ -244,6 +303,13 @@ def approve_rescheduling_proposal(proposalId: str, request: Request) -> Dict[str
         )
         if prop.get("disruption_id"):
             client.update("disruptions", {"id": f"eq.{prop['disruption_id']}"}, {"status": "resolved"})
+
+        # Archive previously published timetable versions in the same institution
+        client.update(
+            "timetable_versions",
+            {"institution_id": f"eq.{uni_id}", "status": "eq.published"},
+            {"status": "archived", "updated_at": current_iso},
+        )
 
         new_tt_id = f"ttv-resched-{uuid.uuid4().hex[:6]}"
         client.insert(
@@ -330,6 +396,15 @@ def approve_rescheduling_proposal(proposalId: str, request: Request) -> Dict[str
                 "created_at": current_iso,
             },
         )
+        write_audit_log(
+            client,
+            uni_id,
+            auth_user,
+            "publish",
+            "scenario",
+            new_tt_id,
+            f"Approved rescheduling proposal {proposalId} and published {new_tt_id}",
+        )
     except SupabaseQueryError as err:
         raise_supabase_http_error(err)
 
@@ -342,13 +417,14 @@ def approve_rescheduling_proposal(proposalId: str, request: Request) -> Dict[str
 
 @router.post("/api/rescheduling/proposals/{proposalId}/reject")
 def reject_rescheduling_proposal(proposalId: str, request: Request) -> Dict[str, Any]:
-    auth_user = require_auth_user(request, allowed_roles=["admin"])
+    auth_user = require_auth_user(request, allowed_roles=ADMIN_ROLES)
     current_iso = now_iso()
     client = require_supabase_client()
     try:
         prop = client.select_one("rescheduling_proposals", filters={"id": f"eq.{proposalId}"})
         if not prop:
             raise HTTPException(status_code=404, detail={"error": "Rescheduling proposal not found."})
+        assert_institution_access(auth_user, prop.get("institution_id"))
 
         client.update(
             "rescheduling_proposals",
@@ -365,6 +441,15 @@ def reject_rescheduling_proposal(proposalId: str, request: Request) -> Dict[str,
                 "actor_name": auth_user.get("name") or "Administrator",
                 "created_at": current_iso,
             },
+        )
+        write_audit_log(
+            client,
+            prop["institution_id"],
+            auth_user,
+            "update",
+            "scenario",
+            proposalId,
+            f"Rejected rescheduling proposal {proposalId}",
         )
     except SupabaseQueryError as err:
         raise_supabase_http_error(err)

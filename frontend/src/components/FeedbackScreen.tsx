@@ -29,6 +29,15 @@ import {
   History
 } from 'lucide-react';
 import { showAppPopup } from './ToastPopupHost';
+import {
+  getStoredUser,
+  AuthenticatedVotingUser,
+  createFeedbackProposalBackend,
+  voteFeedbackProposalBackend,
+  restoreTimetableBackend,
+  updateConstraintBackend,
+  fetchInstitutionWorkspace
+} from '../services/votingApi';
 
 interface FeedbackScreenProps {
   onNavigate: (route: RouteType) => void;
@@ -114,28 +123,92 @@ export const FeedbackScreen: React.FC<FeedbackScreenProps> = ({ onNavigate, curr
     });
   };
 
-  const handleSubmitProposal = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!title.trim() || !description.trim()) return;
-
-    institutionalStore.addFeedbackPoll({
-      title: title.trim(),
-      category,
-      targetSlot,
-      submittedBy: submittedBy.trim() || 'Campus Stakeholder',
-      description: description.trim(),
-      status: 'Active'
-    });
-
-    setTitle('');
-    setDescription('');
-    setShowNewProposalModal(false);
-    triggerNotice('Logged new schedule adjustment proposal to the Schedule History board.');
+  const resolveAuthUser = (): AuthenticatedVotingUser | null => {
+    if (currentUser?.token) return currentUser as AuthenticatedVotingUser;
+    return getStoredUser();
   };
 
-  const handleRestoreVersion = (scenarioId: string, scenarioName: string, version: string) => {
-    const res = institutionalStore.restoreScenario(scenarioId);
-    triggerNotice(res.message || `Restored ${version} (${scenarioName}) as the active published timetable baseline.`);
+  const handleSubmitProposal = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!title.trim() || !description.trim()) return;
+    const authUser = resolveAuthUser();
+    const instId =
+      store.institutionProfile?.id ||
+      authUser?.institutionId ||
+      institutionalStore.getCurrentInstitutionId();
+
+    if (!authUser?.token) {
+      showAppPopup({
+        title: 'Authentication Required',
+        message: 'Please sign in to publish schedule proposals to Supabase.',
+        variant: 'error'
+      });
+      return;
+    }
+
+    try {
+      const res = await createFeedbackProposalBackend(authUser, {
+        universityId: instId,
+        title: title.trim(),
+        category,
+        targetSlot,
+        description: description.trim()
+      });
+      const created = (res.proposal || {}) as Record<string, unknown>;
+      const rawStatus = String(created.status || 'Active');
+      const createdDate = String(created.createdAt || created.created_at || new Date().toISOString());
+      institutionalStore.upsertFeedbackPoll({
+        id: String(created.id || `poll-${Date.now()}`),
+        title: String(created.title || title.trim()),
+        category: String(created.category || category) as 'Timing' | 'Break Duration' | 'Lab Continuity' | 'Workload Balance',
+        targetSlot: String(created.targetSlot || created.target_slot || targetSlot),
+        submittedBy: String(created.submittedBy || created.submitted_by || submittedBy.trim() || authUser.name || 'Campus Stakeholder'),
+        description: String(created.description || description.trim()),
+        status: (rawStatus === 'Open' ? 'Active' : rawStatus) as 'Active' | 'Under Review' | 'Implemented',
+        votesApprove: Number(created.votesApprove ?? created.votes_approve ?? 1),
+        votesRevise: Number(created.votesRevise ?? created.votes_revise ?? 0),
+        createdAt: createdDate.split('T')[0]
+      });
+      setTitle('');
+      setDescription('');
+      setShowNewProposalModal(false);
+      triggerNotice('Saved new schedule adjustment proposal to Supabase.');
+    } catch (err: any) {
+      showAppPopup({
+        title: 'Failed to Publish Proposal',
+        message: err?.message || 'Unable to save schedule proposal to Supabase.',
+        variant: 'error'
+      });
+    }
+  };
+
+  const handleRestoreVersion = async (scenarioId: string, scenarioName: string, version: string) => {
+    const authUser = resolveAuthUser();
+    const instId =
+      store.institutionProfile?.id ||
+      authUser?.institutionId ||
+      institutionalStore.getCurrentInstitutionId();
+    if (!authUser?.token) {
+      showAppPopup({
+        title: 'Authentication Required',
+        message: 'Please sign in to restore a timetable version in Supabase.',
+        variant: 'error'
+      });
+      return;
+    }
+
+    try {
+      await restoreTimetableBackend(authUser, scenarioId);
+      const workspace = await fetchInstitutionWorkspace(authUser, instId);
+      institutionalStore.hydrateFromWorkspacePayload(instId, workspace, authUser.id);
+      triggerNotice(`Restored ${version} (${scenarioName}) as the active published timetable baseline in Supabase.`);
+    } catch (err: any) {
+      showAppPopup({
+        title: 'Restore Failed',
+        message: err?.message || 'Unable to restore timetable baseline in Supabase.',
+        variant: 'error'
+      });
+    }
   };
 
   // =========================================================================
@@ -1195,9 +1268,23 @@ export const FeedbackScreen: React.FC<FeedbackScreenProps> = ({ onNavigate, curr
                         <input
                           type="checkbox"
                           checked={rule.enabled}
-                          onChange={e =>
-                            institutionalStore.toggleConstraint(rule.id, e.target.checked)
-                          }
+                          onChange={async e => {
+                            const nextEnabled = e.target.checked;
+                            const authUser = resolveAuthUser();
+                            institutionalStore.toggleConstraint(rule.id, nextEnabled);
+                            if (authUser?.token) {
+                              try {
+                                await updateConstraintBackend(authUser, rule.id, { enabled: nextEnabled });
+                              } catch (err: any) {
+                                institutionalStore.toggleConstraint(rule.id, !nextEnabled);
+                                showAppPopup({
+                                  title: 'Update Failed',
+                                  message: err?.message || 'Unable to update constraint in Supabase.',
+                                  variant: 'error'
+                                });
+                              }
+                            }
+                          }}
                           className="rounded border-[#D5D3CB] text-[#171717]"
                         />
                         <span>{rule.name}</span>
@@ -1233,6 +1320,36 @@ export const FeedbackScreen: React.FC<FeedbackScreenProps> = ({ onNavigate, curr
                               parseInt(e.target.value, 10)
                             )
                           }
+                          onMouseUp={async e => {
+                            const authUser = resolveAuthUser();
+                            const w = parseInt((e.target as HTMLInputElement).value, 10);
+                            if (authUser?.token) {
+                              try {
+                                await updateConstraintBackend(authUser, rule.id, { weight: w });
+                              } catch (err: any) {
+                                showAppPopup({
+                                  title: 'Weight Update Failed',
+                                  message: err?.message || 'Unable to persist constraint weight in Supabase.',
+                                  variant: 'error'
+                                });
+                              }
+                            }
+                          }}
+                          onTouchEnd={async e => {
+                            const authUser = resolveAuthUser();
+                            const w = parseInt((e.target as HTMLInputElement).value, 10);
+                            if (authUser?.token) {
+                              try {
+                                await updateConstraintBackend(authUser, rule.id, { weight: w });
+                              } catch (err: any) {
+                                showAppPopup({
+                                  title: 'Weight Update Failed',
+                                  message: err?.message || 'Unable to persist constraint weight in Supabase.',
+                                  variant: 'error'
+                                });
+                              }
+                            }
+                          }}
                           className="flex-1 accent-[#171717] cursor-pointer h-1.5"
                         />
                         <span className="text-[10px] font-mono-tabular text-[#77766F]">100%</span>
@@ -1771,9 +1888,33 @@ export const FeedbackScreen: React.FC<FeedbackScreenProps> = ({ onNavigate, curr
                                 <div className="flex items-center gap-2 shrink-0">
                                   <button
                                     type="button"
-                                    onClick={() =>
-                                      institutionalStore.voteFeedbackPoll(poll.id, 'approve')
-                                    }
+                                    onClick={async () => {
+                                      const authUser = resolveAuthUser();
+                                      if (!authUser?.token) {
+                                        showAppPopup({
+                                          title: 'Authentication Required',
+                                          message: 'Please sign in to vote on schedule proposals.',
+                                          variant: 'error'
+                                        });
+                                        return;
+                                      }
+                                      try {
+                                        const res = await voteFeedbackProposalBackend(authUser, poll.id, 'approve');
+                                        const updated = (res.proposal || {}) as Record<string, unknown>;
+                                        institutionalStore.upsertFeedbackPoll({
+                                          ...poll,
+                                          votesApprove: Number(updated.votesApprove ?? updated.votes_approve ?? poll.votesApprove),
+                                          votesRevise: Number(updated.votesRevise ?? updated.votes_revise ?? poll.votesRevise),
+                                          userVote: ((updated.userVote ?? updated.user_vote) as 'approve' | 'revise') || 'approve'
+                                        });
+                                      } catch (err: any) {
+                                        showAppPopup({
+                                          title: 'Vote Failed',
+                                          message: err?.message || 'Unable to record vote in Supabase.',
+                                          variant: 'error'
+                                        });
+                                      }
+                                    }}
                                     className={
                                       poll.userVote === 'approve'
                                         ? 'btn-primary h-8 text-xs'
@@ -1786,9 +1927,33 @@ export const FeedbackScreen: React.FC<FeedbackScreenProps> = ({ onNavigate, curr
 
                                   <button
                                     type="button"
-                                    onClick={() =>
-                                      institutionalStore.voteFeedbackPoll(poll.id, 'revise')
-                                    }
+                                    onClick={async () => {
+                                      const authUser = resolveAuthUser();
+                                      if (!authUser?.token) {
+                                        showAppPopup({
+                                          title: 'Authentication Required',
+                                          message: 'Please sign in to vote on schedule proposals.',
+                                          variant: 'error'
+                                        });
+                                        return;
+                                      }
+                                      try {
+                                        const res = await voteFeedbackProposalBackend(authUser, poll.id, 'revise');
+                                        const updated = (res.proposal || {}) as Record<string, unknown>;
+                                        institutionalStore.upsertFeedbackPoll({
+                                          ...poll,
+                                          votesApprove: Number(updated.votesApprove ?? updated.votes_approve ?? poll.votesApprove),
+                                          votesRevise: Number(updated.votesRevise ?? updated.votes_revise ?? poll.votesRevise),
+                                          userVote: ((updated.userVote ?? updated.user_vote) as 'approve' | 'revise') || 'revise'
+                                        });
+                                      } catch (err: any) {
+                                        showAppPopup({
+                                          title: 'Vote Failed',
+                                          message: err?.message || 'Unable to record vote in Supabase.',
+                                          variant: 'error'
+                                        });
+                                      }
+                                    }}
                                     className={
                                       poll.userVote === 'revise'
                                         ? 'btn-primary h-8 text-xs'

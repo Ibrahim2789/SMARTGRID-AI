@@ -41,11 +41,32 @@ import {
 import { showAppPopup } from './ToastPopupHost';
 import {
   AuthenticatedVotingUser,
+  fetchInstitutionWorkspace,
+  loadSampleInstitutionCatalogBackend,
   createDepartmentBackend,
+  updateDepartmentBackend,
+  deleteDepartmentBackend,
   createClassroomBackend,
+  updateClassroomBackend,
+  deleteClassroomBackend,
   createCourseBackend,
+  updateCourseBackend,
+  deleteCourseBackend,
   createInstructorBackend,
-  createBatchAdmin,
+  updateInstructorBackend,
+  updateInstructorAvailabilityBackend,
+  deleteInstructorBackend,
+  createBatchCatalogBackend,
+  updateBatchBackend,
+  deleteBatchBackend,
+  createSectionBackend,
+  deleteSectionBackend,
+  autoGenerateSectionsBackend,
+  updateConstraintBackend,
+  saveStudentPreferenceBackend,
+  saveInstructorPreferenceBackend,
+  fetchStudentPreferencesBackend,
+  fetchInstructorPreferencesBackend,
   fetchStudentsBackend,
   BackendStudentDirectoryDTO
 } from '../services/votingApi';
@@ -98,23 +119,73 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
   const [loadingStudents, setLoadingStudents] = useState(false);
 
   useEffect(() => {
-    if (activeStep !== 4 || !currentUser?.token) return;
-    let cancelled = false;
-    setLoadingStudents(true);
-    const uniId = store.institutionProfile?.id || institutionalStore.getCurrentInstitutionId();
-    fetchStudentsBackend(currentUser, uniId)
-      .then(rows => {
-        if (!cancelled) setRegisteredStudents(rows);
-      })
-      .catch(() => {
-        if (!cancelled) setRegisteredStudents([]);
-      })
-      .finally(() => {
-        if (!cancelled) setLoadingStudents(false);
-      });
-    return () => {
-      cancelled = true;
-    };
+    if (!currentUser?.token) return;
+    if (activeStep === 4) {
+      let cancelled = false;
+      setLoadingStudents(true);
+      const uniId = store.institutionProfile?.id || institutionalStore.getCurrentInstitutionId();
+      fetchStudentsBackend(currentUser, uniId)
+        .then(rows => {
+          if (!cancelled) setRegisteredStudents(rows);
+        })
+        .catch(() => {
+          if (!cancelled) setRegisteredStudents([]);
+        })
+        .finally(() => {
+          if (!cancelled) setLoadingStudents(false);
+        });
+      return () => {
+        cancelled = true;
+      };
+    }
+    if (activeStep === 6) {
+      let cancelled = false;
+      const role = String(currentUser.role || '').toLowerCase();
+      if (role === 'faculty' || role === 'instructor') {
+        fetchInstructorPreferencesBackend(currentUser)
+          .then(rows => {
+            if (cancelled || rows.length === 0) return;
+            const pref = rows[0];
+            if (Array.isArray(pref.preferred_days)) {
+              const allDays: DayOfWeek[] = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
+              setUnavailableDays(allDays.filter(d => !pref.preferred_days.includes(d)));
+            }
+            if (typeof pref.avoid_back_to_back_more_than === 'number') {
+              setMaxConsecutiveClasses(pref.avoid_back_to_back_more_than);
+            }
+          })
+          .catch(() => {});
+      } else {
+        fetchStudentPreferencesBackend(currentUser)
+          .then(rows => {
+            if (cancelled || rows.length === 0) return;
+            const mine = rows.find(r => r.user_id === currentUser.id) || rows[0];
+            const uiPrefs = (mine as unknown as { uiPreferences?: Record<string, unknown> }).uiPreferences;
+            const win = (uiPrefs?.preferredTiming as string) || mine.preferred_time_window;
+            if (win === 'morning' || win === 'midday' || win === 'afternoon') {
+              setPreferredTiming(win);
+            }
+            if (Array.isArray(uiPrefs?.unavailableDays)) {
+              setUnavailableDays(uiPrefs.unavailableDays as DayOfWeek[]);
+            } else if (mine.preferred_free_day) {
+              setUnavailableDays([mine.preferred_free_day as DayOfWeek]);
+            }
+            if (typeof mine.max_acceptable_gap_minutes === 'number') {
+              setBreakDurationMins(mine.max_acceptable_gap_minutes);
+            }
+            if (typeof mine.max_daily_lectures === 'number') {
+              setMaxDailyWorkloadHours(mine.max_daily_lectures);
+            }
+            if (typeof uiPrefs?.maxConsecutiveClasses === 'number') {
+              setMaxConsecutiveClasses(uiPrefs.maxConsecutiveClasses);
+            }
+          })
+          .catch(() => {});
+      }
+      return () => {
+        cancelled = true;
+      };
+    }
   }, [activeStep, currentUser, store.institutionProfile?.id]);
 
   // Search, Filter & Sort states per step
@@ -222,6 +293,8 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
     expectedEnrollment: 35
   });
 
+  const [isMutating, setIsMutating] = useState(false);
+
   const showToast = (msg: string) => {
     showAppPopup({
       title: 'Catalog Updated',
@@ -230,6 +303,61 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
     });
   };
 
+  const showError = (msg: string) => {
+    showAppPopup({
+      title: 'Database Error',
+      message: msg,
+      variant: 'error'
+    });
+  };
+
+  const requireAuthUser = (): AuthenticatedVotingUser | null => {
+    if (!currentUser?.token) {
+      showError('Please sign in with an authorized institutional account to modify Supabase data.');
+      return null;
+    }
+    return currentUser;
+  };
+
+  const syncWorkspaceFromSupabase = async (authUser: AuthenticatedVotingUser, uniId?: string) => {
+    const targetUniId = uniId || store.institutionProfile?.id || institutionalStore.getCurrentInstitutionId();
+    const workspace = await fetchInstitutionWorkspace(authUser, targetUniId);
+    institutionalStore.hydrateFromWorkspacePayload(targetUniId, workspace, authUser.id);
+  };
+
+  const constraintSaveTimerRef = React.useRef<Record<string, number>>({});
+
+  const handleConstraintWeightChange = (ruleId: string, nextWeight: number) => {
+    institutionalStore.updateConstraintWeight(ruleId, nextWeight);
+    const authUser = currentUser?.token ? currentUser : null;
+    if (!authUser) return;
+    if (constraintSaveTimerRef.current[ruleId]) {
+      window.clearTimeout(constraintSaveTimerRef.current[ruleId]);
+    }
+    constraintSaveTimerRef.current[ruleId] = window.setTimeout(() => {
+      void updateConstraintBackend(authUser, ruleId, { weight: nextWeight })
+        .then(() => syncWorkspaceFromSupabase(authUser))
+        .catch(err => {
+          showError(err instanceof Error ? err.message : 'Unable to save constraint weight to Supabase.');
+        });
+    }, 300);
+  };
+
+  const handleConstraintToggle = async (ruleId: string, nextEnabled: boolean) => {
+    const authUser = requireAuthUser();
+    if (!authUser) return;
+    institutionalStore.toggleConstraint(ruleId, nextEnabled);
+    try {
+      await updateConstraintBackend(authUser, ruleId, {
+        enabled: nextEnabled,
+        isEnabled: nextEnabled
+      });
+      await syncWorkspaceFromSupabase(authUser);
+    } catch (err) {
+      institutionalStore.toggleConstraint(ruleId, !nextEnabled);
+      showError(err instanceof Error ? err.message : 'Unable to update constraint status in Supabase.');
+    }
+  };
 
   const renderPagination = (currentPage: number, totalItems: number, setPage: (p: number) => void) => {
     const totalPages = Math.ceil(totalItems / PAGE_SIZE) || 1;
@@ -374,12 +502,15 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
     setSideDrawerOpen(true);
   };
 
-  const handleSaveDept = (e: React.FormEvent) => {
+  const handleSaveDept = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!deptForm.code.trim() || !deptForm.name.trim()) {
       setValidationError('Department code and name are required.');
       return;
     }
+    const authUser = requireAuthUser();
+    if (!authUser) return;
+
     const cleanCode = deptForm.code.trim().toUpperCase();
     const cleanName = deptForm.name.trim();
     const cleanSchool = deptForm.school.trim();
@@ -390,35 +521,37 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
         ...(pendingSub ? [pendingSub] : [])
       ])
     );
-    if (editingItem) {
-      institutionalStore.updateDepartment(editingItem.id, {
-        code: cleanCode,
-        name: cleanName,
-        school: cleanSchool,
-        subDepartments: cleanSubs
-      });
-      showToast(`Updated department ${cleanCode}.`);
-    } else {
-      institutionalStore.addDepartment({
-        id: `dept-${Date.now()}`,
-        code: cleanCode,
-        name: cleanName,
-        school: cleanSchool,
-        subDepartments: cleanSubs,
-        colorHex: '#171717'
-      });
-      showToast(`Added department ${cleanName}.`);
+    const uniId = store.institutionProfile?.id || institutionalStore.getCurrentInstitutionId();
+
+    setIsMutating(true);
+    try {
+      if (editingItem) {
+        await updateDepartmentBackend(authUser, editingItem.id, {
+          code: cleanCode,
+          name: cleanName,
+          school: cleanSchool,
+          subDepartments: cleanSubs
+        });
+        await syncWorkspaceFromSupabase(authUser, uniId);
+        showToast(`Updated department ${cleanCode} in Supabase.`);
+      } else {
+        await createDepartmentBackend(authUser, {
+          universityId: uniId,
+          code: cleanCode,
+          name: cleanName,
+          school: cleanSchool,
+          facultyGroup: cleanSchool,
+          subDepartments: cleanSubs
+        });
+        await syncWorkspaceFromSupabase(authUser, uniId);
+        showToast(`Added department ${cleanName} to Supabase.`);
+      }
+      setSideDrawerOpen(false);
+    } catch (err) {
+      setValidationError(err instanceof Error ? err.message : 'Unable to save department to Supabase.');
+    } finally {
+      setIsMutating(false);
     }
-    if (currentUser?.token) {
-      void createDepartmentBackend(currentUser, {
-        universityId: store.institutionProfile?.id || institutionalStore.getCurrentInstitutionId(),
-        code: cleanCode,
-        name: cleanName,
-        facultyGroup: cleanSchool
-      }).catch(() => {});
-      void institutionalStore.syncToBackend(currentUser);
-    }
-    setSideDrawerOpen(false);
   };
 
   // --- Step 1: Room Actions ---
@@ -448,7 +581,7 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
     setSideDrawerOpen(true);
   };
 
-  const handleSaveRoom = (e: React.FormEvent) => {
+  const handleSaveRoom = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!roomForm.code.trim()) {
       setValidationError('Room code is required.');
@@ -458,55 +591,56 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
       setValidationError('Room capacity must be greater than zero.');
       return;
     }
+    const authUser = requireAuthUser();
+    if (!authUser) return;
+
     const cleanCode = roomForm.code.trim();
     const cleanName = roomForm.buildingName.trim() || cleanCode;
     const eqList = roomForm.equipment.split(',').map(s => s.trim()).filter(Boolean);
-    const roomId = editingItem ? editingItem.id : `room-${Date.now()}`;
     const assignedLabEng =
       roomForm.type === 'lab' && roomForm.assignedLabEngineerId
         ? roomForm.assignedLabEngineerId
         : undefined;
+    const uniId = store.institutionProfile?.id || institutionalStore.getCurrentInstitutionId();
 
-    if (editingItem) {
-      institutionalStore.updateRoom(editingItem.id, {
-        code: cleanCode,
-        name: cleanName,
-        capacity: Number(roomForm.capacity),
-        type: roomForm.type,
-        equipment: eqList,
-        assignedLabEngineerId: assignedLabEng
-      });
-      showToast(`Updated room ${cleanCode}.`);
-    } else {
-      institutionalStore.addRoom({
-        id: roomId,
-        buildingId: 'bld-turing',
-        code: cleanCode,
-        name: cleanName,
-        capacity: Number(roomForm.capacity),
-        type: roomForm.type,
-        equipment: eqList,
-        isAccessible: true,
-        isAvailable: true,
-        assignedLabEngineerId: assignedLabEng
-      });
-      showToast(`Added room ${cleanCode} (${roomForm.capacity} seats).`);
+    setIsMutating(true);
+    try {
+      if (editingItem) {
+        await updateClassroomBackend(authUser, editingItem.id, {
+          code: cleanCode,
+          name: cleanName,
+          building: cleanName,
+          capacity: Number(roomForm.capacity),
+          type: roomForm.type,
+          equipment: eqList,
+          isAccessible: true,
+          isAvailable: editingItem.isAvailable ?? true,
+          assignedLabEngineerId: assignedLabEng || null
+        });
+        await syncWorkspaceFromSupabase(authUser, uniId);
+        showToast(`Updated room ${cleanCode} in Supabase.`);
+      } else {
+        await createClassroomBackend(authUser, {
+          universityId: uniId,
+          code: cleanCode,
+          name: cleanName,
+          building: cleanName,
+          capacity: Number(roomForm.capacity),
+          type: roomForm.type,
+          equipment: eqList,
+          isAccessible: true,
+          isAvailable: true,
+          assignedLabEngineerId: assignedLabEng
+        });
+        await syncWorkspaceFromSupabase(authUser, uniId);
+        showToast(`Added room ${cleanCode} (${roomForm.capacity} seats) to Supabase.`);
+      }
+      setSideDrawerOpen(false);
+    } catch (err) {
+      setValidationError(err instanceof Error ? err.message : 'Unable to save classroom to Supabase.');
+    } finally {
+      setIsMutating(false);
     }
-    if (currentUser?.token) {
-      void createClassroomBackend(currentUser, {
-        id: roomId,
-        universityId: store.institutionProfile?.id || institutionalStore.getCurrentInstitutionId(),
-        code: cleanCode,
-        name: cleanName,
-        capacity: Number(roomForm.capacity),
-        type: roomForm.type,
-        equipment: eqList,
-        isAvailable: true,
-        assignedLabEngineerId: assignedLabEng
-      }).catch(() => {});
-      void institutionalStore.syncToBackend(currentUser);
-    }
-    setSideDrawerOpen(false);
   };
 
   // --- Step 2: Course Actions ---
@@ -574,7 +708,7 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
     setSideDrawerOpen(true);
   };
 
-  const handleSaveCourse = (e: React.FormEvent) => {
+  const handleSaveCourse = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!courseForm.code.trim() || !courseForm.title.trim()) {
       setValidationError('Course code and title are required.');
@@ -588,6 +722,9 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
       setValidationError('Specify at least 1 Lecture Credit or 1 Lab Credit.');
       return;
     }
+
+    const authUser = requireAuthUser();
+    if (!authUser) return;
 
     // Standard academic rule: 1 Lecture credit = 1h/week; 1 Lab credit = 3 continuous hrs/week
     const lecHours = lecCr * 1;
@@ -605,84 +742,55 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
     const cleanCode = courseForm.code.trim().toUpperCase();
     const cleanTitle = courseForm.title.trim();
     const cleanPool = courseForm.isElective ? courseForm.electivePoolName.trim() || undefined : undefined;
-    const courseId = editingItem ? editingItem.id : `course-${Date.now()}`;
     const deptCode =
       store.departments.find(d => d.id === courseForm.departmentId)?.code || 'BSCS';
     const assignedInst = lecCr > 0 && courseForm.assignedInstructorId ? courseForm.assignedInstructorId : undefined;
     const assignedLabEng = labCr > 0 && courseForm.assignedLabEngineerId ? courseForm.assignedLabEngineerId : undefined;
+    const uniId = store.institutionProfile?.id || institutionalStore.getCurrentInstitutionId();
 
-    if (editingItem) {
-      institutionalStore.updateCourse(editingItem.id, {
-        code: cleanCode,
-        title: cleanTitle,
-        departmentId: courseForm.departmentId,
-        courseType: effectiveCourseType,
-        creditHours: totalCr,
-        lectureCredits: lecCr,
-        labCredits: labCr,
-        lectureHours: lecHours,
-        labHours: labHours,
-        weeklyContactHours,
-        assignedInstructorId: assignedInst,
-        assignedLabEngineerId: assignedLabEng,
-        assignedBatchId: courseForm.assignedBatchId || undefined,
-        semester: Number(courseForm.semester) || undefined,
-        labSessionMode: courseForm.labSessionMode,
-        isElective: courseForm.isElective,
-        electivePoolName: cleanPool,
-        requiredRoomType: effectiveRoomType
-      });
-      showToast(`Updated course ${cleanCode} (${lecCr}+${labCr} Cr · ${weeklyContactHours}h/wk).`);
-    } else {
-      institutionalStore.addCourse({
-        id: courseId,
-        departmentId: courseForm.departmentId,
-        courseType: effectiveCourseType,
-        code: cleanCode,
-        title: cleanTitle,
-        creditHours: totalCr,
-        lectureCredits: lecCr,
-        labCredits: labCr,
-        weeklyContactHours,
-        lectureHours: lecHours,
-        labHours: labHours,
-        assignedInstructorId: assignedInst,
-        assignedLabEngineerId: assignedLabEng,
-        assignedBatchId: courseForm.assignedBatchId || undefined,
-        semester: Number(courseForm.semester) || undefined,
-        labSessionMode: courseForm.labSessionMode,
-        isElective: courseForm.isElective,
-        electivePoolName: cleanPool,
-        requiredRoomType: effectiveRoomType
-      });
-      showToast(`Added course ${cleanCode} — ${cleanTitle} (${weeklyContactHours}h/wk).`);
+    const payload = {
+      universityId: uniId,
+      code: cleanCode,
+      title: cleanTitle,
+      departmentId: courseForm.departmentId,
+      departmentCode: deptCode,
+      batchId: courseForm.assignedBatchId || undefined,
+      assignedBatchId: courseForm.assignedBatchId || undefined,
+      semester: Number(courseForm.semester) || undefined,
+      instructorId: assignedInst || assignedLabEng,
+      assignedInstructorId: assignedInst,
+      assignedLabEngineerId: assignedLabEng,
+      type: effectiveCourseType === 'lab' ? 'Lab' : 'Theory',
+      courseType: effectiveCourseType,
+      creditHours: totalCr,
+      lectureCredits: lecCr,
+      labCredits: labCr,
+      lectureHours: lecHours,
+      labHours: labHours,
+      hoursPerWeek: weeklyContactHours,
+      requiredRoomType: effectiveRoomType,
+      labSessionMode: courseForm.labSessionMode,
+      isElective: courseForm.isElective,
+      electivePoolName: cleanPool
+    };
+
+    setIsMutating(true);
+    try {
+      if (editingItem) {
+        await updateCourseBackend(authUser, editingItem.id, payload);
+        await syncWorkspaceFromSupabase(authUser, uniId);
+        showToast(`Updated course ${cleanCode} (${lecCr}+${labCr} Cr · ${weeklyContactHours}h/wk) in Supabase.`);
+      } else {
+        await createCourseBackend(authUser, payload);
+        await syncWorkspaceFromSupabase(authUser, uniId);
+        showToast(`Added course ${cleanCode} — ${cleanTitle} (${weeklyContactHours}h/wk) to Supabase.`);
+      }
+      setSideDrawerOpen(false);
+    } catch (err) {
+      setValidationError(err instanceof Error ? err.message : 'Unable to save course to Supabase.');
+    } finally {
+      setIsMutating(false);
     }
-    if (currentUser?.token) {
-      void createCourseBackend(currentUser, {
-        id: courseId,
-        universityId: store.institutionProfile?.id || institutionalStore.getCurrentInstitutionId(),
-        code: cleanCode,
-        title: cleanTitle,
-        departmentCode: deptCode,
-        batchId: courseForm.assignedBatchId || undefined,
-        semester: Number(courseForm.semester) || undefined,
-        instructorId: assignedInst || assignedLabEng,
-        assignedInstructorId: assignedInst,
-        assignedLabEngineerId: assignedLabEng,
-        type: effectiveCourseType === 'lab' ? 'Lab' : 'Theory',
-        courseType: effectiveCourseType,
-        creditHours: totalCr,
-        lectureCredits: lecCr,
-        labCredits: labCr,
-        lectureHours: lecHours,
-        labHours: labHours,
-        hoursPerWeek: weeklyContactHours,
-        requiredRoomType: effectiveRoomType,
-        labSessionMode: courseForm.labSessionMode
-      }).catch(() => {});
-      void institutionalStore.syncToBackend(currentUser);
-    }
-    setSideDrawerOpen(false);
   };
 
   // --- Step 3: Instructor & Lab Engineer Actions ---
@@ -714,15 +822,16 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
     setSideDrawerOpen(true);
   };
 
-  const handleSaveInstructor = (e: React.FormEvent) => {
+  const handleSaveInstructor = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!instructorForm.name.trim()) {
       setValidationError('Staff member name is required.');
       return;
     }
+    const authUser = requireAuthUser();
+    if (!authUser) return;
 
     const cleanName = instructorForm.name.trim();
-    const instId = editingItem ? editingItem.id : `inst-${Date.now()}`;
     const instDomain =
       store.institutionProfile?.registrarEmail?.split('@')[1] ||
       currentUser?.email?.split('@')[1] ||
@@ -734,50 +843,46 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
       instructorForm.title.trim() ||
       (instructorForm.staffRole === 'lab_engineer' ? 'Lab Engineer' : 'Faculty Member');
     const cleanSubDept = instructorForm.subDepartment.trim() || undefined;
+    const uniId = store.institutionProfile?.id || institutionalStore.getCurrentInstitutionId();
 
-    if (editingItem) {
-      institutionalStore.updateInstructor(editingItem.id, {
-        name: cleanName,
-        title: defaultTitle,
-        staffRole: instructorForm.staffRole,
-        departmentId: instructorForm.departmentId,
-        subDepartment: cleanSubDept,
-        qualifiedCourseIds: instructorForm.qualifiedCourseIds,
-        maxWeeklyHours: Number(instructorForm.maxWeeklyHours)
-      });
-      showToast(`Updated profile for ${cleanName}.`);
-    } else {
-      institutionalStore.addInstructor({
-        id: instId,
-        departmentId: instructorForm.departmentId,
-        subDepartment: cleanSubDept,
-        staffRole: instructorForm.staffRole,
-        qualifiedCourseIds: instructorForm.qualifiedCourseIds,
-        name: cleanName,
-        email: emailVal,
-        title: defaultTitle,
-        maxWeeklyHours: Number(instructorForm.maxWeeklyHours),
-        maxConsecutiveHours: 3,
-        preferredDays: ['Mon', 'Wed', 'Fri'],
-        unavailableSlots: []
-      });
-      showToast(
-        `Added ${instructorForm.staffRole === 'lab_engineer' ? 'Lab Engineer' : 'Faculty'} ${cleanName}.`
-      );
+    const payload = {
+      universityId: uniId,
+      name: cleanName,
+      email: emailVal,
+      departmentId: instructorForm.departmentId,
+      departmentCode: deptCode,
+      subDepartment: cleanSubDept,
+      title: defaultTitle,
+      designation: defaultTitle,
+      staffRole: instructorForm.staffRole,
+      qualifiedCourseIds: instructorForm.qualifiedCourseIds,
+      maxWeeklyHours: Number(instructorForm.maxWeeklyHours)
+    };
+
+    setIsMutating(true);
+    try {
+      if (editingItem) {
+        await updateInstructorBackend(authUser, editingItem.id, payload);
+        await syncWorkspaceFromSupabase(authUser, uniId);
+        showToast(`Updated profile for ${cleanName} in Supabase.`);
+      } else {
+        await createInstructorBackend(authUser, {
+          ...payload,
+          maxConsecutiveHours: 3,
+          preferredDays: ['Mon', 'Wed', 'Fri'],
+          unavailableSlots: []
+        });
+        await syncWorkspaceFromSupabase(authUser, uniId);
+        showToast(
+          `Added ${instructorForm.staffRole === 'lab_engineer' ? 'Lab Engineer' : 'Faculty'} ${cleanName} to Supabase.`
+        );
+      }
+      setSideDrawerOpen(false);
+    } catch (err) {
+      setValidationError(err instanceof Error ? err.message : 'Unable to save instructor to Supabase.');
+    } finally {
+      setIsMutating(false);
     }
-    if (currentUser?.token) {
-      void createInstructorBackend(currentUser, {
-        id: instId,
-        universityId: store.institutionProfile?.id || institutionalStore.getCurrentInstitutionId(),
-        name: cleanName,
-        email: emailVal,
-        departmentCode: deptCode,
-        designation: defaultTitle,
-        maxWeeklyHours: Number(instructorForm.maxWeeklyHours)
-      }).catch(() => {});
-      void institutionalStore.syncToBackend(currentUser);
-    }
-    setSideDrawerOpen(false);
   };
 
   // --- Step 4: Student Group Actions (Batch -> Field -> Sections A, B, C) ---
@@ -819,10 +924,14 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
     setSideDrawerOpen(true);
   };
 
-  const handleSaveGroup = (e: React.FormEvent) => {
+  const handleSaveGroup = async (e: React.FormEvent) => {
     e.preventDefault();
+    const authUser = requireAuthUser();
+    if (!authUser) return;
+
     const cleanBatch = groupForm.batchCode.trim().toUpperCase();
     const cleanDept = groupForm.departmentCode.trim().toUpperCase();
+    const uniId = store.institutionProfile?.id || institutionalStore.getCurrentInstitutionId();
 
     if (editingItem) {
       const cleanSection = groupForm.section.trim().toUpperCase() || 'A';
@@ -834,30 +943,28 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
         return;
       }
       const cleanName = groupForm.name.trim() || `${cleanBatch} ${cleanDept} Section ${cleanSection}`.trim();
-      institutionalStore.updateStudentGroup(editingItem.id, {
-        name: cleanName,
-        code: cleanCode,
-        batchCode: cleanBatch || cleanCode.split('-')[0],
-        departmentCode: cleanDept,
-        section: cleanSection,
-        semester: Number(groupForm.semester),
-        year: Number(groupForm.year),
-        size: Number(groupForm.size),
-        sharedCourseIds: groupForm.sharedCourseIds
-      });
-      showToast(`Updated section ${cleanCode}.`);
-      if (currentUser?.token) {
-        void createBatchAdmin(currentUser, {
+      setIsMutating(true);
+      try {
+        await updateBatchBackend(authUser, editingItem.id, {
           code: cleanCode,
           name: cleanName,
+          batchCode: cleanBatch || cleanCode.split('-')[0],
           departmentCode: cleanDept,
-          year: Number(groupForm.year),
+          section: cleanSection,
           semester: Number(groupForm.semester),
-          studentCount: Number(groupForm.size)
-        }).catch(() => {});
-        void institutionalStore.syncToBackend(currentUser);
+          year: Number(groupForm.year),
+          size: Number(groupForm.size),
+          studentCount: Number(groupForm.size),
+          sharedCourseIds: groupForm.sharedCourseIds
+        });
+        await syncWorkspaceFromSupabase(authUser, uniId);
+        showToast(`Updated section ${cleanCode} in Supabase.`);
+        setSideDrawerOpen(false);
+      } catch (err) {
+        setValidationError(err instanceof Error ? err.message : 'Unable to update batch section in Supabase.');
+      } finally {
+        setIsMutating(false);
       }
-      setSideDrawerOpen(false);
       return;
     }
 
@@ -881,92 +988,102 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
       store.programs.find(p => p.departmentId === matchedDept?.id) || store.programs[0];
     const existingCodes = new Set(store.studentGroups.map(g => g.code.toUpperCase()));
 
-    const createdCodes: string[] = [];
-    const baseTimestamp = Date.now();
-    sectionsToCreate.forEach((sec, idx) => {
-      const fullCode = `${cleanBatch}-${cleanDept}-${sec}`;
-      if (existingCodes.has(fullCode)) return;
-      existingCodes.add(fullCode);
-      const cleanName = groupForm.name.trim()
-        ? sectionsToCreate.length > 1
-          ? `${groupForm.name.trim()} · Section ${sec}`
-          : groupForm.name.trim()
-        : `${cleanBatch} ${cleanDept} Section ${sec}`;
+    const toCreate = sectionsToCreate
+      .map(sec => `${cleanBatch}-${cleanDept}-${sec}`)
+      .filter(code => !existingCodes.has(code));
 
-      institutionalStore.addStudentGroup({
-        id: `cohort-${baseTimestamp}-${idx}`,
-        programId: matchedProg?.id || 'prog-bsc-cs',
-        batchCode: cleanBatch,
-        departmentCode: cleanDept,
-        section: sec,
-        semester: Number(groupForm.semester),
-        name: cleanName,
-        code: fullCode,
-        year: Number(groupForm.year),
-        size: Number(groupForm.size),
-        sharedCourseIds: groupForm.sharedCourseIds
-      });
-      createdCodes.push(fullCode);
-
-      if (currentUser?.token) {
-        void createBatchAdmin(currentUser, {
-          code: fullCode,
-          name: cleanName,
-          departmentCode: cleanDept,
-          year: Number(groupForm.year),
-          semester: Number(groupForm.semester),
-          studentCount: Number(groupForm.size)
-        }).catch(() => {});
-      }
-    });
-
-    if (createdCodes.length === 0) {
+    if (toCreate.length === 0) {
       setValidationError(`All requested sections for ${cleanBatch}-${cleanDept} already exist.`);
       return;
     }
 
-    if (currentUser?.token) {
-      void institutionalStore.syncToBackend(currentUser);
-    }
+    setIsMutating(true);
+    const createdCodes: string[] = [];
+    try {
+      for (const sec of sectionsToCreate) {
+        const fullCode = `${cleanBatch}-${cleanDept}-${sec}`;
+        if (existingCodes.has(fullCode)) continue;
+        existingCodes.add(fullCode);
+        const cleanName = groupForm.name.trim()
+          ? sectionsToCreate.length > 1
+            ? `${groupForm.name.trim()} · Section ${sec}`
+            : groupForm.name.trim()
+          : `${cleanBatch} ${cleanDept} Section ${sec}`;
 
-    showToast(
-      `Created ${createdCodes.length} independent section${createdCodes.length > 1 ? 's' : ''}: ${createdCodes.join(', ')}. Each section gets its own timetable.`
-    );
-    setSideDrawerOpen(false);
+        await createBatchCatalogBackend(authUser, {
+          universityId: uniId,
+          code: fullCode,
+          name: cleanName,
+          programId: matchedProg?.id,
+          termId: activeTerm?.id,
+          batchCode: cleanBatch,
+          departmentCode: cleanDept,
+          section: sec,
+          year: Number(groupForm.year),
+          semester: Number(groupForm.semester),
+          size: Number(groupForm.size),
+          studentCount: Number(groupForm.size),
+          sharedCourseIds: groupForm.sharedCourseIds
+        });
+        createdCodes.push(fullCode);
+      }
+
+      await syncWorkspaceFromSupabase(authUser, uniId);
+      showToast(
+        `Created ${createdCodes.length} independent section${createdCodes.length > 1 ? 's' : ''} in Supabase: ${createdCodes.join(', ')}.`
+      );
+      setSideDrawerOpen(false);
+    } catch (err) {
+      setValidationError(err instanceof Error ? err.message : 'Unable to save student sections to Supabase.');
+    } finally {
+      setIsMutating(false);
+    }
   };
 
-  const handleAddSectionInline = (e: React.FormEvent) => {
+  const handleAddSectionInline = async (e: React.FormEvent) => {
     e.preventDefault();
+    const authUser = requireAuthUser();
+    if (!authUser) return;
+
     const courseId = sectionForm.courseId || store.courses[0]?.id;
     const instructorId = sectionForm.instructorId || store.instructors[0]?.id;
     const studentGroupId = sectionForm.studentGroupId || store.studentGroups[0]?.id;
-    if (!courseId || !instructorId || !studentGroupId) return;
+    if (!courseId || !instructorId || !studentGroupId) {
+      showError('Select a course, instructor, and cohort before creating a section.');
+      return;
+    }
 
     const isLab = sectionForm.sessionType === 'Lab';
     const extraCohorts = sectionForm.sharedGroupIds.filter(id => id !== studentGroupId);
     const totalExpected =
       (store.studentGroups.find(g => g.id === studentGroupId)?.size || 35) +
       extraCohorts.reduce((acc, gid) => acc + (store.studentGroups.find(g => g.id === gid)?.size || 0), 0);
+    const uniId = store.institutionProfile?.id || institutionalStore.getCurrentInstitutionId();
 
-    institutionalStore.addSection({
-      id: `sec-${Date.now()}`,
-      courseId,
-      termId: activeTerm?.id || 'term-spring-2026',
-      sectionNumber: `0${store.sections.filter(s => s.courseId === courseId).length + 1}`,
-      sessionType: isLab ? 'Lab' : 'Lecture',
-      spanSlots: isLab ? 3 : 1,
-      expectedEnrollment: totalExpected || Number(sectionForm.expectedEnrollment) || 35,
-      instructorId,
-      studentGroupId,
-      sharedGroupIds: extraCohorts.length > 0 ? extraCohorts : undefined
-    });
-    const course = store.courses.find(c => c.id === courseId);
-    const group = store.studentGroups.find(g => g.id === studentGroupId);
-    showToast(
-      `Added ${isLab ? 'Lab (3h)' : 'Lecture (1h)'} section for ${course?.code} (${group?.code}${
-        extraCohorts.length > 0 ? ` +${extraCohorts.length} shared` : ''
-      }).`
-    );
+    try {
+      await createSectionBackend(authUser, {
+        universityId: uniId,
+        courseId,
+        termId: activeTerm?.id,
+        sectionNumber: `0${store.sections.filter(s => s.courseId === courseId).length + 1}`,
+        sessionType: isLab ? 'Lab' : 'Lecture',
+        spanSlots: isLab ? 3 : 1,
+        expectedEnrollment: totalExpected || Number(sectionForm.expectedEnrollment) || 35,
+        instructorId,
+        studentGroupId,
+        sharedGroupIds: extraCohorts.length > 0 ? extraCohorts : []
+      });
+      await syncWorkspaceFromSupabase(authUser, uniId);
+      const course = store.courses.find(c => c.id === courseId);
+      const group = store.studentGroups.find(g => g.id === studentGroupId);
+      showToast(
+        `Added ${isLab ? 'Lab (3h)' : 'Lecture (1h)'} section for ${course?.code} (${group?.code}${
+          extraCohorts.length > 0 ? ` +${extraCohorts.length} shared` : ''
+        }).`
+      );
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Unable to save course section to Supabase.');
+    }
   };
 
   // --- Filtered & Sorted Datasets for Horizontal Tables ---
@@ -1218,9 +1335,21 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
         <div className="flex flex-wrap items-center gap-2.5 shrink-0">
           <button
             type="button"
-            onClick={() => {
-              institutionalStore.loadSampleUniversityData();
-              showToast('Loaded complete sample university dataset (Departments, Courses, Qualified Teachers & Sections)!');
+            disabled={isMutating}
+            onClick={async () => {
+              const authUser = requireAuthUser();
+              if (!authUser) return;
+              const uniId = store.institutionProfile?.id || institutionalStore.getCurrentInstitutionId();
+              setIsMutating(true);
+              try {
+                const res = await loadSampleInstitutionCatalogBackend(authUser, uniId);
+                institutionalStore.hydrateFromWorkspacePayload(uniId, res.workspace, authUser.id);
+                showToast('Loaded complete sample university catalog directly into Supabase!');
+              } catch (err) {
+                showError(err instanceof Error ? err.message : 'Unable to load sample university dataset.');
+              } finally {
+                setIsMutating(false);
+              }
             }}
             className="btn-secondary text-xs h-9 bg-[#E8D36B]/30 hover:bg-[#E8D36B]/50 border-[#D4BC4C] text-[#171717]"
           >
@@ -1438,7 +1567,17 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
                               </button>
                               <button
                                 type="button"
-                                onClick={() => institutionalStore.deleteDepartment(dept.id)}
+                                onClick={async () => {
+                                  const authUser = requireAuthUser();
+                                  if (!authUser) return;
+                                  try {
+                                    await deleteDepartmentBackend(authUser, dept.id);
+                                    await syncWorkspaceFromSupabase(authUser);
+                                    showToast(`Deleted department ${dept.code} from Supabase.`);
+                                  } catch (err) {
+                                    showError(err instanceof Error ? err.message : 'Unable to delete department.');
+                                  }
+                                }}
                                 className="p-1 rounded hover:bg-[#FDE8E8] text-[#77766F] hover:text-[#8B1E1E] cursor-pointer"
                                 title="Delete department"
                               >
@@ -1738,7 +1877,17 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
                                   </button>
                                   <button
                                     type="button"
-                                    onClick={() => institutionalStore.deleteRoom(room.id)}
+                                    onClick={async () => {
+                                      const authUser = requireAuthUser();
+                                      if (!authUser) return;
+                                      try {
+                                        await deleteClassroomBackend(authUser, room.id);
+                                        await syncWorkspaceFromSupabase(authUser);
+                                        showToast(`Deleted room ${room.code} from Supabase.`);
+                                      } catch (err) {
+                                        showError(err instanceof Error ? err.message : 'Unable to delete room.');
+                                      }
+                                    }}
                                     className="p-1 rounded hover:bg-[#FDE8E8] text-[#77766F] hover:text-[#8B1E1E] cursor-pointer"
                                     title="Delete room"
                                   >
@@ -2054,7 +2203,17 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={() => institutionalStore.deleteCourse(course.id)}
+                                  onClick={async () => {
+                                    const authUser = requireAuthUser();
+                                    if (!authUser) return;
+                                    try {
+                                      await deleteCourseBackend(authUser, course.id);
+                                      await syncWorkspaceFromSupabase(authUser);
+                                      showToast(`Deleted course ${course.code} from Supabase.`);
+                                    } catch (err) {
+                                      showError(err instanceof Error ? err.message : 'Unable to delete course.');
+                                    }
+                                  }}
                                   className="p-1 rounded hover:bg-[#FDE8E8] text-[#77766F] hover:text-[#8B1E1E] cursor-pointer"
                                   title="Delete course"
                                 >
@@ -2362,7 +2521,17 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={() => institutionalStore.deleteInstructor(inst.id)}
+                                  onClick={async () => {
+                                    const authUser = requireAuthUser();
+                                    if (!authUser) return;
+                                    try {
+                                      await deleteInstructorBackend(authUser, inst.id);
+                                      await syncWorkspaceFromSupabase(authUser);
+                                      showToast(`Removed instructor ${inst.name} from Supabase.`);
+                                    } catch (err) {
+                                      showError(err instanceof Error ? err.message : 'Unable to delete instructor.');
+                                    }
+                                  }}
                                   className="p-1 rounded hover:bg-[#FDE8E8] text-[#77766F] hover:text-[#8B1E1E] cursor-pointer"
                                   title="Delete instructor"
                                 >
@@ -2644,7 +2813,17 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={() => institutionalStore.deleteStudentGroup(grp.id)}
+                                  onClick={async () => {
+                                    const authUser = requireAuthUser();
+                                    if (!authUser) return;
+                                    try {
+                                      await deleteBatchBackend(authUser, grp.id);
+                                      await syncWorkspaceFromSupabase(authUser);
+                                      showToast(`Deleted batch section ${grp.code} from Supabase.`);
+                                    } catch (err) {
+                                      showError(err instanceof Error ? err.message : 'Unable to delete section.');
+                                    }
+                                  }}
                                   className="p-1 rounded hover:bg-[#FDE8E8] text-[#77766F] hover:text-[#8B1E1E] cursor-pointer"
                                   title="Delete section"
                                 >
@@ -2738,13 +2917,28 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
               <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => {
-                    const added = institutionalStore.autoGenerateMissingSections();
-                    showToast(
-                      added > 0
-                        ? `Auto-generated ${added} curriculum sections.`
-                        : 'All catalog courses already have active sections.'
-                    );
+                  disabled={isMutating}
+                  onClick={async () => {
+                    const authUser = requireAuthUser();
+                    if (!authUser) return;
+                    const uniId = store.institutionProfile?.id || institutionalStore.getCurrentInstitutionId();
+                    setIsMutating(true);
+                    try {
+                      const res = await autoGenerateSectionsBackend(authUser, {
+                        universityId: uniId,
+                        termId: activeTerm?.id
+                      });
+                      await syncWorkspaceFromSupabase(authUser, uniId);
+                      showToast(
+                        res.createdCount > 0
+                          ? `Auto-generated ${res.createdCount} curriculum sections in Supabase.`
+                          : 'All catalog courses already have active sections.'
+                      );
+                    } catch (err) {
+                      showError(err instanceof Error ? err.message : 'Unable to auto-generate sections.');
+                    } finally {
+                      setIsMutating(false);
+                    }
                   }}
                   className="btn-secondary text-xs h-9"
                 >
@@ -2978,7 +3172,17 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
                             <td className="py-2.5 px-4 text-right">
                               <button
                                 type="button"
-                                onClick={() => institutionalStore.deleteSection(sec.id)}
+                                onClick={async () => {
+                                  const authUser = requireAuthUser();
+                                  if (!authUser) return;
+                                  try {
+                                    await deleteSectionBackend(authUser, sec.id);
+                                    await syncWorkspaceFromSupabase(authUser);
+                                    showToast('Deleted course section from Supabase.');
+                                  } catch (err) {
+                                    showError(err instanceof Error ? err.message : 'Unable to delete section.');
+                                  }
+                                }}
                                 className="p-1 rounded hover:bg-[#FDE8E8] text-[#77766F] hover:text-[#8B1E1E] cursor-pointer"
                                 title="Delete section"
                               >
@@ -3017,7 +3221,53 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
                 </h2>
                 <button
                   type="button"
-                  onClick={() => showToast('Personal scheduling preferences saved and synced with solver.')}
+                  disabled={isMutating}
+                  onClick={async () => {
+                    const authUser = requireAuthUser();
+                    if (!authUser) return;
+                    const uniId = store.institutionProfile?.id || institutionalStore.getCurrentInstitutionId();
+                    const role = String(authUser.role || '').toLowerCase();
+                    setIsMutating(true);
+                    try {
+                      if (role === 'faculty' || role === 'instructor') {
+                        const allDays: DayOfWeek[] = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
+                        const preferredDays = allDays.filter(d => !unavailableDays.includes(d));
+                        await saveInstructorPreferenceBackend(authUser, {
+                          universityId: uniId,
+                          preferredDays: preferredDays.length > 0 ? preferredDays : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'],
+                          avoidEarlyMorning: preferredTiming !== 'morning',
+                          avoidLateAfternoon: preferredTiming !== 'afternoon',
+                          maxConsecutiveHours: maxConsecutiveClasses,
+                          avoidBackToBackMoreThan: maxConsecutiveClasses,
+                          maxDailyClasses: maxDailyWorkloadHours,
+                          preferCompactSchedule: breakDurationMins <= 60
+                        });
+                      } else {
+                        await saveStudentPreferenceBackend(authUser, {
+                          universityId: uniId,
+                          batchId: authUser.batchId,
+                          preferredTimeWindow: preferredTiming,
+                          avoidEarly8am: preferredTiming !== 'morning',
+                          avoidLateAfter4pm: preferredTiming !== 'afternoon',
+                          maxAcceptableGapMinutes: breakDurationMins,
+                          maxDailyLectures: maxDailyWorkloadHours,
+                          preferredFreeDay: unavailableDays[0] || null,
+                          uiPreferences: {
+                            preferredTiming,
+                            unavailableDays,
+                            breakDurationMins,
+                            maxConsecutiveClasses,
+                            maxDailyWorkloadHours
+                          }
+                        });
+                      }
+                      showToast('Personal scheduling preferences saved to Supabase and synced with solver.');
+                    } catch (err) {
+                      showError(err instanceof Error ? err.message : 'Unable to save scheduling preferences.');
+                    } finally {
+                      setIsMutating(false);
+                    }
+                  }}
                   className="btn-primary text-xs h-9"
                 >
                   <Check className="w-3.5 h-3.5" />
@@ -3196,10 +3446,7 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
                                   max="100"
                                   value={rule.weight}
                                   onChange={e =>
-                                    institutionalStore.updateConstraintWeight(
-                                      rule.id,
-                                      Number(e.target.value)
-                                    )
+                                    handleConstraintWeightChange(rule.id, Number(e.target.value))
                                   }
                                   className="w-28 accent-[#171717]"
                                 />
@@ -3217,7 +3464,7 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
                             <button
                               type="button"
                               onClick={() =>
-                                institutionalStore.toggleConstraint(rule.id, !rule.enabled)
+                                void handleConstraintToggle(rule.id, !rule.enabled)
                               }
                               className={`inline-flex w-10 h-6 items-center rounded-full p-1 transition-colors cursor-pointer ${
                                 rule.enabled ? 'bg-[#171717]' : 'bg-[#D6D3C9]'
@@ -4208,16 +4455,36 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
                       return (
                         <div
                           key={day}
-                          onClick={() => {
-                            institutionalStore.toggleInstructorAvailability(
-                              selectedInstructorForGrid.id,
-                              day,
-                              period
+                          onClick={async () => {
+                            const authUser = requireAuthUser();
+                            if (!authUser) return;
+                            const currentSlots = selectedInstructorForGrid.unavailableSlots || [];
+                            const exists = currentSlots.some(
+                              s => s.day === day && s.timeSlot === period
                             );
-                            const updated = institutionalStore
-                              .get()
-                              .instructors.find(i => i.id === selectedInstructorForGrid.id);
-                            if (updated) setSelectedInstructorForGrid(updated);
+                            const nextSlots = exists
+                              ? currentSlots.filter(s => !(s.day === day && s.timeSlot === period))
+                              : [...currentSlots, { day, timeSlot: period, reason: 'Blocked by Admin' }];
+                            institutionalStore.updateInstructor(selectedInstructorForGrid.id, {
+                              unavailableSlots: nextSlots
+                            });
+                            setSelectedInstructorForGrid({
+                              ...selectedInstructorForGrid,
+                              unavailableSlots: nextSlots
+                            });
+                            try {
+                              await updateInstructorAvailabilityBackend(
+                                authUser,
+                                selectedInstructorForGrid.id,
+                                nextSlots
+                              );
+                            } catch (err) {
+                              showError(
+                                err instanceof Error
+                                  ? err.message
+                                  : 'Unable to save instructor availability to Supabase.'
+                              );
+                            }
                           }}
                           className={`p-3 border-r border-[#E4E2DA] cursor-pointer transition-colors font-semibold flex items-center justify-center select-none ${
                             isUnavailable
@@ -4239,7 +4506,24 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
                 {selectedInstructorForGrid.unavailableSlots.length} unavailable slots marked
               </span>
               <button
-                onClick={() => setSelectedInstructorForGrid(null)}
+                onClick={async () => {
+                  const instToSave = selectedInstructorForGrid;
+                  setSelectedInstructorForGrid(null);
+                  if (currentUser?.token && instToSave) {
+                    try {
+                      await updateInstructorAvailabilityBackend(
+                        currentUser,
+                        instToSave.id,
+                        instToSave.unavailableSlots || []
+                      );
+                      await syncWorkspaceFromSupabase(currentUser);
+                    } catch (err) {
+                      showError(
+                        err instanceof Error ? err.message : 'Unable to sync availability changes.'
+                      );
+                    }
+                  }
+                }}
                 className="btn-primary text-xs h-9"
               >
                 Done

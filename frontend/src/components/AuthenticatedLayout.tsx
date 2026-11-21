@@ -17,7 +17,6 @@ import {
   DoorOpen,
   GraduationCap,
   Clock,
-  CheckCircle2,
   UserCheck,
   Bell,
   HelpCircle,
@@ -30,23 +29,24 @@ import {
   ShieldCheck,
   Send,
   User,
-  Building2,
   PlusCircle,
   Upload,
   Check
 } from 'lucide-react';
-import { useInstitutionalData, institutionalStore, InstitutionSummary } from '../data/store';
+import { useInstitutionalData, institutionalStore } from '../data/store';
 import { computeAcademicScheduleConfig } from '../types/institutional';
 import {
   AuthenticatedVotingUser,
   fetchNotificationsBackend,
   markNotificationReadBackend,
   fetchInstitutionsApi,
-  fetchInstitutionDataApi
+  updateSemesterBackend,
+  resetInstitutionWorkspaceBackend
 } from '../services/votingApi';
 import { UniversityOnboardingModal } from './UniversityOnboardingModal';
 import { DataImportWizard } from './DataImportWizard';
 import { GlobalSearch } from './GlobalSearch';
+import { showAppPopup } from './ToastPopupHost';
 
 interface AuthenticatedLayoutProps {
   activeRoute: RouteType;
@@ -145,22 +145,8 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
   const [showOnboardingModal, setShowOnboardingModal] = useState(false);
   const [showImportWizard, setShowImportWizard] = useState(false);
 
-  const availableInstitutions = institutionalStore.getAvailableInstitutions();
-  const currentInstitutionId = institutionalStore.getCurrentInstitutionId();
-  const currentInstSummary = availableInstitutions.find(i => i.id === currentInstitutionId);
-
-  const handleSwitchInstitution = async (instId: string) => {
-    institutionalStore.switchInstitution(instId);
-    setTermDropdownOpen(false);
-    try {
-      const snapshot = await fetchInstitutionDataApi(instId);
-      if (snapshot) {
-        institutionalStore.hydrateInstitutionData(instId, snapshot);
-      }
-    } catch {
-      // Keep local fallback snapshot if unavailable
-    }
-  };
+  const currentInstitutionId =
+    currentUser.institutionId || institutionalStore.getCurrentInstitutionId();
 
   interface UiNotificationItem {
     id: string;
@@ -211,12 +197,14 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
 
   useEffect(() => {
     void loadNotifications();
-    fetchInstitutionsApi()
+    fetchInstitutionsApi(currentUser?.token)
       .then(list => {
-        if (list.length > 0) institutionalStore.registerRemoteInstitutions(list);
+        if (list.length > 0) {
+          institutionalStore.registerRemoteInstitutions(list, Boolean(currentUser?.token));
+        }
       })
       .catch(() => {});
-  }, [loadNotifications]);
+  }, [loadNotifications, currentUser?.token]);
 
   useEffect(() => {
     if (activeUtilityPanel === 'notifications') {
@@ -260,10 +248,31 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
   const institutionName =
     storeSnapshot.institutionProfile?.name || currentUser.institution || 'University Workspace';
 
-  const handleToggleTermActive = (termId: string) => {
+  const handleToggleTermActive = async (termId: string) => {
     if (!isAdminRole) return;
-    institutionalStore.toggleTermActiveStatus(termId);
-    void institutionalStore.syncToBackend(currentUser);
+    const term = storeSnapshot.terms.find(t => t.id === termId);
+    const nextStatus = term?.status === 'active' ? 'draft' : 'active';
+    if (!currentUser?.token) {
+      showAppPopup({
+        title: 'Authentication Required',
+        message: 'Please sign in to update academic terms in Supabase.',
+        variant: 'error'
+      });
+      return;
+    }
+    try {
+      await updateSemesterBackend(currentUser, termId, {
+        status: nextStatus,
+        isActive: nextStatus === 'active'
+      });
+      institutionalStore.toggleTermActiveStatus(termId);
+    } catch (err: any) {
+      showAppPopup({
+        title: 'Term Update Failed',
+        message: err?.message || 'Unable to update semester status in Supabase.',
+        variant: 'error'
+      });
+    }
   };
 
   const scheduledCount = storeSnapshot.sections.filter(s => Boolean(s.assignedSlot)).length;
@@ -991,14 +1000,43 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
                 </div>
                 {isAdminRole && (
                   <button
-                    onClick={() => {
-                      institutionalStore.resetToDefaults();
+                    onClick={async () => {
                       setActiveUtilityPanel(null);
+                      if (!currentUser?.token) {
+                        showAppPopup({
+                          title: 'Authentication Required',
+                          message: 'Please sign in to reset the workspace in Supabase.',
+                          variant: 'error'
+                        });
+                        return;
+                      }
+                      try {
+                        const res = await resetInstitutionWorkspaceBackend(
+                          currentUser,
+                          currentInstitutionId
+                        );
+                        institutionalStore.hydrateFromWorkspacePayload(
+                          currentInstitutionId,
+                          res.workspace,
+                          currentUser.id
+                        );
+                        showAppPopup({
+                          title: 'Workspace Reset',
+                          message: 'Institution workspace has been reset in Supabase.',
+                          variant: 'success'
+                        });
+                      } catch (err: any) {
+                        showAppPopup({
+                          title: 'Reset Failed',
+                          message: err?.message || 'Unable to reset workspace in Supabase.',
+                          variant: 'error'
+                        });
+                      }
                     }}
                     className="w-full flex items-center justify-center gap-1.5 py-2 rounded-xl bg-[#292929] hover:bg-[#333333] text-xs font-medium text-[#EAE8E1] border border-[#383838] cursor-pointer"
                   >
                     <RotateCcw className="w-3.5 h-3.5" />
-                    <span>Restore Default Seed</span>
+                    <span>Reset Workspace</span>
                   </button>
                 )}
               </div>
@@ -1109,98 +1147,37 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
               </button>
 
               {isAdminRole && termDropdownOpen && (
-                <div className="absolute left-2.5 right-2.5 top-[58px] bg-[#1F1F1F] border border-[#3E3E3E] rounded-xl p-2 shadow-2xl z-50 space-y-2 max-h-[420px] overflow-y-auto">
-                  {/* Section 1: Switch Active University */}
-                  <div>
-                    <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-[#8E8C84] flex items-center gap-1.5">
-                      <Building2 className="w-3 h-3 text-[#B8EEEE]" />
-                      <span>Active University</span>
-                    </div>
-                    <div className="space-y-0.5 mt-1">
-                      {availableInstitutions.map(inst => {
-                        const isSelected = inst.id === currentInstitutionId;
-                        return (
-                          <button
-                            key={inst.id}
-                            onClick={() => handleSwitchInstitution(inst.id)}
-                            className={`w-full text-left px-2 py-1.5 rounded-lg text-xs transition-colors flex items-center justify-between cursor-pointer ${
-                              isSelected
-                                ? 'bg-[#383838] text-white font-medium'
-                                : 'text-[#C2C0B8] hover:bg-[#2C2C2C] hover:text-white'
-                            }`}
-                          >
-                            <div className="min-w-0 pr-1">
-                              <div className="truncate text-[11px] font-medium leading-tight">
-                                {inst.name}
-                              </div>
-                              <div className="text-[9.5px] text-[#8E8C84] leading-tight mt-0.5">
-                                {inst.code} · {inst.isDemoTemplate ? 'Sample' : 'Configured'}
-                              </div>
-                            </div>
-                            {isSelected && (
-                              <CheckCircle2 className="w-3.5 h-3.5 text-[#B7F77C] shrink-0" />
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
+                <div className="absolute left-2.5 right-2.5 top-[58px] bg-[#1F1F1F] border border-[#3E3E3E] rounded-xl p-2 shadow-2xl z-50 space-y-1 max-h-[320px] overflow-y-auto">
+                  <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-[#8E8C84]">
+                    Academic Semesters
                   </div>
-
-                  {/* Section 2: Universal CSV Importer Action */}
-                  <div className="pt-1.5 border-t border-[#333333] space-y-1">
-                    <button
-                      onClick={() => {
-                        setTermDropdownOpen(false);
-                        setShowImportWizard(true);
-                      }}
-                      className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg bg-[#2A2A2A] hover:bg-[#353535] text-[11px] text-[#EAE8E1] font-medium transition-colors cursor-pointer"
-                    >
-                      <Upload className="w-3.5 h-3.5 text-[#B7F77C] shrink-0" />
-                      <span>Import CSV Dataset</span>
-                    </button>
-                  </div>
-
-                  {/* Section 3: Configured Academic Semesters */}
-                  <div className="pt-1.5 border-t border-[#333333] space-y-1">
-                    <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-[#8E8C84]">
-                      Academic Semesters
+                  {storeSnapshot.terms.length === 0 ? (
+                    <div className="px-2 py-2 text-[11px] text-[#9E9D96]">
+                      No semesters configured
                     </div>
-                    {storeSnapshot.terms.map(term => {
+                  ) : (
+                    storeSnapshot.terms.map(term => {
                       const isTermActive = term.status === 'active';
                       return (
                         <button
                           key={term.id}
                           onClick={() => handleToggleTermActive(term.id)}
-                          className={`w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-colors ${
+                          className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-medium cursor-pointer transition-colors ${
                             isTermActive
                               ? 'bg-[#383838] text-white'
                               : 'text-[#C2C0B8] hover:bg-[#2C2C2C] hover:text-white'
                           }`}
                         >
-                          <div className="min-w-0 text-left pr-1">
-                            <div className="text-[11px] truncate">{term.name}</div>
-                            <div className="text-[9.5px] text-[#8E8C84] font-mono-tabular">
-                              {term.code}
-                            </div>
-                          </div>
-                          {isTermActive ? (
+                          <span className="text-[11.5px] truncate text-left pr-2">
+                            {term.name}
+                          </span>
+                          {isTermActive && (
                             <Check className="w-3.5 h-3.5 text-[#B7F77C] shrink-0" />
-                          ) : (
-                            <span className="text-[10px] text-[#7E7C74] shrink-0">Off</span>
                           )}
                         </button>
                       );
-                    })}
-                    <button
-                      onClick={() => {
-                        setTermDropdownOpen(false);
-                        onNavigate('academic-config');
-                      }}
-                      className="w-full text-left px-2 py-1.5 rounded-lg text-[10.5px] text-[#B8EEEE] hover:bg-[#2C2C2C] transition-colors cursor-pointer"
-                    >
-                      Manage Calendar &amp; Policies →
-                    </button>
-                  </div>
+                    })
+                  )}
                 </div>
               )}
             </div>

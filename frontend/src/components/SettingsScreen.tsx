@@ -17,14 +17,24 @@ import {
   Lock
 } from 'lucide-react';
 import { showAppPopup } from './ToastPopupHost';
+import {
+  AuthenticatedVotingUser,
+  getStoredUser,
+  updateUniversitySettingsBackend,
+  resetInstitutionWorkspaceBackend
+} from '../services/votingApi';
 
 interface SettingsScreenProps {
   onNavigate: (route: RouteType) => void;
   currentUser?: {
+    id?: string;
     name: string;
     role: string;
     email: string;
     institution?: string;
+    institutionId?: string;
+    systemRole?: string;
+    token?: string;
   } | null;
   onSwitchUser?: (user: {
     name: string;
@@ -71,19 +81,54 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
     });
   };
 
-  const handleSaveProfile = (e: React.FormEvent) => {
+  const resolveAuthUser = (): AuthenticatedVotingUser | null => {
+    if (currentUser?.token) {
+      return currentUser as AuthenticatedVotingUser;
+    }
+    return getStoredUser();
+  };
+
+  const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isAdmin) return;
-    institutionalStore.updateInstitutionProfile({
-      name: name.trim(),
-      campusCode: campusCode.trim(),
-      accreditation: accreditation.trim(),
-      registrarName: registrarName.trim(),
-      registrarEmail: registrarEmail.trim(),
-      autoConflictSweep
-    });
-    void institutionalStore.syncToBackend(currentUser as any);
-    showToast('Saved institutional profile and workspace settings.');
+    const authUser = resolveAuthUser();
+    const instId =
+      profile?.id || authUser?.institutionId || institutionalStore.getCurrentInstitutionId();
+
+    if (!authUser?.token) {
+      showAppPopup({
+        title: 'Authentication Required',
+        message: 'Please sign in to save institutional profile settings to Supabase.',
+        variant: 'error'
+      });
+      return;
+    }
+
+    try {
+      await updateUniversitySettingsBackend(authUser, instId, {
+        universityName: name.trim(),
+        campusCode: campusCode.trim(),
+        accreditation: accreditation.trim(),
+        registrarName: registrarName.trim(),
+        registrarEmail: registrarEmail.trim(),
+        autoConflictSweep
+      });
+      institutionalStore.updateInstitutionProfile({
+        name: name.trim(),
+        campusCode: campusCode.trim(),
+        accreditation: accreditation.trim(),
+        registrarName: registrarName.trim(),
+        registrarEmail: registrarEmail.trim(),
+        autoConflictSweep
+      });
+      showToast('Saved institutional profile and workspace settings to Supabase.');
+    } catch (err: any) {
+      showAppPopup({
+        title: 'Save Failed',
+        message: err?.message || 'Unable to persist institutional profile in Supabase.',
+        variant: 'error'
+      });
+    }
   };
 
   const handleExportJSON = () => {
@@ -100,12 +145,33 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
     showToast('Exported complete workspace JSON backup file.');
   };
 
-  const handleConfirmReset = () => {
+  const handleConfirmReset = async () => {
     if (!isAdmin) return;
-    institutionalStore.resetToDefaults();
-    void institutionalStore.syncToBackend(currentUser as any);
-    setShowResetConfirm(false);
-    showToast('Workspace data cleared back to a clean baseline.');
+    const authUser = resolveAuthUser();
+    const instId =
+      profile?.id || authUser?.institutionId || institutionalStore.getCurrentInstitutionId();
+
+    if (!authUser?.token) {
+      showAppPopup({
+        title: 'Authentication Required',
+        message: 'Please sign in to reset the workspace in Supabase.',
+        variant: 'error'
+      });
+      return;
+    }
+
+    try {
+      const res = await resetInstitutionWorkspaceBackend(authUser, instId);
+      institutionalStore.hydrateFromWorkspacePayload(instId, res.workspace, authUser.id);
+      setShowResetConfirm(false);
+      showToast('Workspace data cleared back to a clean baseline in Supabase.');
+    } catch (err: any) {
+      showAppPopup({
+        title: 'Reset Failed',
+        message: err?.message || 'Unable to reset institution workspace in Supabase.',
+        variant: 'error'
+      });
+    }
   };
 
   const filteredLogs = store.auditLogs.filter(log => {

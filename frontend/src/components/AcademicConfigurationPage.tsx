@@ -34,7 +34,15 @@ import {
 import { DataImportWizard } from './DataImportWizard';
 import { UniversityOnboardingModal } from './UniversityOnboardingModal';
 import { showAppPopup } from './ToastPopupHost';
-import { updateUniversitySettingsBackend } from '../services/votingApi';
+import {
+  AuthenticatedVotingUser,
+  getStoredUser,
+  updateUniversitySettingsBackend,
+  createSemesterBackend,
+  updateSemesterBackend,
+  deleteSemesterBackend,
+  fetchInstitutionWorkspace
+} from '../services/votingApi';
 
 interface AcademicConfigurationPageProps {
   onNavigate: (route: RouteType) => void;
@@ -263,22 +271,65 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
     });
   };
 
-  const handleAddSemester = (e: React.FormEvent) => {
+  const resolveAuthUser = (): AuthenticatedVotingUser | null => {
+    if (currentUser?.token) {
+      return currentUser as unknown as AuthenticatedVotingUser;
+    }
+    return getStoredUser();
+  };
+
+  const handleAddSemester = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isAdmin || !newSemName.trim() || !newSemCode.trim()) return;
-    institutionalStore.addTerm({
-      id: `term-custom-${Date.now().toString(36)}`,
-      name: newSemName.trim(),
-      code: newSemCode.trim().toUpperCase(),
-      academicYear: newSemYear.trim() || profile?.academicYear || '2026–2027',
-      startDate: newSemStart || '2026-09-01',
-      endDate: newSemEnd || '2026-12-20',
-      status: newSemActive ? 'active' : 'draft',
-      weeksCount: Math.max(1, Number(newSemWeeks) || 16)
-    });
-    showToast(`Added academic semester "${newSemName.trim()}" (${newSemCode.trim().toUpperCase()}).`);
-    setNewSemName('');
-    setNewSemCode('');
+    const authUser = resolveAuthUser();
+    const targetInstId =
+      store.institutionProfile?.id || authUser?.institutionId || institutionalStore.getCurrentInstitutionId();
+
+    if (!authUser?.token) {
+      showAppPopup({
+        title: 'Authentication Required',
+        message: 'Please sign in to create semesters in Supabase.',
+        variant: 'error'
+      });
+      return;
+    }
+
+    try {
+      const res = await createSemesterBackend(authUser, {
+        universityId: targetInstId,
+        name: newSemName.trim(),
+        code: newSemCode.trim().toUpperCase(),
+        academicYear: newSemYear.trim() || profile?.academicYear || '2026–2027',
+        startDate: newSemStart || '2026-09-01',
+        endDate: newSemEnd || '2026-12-20',
+        status: newSemActive ? 'active' : 'draft',
+        weeksCount: Math.max(1, Number(newSemWeeks) || 16)
+      });
+      const sem = (res.semester || {}) as Record<string, unknown>;
+      const semName = String(sem.name || newSemName.trim());
+      const semCode = String(sem.code || newSemCode.trim().toUpperCase());
+      institutionalStore.addTerm({
+        id: String(sem.id || `term-${Date.now()}`),
+        name: semName,
+        code: semCode,
+        academicYear: String(sem.academicYear || newSemYear.trim() || profile?.academicYear || '2026–2027'),
+        startDate: String(sem.startDate || newSemStart || '2026-09-01'),
+        endDate: String(sem.endDate || newSemEnd || '2026-12-20'),
+        status: (sem.status as 'draft' | 'active' | 'archived') || (newSemActive ? 'active' : 'draft'),
+        weeksCount: Number(sem.weeksCount || newSemWeeks || 16)
+      });
+      const workspace = await fetchInstitutionWorkspace(authUser, targetInstId);
+      institutionalStore.hydrateFromWorkspacePayload(targetInstId, workspace, authUser.id);
+      showToast(`Added academic semester "${semName}" (${semCode}) to Supabase.`);
+      setNewSemName('');
+      setNewSemCode('');
+    } catch (err: any) {
+      showAppPopup({
+        title: 'Failed to Add Semester',
+        message: err?.message || 'Unable to save semester to Supabase.',
+        variant: 'error'
+      });
+    }
   };
 
   // Sync local state when saved timeStructure updates or resets
@@ -414,51 +465,88 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
     });
   };
 
-  const handleSaveConfiguration = (e?: React.FormEvent) => {
+  const handleSaveConfiguration = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!isAdmin) return;
 
-    const result = institutionalStore.saveAcademicTimingConfig(draftTimingConfig);
-    if (!result.success) {
-      setTimingValidationErrors(result.errors);
+    const validation = validateAcademicTimingConfig(draftTimingConfig);
+    if (!validation.valid) {
+      setTimingValidationErrors(validation.errors);
       showAppPopup({
         title: 'Configuration Conflict',
-        message: result.errors[0] || 'Please fix the highlighted timing conflict before saving.',
+        message: validation.errors[0] || 'Please fix the highlighted timing conflict before saving.',
         variant: 'error'
       });
       return;
     }
 
-    const targetInstId = store.institutionProfile?.id || (currentUser as any)?.institutionId || '';
-    if (currentUser?.token && targetInstId) {
-      void updateUniversitySettingsBackend(currentUser as any, targetInstId, draftTimingConfig).catch(() => {});
+    const authUser = resolveAuthUser();
+    const targetInstId =
+      store.institutionProfile?.id || authUser?.institutionId || institutionalStore.getCurrentInstitutionId();
+    if (!authUser?.token || !targetInstId) {
+      showAppPopup({
+        title: 'Authentication Required',
+        message: 'Please sign in to save academic timings to Supabase.',
+        variant: 'error'
+      });
+      return;
     }
-    void institutionalStore.syncToBackend(currentUser as any);
 
-    setTimingValidationErrors([]);
-    showToast(
-      result.placedCount && result.placedCount > 0
-        ? `Saved successfully (${result.summaryText}). Synced ${result.placedCount} sessions.`
-        : `Saved successfully (${result.summaryText}).`,
-      true
-    );
+    try {
+      await updateUniversitySettingsBackend(authUser, targetInstId, {
+        ...draftTimingConfig,
+        defaultSessionMinutes: draftTimingConfig.periodLengthMinutes
+      });
+      const result = institutionalStore.saveAcademicTimingConfig(draftTimingConfig);
+      if (!result.success) {
+        setTimingValidationErrors(result.errors);
+        showAppPopup({
+          title: 'Configuration Conflict',
+          message: result.errors[0] || 'Please fix the highlighted timing conflict.',
+          variant: 'error'
+        });
+        return;
+      }
+      setTimingValidationErrors([]);
+      showToast(`Saved configuration to Supabase (${result.summaryText}).`, true);
+    } catch (err: any) {
+      showAppPopup({
+        title: 'Save Failed',
+        message: err?.message || 'Unable to save academic configuration to Supabase.',
+        variant: 'error'
+      });
+    }
   };
 
-  const handleResetToDefaults = () => {
+  const handleResetToDefaults = async () => {
     if (!isAdmin) return;
     setTimingValidationErrors([]);
-    const res = institutionalStore.resetAcademicTimingConfig();
-    const targetInstId = store.institutionProfile?.id || (currentUser as any)?.institutionId || '';
-    if (currentUser?.token && targetInstId) {
-      void updateUniversitySettingsBackend(currentUser as any, targetInstId, DEFAULT_ACADEMIC_TIMING_CONFIG).catch(() => {});
+    const authUser = resolveAuthUser();
+    const targetInstId =
+      store.institutionProfile?.id || authUser?.institutionId || institutionalStore.getCurrentInstitutionId();
+    if (!authUser?.token || !targetInstId) {
+      showAppPopup({
+        title: 'Authentication Required',
+        message: 'Please sign in to reset academic timings in Supabase.',
+        variant: 'error'
+      });
+      return;
     }
-    void institutionalStore.syncToBackend(currentUser as any);
-    showToast(
-      res.placedCount > 0
-        ? `Reset to defaults (${res.summaryText}). Synced ${res.placedCount} sessions.`
-        : `Reset to defaults (${res.summaryText}).`,
-      true
-    );
+
+    try {
+      await updateUniversitySettingsBackend(authUser, targetInstId, {
+        ...DEFAULT_ACADEMIC_TIMING_CONFIG,
+        defaultSessionMinutes: DEFAULT_ACADEMIC_TIMING_CONFIG.periodLengthMinutes
+      });
+      const res = institutionalStore.resetAcademicTimingConfig();
+      showToast(`Reset academic timings to defaults in Supabase (${res.summaryText}).`, true);
+    } catch (err: any) {
+      showAppPopup({
+        title: 'Reset Failed',
+        message: err?.message || 'Unable to reset academic timings in Supabase.',
+        variant: 'error'
+      });
+    }
   };
 
   const applyTimingPreset = (preset: (typeof TIMING_PRESETS)[number]) => {
@@ -1911,9 +1999,31 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
                     <div className="flex items-center gap-2 shrink-0">
                       <button
                         type="button"
-                        onClick={() => {
-                          institutionalStore.toggleTermActiveStatus(term.id);
-                          showToast(`Updated status for "${term.name}".`);
+                        onClick={async () => {
+                          const authUser = resolveAuthUser();
+                          if (!authUser?.token) {
+                            showAppPopup({
+                              title: 'Authentication Required',
+                              message: 'Please sign in to update semester status in Supabase.',
+                              variant: 'error'
+                            });
+                            return;
+                          }
+                          const nextStatus = isActive ? 'draft' : 'active';
+                          try {
+                            await updateSemesterBackend(authUser, term.id, {
+                              status: nextStatus,
+                              isActive: nextStatus === 'active'
+                            });
+                            institutionalStore.toggleTermActiveStatus(term.id);
+                            showToast(`Updated status for "${term.name}" in Supabase.`);
+                          } catch (err: any) {
+                            showAppPopup({
+                              title: 'Update Failed',
+                              message: err?.message || 'Unable to update semester status in Supabase.',
+                              variant: 'error'
+                            });
+                          }
                         }}
                         className={`h-8 px-3 rounded-lg text-xs font-semibold border transition-colors cursor-pointer ${
                           isActive
@@ -1926,9 +2036,27 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
                       {store.terms.length > 1 && (
                         <button
                           type="button"
-                          onClick={() => {
-                            institutionalStore.deleteTerm(term.id);
-                            showToast(`Removed "${term.name}".`);
+                          onClick={async () => {
+                            const authUser = resolveAuthUser();
+                            if (!authUser?.token) {
+                              showAppPopup({
+                                title: 'Authentication Required',
+                                message: 'Please sign in to delete semesters in Supabase.',
+                                variant: 'error'
+                              });
+                              return;
+                            }
+                            try {
+                              await deleteSemesterBackend(authUser, term.id);
+                              institutionalStore.deleteTerm(term.id);
+                              showToast(`Removed "${term.name}" from Supabase.`);
+                            } catch (err: any) {
+                              showAppPopup({
+                                title: 'Delete Failed',
+                                message: err?.message || 'Unable to delete semester from Supabase.',
+                                variant: 'error'
+                              });
+                            }
                           }}
                           className="h-8 w-8 rounded-lg border border-[#E4E2DA] bg-white hover:bg-[#FDE8E8] text-[#77766F] hover:text-[#8B1E1E] flex items-center justify-center transition-colors cursor-pointer"
                           title="Delete semester"
@@ -2081,9 +2209,33 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
             <div className="space-y-3">
               <button
                 type="button"
-                onClick={() => {
-                  institutionalStore.setTimetableManagementPolicy('whole_university');
-                  showToast('Activated Whole-University Timetable Policy.');
+                onClick={async () => {
+                  const authUser = resolveAuthUser();
+                  const targetInstId =
+                    store.institutionProfile?.id ||
+                    authUser?.institutionId ||
+                    institutionalStore.getCurrentInstitutionId();
+                  if (!authUser?.token) {
+                    showAppPopup({
+                      title: 'Authentication Required',
+                      message: 'Please sign in to update scheduling policy in Supabase.',
+                      variant: 'error'
+                    });
+                    return;
+                  }
+                  try {
+                    await updateUniversitySettingsBackend(authUser, targetInstId, {
+                      timetableManagementPolicy: 'whole_university'
+                    });
+                    institutionalStore.setTimetableManagementPolicy('whole_university');
+                    showToast('Activated Whole-University Timetable Policy in Supabase.');
+                  } catch (err: any) {
+                    showAppPopup({
+                      title: 'Policy Update Failed',
+                      message: err?.message || 'Unable to update policy in Supabase.',
+                      variant: 'error'
+                    });
+                  }
                 }}
                 className={`w-full p-4 rounded-xl border text-left transition-colors cursor-pointer ${
                   currentPolicy === 'whole_university'
@@ -2108,9 +2260,33 @@ export const AcademicConfigurationPage: React.FC<AcademicConfigurationPageProps>
 
               <button
                 type="button"
-                onClick={() => {
-                  institutionalStore.setTimetableManagementPolicy('department_wise');
-                  showToast('Activated Department-Wise Timetable Policy.');
+                onClick={async () => {
+                  const authUser = resolveAuthUser();
+                  const targetInstId =
+                    store.institutionProfile?.id ||
+                    authUser?.institutionId ||
+                    institutionalStore.getCurrentInstitutionId();
+                  if (!authUser?.token) {
+                    showAppPopup({
+                      title: 'Authentication Required',
+                      message: 'Please sign in to update scheduling policy in Supabase.',
+                      variant: 'error'
+                    });
+                    return;
+                  }
+                  try {
+                    await updateUniversitySettingsBackend(authUser, targetInstId, {
+                      timetableManagementPolicy: 'department_wise'
+                    });
+                    institutionalStore.setTimetableManagementPolicy('department_wise');
+                    showToast('Activated Department-Wise Timetable Policy in Supabase.');
+                  } catch (err: any) {
+                    showAppPopup({
+                      title: 'Policy Update Failed',
+                      message: err?.message || 'Unable to update policy in Supabase.',
+                      variant: 'error'
+                    });
+                  }
                 }}
                 className={`w-full p-4 rounded-xl border text-left transition-colors cursor-pointer ${
                   currentPolicy === 'department_wise'

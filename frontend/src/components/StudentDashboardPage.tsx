@@ -20,6 +20,7 @@ import {
   PollDTO,
   BatchDTO,
   fetchVotingOverview,
+  fetchStudentPreferencesBackend,
   saveStudentPreferenceBackend
 } from '../services/votingApi';
 import { resolveUserCohort } from '../utils/userTimetableScope';
@@ -41,8 +42,6 @@ interface StudentPersonalPreferences {
   preferredSelfStudyWindow: 'morning' | 'midday' | 'afternoon';
 }
 
-const PREFS_STORAGE_KEY = 'smartgrid_student_personal_prefs_v1';
-
 export const StudentDashboardPage: React.FC<StudentDashboardPageProps> = ({
   currentUser,
   subView = 'dashboard',
@@ -58,19 +57,13 @@ export const StudentDashboardPage: React.FC<StudentDashboardPageProps> = ({
   const [syncedUser, setSyncedUser] = useState<AuthenticatedVotingUser>(currentUser);
   const [loadingPolls, setLoadingPolls] = useState(true);
 
-  const [prefs, setPrefs] = useState<StudentPersonalPreferences>(() => {
-    try {
-      const saved = localStorage.getItem(PREFS_STORAGE_KEY);
-      if (saved) return JSON.parse(saved);
-    } catch {}
-    return {
-      defaultTimetableView: 'cohort',
-      showInstructorNames: true,
-      showRoomCodes: true,
-      highlightLabSessions: true,
-      votingDeadlineAlerts: true,
-      preferredSelfStudyWindow: 'afternoon'
-    };
+  const [prefs, setPrefs] = useState<StudentPersonalPreferences>({
+    defaultTimetableView: 'cohort',
+    showInstructorNames: true,
+    showRoomCodes: true,
+    highlightLabSessions: true,
+    votingDeadlineAlerts: true,
+    preferredSelfStudyWindow: 'afternoon'
   });
 
   const hasLoadedOnceRef = React.useRef(false);
@@ -84,13 +77,30 @@ export const StudentDashboardPage: React.FC<StudentDashboardPageProps> = ({
       setLoadingPolls(true);
     }
     try {
-      const data = await fetchVotingOverview(currentUserRef.current);
+      const [data, prefRows] = await Promise.all([
+        fetchVotingOverview(currentUserRef.current),
+        fetchStudentPreferencesBackend(currentUserRef.current).catch(() => [])
+      ]);
       hasLoadedOnceRef.current = true;
       setPolls(data.polls);
       setBatches(data.batches);
       if (data.user) {
         setSyncedUser(data.user);
         onUserSyncedRef.current?.(data.user);
+      }
+      const myPref = prefRows.find(p => p.user_id === currentUserRef.current.id) || prefRows[0];
+      if (myPref) {
+        const ui = (myPref as unknown as { ui_preferences?: Partial<StudentPersonalPreferences> })
+          .ui_preferences;
+        const win = myPref.preferred_time_window;
+        setPrefs(prev => ({
+          ...prev,
+          ...(ui || {}),
+          preferredSelfStudyWindow:
+            win === 'morning' || win === 'midday' || win === 'afternoon'
+              ? win
+              : prev.preferredSelfStudyWindow
+        }));
       }
     } catch {
       // Keep existing state
@@ -142,25 +152,40 @@ export const StudentDashboardPage: React.FC<StudentDashboardPageProps> = ({
     });
   };
 
-  const handleSavePreferences = (e: React.FormEvent) => {
+  const handleSavePreferences = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!syncedUser?.token) {
+      showAppPopup({
+        title: 'Sign-In Required',
+        message: 'Sign in to persist your preferences to Supabase.',
+        variant: 'error'
+      });
+      return;
+    }
     try {
-      localStorage.setItem(PREFS_STORAGE_KEY, JSON.stringify(prefs));
-    } catch {}
-    if (syncedUser?.token) {
-      void saveStudentPreferenceBackend(syncedUser, {
+      await saveStudentPreferenceBackend(syncedUser, {
         preferredTimeWindow: prefs.preferredSelfStudyWindow,
         avoidEarly8am: true,
         avoidLateAfter4pm: true,
         maxAcceptableGapMinutes: 60,
-        maxDailyLectures: 4
-      }).catch(() => {});
+        maxDailyLectures: 4,
+        uiPreferences: prefs
+      });
+      showAppPopup({
+        title: 'Preferences Saved',
+        message: 'Your personal schedule and voting preferences have been saved to Supabase.',
+        variant: 'success'
+      });
+    } catch (err) {
+      showAppPopup({
+        title: 'Save Failed',
+        message:
+          err instanceof Error
+            ? err.message
+            : 'Unable to save student preferences to Supabase.',
+        variant: 'error'
+      });
     }
-    showAppPopup({
-      title: 'Preferences Saved',
-      message: 'Your personal schedule and voting preferences have been saved.',
-      variant: 'success'
-    });
   };
 
   // =========================================================

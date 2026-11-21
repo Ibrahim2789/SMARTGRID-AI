@@ -21,7 +21,12 @@ import {
   Download
 } from 'lucide-react';
 import { exportTimetableToGoogleSheetsWorkbook } from '../utils/googleSheetsExport';
-import { AuthenticatedVotingUser, solveOptimizationApi } from '../services/votingApi';
+import {
+  AuthenticatedVotingUser,
+  solveOptimizationApi,
+  fetchInstitutionWorkspace
+} from '../services/votingApi';
+import { showAppPopup } from './ToastPopupHost';
 
 interface HomeScreenProps {
   onNavigate: (route: RouteType) => void;
@@ -62,85 +67,91 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
     .replace(/\.$/, '');
 
   const handleQuickGenerate = async () => {
-    setIsQuickSolving(true);
-    const runTitle = `${activeTerm?.name || 'Fall 2026'} — Full University Schedule`;
-    try {
-      if (currentUser?.token) {
-        const apiRes = await solveOptimizationApi(
-          {
-            universityId: store.institutionProfile?.id || institutionalStore.getCurrentInstitutionId(),
-            versionName: runTitle,
-            algorithm: 'hybrid_dsatur_ga_sa',
-            courses: store.courses.map(c => ({
-              id: c.id,
-              code: c.code,
-              title: c.title,
-              type: c.requiredRoomType === 'lab' || c.labHours > 0 ? 'Lab' : 'Theory',
-              credits: c.creditHours || 3,
-              credit_hours: c.creditHours || 3,
-              requiredEquipment: []
-            })),
-            classrooms: store.rooms.map(r => ({
-              id: r.id,
-              code: r.code,
-              name: r.name,
-              capacity: r.capacity,
-              type: r.type,
-              equipment: r.equipment,
-              isAvailable: r.isAvailable
-            })),
-            studentGroups: store.studentGroups.map(g => ({
-              id: g.id,
-              code: g.code,
-              name: g.name,
-              size: g.size
-            })),
-            sections: store.sections.map(s => ({
-              id: s.id,
-              courseId: s.courseId,
-              instructorId: s.instructorId,
-              studentGroupId: s.studentGroupId,
-              sectionCode: s.sectionNumber || 'A',
-              sessionType: s.sessionType === 'Lab' ? 'Lab' : 'Theory',
-              enrollment: s.expectedEnrollment || 45
-            }))
-          },
-          currentUser
-        );
-        if (apiRes.assignments && Object.keys(apiRes.assignments).length > 0) {
-          institutionalStore.applyBackendOptimizationResult({
-            assignments: apiRes.assignments,
-            strategyName: runTitle,
-            algorithm: 'hybrid_dsatur_ga_sa',
-            versionId: apiRes.timetableVersionId,
-            termId: activeTerm?.id,
-            fitness: {
-              totalScore: apiRes.metrics.totalScore,
-              studentSatisfaction: apiRes.metrics.studentSatisfaction,
-              instructorSatisfaction: apiRes.metrics.instructorSatisfaction,
-              roomUtilization: apiRes.metrics.roomUtilization,
-              fairnessScore: apiRes.metrics.fairnessScore
-            },
-            conflictCount: apiRes.metrics.conflictCount
-          });
-          void institutionalStore.syncToBackend(currentUser);
-          setIsQuickSolving(false);
-          onNavigate('timetables');
-          return;
-        }
-      }
-    } catch {
-      // Fallback gracefully to local combinatorial solver
+    if (!currentUser?.token) {
+      showAppPopup({
+        title: 'Authentication Required',
+        message: 'Please sign in with an administrator account to run timetable optimization.',
+        variant: 'error'
+      });
+      return;
     }
 
-    institutionalStore.runTimetableSolver({
-      departmentId: 'all',
-      strategyName: runTitle,
-      forceRescheduleAll: true
-    });
-    void institutionalStore.syncToBackend(currentUser);
-    setIsQuickSolving(false);
-    onNavigate('timetables');
+    setIsQuickSolving(true);
+    const instId = store.institutionProfile?.id || institutionalStore.getCurrentInstitutionId();
+    const runTitle = `${activeTerm?.name || 'Fall 2026'} — Full University Schedule`;
+    try {
+      const apiRes = await solveOptimizationApi(
+        {
+          universityId: instId,
+          versionName: runTitle,
+          algorithm: 'hybrid_dsatur_ga_sa',
+          courses: store.courses.map(c => ({
+            id: c.id,
+            code: c.code,
+            title: c.title,
+            type: c.requiredRoomType === 'lab' || c.labHours > 0 ? 'Lab' : 'Theory',
+            credits: c.creditHours || 3,
+            credit_hours: c.creditHours || 3,
+            requiredEquipment: []
+          })),
+          classrooms: store.rooms.map(r => ({
+            id: r.id,
+            code: r.code,
+            name: r.name,
+            capacity: r.capacity,
+            type: r.type,
+            equipment: r.equipment,
+            isAvailable: r.isAvailable
+          })),
+          studentGroups: store.studentGroups.map(g => ({
+            id: g.id,
+            code: g.code,
+            name: g.name,
+            size: g.size
+          })),
+          sections: store.sections.map(s => ({
+            id: s.id,
+            courseId: s.courseId,
+            instructorId: s.instructorId,
+            studentGroupId: s.studentGroupId,
+            sectionCode: s.sectionNumber || 'A',
+            sessionType: s.sessionType === 'Lab' ? 'Lab' : 'Theory',
+            enrollment: s.expectedEnrollment || 45
+          }))
+        },
+        currentUser
+      );
+
+      if (apiRes.assignments && Object.keys(apiRes.assignments).length > 0) {
+        institutionalStore.applyBackendOptimizationResult({
+          assignments: apiRes.assignments,
+          strategyName: runTitle,
+          algorithm: 'hybrid_dsatur_ga_sa',
+          versionId: apiRes.timetableVersionId,
+          termId: activeTerm?.id,
+          fitness: {
+            totalScore: apiRes.metrics.totalScore,
+            studentSatisfaction: apiRes.metrics.studentSatisfaction,
+            instructorSatisfaction: apiRes.metrics.instructorSatisfaction,
+            roomUtilization: apiRes.metrics.roomUtilization,
+            fairnessScore: apiRes.metrics.fairnessScore
+          },
+          conflictCount: apiRes.metrics.conflictCount
+        });
+      }
+
+      const workspace = await fetchInstitutionWorkspace(currentUser, instId);
+      institutionalStore.hydrateFromWorkspacePayload(instId, workspace, currentUser.id);
+      setIsQuickSolving(false);
+      onNavigate('timetables');
+    } catch (err: any) {
+      setIsQuickSolving(false);
+      showAppPopup({
+        title: 'Optimization Failed',
+        message: err?.message || 'Unable to generate and persist timetable in Supabase.',
+        variant: 'error'
+      });
+    }
   };
 
   const handleQuickExportSheets = async () => {

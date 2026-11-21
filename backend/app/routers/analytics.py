@@ -5,8 +5,14 @@ from __future__ import annotations
 from typing import Any, Dict
 
 from app.database.supabase import SupabaseQueryError, require_supabase_client
-from app.deps import get_query_param, raise_supabase_http_error, require_auth_user
-from fastapi_compat import APIRouter, Request
+from app.deps import (
+    assert_institution_access,
+    get_query_param,
+    raise_supabase_http_error,
+    require_auth_user,
+    scoped_uni_id,
+)
+from fastapi_compat import APIRouter, HTTPException, Request
 
 router = APIRouter(tags=["analytics"])
 
@@ -14,7 +20,7 @@ router = APIRouter(tags=["analytics"])
 @router.get("/api/analytics/overview")
 def get_analytics_overview(request: Request) -> Dict[str, Any]:
     auth_user = require_auth_user(request)
-    uni_id = get_query_param(request, "universityId", "") or auth_user.get("institutionId") or ""
+    uni_id = scoped_uni_id(auth_user, get_query_param(request, "universityId", ""))
     client = require_supabase_client()
 
     try:
@@ -29,7 +35,12 @@ def get_analytics_overview(request: Request) -> Dict[str, Any]:
             "laboratories", filters={"institution_id": f"eq.{uni_id}"}
         )
         total_instructors = client.count("instructors", filters={"institution_id": f"eq.{uni_id}"})
-        total_votes = client.count("poll_votes")
+        inst_polls = client.select("polls", filters={"institution_id": f"eq.{uni_id}"}, select="id")
+        total_votes = (
+            client.count("poll_votes", filters={"poll_id": f"in.({','.join(p['id'] for p in inst_polls)})"})
+            if inst_polls
+            else 0
+        )
     except SupabaseQueryError as err:
         raise_supabase_http_error(err)
 
@@ -88,9 +99,19 @@ def list_notifications(request: Request) -> Dict[str, Any]:
 
 @router.patch("/api/notifications/{notificationId}/read")
 def mark_notification_read(notificationId: str, request: Request) -> Dict[str, Any]:
-    require_auth_user(request)
+    auth_user = require_auth_user(request)
     client = require_supabase_client()
     try:
+        existing = client.select_one("notifications", filters={"id": f"eq.{notificationId}"})
+        if not existing:
+            raise HTTPException(status_code=404, detail={"error": "Notification not found."})
+        assert_institution_access(auth_user, existing.get("institution_id"))
+        rec_user = existing.get("recipient_user_id")
+        if rec_user and rec_user != auth_user.get("userId"):
+            raise HTTPException(
+                status_code=403,
+                detail={"error": "Access denied: Notification belongs to another user."},
+            )
         client.update("notifications", {"id": f"eq.{notificationId}"}, {"is_read": True})
     except SupabaseQueryError as err:
         raise_supabase_http_error(err)

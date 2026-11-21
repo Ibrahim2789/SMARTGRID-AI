@@ -43,7 +43,17 @@ import {
 } from 'lucide-react';
 import { ClassDetailsModal, ClassItem } from './ClassDetailsModal';
 import { jsPDF } from 'jspdf';
-import { AuthenticatedVotingUser, solveOptimizationApi, getStoredUser } from '../services/votingApi';
+import {
+  AuthenticatedVotingUser,
+  solveOptimizationApi,
+  getStoredUser,
+  fetchInstitutionWorkspace,
+  updateSectionSlotBackend,
+  swapSectionsBackend,
+  patchTimetableEntriesBackend,
+  publishTimetableBackend,
+  loadSampleInstitutionCatalogBackend
+} from '../services/votingApi';
 import { showAppPopup } from './ToastPopupHost';
 import {
   getNormalizedUserRole,
@@ -479,6 +489,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
           entries: res.entries,
           strategyName: 'Python Hybrid AI Re-Optimization',
           algorithm: 'hybrid_dsatur_ga_sa',
+          versionId: res.timetableVersionId,
           fitness: {
             totalScore: res.metrics.totalScore,
             studentSatisfaction: res.metrics.studentSatisfaction,
@@ -491,30 +502,62 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
           },
           conflictCount: res.metrics.conflictCount
         });
-        void institutionalStore.syncToBackend(user || undefined);
+        if (user?.token) {
+          const instId =
+            fresh.institutionProfile?.id ||
+            user.institutionId ||
+            institutionalStore.getCurrentInstitutionId();
+          const workspace = await fetchInstitutionWorkspace(user, instId);
+          institutionalStore.hydrateFromWorkspacePayload(instId, workspace, user.id);
+        }
         showAppPopup({
-          title: res.metrics.conflictCount === 0 ? 'Timetable Re-Optimized' : 'Re-Optimized (Draft Needs Review)',
+          title: res.metrics.conflictCount === 0 ? 'Timetable Re-Optimized & Saved' : 'Re-Optimized Draft Saved in Supabase',
           message: `${res.metrics.placedCount} sessions synchronized (${res.metrics.conflictCount} hard conflicts, compactness ${Math.round(res.metrics.compactnessScore ?? res.metrics.studentSatisfaction ?? 0)}%).`,
           variant: res.metrics.conflictCount === 0 ? 'success' : 'info'
         });
       } else {
-        throw new Error('No assignments returned.');
+        throw new Error('Optimization engine returned zero session assignments.');
       }
-    } catch {
-      const localRes = institutionalStore.runTimetableSolver();
-      void institutionalStore.syncToBackend(currentUser || undefined);
+    } catch (err) {
       showAppPopup({
-        title: localRes.conflictCount === 0 ? 'Timetable Re-Optimized (Local Solver)' : 'Local Draft Saved (Conflicts Remain)',
-        message: `${localRes.placedCount} sessions synchronized with ${localRes.conflictCount} hard overlaps.`,
-        variant: localRes.conflictCount === 0 ? 'success' : 'info'
+        title: 'Re-Optimization Failed',
+        message:
+          err instanceof Error
+            ? err.message
+            : 'Unable to re-optimize and persist timetable to Supabase.',
+        variant: 'error'
       });
     } finally {
       setIsSweeping(false);
     }
   };
 
+  const persistMovedSectionToSupabase = async (
+    sectionId: string,
+    slot: { day: DayOfWeek; timeSlot: string; roomId: string }
+  ) => {
+    const user = currentUser || getStoredUser();
+    if (!user?.token) {
+      throw new Error('Sign in as an administrator to persist slot edits to Supabase.');
+    }
+    await updateSectionSlotBackend(user, sectionId, slot);
+    const activeVersionId = store.scenarios[0]?.id;
+    if (activeVersionId) {
+      await patchTimetableEntriesBackend(user, activeVersionId, {
+        updates: [
+          {
+            sectionId,
+            day: slot.day,
+            startTime: slot.timeSlot,
+            roomId: slot.roomId
+          }
+        ]
+      });
+    }
+  };
+
   // Interactive Drag-and-Drop and Slot Swap Logic (Admin-only)
-  const handleDropOnSlot = (targetDay: string, rawTargetPeriod: string) => {
+  const handleDropOnSlot = async (targetDay: string, rawTargetPeriod: string) => {
     if (!isAdmin || !draggedClassItem) return;
     setDragOverCellKey(null);
 
@@ -566,17 +609,27 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
         conflictingItem
       });
     } else {
-      institutionalStore.updateSectionSlot(draggedClassItem.id, {
+      const nextSlot = {
         day: targetDay as DayOfWeek,
         timeSlot: targetPeriod,
         roomId: draggedClassItem.roomId || store.rooms[0]?.id || ''
-      });
-      void institutionalStore.syncToBackend(currentUser || undefined);
-      showAppPopup({
-        title: 'Session Moved',
-        message: `Moved ${draggedClassItem.code} to ${targetDay} · ${targetPeriod} with zero conflicts.`,
-        variant: 'success'
-      });
+      };
+      try {
+        await persistMovedSectionToSupabase(draggedClassItem.id, nextSlot);
+        institutionalStore.updateSectionSlot(draggedClassItem.id, nextSlot);
+        showAppPopup({
+          title: 'Session Moved',
+          message: `Moved ${draggedClassItem.code} to ${targetDay} · ${targetPeriod} and saved to Supabase.`,
+          variant: 'success'
+        });
+      } catch (err) {
+        showAppPopup({
+          title: 'Move Failed',
+          message:
+            err instanceof Error ? err.message : 'Unable to persist moved session to Supabase.',
+          variant: 'error'
+        });
+      }
     }
     setDraggedClassItem(null);
   };
@@ -585,43 +638,86 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
     setSelectedClass(cls);
   };
 
-  const handleConfirmSwap = () => {
+  const handleConfirmSwap = async () => {
     if (!swapDialogData) return;
     const { itemA, itemB } = swapDialogData;
-    const res = institutionalStore.swapSectionSlots(itemA.id, itemB.id);
-    void institutionalStore.syncToBackend(currentUser || undefined);
-    setSwapDialogData(null);
-    showAppPopup({ title: 'Sessions Swapped', message: res.message, variant: 'success' });
+    const user = currentUser || getStoredUser();
+    if (!user?.token) {
+      showAppPopup({
+        title: 'Sign-In Required',
+        message: 'Sign in as an administrator to swap sessions in Supabase.',
+        variant: 'error'
+      });
+      return;
+    }
+    try {
+      await swapSectionsBackend(user, itemA.id, itemB.id);
+      const res = institutionalStore.swapSectionSlots(itemA.id, itemB.id);
+      setSwapDialogData(null);
+      showAppPopup({ title: 'Sessions Swapped', message: res.message, variant: 'success' });
+    } catch (err) {
+      showAppPopup({
+        title: 'Swap Failed',
+        message: err instanceof Error ? err.message : 'Unable to save slot swap to Supabase.',
+        variant: 'error'
+      });
+    }
   };
 
-  const handleConfirmOverrideMove = () => {
+  const handleConfirmOverrideMove = async () => {
     if (!conflictDialogData) return;
     const { sourceItem, targetDay, targetPeriod, targetRoomId } = conflictDialogData;
-    institutionalStore.updateSectionSlot(sourceItem.id, {
+    const nextSlot = {
       day: targetDay as DayOfWeek,
       timeSlot: targetPeriod,
       roomId: targetRoomId || store.rooms[0]?.id || ''
-    });
-    void institutionalStore.syncToBackend(currentUser || undefined);
-    setConflictDialogData(null);
-    showAppPopup({
-      title: 'Session Moved (Override)',
-      message: `Manually moved ${sourceItem.code} to ${targetDay} · ${targetPeriod}.`,
-      variant: 'info'
-    });
+    };
+    try {
+      await persistMovedSectionToSupabase(sourceItem.id, nextSlot);
+      institutionalStore.updateSectionSlot(sourceItem.id, nextSlot);
+      setConflictDialogData(null);
+      showAppPopup({
+        title: 'Session Moved (Override)',
+        message: `Manually moved ${sourceItem.code} to ${targetDay} · ${targetPeriod} and saved to Supabase.`,
+        variant: 'info'
+      });
+    } catch (err) {
+      showAppPopup({
+        title: 'Override Move Failed',
+        message: err instanceof Error ? err.message : 'Unable to save slot move to Supabase.',
+        variant: 'error'
+      });
+    }
   };
 
-  const handleSwapConflictingClass = () => {
+  const handleSwapConflictingClass = async () => {
     if (!conflictDialogData || !conflictDialogData.conflictingItem) return;
     const { sourceItem, conflictingItem } = conflictDialogData;
-    institutionalStore.swapSectionSlots(sourceItem.id, conflictingItem.id);
-    void institutionalStore.syncToBackend(currentUser || undefined);
-    setConflictDialogData(null);
-    showAppPopup({
-      title: 'Sessions Swapped',
-      message: `Swapped ${sourceItem.code} and ${conflictingItem.code}.`,
-      variant: 'success'
-    });
+    const user = currentUser || getStoredUser();
+    if (!user?.token) {
+      showAppPopup({
+        title: 'Sign-In Required',
+        message: 'Sign in as an administrator to swap sessions in Supabase.',
+        variant: 'error'
+      });
+      return;
+    }
+    try {
+      await swapSectionsBackend(user, sourceItem.id, conflictingItem.id);
+      institutionalStore.swapSectionSlots(sourceItem.id, conflictingItem.id);
+      setConflictDialogData(null);
+      showAppPopup({
+        title: 'Sessions Swapped',
+        message: `Swapped ${sourceItem.code} and ${conflictingItem.code} in Supabase.`,
+        variant: 'success'
+      });
+    } catch (err) {
+      showAppPopup({
+        title: 'Swap Failed',
+        message: err instanceof Error ? err.message : 'Unable to persist swap to Supabase.',
+        variant: 'error'
+      });
+    }
   };
 
   const filterClass = (cls: ClassItem) => {
@@ -1180,13 +1276,38 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
               <div className="flex flex-wrap items-center justify-center gap-3 pt-1">
                 <button
                   type="button"
-                  onClick={() => {
-                    institutionalStore.loadSampleUniversityData();
-                    showAppPopup({
-                      title: 'Sample Timetable Generated',
-                      message: 'Loaded sample university departments, courses, qualified faculty, and generated section timetables.',
-                      variant: 'success'
-                    });
+                  onClick={async () => {
+                    const user = currentUser || getStoredUser();
+                    if (!user?.token) {
+                      showAppPopup({
+                        title: 'Sign-In Required',
+                        message: 'Sign in as an administrator to load sample university data into Supabase.',
+                        variant: 'error'
+                      });
+                      return;
+                    }
+                    try {
+                      const instId =
+                        store.institutionProfile?.id ||
+                        user.institutionId ||
+                        institutionalStore.getCurrentInstitutionId();
+                      const res = await loadSampleInstitutionCatalogBackend(user, instId);
+                      institutionalStore.hydrateFromWorkspacePayload(instId, res.workspace, user.id);
+                      showAppPopup({
+                        title: 'Sample University Catalog Loaded',
+                        message: 'Loaded sample university departments, courses, faculty, classrooms, and sections into Supabase. Click Re-Optimize or Generate Timetable to solve.',
+                        variant: 'success'
+                      });
+                    } catch (err) {
+                      showAppPopup({
+                        title: 'Sample Load Failed',
+                        message:
+                          err instanceof Error
+                            ? err.message
+                            : 'Unable to load sample catalog into Supabase.',
+                        variant: 'error'
+                      });
+                    }
                   }}
                   className="btn-primary h-10 px-5 text-xs font-semibold bg-[#E8D36B] text-[#171717] hover:bg-[#D4BC4C] border border-[#D4BC4C]"
                 >
@@ -1403,13 +1524,39 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
               {conflicts.length === 0 && latestScenario?.status === 'draft' && (
                 <button
                   type="button"
-                  onClick={() => {
-                    const res = institutionalStore.restoreScenario(latestScenario.id);
-                    showAppPopup({
-                      title: res.success ? 'Timetable Published' : 'Publish Blocked',
-                      message: res.message,
-                      variant: res.success ? 'success' : 'error'
-                    });
+                  onClick={async () => {
+                    const user = currentUser || getStoredUser();
+                    if (!user?.token) {
+                      showAppPopup({
+                        title: 'Sign-In Required',
+                        message: 'Sign in as an administrator to publish timetables in Supabase.',
+                        variant: 'error'
+                      });
+                      return;
+                    }
+                    try {
+                      const instId =
+                        store.institutionProfile?.id ||
+                        user.institutionId ||
+                        institutionalStore.getCurrentInstitutionId();
+                      await publishTimetableBackend(user, latestScenario.id);
+                      const freshWorkspace = await fetchInstitutionWorkspace(user, instId);
+                      institutionalStore.hydrateFromWorkspacePayload(instId, freshWorkspace, user.id);
+                      showAppPopup({
+                        title: 'Timetable Published',
+                        message: `"${latestScenario.name}" is now published in Supabase.`,
+                        variant: 'success'
+                      });
+                    } catch (err) {
+                      showAppPopup({
+                        title: 'Publish Blocked',
+                        message:
+                          err instanceof Error
+                            ? err.message
+                            : 'Unable to publish timetable draft in Supabase.',
+                        variant: 'error'
+                      });
+                    }
                   }}
                   className="px-2.5 py-1 rounded-lg bg-[#16A34A] text-white text-[11px] font-semibold cursor-pointer"
                 >

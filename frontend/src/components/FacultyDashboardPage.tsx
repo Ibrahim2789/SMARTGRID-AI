@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Clock,
   BookOpen,
@@ -10,7 +10,12 @@ import {
   Send
 } from 'lucide-react';
 import { useInstitutionalData, institutionalStore } from '../data/store';
-import { AuthenticatedVotingUser, saveInstructorPreferenceBackend } from '../services/votingApi';
+import {
+  AuthenticatedVotingUser,
+  saveInstructorPreferenceBackend,
+  updateInstructorAvailabilityBackend,
+  fetchInstructorPreferencesBackend
+} from '../services/votingApi';
 import { RouteType } from './SmartGridNav';
 import { DayOfWeek, computeAcademicScheduleConfig, getLabBlockByStartPeriod, getEffectiveSlotDisplayForDay } from '../types/institutional';
 import { resolveFacultyInstructor } from '../utils/userTimetableScope';
@@ -63,6 +68,29 @@ export const FacultyDashboardPage: React.FC<FacultyDashboardPageProps> = ({
   const [newBlockSlot, setNewBlockSlot] = useState<string>(computedTiming.periods[0] || '09:00 – 09:50');
   const [newBlockReason, setNewBlockReason] = useState<string>('Faculty Board Meeting');
 
+  useEffect(() => {
+    if (!matchedInstructor || !currentUser?.token) return;
+    setPreferredDays(matchedInstructor.preferredDays || ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']);
+    setMaxWeeklyHours(matchedInstructor.maxWeeklyHours || 16);
+    setMaxConsecutiveHours(matchedInstructor.maxConsecutiveHours || 3);
+    setUnavailableSlots(matchedInstructor.unavailableSlots || []);
+    fetchInstructorPreferencesBackend(currentUser)
+      .then(prefsList => {
+        const mine = prefsList.find(p => p.instructor_id === matchedInstructor.id);
+        if (mine) {
+          if (Array.isArray(mine.preferred_days) && mine.preferred_days.length > 0) {
+            setPreferredDays(mine.preferred_days as DayOfWeek[]);
+          }
+          if (typeof mine.max_consecutive_hours === 'number') {
+            setMaxConsecutiveHours(mine.max_consecutive_hours);
+          } else if (typeof mine.avoid_back_to_back_more_than === 'number') {
+            setMaxConsecutiveHours(mine.avoid_back_to_back_more_than);
+          }
+        }
+      })
+      .catch(() => {});
+  }, [matchedInstructor?.id, currentUser?.token]);
+
   // Stats calculation
   const lectureCount = assignedSections.filter(s => s.sessionType === 'Lecture' || (!s.spanSlots || s.spanSlots === 1)).length;
   const labCount = assignedSections.filter(s => s.sessionType === 'Lab' || (s.spanSlots && s.spanSlots > 1)).length;
@@ -95,30 +123,54 @@ export const FacultyDashboardPage: React.FC<FacultyDashboardPageProps> = ({
     setUnavailableSlots(unavailableSlots.filter((_, idx) => idx !== index));
   };
 
-  const handleSavePreferences = () => {
+  const handleSavePreferences = async () => {
     if (!matchedInstructor) return;
-    institutionalStore.updateInstructorPreferences(matchedInstructor.id, {
-      preferredDays,
-      maxWeeklyHours,
-      maxConsecutiveHours,
-      unavailableSlots
-    });
-    if (currentUser?.token) {
-      void saveInstructorPreferenceBackend(currentUser, {
-        instructorId: matchedInstructor.id,
-        preferredDays,
-        preferredStartTime: '09:00',
-        preferredEndTime: '17:00',
-        avoidBackToBackMoreThan: maxConsecutiveHours,
-        preferCompactSchedule: true
-      }).catch(() => {});
+    if (!currentUser?.token) {
+      showAppPopup({
+        title: 'Sign-In Required',
+        message: 'Sign in as faculty to save teaching preferences to Supabase.',
+        variant: 'error'
+      });
+      return;
     }
-    void institutionalStore.syncToBackend(currentUser);
-    showAppPopup({
-      title: 'Preferences Saved',
-      message: 'Availability preferences submitted to Registrar and Timetable Solver successfully.',
-      variant: 'success'
-    });
+    try {
+      await Promise.all([
+        saveInstructorPreferenceBackend(currentUser, {
+          instructorId: matchedInstructor.id,
+          preferredDays,
+          preferredStartTime: '09:00',
+          preferredEndTime: '17:00',
+          avoidBackToBackMoreThan: maxConsecutiveHours,
+          maxConsecutiveHours,
+          preferCompactSchedule: true
+        }),
+        updateInstructorAvailabilityBackend(
+          currentUser,
+          matchedInstructor.id,
+          unavailableSlots
+        )
+      ]);
+      institutionalStore.updateInstructorPreferences(matchedInstructor.id, {
+        preferredDays,
+        maxWeeklyHours,
+        maxConsecutiveHours,
+        unavailableSlots
+      });
+      showAppPopup({
+        title: 'Preferences Saved',
+        message: 'Availability preferences persisted to Supabase and Timetable Solver successfully.',
+        variant: 'success'
+      });
+    } catch (err) {
+      showAppPopup({
+        title: 'Save Failed',
+        message:
+          err instanceof Error
+            ? err.message
+            : 'Unable to save instructor preferences to Supabase.',
+        variant: 'error'
+      });
+    }
   };
 
   const daysOrder: Record<DayOfWeek, number> = {

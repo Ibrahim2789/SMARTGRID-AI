@@ -6,12 +6,130 @@ voting enrichment, and optimization catalog loading helpers for SmartGrid AI rou
 from __future__ import annotations
 
 import json
+import uuid
 from collections import defaultdict
 from typing import Any, Dict, List, NoReturn, Optional
 
 from app.database.supabase import SupabaseQueryError, require_supabase_client
 from database import now_iso, sign_auth_token, verify_auth_token
 from fastapi_compat import HTTPException, Request
+
+ADMIN_ROLES: List[str] = ["admin", "university_admin", "super_admin"]
+CATALOG_MANAGER_ROLES: List[str] = ["admin", "university_admin", "super_admin", "timetable_manager"]
+
+
+def scoped_uni_id(auth_user: Dict[str, Any], requested_uni_id: str = "") -> str:
+    user_inst = str(auth_user.get("institutionId") or "").strip()
+    role = str(auth_user.get("role") or "").lower()
+    req = str(requested_uni_id or "").strip()
+    if req and role != "super_admin" and user_inst and req != user_inst:
+        raise HTTPException(
+            status_code=403,
+            detail={"error": "Access denied: Cross-institution data access is prohibited."},
+        )
+    target = req or user_inst
+    if not target:
+        raise HTTPException(status_code=400, detail={"error": "University / institution context is required."})
+    return target
+
+
+def assert_institution_access(auth_user: Dict[str, Any], record_inst_id: Optional[str]) -> None:
+    role = str(auth_user.get("role") or "").lower()
+    if role == "super_admin":
+        return
+    user_inst = str(auth_user.get("institutionId") or "").strip()
+    rec_inst = str(record_inst_id or "").strip()
+    if rec_inst and user_inst and rec_inst != user_inst:
+        raise HTTPException(
+            status_code=403,
+            detail={"error": "Access denied: Resource belongs to another university."},
+        )
+
+
+def is_missing_table_error(err: SupabaseQueryError) -> bool:
+    msg = (err.message or "").lower()
+    return (
+        err.status_code == 404
+        or "pgrst205" in msg
+        or "could not find the table" in msg
+        or "does not exist" in msg
+    )
+
+
+def safe_select_optional(
+    client: Any,
+    table: str,
+    filters: Optional[Dict[str, str]] = None,
+    select: str = "*",
+    order: Optional[str] = None,
+    limit: Optional[int] = None,
+) -> List[Dict[str, Any]]:
+    try:
+        return client.select(table, filters=filters, select=select, order=order, limit=limit)
+    except SupabaseQueryError as err:
+        if is_missing_table_error(err):
+            return []
+        raise
+
+
+def safe_insert_optional(
+    client: Any,
+    table: str,
+    rows: Any,
+    upsert: bool = False,
+    on_conflict: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    try:
+        return client.insert(table, rows, upsert=upsert, on_conflict=on_conflict)
+    except SupabaseQueryError as err:
+        if is_missing_table_error(err):
+            return []
+        raise
+
+
+def safe_delete_optional(
+    client: Any,
+    table: str,
+    filters: Dict[str, str],
+) -> None:
+    try:
+        client.delete(table, filters)
+    except SupabaseQueryError as err:
+        if is_missing_table_error(err):
+            return
+        raise
+
+
+def write_audit_log(
+    client: Any,
+    institution_id: str,
+    auth_user: Dict[str, Any],
+    action: str,
+    entity_type: str,
+    entity_id: str,
+    summary: str,
+    previous_value: Optional[str] = None,
+    new_value: Optional[str] = None,
+) -> None:
+    if not institution_id:
+        return
+    safe_insert_optional(
+        client,
+        "audit_logs",
+        {
+            "id": f"aud-{uuid.uuid4().hex[:10]}",
+            "institution_id": institution_id,
+            "user_id": auth_user.get("userId"),
+            "user_name": auth_user.get("name") or "Administrator",
+            "action": action,
+            "entity_type": entity_type,
+            "entity_id": str(entity_id),
+            "summary": summary,
+            "previous_value": previous_value,
+            "new_value": new_value,
+            "created_at": now_iso(),
+        },
+    )
 
 
 def safe_json_loads(raw: Any, default: Any) -> Any:
@@ -43,13 +161,15 @@ def raise_supabase_http_error(err: SupabaseQueryError) -> NoReturn:
 
 
 def map_role_to_display_role(role: str) -> str:
-    if role == "admin":
+    if role in ("admin", "university_admin", "super_admin"):
+        return "Registrar"
+    if role == "timetable_manager":
         return "Registrar"
     if role == "br":
         return "BR"
     if role == "student":
         return "Student"
-    if role == "faculty":
+    if role in ("faculty", "instructor"):
         return "Faculty"
     return "Student"
 
@@ -220,21 +340,41 @@ def build_enriched_polls_for_user(auth_user: Dict[str, Any]) -> List[Dict[str, A
     client = require_supabase_client()
 
     try:
-        # Auto-close expired published polls (ignore RLS error if caller lacks write permissions)
+        # Auto-close expired published polls (ignore RLS error only if caller lacks write permissions)
         try:
             client.update(
                 "polls",
                 {"status": "eq.Published", "end_at": f"lt.{current_iso}"},
                 {"status": "Closed", "closed_at": current_iso, "updated_at": current_iso},
             )
-        except SupabaseQueryError:
-            pass
+        except SupabaseQueryError as close_err:
+            if close_err.status_code not in (401, 403):
+                raise
 
         all_inst_polls = client.select(
             "polls",
             filters={"institution_id": f"eq.{user_inst_id}"},
             order="created_at.desc",
         )
+        if all_inst_polls and any("optimizer_approval_status" not in p for p in all_inst_polls):
+            meta_rows = client.select(
+                "feedback",
+                filters={"institution_id": f"eq.{user_inst_id}", "category": "like.poll_meta:%"},
+                order="created_at.desc",
+            )
+            meta_by_poll: Dict[str, Dict[str, Any]] = {}
+            for mr in meta_rows:
+                cat = str(mr.get("category") or "")
+                pid = cat.split("poll_meta:", 1)[1] if cat.startswith("poll_meta:") else ""
+                parsed = safe_json_loads(mr.get("comment"), None)
+                if pid and isinstance(parsed, dict) and pid not in meta_by_poll:
+                    meta_by_poll[pid] = parsed
+            for p in all_inst_polls:
+                m = meta_by_poll.get(p["id"])
+                if m:
+                    for k in ("poll_category", "target_batch_ids", "optimizer_approval_status", "optimizer_rejection_reason"):
+                        if p.get(k) is None and m.get(k) is not None:
+                            p[k] = m[k]
 
         if role in ("student", "faculty"):
             raw_polls = [p for p in all_inst_polls if p.get("status") in ("Published", "Closed")]
@@ -310,7 +450,7 @@ def build_enriched_polls_for_user(auth_user: Dict[str, Any]) -> List[Dict[str, A
 
         can_view_results = False
         visibility = poll.get("result_visibility")
-        if role == "admin":
+        if role in CATALOG_MANAGER_ROLES:
             can_view_results = True
         elif role == "br":
             can_view_results = (
@@ -343,7 +483,7 @@ def build_enriched_polls_for_user(auth_user: Dict[str, Any]) -> List[Dict[str, A
             )
 
         batch_breakdown = []
-        if role == "admin" or can_view_results:
+        if role in CATALOG_MANAGER_ROLES or can_view_results:
             for b_id, v_cast in batch_votes_map.get(poll_id, {}).items():
                 b_obj = batch_by_id.get(b_id, {})
                 st_count = int(b_obj.get("student_count") or 0)
@@ -377,7 +517,7 @@ def build_enriched_polls_for_user(auth_user: Dict[str, Any]) -> List[Dict[str, A
                 "submittedByName": poll["submitted_by_name"],
                 "brGenderRole": poll["br_gender_role"],
                 "status": status,
-                "rejectionReason": poll.get("rejection_reason") if role in ("admin", "br") else None,
+                "rejectionReason": poll.get("rejection_reason") if role in (*CATALOG_MANAGER_ROLES, "br") else None,
                 "resultVisibility": visibility,
                 "startAt": start_at,
                 "endAt": end_at,
@@ -416,13 +556,13 @@ def load_university_optimization_inputs(
     body = override_body or {}
     client = require_supabase_client()
 
-    def _safe_select(table: str, filters: Dict[str, str], order: Optional[str] = None) -> List[Dict[str, Any]]:
+    def _select_for_uni(table: str, filters: Dict[str, str], order: Optional[str] = None) -> List[Dict[str, Any]]:
         if not university_id:
             return []
         try:
             return client.select(table, filters=filters, order=order)
-        except SupabaseQueryError:
-            return []
+        except SupabaseQueryError as err:
+            raise_supabase_http_error(err)
 
     try:
         inst_row = (
@@ -469,8 +609,8 @@ def load_university_optimization_inputs(
     except SupabaseQueryError as err:
         raise_supabase_http_error(err)
 
-    db_student_prefs = _safe_select("student_preferences", {"institution_id": f"eq.{university_id}"})
-    
+    db_student_prefs = _select_for_uni("student_preferences", {"institution_id": f"eq.{university_id}"})
+
     # Integrate approved BR voting preferences if enabled in institution settings or body override
     use_voting = bool(
         body["useVotingPreferences"]
@@ -496,47 +636,44 @@ def load_university_optimization_inputs(
     }
 
     if use_voting and university_id and inf_weight > 0.0:
-        try:
-            from app.optimization.preference_aggregator import aggregate_approved_voting_preferences
-            agg_res = aggregate_approved_voting_preferences(university_id, inf_weight, low_thresh)
-            batch_prefs_map = agg_res.get("batchPreferences", {})
-            voting_traceability = list(agg_res.get("traceability") or [])
-            voting_excluded = list(agg_res.get("excluded") or [])
-            if batch_prefs_map:
-                pref_by_batch: Dict[str, Dict[str, Any]] = {
-                    str(p.get("batch_id") or p.get("batchId")): p
-                    for p in db_student_prefs
-                    if p.get("batch_id") or p.get("batchId")
-                }
-                for b_id, prefs in batch_prefs_map.items():
-                    if b_id in pref_by_batch:
-                        existing = pref_by_batch[b_id]
-                        cats = prefs.get("categoryStrengths") or {}
-                        if "preferred_lecture_timing" in cats:
-                            existing["preferred_time_window"] = prefs.get("preferred_time_window", existing.get("preferred_time_window"))
-                            existing["avoid_early_8am"] = prefs.get("avoid_early_8am", existing.get("avoid_early_8am"))
-                            existing["avoid_late_after_4pm"] = prefs.get("avoid_late_after_4pm", existing.get("avoid_late_after_4pm"))
-                        if "preferred_free_day" in cats and prefs.get("preferred_free_day"):
-                            existing["preferred_free_day"] = prefs["preferred_free_day"]
-                        if "lab_timing_preferences" in cats:
-                            existing["preferred_lab_window"] = prefs.get("preferred_lab_window")
-                        if "break_schedule_preference" in cats:
-                            existing["break_schedule_preference"] = prefs.get("break_schedule_preference")
-                            existing["max_acceptable_gap_minutes"] = prefs.get("max_acceptable_gap_minutes", existing.get("max_acceptable_gap_minutes"))
-                        existing["preferenceStrength"] = prefs.get("preferenceStrength", 0.0)
-                        existing["categoryStrengths"] = cats
-                        existing["source"] = "manual+voting_poll"
-                    else:
-                        db_student_prefs.append({
-                            "batch_id": b_id,
-                            "institution_id": university_id,
-                            **prefs,
-                        })
-        except Exception:
-            pass
+        from app.optimization.preference_aggregator import aggregate_approved_voting_preferences
+        agg_res = aggregate_approved_voting_preferences(university_id, inf_weight, low_thresh)
+        batch_prefs_map = agg_res.get("batchPreferences", {})
+        voting_traceability = list(agg_res.get("traceability") or [])
+        voting_excluded = list(agg_res.get("excluded") or [])
+        if batch_prefs_map:
+            pref_by_batch: Dict[str, Dict[str, Any]] = {
+                str(p.get("batch_id") or p.get("batchId")): p
+                for p in db_student_prefs
+                if p.get("batch_id") or p.get("batchId")
+            }
+            for b_id, prefs in batch_prefs_map.items():
+                if b_id in pref_by_batch:
+                    existing = pref_by_batch[b_id]
+                    cats = prefs.get("categoryStrengths") or {}
+                    if "preferred_lecture_timing" in cats:
+                        existing["preferred_time_window"] = prefs.get("preferred_time_window", existing.get("preferred_time_window"))
+                        existing["avoid_early_8am"] = prefs.get("avoid_early_8am", existing.get("avoid_early_8am"))
+                        existing["avoid_late_after_4pm"] = prefs.get("avoid_late_after_4pm", existing.get("avoid_late_after_4pm"))
+                    if "preferred_free_day" in cats and prefs.get("preferred_free_day"):
+                        existing["preferred_free_day"] = prefs["preferred_free_day"]
+                    if "lab_timing_preferences" in cats:
+                        existing["preferred_lab_window"] = prefs.get("preferred_lab_window")
+                    if "break_schedule_preference" in cats:
+                        existing["break_schedule_preference"] = prefs.get("break_schedule_preference")
+                        existing["max_acceptable_gap_minutes"] = prefs.get("max_acceptable_gap_minutes", existing.get("max_acceptable_gap_minutes"))
+                    existing["preferenceStrength"] = prefs.get("preferenceStrength", 0.0)
+                    existing["categoryStrengths"] = cats
+                    existing["source"] = "manual+voting_poll"
+                else:
+                    db_student_prefs.append({
+                        "batch_id": b_id,
+                        "institution_id": university_id,
+                        **prefs,
+                    })
 
-    db_inst_prefs = _safe_select("instructor_preferences", {"institution_id": f"eq.{university_id}"})
-    db_inst_avails = _safe_select("instructor_availability", {"institution_id": f"eq.{university_id}"})
+    db_inst_prefs = _select_for_uni("instructor_preferences", {"institution_id": f"eq.{university_id}"})
+    db_inst_avails = _select_for_uni("instructor_availability", {"institution_id": f"eq.{university_id}"})
 
     equip_by_room: Dict[str, List[str]] = defaultdict(list)
     for eq in db_equip:

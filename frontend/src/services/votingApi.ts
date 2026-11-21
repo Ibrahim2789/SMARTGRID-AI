@@ -18,7 +18,7 @@ export interface AuthenticatedVotingUser {
   name: string;
   email: string;
   role: string;
-  systemRole?: 'admin' | 'br' | 'student' | 'faculty';
+  systemRole?: 'admin' | 'university_admin' | 'super_admin' | 'timetable_manager' | 'br' | 'student' | 'faculty';
   institution?: string;
   institutionId?: string;
   batchId?: string | null;
@@ -247,9 +247,14 @@ function normalizeInstitutionRow(raw: Record<string, unknown>): RegisteredInstit
   };
 }
 
-export async function fetchInstitutionsApi(): Promise<RegisteredInstitutionDTO[]> {
+export async function fetchInstitutionsApi(token?: string): Promise<RegisteredInstitutionDTO[]> {
   try {
-    const res = await fetch('/api/institutions');
+    const authToken = token ?? getStoredUser()?.token;
+    const headers: Record<string, string> = {};
+    if (authToken) {
+      headers['Authorization'] = `Bearer ${authToken}`;
+    }
+    const res = await fetch('/api/institutions', { headers });
     const data = await res.json().catch(() => ({ institutions: [] }));
     const list = Array.isArray(data.institutions) ? data.institutions : [];
     return list.map((row: Record<string, unknown>) => normalizeInstitutionRow(row));
@@ -1114,18 +1119,70 @@ export async function saveInstitutionDataApi(
   );
 }
 
+export async function fetchInstitutionWorkspace(
+  currentUser: AuthenticatedVotingUser,
+  institutionId: string
+): Promise<Record<string, unknown>> {
+  const res = await authorizedFetch<{ workspace: Record<string, unknown> }>(
+    `/api/institutions/${encodeURIComponent(institutionId)}/workspace`,
+    currentUser
+  );
+  if (!res || typeof res.workspace !== 'object' || res.workspace === null) {
+    throw new Error('Supabase workspace payload was empty.');
+  }
+  return res.workspace;
+}
+
+export async function resetInstitutionWorkspaceBackend(
+  currentUser: AuthenticatedVotingUser,
+  institutionId: string
+): Promise<{ message: string; workspace: Record<string, unknown> }> {
+  return authorizedFetch<{ message: string; workspace: Record<string, unknown> }>(
+    `/api/institutions/${encodeURIComponent(institutionId)}/reset`,
+    currentUser,
+    { method: 'POST' }
+  );
+}
+
+export async function loadSampleInstitutionCatalogBackend(
+  currentUser: AuthenticatedVotingUser,
+  institutionId: string
+): Promise<{ message: string; workspace: Record<string, unknown> }> {
+  return authorizedFetch<{ message: string; workspace: Record<string, unknown> }>(
+    `/api/institutions/${encodeURIComponent(institutionId)}/load-sample`,
+    currentUser,
+    { method: 'POST' }
+  );
+}
+
 export async function updateUniversitySettingsBackend(
   currentUser: AuthenticatedVotingUser,
   universityId: string,
   settings: {
+    universityName?: string;
+    campusCode?: string;
+    campusName?: string;
+    accreditation?: string;
+    registrarName?: string;
+    registrarEmail?: string;
+    autoConflictSweep?: boolean;
+    defaultSessionMinutes?: number;
+    timetableManagementPolicy?: 'whole_university' | 'department_wise';
+    activeTermIds?: string[];
+    breaks?: unknown[];
     workingDays?: string[] | string;
     dayStartTime?: string;
     dayEndTime?: string;
     periodLengthMinutes?: number;
+    shortBreakEnabled?: boolean;
     shortBreakMinutes?: number;
+    includeBreakAfterLastSlot?: boolean;
     middayBreakEnabled?: boolean;
+    middayBreakMode?: string;
     middayBreakStart?: string;
+    middayBreakStartTime?: string;
     middayBreakDuration?: number;
+    middayBreakDurationMinutes?: number;
     labDurationMinutes?: number;
     labSplitAllowed?: boolean;
     fridayEnabled?: boolean;
@@ -1140,9 +1197,11 @@ export async function updateUniversitySettingsBackend(
     fridayShortBreakMinutes?: number;
     fridayAllowedBatches?: string[];
     fridayAllowedDepartments?: string[];
+    fridayAfternoonShiftEnabled?: boolean;
+    fridayAfternoonStartTime?: string;
   }
-): Promise<{ message: string; university: Record<string, unknown> }> {
-  return authorizedFetch<{ message: string; university: Record<string, unknown> }>(
+): Promise<{ message: string; university: Record<string, unknown>; timeStructure?: Record<string, unknown> }> {
+  return authorizedFetch<{ message: string; university: Record<string, unknown>; timeStructure?: Record<string, unknown> }>(
     `/api/universities/${encodeURIComponent(universityId)}/settings`,
     currentUser,
     {
@@ -1150,6 +1209,49 @@ export async function updateUniversitySettingsBackend(
       body: JSON.stringify(settings)
     }
   );
+}
+
+export async function createSemesterBackend(
+  currentUser: AuthenticatedVotingUser,
+  payload: {
+    id?: string;
+    universityId?: string;
+    name: string;
+    code: string;
+    academicYear?: string;
+    semesterNumber?: number;
+    startDate?: string;
+    endDate?: string;
+    status?: 'draft' | 'active' | 'archived';
+    isActive?: boolean;
+    weeksCount?: number;
+    departmentIds?: string[];
+  }
+): Promise<{ message: string; semester: Record<string, unknown> | null }> {
+  return authorizedFetch('/api/semesters', currentUser, {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function updateSemesterBackend(
+  currentUser: AuthenticatedVotingUser,
+  semesterId: string,
+  payload: Record<string, unknown>
+): Promise<{ message: string; semester: Record<string, unknown> }> {
+  return authorizedFetch(`/api/semesters/${encodeURIComponent(semesterId)}`, currentUser, {
+    method: 'PATCH',
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function deleteSemesterBackend(
+  currentUser: AuthenticatedVotingUser,
+  semesterId: string
+): Promise<{ message: string }> {
+  return authorizedFetch(`/api/semesters/${encodeURIComponent(semesterId)}`, currentUser, {
+    method: 'DELETE'
+  });
 }
 
 export async function fetchDepartmentsBackend(
@@ -1167,16 +1269,94 @@ export async function fetchDepartmentsBackend(
 export async function createDepartmentBackend(
   currentUser: AuthenticatedVotingUser,
   payload: {
+    id?: string;
     universityId?: string;
     code: string;
     name: string;
+    school?: string;
     facultyGroup?: string;
     headOfDepartment?: string;
+    colorHex?: string;
+    subDepartments?: string[];
   }
 ): Promise<{ message: string; department: Record<string, unknown> | null }> {
   return authorizedFetch('/api/departments', currentUser, {
     method: 'POST',
     body: JSON.stringify(payload)
+  });
+}
+
+export async function updateDepartmentBackend(
+  currentUser: AuthenticatedVotingUser,
+  deptId: string,
+  payload: {
+    code?: string;
+    name?: string;
+    school?: string;
+    colorHex?: string;
+    subDepartments?: string[];
+    headOfDepartment?: string;
+  }
+): Promise<{ message: string; department: Record<string, unknown> }> {
+  return authorizedFetch(`/api/departments/${encodeURIComponent(deptId)}`, currentUser, {
+    method: 'PATCH',
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function deleteDepartmentBackend(
+  currentUser: AuthenticatedVotingUser,
+  deptId: string
+): Promise<{ message: string }> {
+  return authorizedFetch(`/api/departments/${encodeURIComponent(deptId)}`, currentUser, {
+    method: 'DELETE'
+  });
+}
+
+export async function createBatchCatalogBackend(
+  currentUser: AuthenticatedVotingUser,
+  payload: {
+    id?: string;
+    universityId?: string;
+    code: string;
+    name?: string;
+    departmentCode?: string;
+    programId?: string;
+    termId?: string;
+    batchCode?: string;
+    section?: string;
+    homeRoom?: string;
+    year?: number;
+    semester?: number;
+    academicYear?: number;
+    size?: number;
+    studentCount?: number;
+    sharedCourseIds?: string[];
+  }
+): Promise<{ message: string; batch: Record<string, unknown> | null }> {
+  return authorizedFetch('/api/batches', currentUser, {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function updateBatchBackend(
+  currentUser: AuthenticatedVotingUser,
+  batchId: string,
+  payload: Record<string, unknown>
+): Promise<{ message: string; batch: Record<string, unknown> }> {
+  return authorizedFetch(`/api/batches/${encodeURIComponent(batchId)}`, currentUser, {
+    method: 'PATCH',
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function deleteBatchBackend(
+  currentUser: AuthenticatedVotingUser,
+  batchId: string
+): Promise<{ message: string }> {
+  return authorizedFetch(`/api/batches/${encodeURIComponent(batchId)}`, currentUser, {
+    method: 'DELETE'
   });
 }
 
@@ -1199,8 +1379,11 @@ export async function createCourseBackend(
     universityId?: string;
     code: string;
     title: string;
+    departmentId?: string;
     departmentCode?: string;
+    subDepartment?: string;
     batchId?: string;
+    assignedBatchId?: string;
     semester?: number;
     instructorId?: string;
     assignedInstructorId?: string;
@@ -1218,11 +1401,34 @@ export async function createCourseBackend(
     requiredEquipment?: string[];
     sectionCode?: string;
     labSessionMode?: string;
+    isElective?: boolean;
+    electivePoolName?: string;
+    autoCreateSessions?: boolean;
   }
 ): Promise<{ message: string; course: Record<string, unknown> | null }> {
   return authorizedFetch('/api/courses', currentUser, {
     method: 'POST',
     body: JSON.stringify(payload)
+  });
+}
+
+export async function updateCourseBackend(
+  currentUser: AuthenticatedVotingUser,
+  courseId: string,
+  payload: Record<string, unknown>
+): Promise<{ message: string; course: Record<string, unknown> }> {
+  return authorizedFetch(`/api/courses/${encodeURIComponent(courseId)}`, currentUser, {
+    method: 'PATCH',
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function deleteCourseBackend(
+  currentUser: AuthenticatedVotingUser,
+  courseId: string
+): Promise<{ message: string }> {
+  return authorizedFetch(`/api/courses/${encodeURIComponent(courseId)}`, currentUser, {
+    method: 'DELETE'
   });
 }
 
@@ -1245,17 +1451,55 @@ export async function createInstructorBackend(
     universityId?: string;
     name: string;
     email?: string;
+    departmentId?: string;
     departmentCode?: string;
+    subDepartment?: string;
+    title?: string;
     designation?: string;
     specialization?: string;
     staffRole?: string;
     maxWeeklyHours?: number;
     maxDailyClasses?: number;
+    maxConsecutiveHours?: number;
+    qualifiedCourseIds?: string[];
+    preferredDays?: string[];
+    unavailableSlots?: Array<{ day: string; timeSlot: string; reason?: string }>;
   }
 ): Promise<{ message: string; instructor: Record<string, unknown> | null }> {
   return authorizedFetch('/api/instructors', currentUser, {
     method: 'POST',
     body: JSON.stringify(payload)
+  });
+}
+
+export async function updateInstructorBackend(
+  currentUser: AuthenticatedVotingUser,
+  instId: string,
+  payload: Record<string, unknown>
+): Promise<{ message: string; instructor: Record<string, unknown> }> {
+  return authorizedFetch(`/api/instructors/${encodeURIComponent(instId)}`, currentUser, {
+    method: 'PATCH',
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function updateInstructorAvailabilityBackend(
+  currentUser: AuthenticatedVotingUser,
+  instId: string,
+  unavailableSlots: Array<{ day: string; timeSlot: string; reason?: string }>
+): Promise<{ message: string; unavailableCount: number }> {
+  return authorizedFetch(`/api/instructors/${encodeURIComponent(instId)}/availability`, currentUser, {
+    method: 'PUT',
+    body: JSON.stringify({ unavailableSlots })
+  });
+}
+
+export async function deleteInstructorBackend(
+  currentUser: AuthenticatedVotingUser,
+  instId: string
+): Promise<{ message: string }> {
+  return authorizedFetch(`/api/instructors/${encodeURIComponent(instId)}`, currentUser, {
+    method: 'DELETE'
   });
 }
 
@@ -1276,6 +1520,7 @@ export async function createClassroomBackend(
   payload: {
     id?: string;
     universityId?: string;
+    buildingId?: string;
     code?: string;
     name: string;
     building?: string;
@@ -1283,13 +1528,127 @@ export async function createClassroomBackend(
     capacity?: number;
     type?: string;
     equipment?: string[];
+    isAccessible?: boolean;
     isAvailable?: boolean;
     assignedLabEngineerId?: string;
+    labCategory?: string;
   }
 ): Promise<{ message: string; classroom: Record<string, unknown> | null }> {
   return authorizedFetch('/api/classrooms', currentUser, {
     method: 'POST',
     body: JSON.stringify(payload)
+  });
+}
+
+export async function updateClassroomBackend(
+  currentUser: AuthenticatedVotingUser,
+  roomId: string,
+  payload: Record<string, unknown>
+): Promise<{ message: string; classroom: Record<string, unknown> }> {
+  return authorizedFetch(`/api/classrooms/${encodeURIComponent(roomId)}`, currentUser, {
+    method: 'PATCH',
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function deleteClassroomBackend(
+  currentUser: AuthenticatedVotingUser,
+  roomId: string
+): Promise<{ message: string }> {
+  return authorizedFetch(`/api/classrooms/${encodeURIComponent(roomId)}`, currentUser, {
+    method: 'DELETE'
+  });
+}
+
+export async function createSectionBackend(
+  currentUser: AuthenticatedVotingUser,
+  payload: Record<string, unknown>
+): Promise<{ message: string; section: Record<string, unknown> | null }> {
+  return authorizedFetch('/api/sections', currentUser, {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function deleteSectionBackend(
+  currentUser: AuthenticatedVotingUser,
+  sectionId: string
+): Promise<{ message: string }> {
+  return authorizedFetch(`/api/sections/${encodeURIComponent(sectionId)}`, currentUser, {
+    method: 'DELETE'
+  });
+}
+
+export async function autoGenerateSectionsBackend(
+  currentUser: AuthenticatedVotingUser,
+  payload?: { universityId?: string; termId?: string }
+): Promise<{ message: string; createdCount: number; sections: Array<Record<string, unknown>> }> {
+  return authorizedFetch('/api/sections/auto-generate', currentUser, {
+    method: 'POST',
+    body: JSON.stringify(payload || {})
+  });
+}
+
+export async function updateSectionSlotBackend(
+  currentUser: AuthenticatedVotingUser,
+  sectionId: string,
+  assignedSlot: Record<string, unknown>
+): Promise<{ message: string; section: Record<string, unknown> }> {
+  return authorizedFetch(`/api/sections/${encodeURIComponent(sectionId)}/slot`, currentUser, {
+    method: 'PATCH',
+    body: JSON.stringify({ assignedSlot })
+  });
+}
+
+export async function toggleSectionLockBackend(
+  currentUser: AuthenticatedVotingUser,
+  sectionId: string,
+  isLocked?: boolean
+): Promise<{ message: string; isLocked: boolean; section: Record<string, unknown> }> {
+  return authorizedFetch(`/api/sections/${encodeURIComponent(sectionId)}/lock`, currentUser, {
+    method: 'PATCH',
+    body: JSON.stringify(isLocked === undefined ? {} : { isLocked })
+  });
+}
+
+export async function swapSectionsBackend(
+  currentUser: AuthenticatedVotingUser,
+  sectionAId: string,
+  sectionBId: string
+): Promise<{ message: string }> {
+  return authorizedFetch('/api/sections/swap', currentUser, {
+    method: 'POST',
+    body: JSON.stringify({ sectionAId, sectionBId })
+  });
+}
+
+export async function createConstraintBackend(
+  currentUser: AuthenticatedVotingUser,
+  payload: Record<string, unknown>
+): Promise<{ message: string; constraint: Record<string, unknown> | null }> {
+  return authorizedFetch('/api/constraints', currentUser, {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function updateConstraintBackend(
+  currentUser: AuthenticatedVotingUser,
+  constraintId: string,
+  payload: { enabled?: boolean; isEnabled?: boolean; weight?: number; name?: string; description?: string }
+): Promise<{ message: string; constraint: Record<string, unknown> }> {
+  return authorizedFetch(`/api/constraints/${encodeURIComponent(constraintId)}`, currentUser, {
+    method: 'PATCH',
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function deleteConstraintBackend(
+  currentUser: AuthenticatedVotingUser,
+  constraintId: string
+): Promise<{ message: string }> {
+  return authorizedFetch(`/api/constraints/${encodeURIComponent(constraintId)}`, currentUser, {
+    method: 'DELETE'
   });
 }
 
@@ -1363,6 +1722,43 @@ export async function publishTimetableBackend(
   );
 }
 
+export async function restoreTimetableBackend(
+  currentUser: AuthenticatedVotingUser,
+  versionId: string
+): Promise<{ message: string; version: Record<string, unknown> }> {
+  return authorizedFetch<{ message: string; version: Record<string, unknown> }>(
+    `/api/timetables/${encodeURIComponent(versionId)}/restore`,
+    currentUser,
+    { method: 'POST' }
+  );
+}
+
+export async function deleteTimetableBackend(
+  currentUser: AuthenticatedVotingUser,
+  versionId: string
+): Promise<{ message: string }> {
+  return authorizedFetch<{ message: string }>(
+    `/api/timetables/${encodeURIComponent(versionId)}`,
+    currentUser,
+    { method: 'DELETE' }
+  );
+}
+
+export async function patchTimetableEntriesBackend(
+  currentUser: AuthenticatedVotingUser,
+  versionId: string,
+  payload: Record<string, unknown>
+): Promise<{ message: string; timetableEntries: Array<Record<string, unknown>> }> {
+  return authorizedFetch<{ message: string; timetableEntries: Array<Record<string, unknown>> }>(
+    `/api/timetables/${encodeURIComponent(versionId)}/entries`,
+    currentUser,
+    {
+      method: 'PATCH',
+      body: JSON.stringify(payload)
+    }
+  );
+}
+
 export async function fetchReschedulingProposalsBackend(
   currentUser: AuthenticatedVotingUser,
   universityId?: string
@@ -1375,6 +1771,30 @@ export async function fetchReschedulingProposalsBackend(
   return res.proposals || [];
 }
 
+export async function fetchReschedulingDisruptionsBackend(
+  currentUser: AuthenticatedVotingUser,
+  universityId?: string
+): Promise<Array<Record<string, unknown>>> {
+  const q = universityId ? `?universityId=${encodeURIComponent(universityId)}` : '';
+  const res = await authorizedFetch<{ disruptions: Array<Record<string, unknown>> }>(
+    `/api/rescheduling/disruptions${q}`,
+    currentUser
+  );
+  return res.disruptions || [];
+}
+
+export async function fetchReschedulingHistoryBackend(
+  currentUser: AuthenticatedVotingUser,
+  universityId?: string
+): Promise<Array<Record<string, unknown>>> {
+  const q = universityId ? `?universityId=${encodeURIComponent(universityId)}` : '';
+  const res = await authorizedFetch<{ history: Array<Record<string, unknown>> }>(
+    `/api/rescheduling/history${q}`,
+    currentUser
+  );
+  return res.history || [];
+}
+
 export async function rejectReschedulingProposalBackend(
   currentUser: AuthenticatedVotingUser,
   proposalId: string
@@ -1383,6 +1803,49 @@ export async function rejectReschedulingProposalBackend(
     `/api/rescheduling/proposals/${encodeURIComponent(proposalId)}/reject`,
     currentUser,
     { method: 'POST' }
+  );
+}
+
+export async function fetchFeedbackProposalsBackend(
+  currentUser: AuthenticatedVotingUser,
+  universityId?: string
+): Promise<Array<Record<string, unknown>>> {
+  const q = universityId ? `?universityId=${encodeURIComponent(universityId)}` : '';
+  const res = await authorizedFetch<{ proposals: Array<Record<string, unknown>> }>(
+    `/api/feedback/proposals${q}`,
+    currentUser
+  );
+  return res.proposals || [];
+}
+
+export async function createFeedbackProposalBackend(
+  currentUser: AuthenticatedVotingUser,
+  payload: {
+    universityId?: string;
+    title: string;
+    category: string;
+    description: string;
+    targetSlot?: string;
+  }
+): Promise<{ message: string; proposal: Record<string, unknown> | null }> {
+  return authorizedFetch('/api/feedback/proposals', currentUser, {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function voteFeedbackProposalBackend(
+  currentUser: AuthenticatedVotingUser,
+  proposalId: string,
+  vote: 'approve' | 'revise'
+): Promise<{ message: string; proposal: Record<string, unknown> }> {
+  return authorizedFetch(
+    `/api/feedback/proposals/${encodeURIComponent(proposalId)}/vote`,
+    currentUser,
+    {
+      method: 'POST',
+      body: JSON.stringify({ vote })
+    }
   );
 }
 

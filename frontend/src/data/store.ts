@@ -36,8 +36,7 @@ import {
   BackendOptimizationAssignment,
   BackendOptimizationEntry,
   BackendFitnessBreakdown,
-  getStoredUser,
-  saveInstitutionDataApi
+  getStoredUser
 } from '../services/votingApi';
 
 const DEFAULT_TIME_STRUCTURE: TimeStructure = {
@@ -271,9 +270,9 @@ export interface InstitutionalDataStore {
   importHistory?: LocalImportHistoryRecord[];
 }
 
-const ACTIVE_INST_KEY = 'smartgrid_active_inst_id_v6';
-const REGISTERED_INSTITUTIONS_KEY = 'smartgrid_registered_institutions_v6';
 const LEGACY_SAMPLE_INST_IDS = new Set(['inst-western-poly', 'inst-apex-tech']);
+const institutionStoresMap = new Map<string, InstitutionalDataStore>();
+const registeredInstitutionsMap = new Map<string, InstitutionSummary>();
 
 export function getBlankInitialData(): InstitutionalDataStore {
   return {
@@ -308,7 +307,8 @@ export function getBlankInitialData(): InstitutionalDataStore {
     constraints: DEFAULT_CONSTRAINT_RULES,
     scenarios: [],
     auditLogs: [],
-    feedbackPolls: []
+    feedbackPolls: [],
+    importHistory: []
   };
 }
 
@@ -316,89 +316,47 @@ function loadDataForInstitution(instId: string): InstitutionalDataStore {
   if (!instId || LEGACY_SAMPLE_INST_IDS.has(instId)) {
     return getBlankInitialData();
   }
-  try {
-    if (typeof localStorage !== 'undefined') {
-      const storageKey = `smartgrid_inst_data_${instId}`;
-      const raw = localStorage.getItem(storageKey);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (parsed && !parsed.institutionProfile?.isSample) {
-          return {
-            ...parsed,
-            institutionProfile: parsed.institutionProfile || getBlankInitialData().institutionProfile,
-            selectedClassGroupId: parsed.selectedClassGroupId || parsed.studentGroups?.[0]?.id || ''
-          };
-        }
-      }
-    }
-  } catch (e) {
-    console.warn(`Failed to parse stored data for institution ${instId}:`, e);
+  const cached = institutionStoresMap.get(instId);
+  if (cached && !cached.institutionProfile?.isSample) {
+    return {
+      ...cached,
+      institutionProfile: cached.institutionProfile || getBlankInitialData().institutionProfile,
+      selectedClassGroupId: cached.selectedClassGroupId || cached.studentGroups?.[0]?.id || ''
+    };
   }
-
   return getBlankInitialData();
 }
 
-function getActiveInstId(): string {
-  try {
-    if (typeof localStorage !== 'undefined') {
-      LEGACY_SAMPLE_INST_IDS.forEach(legacyId => {
-        localStorage.removeItem(`smartgrid_inst_data_${legacyId}`);
-      });
-      const stored = localStorage.getItem(ACTIVE_INST_KEY);
-      if (stored && !LEGACY_SAMPLE_INST_IDS.has(stored)) {
-        return stored;
-      }
-      if (stored && LEGACY_SAMPLE_INST_IDS.has(stored)) {
-        localStorage.removeItem(ACTIVE_INST_KEY);
-      }
-    }
-  } catch {}
-  return '';
-}
-
-let currentInstitutionId = getActiveInstId();
-let currentStore: InstitutionalDataStore = loadDataForInstitution(currentInstitutionId);
+let currentInstitutionId = '';
+let currentStore: InstitutionalDataStore = getBlankInitialData();
 const listeners = new Set<() => void>();
 
 function notifyListeners() {
-  try {
-    if (typeof localStorage !== 'undefined' && currentInstitutionId && !LEGACY_SAMPLE_INST_IDS.has(currentInstitutionId)) {
-      localStorage.setItem(`smartgrid_inst_data_${currentInstitutionId}`, JSON.stringify(currentStore));
-      localStorage.setItem(ACTIVE_INST_KEY, currentInstitutionId);
-
-      // Keep REGISTERED_INSTITUTIONS_KEY synchronized with the active institution's profile & timing
-      const prof = currentStore.institutionProfile;
-      const ts = currentStore.timeStructure;
-      if (prof && prof.name && ts && !prof.isSample) {
-        const computed = computeAcademicScheduleConfig(ts);
-        const existingRaw = localStorage.getItem(REGISTERED_INSTITUTIONS_KEY);
-        const existingList: InstitutionSummary[] = existingRaw ? JSON.parse(existingRaw) : [];
-        const updatedSummary: InstitutionSummary = {
-          id: currentInstitutionId,
-          name: prof.name,
-          code: prof.code || prof.campusCode?.split('-')[0] || 'UNIV',
-          campusName: prof.campusName || 'Main Campus',
-          accreditation: prof.accreditation,
-          isSample: false,
-          workingDays: computed.workingDays,
-          dayStartTime: computed.dayStartTime,
-          dayEndTime: computed.dayEndTime,
-          periodLengthMinutes: computed.periodLengthMinutes,
-          shortBreakMinutes: computed.shortBreakMinutes,
-          middayBreakEnabled: computed.middayBreak.enabled,
-          middayBreakStart: computed.middayBreak.startTime24,
-          middayBreakDuration: computed.middayBreak.durationMinutes,
-          labDurationMinutes: computed.labDurationMinutes
-        };
-        const merged = [
-          ...existingList.filter(item => item.id !== currentInstitutionId && !LEGACY_SAMPLE_INST_IDS.has(item.id) && !item.isSample && item.name),
-          updatedSummary
-        ];
-        localStorage.setItem(REGISTERED_INSTITUTIONS_KEY, JSON.stringify(merged));
-      }
+  if (currentInstitutionId && !LEGACY_SAMPLE_INST_IDS.has(currentInstitutionId)) {
+    institutionStoresMap.set(currentInstitutionId, currentStore);
+    const prof = currentStore.institutionProfile;
+    const ts = currentStore.timeStructure;
+    if (prof && prof.name && ts && !prof.isSample) {
+      const computed = computeAcademicScheduleConfig(ts);
+      const updatedSummary: InstitutionSummary = {
+        id: currentInstitutionId,
+        name: prof.name,
+        code: prof.code || prof.campusCode?.split('-')[0] || 'UNIV',
+        campusName: prof.campusName || 'Main Campus',
+        accreditation: prof.accreditation,
+        isSample: false,
+        workingDays: computed.workingDays,
+        dayStartTime: computed.dayStartTime,
+        dayEndTime: computed.dayEndTime,
+        periodLengthMinutes: computed.periodLengthMinutes,
+        shortBreakMinutes: computed.shortBreakMinutes,
+        middayBreakEnabled: computed.middayBreak.enabled,
+        middayBreakStart: computed.middayBreak.startTime24,
+        middayBreakDuration: computed.middayBreak.durationMinutes,
+        labDurationMinutes: computed.labDurationMinutes
+      };
+      registeredInstitutionsMap.set(currentInstitutionId, updatedSummary);
     }
-  } catch (e) {
-    console.warn('LocalStorage save failed', e);
   }
   listeners.forEach(fn => fn());
 }
@@ -413,49 +371,33 @@ export const institutionalStore = {
   },
 
   getAvailableInstitutions(): InstitutionSummary[] {
-    const list: InstitutionSummary[] = [];
-
-    try {
-      if (typeof localStorage !== 'undefined') {
-        const custom = localStorage.getItem(REGISTERED_INSTITUTIONS_KEY);
-        if (custom) {
-          const parsed = JSON.parse(custom) as InstitutionSummary[];
-          if (Array.isArray(parsed)) {
-            const ids = new Set<string>();
-            parsed.forEach(p => {
-              if (
-                p &&
-                p.id &&
-                p.name &&
-                !LEGACY_SAMPLE_INST_IDS.has(p.id) &&
-                !p.isSample &&
-                !p.isDemoTemplate &&
-                !ids.has(p.id)
-              ) {
-                ids.add(p.id);
-                list.push(p);
-              }
-            });
-          }
-        }
-      }
-    } catch {}
-
-    return list;
+    return Array.from(registeredInstitutionsMap.values()).filter(
+      p =>
+        Boolean(p && p.id && p.name) &&
+        !LEGACY_SAMPLE_INST_IDS.has(p.id) &&
+        !p.isSample &&
+        !p.isDemoTemplate
+    );
   },
 
   switchInstitution(institutionId: string) {
     if (!institutionId || LEGACY_SAMPLE_INST_IDS.has(institutionId)) return;
     if (institutionId === currentInstitutionId) return;
-    try {
-      if (typeof localStorage !== 'undefined' && currentInstitutionId && !LEGACY_SAMPLE_INST_IDS.has(currentInstitutionId)) {
-        localStorage.setItem(`smartgrid_inst_data_${currentInstitutionId}`, JSON.stringify(currentStore));
-      }
-    } catch {}
+    if (currentInstitutionId && !LEGACY_SAMPLE_INST_IDS.has(currentInstitutionId)) {
+      institutionStoresMap.set(currentInstitutionId, currentStore);
+    }
 
     currentInstitutionId = institutionId;
     currentStore = loadDataForInstitution(institutionId);
     notifyListeners();
+  },
+
+  resetWorkspaceSession() {
+    institutionStoresMap.clear();
+    registeredInstitutionsMap.clear();
+    currentInstitutionId = '';
+    currentStore = getBlankInitialData();
+    listeners.forEach(fn => fn());
   },
 
   registerNewInstitution(
@@ -488,14 +430,7 @@ export const institutionalStore = {
       middayBreakDuration: computed.middayBreak.durationMinutes,
       labDurationMinutes: computed.labDurationMinutes
     };
-
-    try {
-      if (typeof localStorage !== 'undefined') {
-        const existing = this.getAvailableInstitutions();
-        const updated = [...existing.filter(i => i.id !== instId), newSummary];
-        localStorage.setItem(REGISTERED_INSTITUTIONS_KEY, JSON.stringify(updated));
-      }
-    } catch {}
+    registeredInstitutionsMap.set(instId, newSummary);
 
     const resolvedTerms: AcademicTerm[] =
       customTerms && customTerms.length > 0
@@ -922,31 +857,20 @@ export const institutionalStore = {
       }
     };
 
-    const hasGeneratedTimetable =
-      currentStore.scenarios.length > 0 ||
-      currentStore.sections.some(s => Boolean(s.assignedSlot));
-
-    const solverResult = hasGeneratedTimetable
-      ? this.runTimetableSolver({
-          forceRescheduleAll: true,
-          strategyName: `Timing Update (${computed.periodLengthMinutes}m Class / ${computed.labDurationHoursLabel} Lab)`
-        })
-      : { placedCount: 0 };
+    const placedExisting = currentStore.sections.filter(s => Boolean(s.assignedSlot)).length;
 
     this.addAuditLog(
       'update',
       'time',
       currentStore.timeStructure.id,
-      hasGeneratedTimetable
-        ? `Saved academic timing configuration: ${computed.summaryText}. Re-synchronized ${solverResult.placedCount} sessions.`
-        : `Saved academic timing configuration: ${computed.summaryText}.`
+      `Saved academic timing configuration: ${computed.summaryText}.`
     );
     notifyListeners();
 
     return {
       success: true,
       errors: [],
-      placedCount: solverResult.placedCount,
+      placedCount: placedExisting,
       summaryText: computed.summaryText
     };
   },
@@ -965,16 +889,7 @@ export const institutionalStore = {
       }
     };
 
-    const hasGeneratedTimetable =
-      currentStore.scenarios.length > 0 ||
-      currentStore.sections.some(s => Boolean(s.assignedSlot));
-
-    const solverResult = hasGeneratedTimetable
-      ? this.runTimetableSolver({
-          forceRescheduleAll: true,
-          strategyName: 'Default University Timings Restored'
-        })
-      : { placedCount: 0 };
+    const placedExisting = currentStore.sections.filter(s => Boolean(s.assignedSlot)).length;
 
     this.addAuditLog(
       'restore',
@@ -985,7 +900,7 @@ export const institutionalStore = {
     notifyListeners();
 
     return {
-      placedCount: solverResult.placedCount,
+      placedCount: placedExisting,
       summaryText: computed.summaryText
     };
   },
@@ -1940,9 +1855,6 @@ export const institutionalStore = {
       `Imported catalog data (${created} created, ${updated} updated, ${skipped} skipped). No timetable generated automatically.`
     );
     notifyListeners();
-    if (!payload.skipSync) {
-      void this.syncToBackend();
-    }
 
     return {
       created,
@@ -3283,47 +3195,60 @@ export const institutionalStore = {
   },
 
   // 13. Backend Sync & Hydration Helpers
-  registerRemoteInstitutions(remoteInstitutions: RegisteredInstitutionDTO[]) {
+  registerRemoteInstitutions(remoteInstitutions: RegisteredInstitutionDTO[], replaceExisting = false) {
     if (!Array.isArray(remoteInstitutions)) return;
-    try {
-      if (typeof localStorage !== 'undefined') {
-        const existing = this.getAvailableInstitutions();
-        const byId = new Map<string, InstitutionSummary>();
-        existing.forEach(item => {
-          if (!LEGACY_SAMPLE_INST_IDS.has(item.id) && !item.isSample) {
-            byId.set(item.id, item);
-          }
-        });
-
-        remoteInstitutions.forEach(remote => {
-          if (!remote.id || !remote.name || LEGACY_SAMPLE_INST_IDS.has(remote.id) || remote.isSample || remote.isDemoTemplate) return;
-          const prev = byId.get(remote.id);
-          byId.set(remote.id, {
-            id: remote.id,
-            name: remote.name,
-            code: remote.code || prev?.code || 'UNIV',
-            campusName: remote.campusName || prev?.campusName || 'Main Campus',
-            accreditation: remote.accreditation || prev?.accreditation,
-            isSample: false,
-            workingDays: (remote.workingDays as DayOfWeek[] | undefined) || prev?.workingDays || ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'],
-            dayStartTime: remote.dayStartTime || prev?.dayStartTime || '09:00',
-            dayEndTime: remote.dayEndTime || prev?.dayEndTime || '17:00',
-            periodLengthMinutes: remote.periodLengthMinutes || prev?.periodLengthMinutes || 50,
-            shortBreakMinutes: remote.shortBreakMinutes ?? prev?.shortBreakMinutes ?? 10,
-            middayBreakEnabled: remote.middayBreakEnabled ?? prev?.middayBreakEnabled ?? true,
-            middayBreakStart: remote.middayBreakStart || prev?.middayBreakStart || '13:00',
-            middayBreakDuration: remote.middayBreakDuration || prev?.middayBreakDuration || 60,
-            labDurationMinutes: remote.labDurationMinutes || prev?.labDurationMinutes || 180,
-            isDemoTemplate: false
-          });
-        });
-
-        localStorage.setItem(REGISTERED_INSTITUTIONS_KEY, JSON.stringify(Array.from(byId.values())));
-        listeners.forEach(fn => fn());
-      }
-    } catch (e) {
-      console.warn('Failed to merge remote institutions:', e);
+    if (replaceExisting) {
+      registeredInstitutionsMap.clear();
     }
+    remoteInstitutions.forEach(remote => {
+      if (!remote.id || !remote.name || LEGACY_SAMPLE_INST_IDS.has(remote.id) || remote.isSample || remote.isDemoTemplate) return;
+      const prev = registeredInstitutionsMap.get(remote.id);
+      registeredInstitutionsMap.set(remote.id, {
+        id: remote.id,
+        name: remote.name,
+        code: remote.code || prev?.code || 'UNIV',
+        campusName: remote.campusName || prev?.campusName || 'Main Campus',
+        accreditation: remote.accreditation || prev?.accreditation,
+        isSample: false,
+        workingDays: (remote.workingDays as DayOfWeek[] | undefined) || prev?.workingDays || ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'],
+        dayStartTime: remote.dayStartTime || prev?.dayStartTime || '09:00',
+        dayEndTime: remote.dayEndTime || prev?.dayEndTime || '17:00',
+        periodLengthMinutes: remote.periodLengthMinutes || prev?.periodLengthMinutes || 50,
+        shortBreakMinutes: remote.shortBreakMinutes ?? prev?.shortBreakMinutes ?? 10,
+        middayBreakEnabled: remote.middayBreakEnabled ?? prev?.middayBreakEnabled ?? true,
+        middayBreakStart: remote.middayBreakStart || prev?.middayBreakStart || '13:00',
+        middayBreakDuration: remote.middayBreakDuration || prev?.middayBreakDuration || 60,
+        labDurationMinutes: remote.labDurationMinutes || prev?.labDurationMinutes || 180,
+        isDemoTemplate: false
+      });
+    });
+    listeners.forEach(fn => fn());
+  },
+
+  setConstraints(constraints: ConstraintRule[]) {
+    currentStore = {
+      ...currentStore,
+      constraints
+    };
+    notifyListeners();
+  },
+
+  setFeedbackPolls(polls: FeedbackPollItem[]) {
+    currentStore = {
+      ...currentStore,
+      feedbackPolls: polls
+    };
+    notifyListeners();
+  },
+
+  upsertFeedbackPoll(poll: FeedbackPollItem) {
+    const existing = currentStore.feedbackPolls || [];
+    const idx = existing.findIndex(p => p.id === poll.id);
+    currentStore = {
+      ...currentStore,
+      feedbackPolls: idx >= 0 ? existing.map(p => (p.id === poll.id ? poll : p)) : [poll, ...existing]
+    };
+    notifyListeners();
   },
 
   hydrateInstitutionData(instId: string, payload: Partial<InstitutionalDataStore> | null) {
@@ -3349,19 +3274,206 @@ export const institutionalStore = {
       constraints: Array.isArray(payload.constraints) && payload.constraints.length > 0 ? payload.constraints : base.constraints,
       scenarios: Array.isArray(payload.scenarios) ? payload.scenarios : base.scenarios,
       auditLogs: Array.isArray(payload.auditLogs) ? payload.auditLogs : base.auditLogs,
-      feedbackPolls: Array.isArray(payload.feedbackPolls) ? payload.feedbackPolls : base.feedbackPolls
+      feedbackPolls: Array.isArray(payload.feedbackPolls) ? payload.feedbackPolls : base.feedbackPolls,
+      importHistory: Array.isArray(payload.importHistory) ? payload.importHistory : base.importHistory
     };
 
-    try {
-      if (typeof localStorage !== 'undefined') {
-        localStorage.setItem(`smartgrid_inst_data_${instId}`, JSON.stringify(merged));
-      }
-    } catch {}
+    institutionStoresMap.set(instId, merged);
 
     if (instId === currentInstitutionId) {
       currentStore = merged;
       listeners.forEach(fn => fn());
     }
+  },
+
+  hydrateFromWorkspacePayload(instId: string, workspace: Record<string, unknown>, currentUserId?: string) {
+    if (!instId || LEGACY_SAMPLE_INST_IDS.has(instId) || !workspace || typeof workspace !== 'object') return;
+
+    const rawInst = (workspace.institution || {}) as Record<string, unknown>;
+    const rawTs = (workspace.timeStructure || {}) as Partial<TimeStructure>;
+    const mergedTsBase: TimeStructure = {
+      ...DEFAULT_TIME_STRUCTURE,
+      ...rawTs
+    };
+    const computedTs = computeAcademicScheduleConfig(mergedTsBase);
+    const hydratedTimeStructure: TimeStructure = {
+      ...mergedTsBase,
+      workingDays: computedTs.workingDays,
+      periods: rawTs.periods && rawTs.periods.length > 0 ? rawTs.periods : computedTs.periods
+    };
+
+    const mapPeriodFromStart = (day: DayOfWeek, rawStart: string): string => {
+      if (!/^\d{1,2}:\d{2}$/.test(rawStart.trim())) return rawStart;
+      const slots = computedTs.slots || [];
+      if (slots.length === 0) return rawStart;
+      const targetMins = parseTime24ToMinutes(rawStart, 540);
+      let best = slots[0];
+      let bestDiff = Math.abs((best.startMinutes ?? 540) - targetMins);
+      for (const slot of slots) {
+        const diff = Math.abs((slot.startMinutes ?? 540) - targetMins);
+        if (diff < bestDiff) {
+          bestDiff = diff;
+          best = slot;
+        }
+      }
+      return best.basePeriod || best.period;
+    };
+
+    const rawSections = Array.isArray(workspace.sections) ? (workspace.sections as Section[]) : [];
+    const hydratedSections: Section[] = rawSections.map(sec => {
+      if (!sec.assignedSlot) return sec;
+      const day = (String(sec.assignedSlot.day || 'Mon').slice(0, 3) as DayOfWeek) || 'Mon';
+      const tsStr = String(sec.assignedSlot.timeSlot || sec.assignedSlot.startTime24 || '');
+      const normalizedPeriod = /^\d{1,2}:\d{2}$/.test(tsStr.trim()) ? mapPeriodFromStart(day, tsStr) : tsStr;
+      return {
+        ...sec,
+        assignedSlot: {
+          ...sec.assignedSlot,
+          day,
+          timeSlot: normalizedPeriod
+        }
+      };
+    });
+
+    const rawScenarios = Array.isArray(workspace.scenarios) ? (workspace.scenarios as TimetableScenario[]) : [];
+    const hydratedScenarios: TimetableScenario[] = rawScenarios.map(scen => {
+      const normalizedAssigns: Record<string, SectionSlotAssignment> = {};
+      Object.entries(scen.assignments || {}).forEach(([secId, assign]) => {
+        const day = (String(assign.day || 'Mon').slice(0, 3) as DayOfWeek) || 'Mon';
+        const rawTime = String(assign.startTime24 || assign.timeSlot || '');
+        const mappedPeriod = /^\d{1,2}:\d{2}$/.test(rawTime.trim())
+          ? mapPeriodFromStart(day, rawTime)
+          : assign.timeSlot;
+        normalizedAssigns[secId] = {
+          ...assign,
+          day,
+          timeSlot: mappedPeriod
+        };
+      });
+      return {
+        ...scen,
+        assignments: normalizedAssigns
+      };
+    });
+
+    const rawFeedback = Array.isArray(workspace.feedbackPolls)
+      ? (workspace.feedbackPolls as Array<Record<string, unknown>>)
+      : [];
+    const hydratedPolls: FeedbackPollItem[] = rawFeedback.map(fp => {
+      const voters = (fp.voters && typeof fp.voters === 'object' ? fp.voters : {}) as Record<string, 'approve' | 'revise'>;
+      const statusRaw = String(fp.status || 'Open');
+      const status: FeedbackPollItem['status'] =
+        statusRaw === 'Implemented' ? 'Implemented' : statusRaw === 'Under Review' ? 'Under Review' : 'Active';
+      return {
+        id: String(fp.id || ''),
+        title: String(fp.title || ''),
+        category: String(fp.category || 'General'),
+        description: String(fp.description || ''),
+        targetSlot: String(fp.targetSlot || ''),
+        votesApprove: Number(fp.votesApprove ?? 0),
+        votesRevise: Number(fp.votesRevise ?? 0),
+        userVote: currentUserId ? voters[currentUserId] || null : null,
+        status,
+        submittedBy: String(fp.submittedBy || 'Campus Member'),
+        createdAt: String(fp.createdAt || '').split('T')[0] || ''
+      };
+    });
+
+    const rawImportHistory = Array.isArray(workspace.importHistory)
+      ? (workspace.importHistory as Array<Record<string, unknown>>)
+      : [];
+    const hydratedImports: LocalImportHistoryRecord[] = rawImportHistory.map(row => ({
+      id: String(row.id || ''),
+      institutionId: String(row.institutionId ?? row.institution_id ?? instId),
+      userName: String(row.userName ?? row.user_name ?? 'Administrator'),
+      userEmail: String(row.userEmail ?? row.user_email ?? ''),
+      category: String(row.category || 'all'),
+      fileName: String(row.fileName ?? row.file_name ?? 'import.csv'),
+      duplicateMode: (String(row.duplicateMode ?? row.duplicate_mode ?? 'skip') as LocalImportHistoryRecord['duplicateMode']),
+      status: (String(row.status || 'completed') as LocalImportHistoryRecord['status']),
+      totalRows: Number(row.totalRows ?? row.total_rows ?? 0),
+      createdCount: Number(row.createdCount ?? row.created_count ?? 0),
+      updatedCount: Number(row.updatedCount ?? row.updated_count ?? 0),
+      skippedCount: Number(row.skippedCount ?? row.skipped_count ?? 0),
+      failedCount: Number(row.failedCount ?? row.failed_count ?? 0),
+      durationMs: Number(row.durationMs ?? row.duration_ms ?? 0),
+      createdAt: String(row.createdAt ?? row.created_at ?? new Date().toISOString())
+    }));
+
+    const studentGroups = Array.isArray(workspace.studentGroups)
+      ? (workspace.studentGroups as StudentGroup[])
+      : [];
+    const prevStore = loadDataForInstitution(instId);
+    const preservedGroupId =
+      prevStore.selectedClassGroupId && studentGroups.some(g => g.id === prevStore.selectedClassGroupId)
+        ? prevStore.selectedClassGroupId
+        : studentGroups[0]?.id || '';
+
+    const profile: InstitutionProfile = {
+      id: String(rawInst.universityId || instId),
+      name: String(rawInst.universityName || ''),
+      code: String(rawInst.universityCode || ''),
+      campusCode: String(rawInst.campusCode || 'MAIN'),
+      campusName: String(rawInst.campusName || 'Main Campus'),
+      accreditation: String(rawInst.accreditation || 'Accredited Higher Education Institution'),
+      academicYear: String(rawInst.academicYear || '2026–2027'),
+      currentTermName: String(rawInst.currentTerm || ''),
+      activeTermIds: Array.isArray(rawInst.activeTermIds) ? (rawInst.activeTermIds as string[]) : undefined,
+      timetableManagementPolicy: (rawInst.timetableManagementPolicy as TimetableManagementPolicy) || 'whole_university',
+      registrarName: String(rawInst.registrarName || ''),
+      registrarEmail: String(rawInst.registrarEmail || ''),
+      autoConflictSweep: Boolean(rawInst.autoConflictSweep ?? true),
+      defaultSessionMinutes: Number(rawInst.defaultSessionMinutes || hydratedTimeStructure.periodLengthMinutes || 50),
+      timezone: 'UTC',
+      isSample: false
+    };
+
+    const hydrated: InstitutionalDataStore = {
+      institutionProfile: profile,
+      selectedClassGroupId: preservedGroupId,
+      campuses: Array.isArray(workspace.campuses) ? (workspace.campuses as Campus[]) : [],
+      buildings: Array.isArray(workspace.buildings) ? (workspace.buildings as Building[]) : [],
+      terms: Array.isArray(workspace.terms) ? (workspace.terms as AcademicTerm[]) : [],
+      departments: Array.isArray(workspace.departments) ? (workspace.departments as Department[]) : [],
+      programs: Array.isArray(workspace.programs) ? (workspace.programs as Program[]) : [],
+      rooms: Array.isArray(workspace.rooms) ? (workspace.rooms as Room[]) : [],
+      courses: Array.isArray(workspace.courses) ? (workspace.courses as Course[]) : [],
+      instructors: Array.isArray(workspace.instructors) ? (workspace.instructors as Instructor[]) : [],
+      studentGroups,
+      sections: hydratedSections,
+      timeStructure: hydratedTimeStructure,
+      constraints:
+        Array.isArray(workspace.constraints) && workspace.constraints.length > 0
+          ? (workspace.constraints as ConstraintRule[])
+          : DEFAULT_CONSTRAINT_RULES,
+      scenarios: hydratedScenarios,
+      auditLogs: Array.isArray(workspace.auditLogs) ? (workspace.auditLogs as AuditLogEntry[]) : [],
+      feedbackPolls: hydratedPolls,
+      importHistory: hydratedImports
+    };
+
+    institutionStoresMap.set(instId, hydrated);
+    registeredInstitutionsMap.set(instId, {
+      id: instId,
+      name: profile.name,
+      code: profile.code || 'UNIV',
+      campusName: profile.campusName || 'Main Campus',
+      accreditation: profile.accreditation,
+      isSample: false,
+      workingDays: computedTs.workingDays,
+      dayStartTime: computedTs.dayStartTime,
+      dayEndTime: computedTs.dayEndTime,
+      periodLengthMinutes: computedTs.periodLengthMinutes,
+      shortBreakMinutes: computedTs.shortBreakMinutes,
+      middayBreakEnabled: computedTs.middayBreak.enabled,
+      middayBreakStart: computedTs.middayBreak.startTime24,
+      middayBreakDuration: computedTs.middayBreak.durationMinutes,
+      labDurationMinutes: computedTs.labDurationMinutes
+    });
+
+    currentInstitutionId = instId;
+    currentStore = hydrated;
+    listeners.forEach(fn => fn());
   },
 
   mapBackendStartTimeToPeriod(day: DayOfWeek, startTimeHHMM: string): string {
@@ -3797,17 +3909,6 @@ export const institutionalStore = {
     this.runTimetableSolver();
     this.addAuditLog('create', 'term', 'sample-load', 'Loaded complete sample university dataset with departments, faculty qualified subjects, and multi-section batches.');
     notifyListeners();
-  },
-
-  async syncToBackend(userOverride?: ReturnType<typeof getStoredUser>): Promise<boolean> {
-    const user = userOverride || getStoredUser();
-    if (!user?.token) return false;
-    try {
-      await saveInstitutionDataApi(user, currentInstitutionId, currentStore);
-      return true;
-    } catch {
-      return false;
-    }
   }
 };
 

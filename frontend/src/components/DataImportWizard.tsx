@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { motion, MotionConfig } from 'motion/react';
+import { motion, AnimatePresence, MotionConfig } from 'motion/react';
 import ExcelJS from 'exceljs';
 import {
   AlertCircle,
@@ -9,7 +9,9 @@ import {
   Check,
   CheckCircle2,
   Clock,
+  Columns3,
   Download,
+  FileCheck2,
   FileSpreadsheet,
   FileWarning,
   History,
@@ -21,7 +23,7 @@ import {
   X
 } from 'lucide-react';
 import { institutionalStore } from '../data/store';
-import { getStoredUser } from '../services/votingApi';
+import { getStoredUser, fetchInstitutionWorkspace } from '../services/votingApi';
 import {
   commitImportBackendApi,
   fetchImportHistoryBackendApi,
@@ -32,19 +34,16 @@ import {
 } from '../services/importApi';
 import {
   buildErrorReportCsv,
-  buildStorePayloadFromValidatedRows,
   CATEGORY_SCHEMAS,
   ColumnMappingDetail,
   CsvFormatError,
   detectImportColumnMappings,
   DuplicateHandlingMode,
-  ExistingStoreSnapshot,
   generateTemplateCsv,
   ImportCategory,
   MAX_CSV_FILE_BYTES,
   parseCsvTextStrict,
   ValidatedRow,
-  validateImportPreviewLocal,
   ValidationReport
 } from '../utils/csvImport';
 
@@ -73,13 +72,71 @@ const CATEGORY_ORDER: ImportCategory[] = [
   'all'
 ];
 
-const STEP_LABELS: Array<{ id: WizardStep; num: number; label: string }> = [
-  { id: 'category', num: 1, label: 'Category' },
-  { id: 'upload', num: 2, label: 'Upload File' },
-  { id: 'mapping', num: 3, label: 'Map Columns' },
-  { id: 'preview', num: 4, label: 'Validate & Duplicates' },
-  { id: 'results', num: 5, label: 'Import Summary' }
+interface StepMeta {
+  id: WizardStep;
+  num: number;
+  label: string;
+  eyebrow: string;
+  heading: string;
+}
+
+const STEP_LABELS: StepMeta[] = [
+  {
+    id: 'category',
+    num: 1,
+    label: 'Dataset Category',
+    eyebrow: 'Schema Selection',
+    heading: 'Select Dataset'
+  },
+  {
+    id: 'upload',
+    num: 2,
+    label: 'Upload File',
+    eyebrow: 'Source File',
+    heading: 'Upload CSV or Excel File'
+  },
+  {
+    id: 'mapping',
+    num: 3,
+    label: 'Map Columns',
+    eyebrow: 'Field Mapping',
+    heading: 'Map Columns'
+  },
+  {
+    id: 'preview',
+    num: 4,
+    label: 'Validate & Duplicates',
+    eyebrow: 'Validation',
+    heading: 'Validate & Preview'
+  },
+  {
+    id: 'results',
+    num: 5,
+    label: 'Import Summary',
+    eyebrow: 'Completed',
+    heading: 'Import Summary'
+  }
 ];
+
+const stepperContainerVariants = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: {
+      staggerChildren: 0.05,
+      delayChildren: 0.06
+    }
+  }
+};
+
+const stepperItemVariants = {
+  hidden: { opacity: 0, x: -10 },
+  visible: {
+    opacity: 1,
+    x: 0,
+    transition: { duration: 0.28, ease: CALM_EASE }
+  }
+};
 
 function triggerCsvDownload(fileName: string, csvContent: string): void {
   const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -122,7 +179,6 @@ function extractSheetTable(worksheet: ExcelJS.Worksheet): { headers: string[]; r
     const rawValues = row.values;
     const cells: string[] = [];
     if (Array.isArray(rawValues)) {
-      // ExcelJS row.values is 1-indexed (index 0 is undefined)
       for (let c = 1; c < rawValues.length; c++) {
         cells.push(excelCellToString(rawValues[c]));
       }
@@ -164,18 +220,6 @@ function extractSheetTable(worksheet: ExcelJS.Worksheet): { headers: string[]; r
   return { headers: uniqueHeaders, rows: normalizedRows };
 }
 
-function getStoreSnapshot(): ExistingStoreSnapshot {
-  const s = institutionalStore.get();
-  return {
-    departments: s.departments,
-    rooms: s.rooms,
-    courses: s.courses,
-    instructors: s.instructors,
-    studentGroups: s.studentGroups,
-    sections: s.sections
-  };
-}
-
 function makeIdempotencyKey(
   category: string,
   fileName: string,
@@ -191,6 +235,7 @@ export const DataImportWizard: React.FC<DataImportWizardProps> = ({
   defaultCategory = 'courses'
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const bodyScrollRef = useRef<HTMLDivElement>(null);
   const currentUser = getStoredUser();
 
   const [activeTab, setActiveTab] = useState<'wizard' | 'history'>('wizard');
@@ -206,6 +251,12 @@ export const DataImportWizard: React.FC<DataImportWizardProps> = ({
   const [showPasteBox, setShowPasteBox] = useState<boolean>(false);
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const [parseError, setParseError] = useState<string | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<{
+    active: boolean;
+    fileName: string;
+    pct: number;
+    stage: string;
+  } | null>(null);
 
   // Workbook multi-sheet state (.xlsx)
   const [sheetTables, setSheetTables] = useState<
@@ -257,6 +308,10 @@ export const DataImportWizard: React.FC<DataImportWizardProps> = ({
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [historyEntries, setHistoryEntries] = useState<ImportHistoryEntry[]>([]);
 
+  useEffect(() => {
+    bodyScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [step, activeTab]);
+
   const mappingResult = useMemo(
     () =>
       headers.length > 0
@@ -265,7 +320,6 @@ export const DataImportWizard: React.FC<DataImportWizardProps> = ({
     [headers, category, columnMappings]
   );
 
-  // Re-run auto detection cleanly when category changes while keeping existing rows
   const handleSelectCategory = (nextCat: ImportCategory) => {
     setCategory(nextCat);
     setParseError(null);
@@ -314,6 +368,35 @@ export const DataImportWizard: React.FC<DataImportWizardProps> = ({
     setStep('mapping');
   };
 
+  const readFileWithProgress = (
+    file: File,
+    asArrayBuffer: boolean,
+    onProgress: (pct: number) => void
+  ): Promise<string | ArrayBuffer> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onprogress = evt => {
+        if (evt.lengthComputable && evt.total > 0) {
+          const ratio = Math.min(1, evt.loaded / evt.total);
+          onProgress(Math.round(15 + ratio * 45));
+        }
+      };
+      reader.onerror = () => reject(new Error(`Unable to read "${file.name}".`));
+      reader.onload = () => {
+        if (reader.result === null) {
+          reject(new Error(`"${file.name}" could not be read.`));
+          return;
+        }
+        resolve(reader.result);
+      };
+      if (asArrayBuffer) {
+        reader.readAsArrayBuffer(file);
+      } else {
+        reader.readAsText(file, 'utf-8');
+      }
+    });
+  };
+
   const handleFileUpload = async (file: File) => {
     setParseError(null);
     setCommitError(null);
@@ -344,12 +427,35 @@ export const DataImportWizard: React.FC<DataImportWizardProps> = ({
       return;
     }
 
+    setUploadProgress({
+      active: true,
+      fileName: file.name,
+      pct: 15,
+      stage: 'Uploading file...'
+    });
+
     if (isExcel) {
       try {
-        const buffer = await file.arrayBuffer();
+        const buffer = (await readFileWithProgress(file, true, pct => {
+          setUploadProgress({
+            active: true,
+            fileName: file.name,
+            pct,
+            stage: 'Uploading file...'
+          });
+        })) as ArrayBuffer;
+
+        setUploadProgress({
+          active: true,
+          fileName: file.name,
+          pct: 72,
+          stage: 'Processing workbook...'
+        });
+
         const workbook = new ExcelJS.Workbook();
         await workbook.xlsx.load(buffer);
         if (workbook.worksheets.length === 0) {
+          setUploadProgress(null);
           setParseError('Excel workbook contains no readable worksheets.');
           return;
         }
@@ -364,13 +470,23 @@ export const DataImportWizard: React.FC<DataImportWizardProps> = ({
         }
         const validSheetNames = Object.keys(tables);
         if (validSheetNames.length === 0) {
+          setUploadProgress(null);
           setParseError(errors[0] || 'No valid data rows found in any worksheet.');
           return;
         }
-        // Prefer a sheet whose name matches current category keywords
         const preferred =
           validSheetNames.find(n => n.toLowerCase().includes(category.replace('_', ''))) ||
           validSheetNames[0];
+
+        setUploadProgress({
+          active: true,
+          fileName: file.name,
+          pct: 100,
+          stage: 'Uploaded'
+        });
+        await new Promise(r => setTimeout(r, 220));
+        setUploadProgress(null);
+
         setSheetTables(tables);
         setActiveSheetName(preferred);
         applyParsedTable(
@@ -380,6 +496,7 @@ export const DataImportWizard: React.FC<DataImportWizardProps> = ({
           ''
         );
       } catch (err) {
+        setUploadProgress(null);
         setParseError(
           `Could not parse Excel workbook: ${(err as Error).message || 'corrupted .xlsx file'}.`
         );
@@ -388,23 +505,62 @@ export const DataImportWizard: React.FC<DataImportWizardProps> = ({
     }
 
     try {
-      const text = await file.text();
+      const text = (await readFileWithProgress(file, false, pct => {
+        setUploadProgress({
+          active: true,
+          fileName: file.name,
+          pct,
+          stage: 'Uploading file...'
+        });
+      })) as string;
+
+      setUploadProgress({
+        active: true,
+        fileName: file.name,
+        pct: 78,
+        stage: 'Parsing rows...'
+      });
       const parsed = parseCsvTextStrict(text);
+      setUploadProgress({
+        active: true,
+        fileName: file.name,
+        pct: 100,
+        stage: 'Uploaded'
+      });
+      await new Promise(r => setTimeout(r, 220));
+      setUploadProgress(null);
+
       applyParsedTable(file.name, parsed.headers, parsed.rows, text);
     } catch (err) {
+      setUploadProgress(null);
       setParseError((err as Error).message || 'Unable to parse CSV file.');
     }
   };
 
-  const handleParsePastedText = () => {
+  const handleParsePastedText = async () => {
     setParseError(null);
     setSheetTables({});
     setActiveSheetName('');
+    setUploadProgress({
+      active: true,
+      fileName: 'pasted_data.csv',
+      pct: 45,
+      stage: 'Uploading pasted rows...'
+    });
     try {
       const parsed = parseCsvTextStrict(pasteInput);
+      setUploadProgress({
+        active: true,
+        fileName: 'pasted_data.csv',
+        pct: 100,
+        stage: 'Uploaded'
+      });
+      await new Promise(r => setTimeout(r, 180));
+      setUploadProgress(null);
       applyParsedTable('pasted_data.csv', parsed.headers, parsed.rows, pasteInput);
       setShowPasteBox(false);
     } catch (err) {
+      setUploadProgress(null);
       setParseError((err as Error).message || 'Unable to parse pasted data.');
     }
   };
@@ -437,24 +593,10 @@ export const DataImportWizard: React.FC<DataImportWizardProps> = ({
     setValidationModeNote(null);
 
     const activeMap = mappingResult?.mapping || columnMappings;
-    const localReport = validateImportPreviewLocal({
-      category,
-      duplicateMode: targetMode,
-      headers,
-      rows,
-      columnMappings: activeMap,
-      storeSnapshot: getStoreSnapshot()
-    });
 
     if (!currentUser?.token) {
-      setValidationReport(localReport);
-      setBackendErrorCsv(
-        localReport.summary.errorRows > 0
-          ? buildErrorReportCsv(localReport.headers, localReport.rows)
-          : ''
-      );
-      setValidationModeNote(
-        'Validated against current browser catalog (sign in as administrator to validate live PostgreSQL constraints).'
+      setCommitError(
+        'Sign in with an institutional administrator account to validate CSV rows against live Supabase constraints.'
       );
       setIsValidating(false);
       return;
@@ -472,27 +614,15 @@ export const DataImportWizard: React.FC<DataImportWizardProps> = ({
       });
       setValidationReport(remote);
       setBackendErrorCsv(remote.errorCsv || '');
-      setValidationModeNote('Validated against live Supabase PostgreSQL database & foreign keys.');
+      setValidationModeNote('Validated against live Supabase PostgreSQL database and foreign keys.');
     } catch (err) {
-      if (err instanceof ImportApiError && err.status === 503) {
-        setValidationReport(localReport);
-        setBackendErrorCsv(
-          localReport.summary.errorRows > 0
-            ? buildErrorReportCsv(localReport.headers, localReport.rows)
-            : ''
-        );
-        setValidationModeNote(
-          'Live database connection unavailable (503). Validated against local catalog workspace.'
-        );
-      } else if (err instanceof ImportApiError && (err.status === 401 || err.status === 403)) {
-        setCommitError(err.message);
-        setValidationReport(localReport);
-      } else {
-        setValidationReport(localReport);
-        setValidationModeNote(
-          `Backend preview fallback (${(err as Error).message}); validated against local catalog.`
-        );
-      }
+      setCommitError(
+        err instanceof Error
+          ? err.message
+          : 'Live Supabase validation failed. Check database connection and retry.'
+      );
+      setValidationReport(null);
+      setValidationModeNote(null);
     } finally {
       setIsValidating(false);
     }
@@ -560,85 +690,23 @@ export const DataImportWizard: React.FC<DataImportWizardProps> = ({
     setCommitError(null);
     setCommitProgress({
       pct: 15,
-      label: currentUser?.token
-        ? 'Re-validating & committing staged chunks to Supabase...'
-        : 'Applying validated records to workspace store...'
+      label: 'Re-validating and staging records for Supabase...'
     });
 
     const activeMap = mappingResult?.mapping || columnMappings;
     const effectiveKey =
       idempotencyKey || makeIdempotencyKey(category, fileName || category, rows.length);
     setIdempotencyKey(effectiveKey);
-    const storePayload = buildStorePayloadFromValidatedRows(validationReport);
-
-    const runLocalCommit = (mode: 'supabase' | 'local_fallback', overrideCounts?: {
-      totalRows: number;
-      created: number;
-      updated: number;
-      skipped: number;
-      failed: number;
-    }, durationMs = 25, errorCsvOut = '', idempotentReplay = false, messageOut?: string) => {
-      const started = performance.now();
-      const localRes = institutionalStore.importBulkCatalogData({
-        ...storePayload,
-        duplicateMode,
-        skipSync: mode === 'supabase'
-      });
-      const elapsed = Math.max(durationMs, Math.round(performance.now() - started));
-      const counts = overrideCounts || {
-        totalRows: validationReport.summary.totalRows,
-        created: localRes.created,
-        updated: localRes.updated,
-        skipped: localRes.skipped + validationReport.summary.skipCount,
-        failed: validationReport.summary.errorRows
-      };
-      const statusVal: 'completed' | 'partial' =
-        counts.failed > 0 ? 'partial' : 'completed';
-
-      if (mode === 'local_fallback') {
-        institutionalStore.recordImportHistory({
-          userName: currentUser?.name || 'Administrator',
-          userEmail: currentUser?.email || '',
-          category,
-          fileName: fileName || `${category}.csv`,
-          duplicateMode,
-          status: statusVal,
-          totalRows: counts.totalRows,
-          createdCount: counts.created,
-          updatedCount: counts.updated,
-          skippedCount: counts.skipped,
-          failedCount: counts.failed,
-          durationMs: elapsed
-        });
-      }
-
-      const finalMsg =
-        messageOut ||
-        `Imported ${counts.created} new, updated ${counts.updated}, skipped ${counts.skipped}, rejected ${counts.failed} rows.`;
-
-      setCommitProgress({ pct: 100, label: 'Completed' });
-      setCommitResult({
-        status: statusVal,
-        message: finalMsg,
-        persistenceMode: mode,
-        idempotentReplay,
-        durationMs: elapsed,
-        counts,
-        errorCsv:
-          errorCsvOut ||
-          (counts.failed > 0
-            ? buildErrorReportCsv(validationReport.headers, validationReport.rows)
-            : '')
-      });
-      setStep('results');
-      onSuccess?.(finalMsg);
-    };
 
     if (!currentUser?.token) {
-      runLocalCommit('local_fallback');
+      setCommitError(
+        'Sign in with an institutional administrator account to import data into Supabase.'
+      );
       setIsCommitting(false);
       return;
     }
+
+    const instId = institutionalStore.getCurrentInstitutionId();
 
     try {
       setCommitProgress({
@@ -649,7 +717,7 @@ export const DataImportWizard: React.FC<DataImportWizardProps> = ({
       const res = await commitImportBackendApi(currentUser, {
         category,
         duplicateMode,
-        institutionId: institutionalStore.getCurrentInstitutionId(),
+        institutionId: instId,
         fileName: fileName || `${category}.csv`,
         confirmUpdates,
         atomic: atomicMode,
@@ -660,24 +728,32 @@ export const DataImportWizard: React.FC<DataImportWizardProps> = ({
         columnMappings: activeMap
       });
 
-      runLocalCommit(
-        'supabase',
-        res.counts,
-        res.durationMs,
-        res.errorCsv,
-        res.idempotentReplay,
-        res.message
-      );
+      setCommitProgress({ pct: 85, label: 'Synchronizing workspace from Supabase...' });
+      const freshWorkspace = await fetchInstitutionWorkspace(currentUser, instId);
+      institutionalStore.hydrateFromWorkspacePayload(instId, freshWorkspace, currentUser.id);
+
+      const statusVal: 'completed' | 'partial' =
+        res.counts.failed > 0 ? 'partial' : 'completed';
+
+      setCommitProgress({ pct: 100, label: 'Completed' });
+      setCommitResult({
+        status: statusVal,
+        message:
+          res.message ||
+          `Imported ${res.counts.created} new, updated ${res.counts.updated}, skipped ${res.counts.skipped}, rejected ${res.counts.failed} rows.`,
+        persistenceMode: 'supabase',
+        idempotentReplay: Boolean(res.idempotentReplay),
+        durationMs: res.durationMs,
+        counts: res.counts,
+        errorCsv: res.errorCsv || ''
+      });
+      setStep('results');
+      onSuccess?.(res.message);
     } catch (err) {
-      if (err instanceof ImportApiError && err.status === 503) {
-        // Explicit fallback ONLY when Supabase database is unconfigured (503)
-        runLocalCommit('local_fallback');
-      } else {
-        setCommitError(
-          (err as Error).message ||
-            'Backend import rejected or rolled back cleanly. No partial records were stored.'
-        );
-      }
+      setCommitError(
+        (err as Error).message ||
+          'Backend import rejected or rolled back cleanly. No partial records were stored.'
+      );
     } finally {
       setIsCommitting(false);
     }
@@ -774,6 +850,13 @@ export const DataImportWizard: React.FC<DataImportWizardProps> = ({
     !isCommitting;
 
   const currentSchema = CATEGORY_SCHEMAS[category];
+  const activeStepIdx = STEP_LABELS.findIndex(s => s.id === step);
+  const currentStepMeta = STEP_LABELS[activeStepIdx] || STEP_LABELS[0];
+  const progressFraction = (activeStepIdx + 1) / STEP_LABELS.length;
+  const institutionName =
+    institutionalStore.get().institutionProfile?.name || 'SmartGrid University';
+
+  const stepIcons = [Layers, Upload, Columns3, FileCheck2, CheckCircle2];
 
   return (
     <MotionConfig reducedMotion="user">
@@ -784,1222 +867,1490 @@ export const DataImportWizard: React.FC<DataImportWizardProps> = ({
         aria-label="Academic CSV Data Import System"
       >
         <motion.div
-          initial={{ opacity: 0, scale: 0.98, y: 10 }}
+          initial={{ opacity: 0, scale: 0.97, y: 12 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
-          transition={{ duration: 0.25, ease: CALM_EASE }}
-          className="w-full max-w-6xl max-h-[92vh] flex flex-col bg-[#F7F6EF] border border-[#E4E2DA] rounded-2xl shadow-2xl overflow-hidden text-[#171717]"
+          transition={{ duration: 0.28, ease: CALM_EASE }}
+          className="w-full max-w-6xl h-[min(90vh,780px)] flex flex-col lg:flex-row bg-white border border-[#E4E2DA] rounded-2xl shadow-2xl overflow-hidden text-[#171717]"
         >
-          {/* Top Bar */}
-          <header className="flex flex-wrap items-center justify-between gap-3 px-6 py-4 bg-white border-b border-[#E4E2DA]">
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="w-9 h-9 rounded-xl bg-[#171717] text-white flex items-center justify-center shrink-0">
-                <FileSpreadsheet className="w-4.5 h-4.5" />
+          {/* =========================================================
+              LEFT CALM GUIDED STEP RAIL (Desktop, matches Academic Setup Dialog)
+             ========================================================= */}
+          <aside className="hidden lg:flex lg:w-[272px] shrink-0 flex-col justify-between bg-[#F7F6EF] border-r border-[#E4E2DA] p-6">
+            <div className="space-y-6">
+              {/* Workspace Header */}
+              <div className="space-y-1.5 pb-5 border-b border-[#E4E2DA]">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-[#171717] text-white flex items-center justify-center shrink-0">
+                    <FileSpreadsheet className="w-4 h-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-[11px] font-mono-tabular uppercase tracking-wider text-[#77766F]">
+                      Bulk CSV Import
+                    </div>
+                    <div className="text-sm font-semibold text-[#171717] truncate">
+                      {institutionName}
+                    </div>
+                  </div>
+                </div>
               </div>
-              <div className="min-w-0">
-                <h2 className="font-serif-editorial text-xl font-semibold leading-tight text-[#171717]">
-                  Academic CSV Data Import
-                </h2>
-                <p className="text-xs text-[#77766F] truncate">
-                  Workspace:{' '}
-                  <span className="font-medium text-[#171717]">
-                    {institutionalStore.get().institutionProfile?.name || 'SmartGrid University'}
+
+              {/* Vertical Stepper */}
+              <motion.nav
+                aria-label="Import Wizard Steps"
+                variants={stepperContainerVariants}
+                initial="hidden"
+                animate="visible"
+                className="space-y-1.5"
+              >
+                {STEP_LABELS.map((item, idx) => {
+                  const Icon = stepIcons[idx];
+                  const isCurrent = activeTab === 'wizard' && item.id === step;
+                  const isDone =
+                    idx < activeStepIdx || (step === 'results' && item.id === 'results');
+                  const canJumpBack =
+                    activeTab === 'history'
+                      ? idx <= activeStepIdx && !(idx > 1 && headers.length === 0)
+                      : idx < activeStepIdx && step !== 'results';
+
+                  return (
+                    <motion.button
+                      key={item.id}
+                      type="button"
+                      variants={stepperItemVariants}
+                      disabled={!canJumpBack && !isCurrent}
+                      onClick={() => {
+                        if (activeTab === 'history') {
+                          setActiveTab('wizard');
+                        }
+                        if (canJumpBack) {
+                          setStep(item.id);
+                        }
+                      }}
+                      className={`relative w-full text-left px-3 py-2.5 rounded-xl flex items-center gap-3 transition-colors group ${
+                        canJumpBack || isCurrent ? 'cursor-pointer' : 'cursor-default opacity-75'
+                      }`}
+                    >
+                      {isCurrent && (
+                        <motion.div
+                          layoutId="csv-import-rail-active"
+                          transition={{ type: 'spring', stiffness: 420, damping: 34 }}
+                          className="absolute inset-0 bg-white border border-[#E4E2DA] rounded-xl shadow-2xs"
+                        />
+                      )}
+
+                      <div
+                        className={`relative z-10 w-7 h-7 rounded-lg flex items-center justify-center text-xs font-mono-tabular transition-colors shrink-0 ${
+                          isCurrent
+                            ? 'bg-[#171717] text-white'
+                            : isDone
+                            ? 'bg-[#B8F2E6] text-[#171717]'
+                            : 'bg-[#EDEAE0] text-[#57564F]'
+                        }`}
+                      >
+                        {isDone && !isCurrent ? (
+                          <Check className="w-3.5 h-3.5 stroke-[2.5]" />
+                        ) : (
+                          <Icon className="w-3.5 h-3.5" />
+                        )}
+                      </div>
+
+                      <div className="relative z-10 min-w-0">
+                        <div
+                          className={`text-xs font-semibold truncate ${
+                            isCurrent || isDone ? 'text-[#171717]' : 'text-[#57564F]'
+                          }`}
+                        >
+                          {item.label}
+                        </div>
+                      </div>
+                    </motion.button>
+                  );
+                })}
+              </motion.nav>
+
+              {/* History Quick Access */}
+              <div className="pt-4 border-t border-[#E4E2DA]">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setActiveTab(prev => (prev === 'history' ? 'wizard' : 'history'))
+                  }
+                  className={`w-full px-3 py-2.5 rounded-xl flex items-center justify-between text-xs font-semibold transition-colors cursor-pointer ${
+                    activeTab === 'history'
+                      ? 'bg-white text-[#171717] border border-[#E4E2DA] shadow-2xs'
+                      : 'text-[#57564F] hover:text-[#171717] hover:bg-white/60'
+                  }`}
+                >
+                  <span className="flex items-center gap-2.5">
+                    <History className="w-4 h-4 shrink-0" />
+                    <span>Import History</span>
                   </span>
-                  {' · '}
-                  <span className="font-mono-tabular">
-                    {institutionalStore.getCurrentInstitutionId()}
-                  </span>
-                </p>
+                  <ArrowRight className="w-3.5 h-3.5 text-[#77766F]" />
+                </button>
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
-              <div className="inline-flex p-1 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA]">
+            {/* Bottom Progress & Selection Status */}
+            <div className="pt-5 border-t border-[#E4E2DA] space-y-2.5">
+              <div className="flex items-center justify-between text-[11px] font-mono-tabular text-[#57564F]">
+                <span>
+                  {activeTab === 'history'
+                    ? 'Audit History'
+                    : step === 'results'
+                    ? 'Completed'
+                    : `Step ${activeStepIdx + 1} of ${STEP_LABELS.length}`}
+                </span>
+                <span>
+                  {activeTab === 'history'
+                    ? 'Logs'
+                    : `${Math.round(progressFraction * 100)}%`}
+                </span>
+              </div>
+              <div className="h-1.5 w-full bg-[#E4E2DA] rounded-sm overflow-hidden">
+                <motion.div
+                  className="h-full bg-[#171717] origin-left"
+                  initial={false}
+                  animate={{ scaleX: activeTab === 'history' ? 1 : progressFraction }}
+                  transition={{ duration: 0.32, ease: CALM_EASE }}
+                />
+              </div>
+              <p className="text-[11px] text-[#57564F] leading-relaxed truncate">
+                Dataset: <span className="font-semibold text-[#171717]">{currentSchema.title}</span>
+              </p>
+            </div>
+          </aside>
+
+          {/* =========================================================
+              MOBILE TOP STEP STRIP (Below lg)
+             ========================================================= */}
+          <div className="lg:hidden bg-[#F7F6EF] border-b border-[#E4E2DA] px-4 py-3 space-y-2.5 shrink-0">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-7 h-7 rounded-lg bg-[#171717] text-white flex items-center justify-center shrink-0">
+                  <FileSpreadsheet className="w-3.5 h-3.5" />
+                </div>
+                <div className="min-w-0">
+                  <div className="text-xs font-semibold text-[#171717] truncate">
+                    {institutionName} · Bulk Import
+                  </div>
+                  <div className="text-[11px] font-mono-tabular text-[#57564F]">
+                    {activeTab === 'history'
+                      ? 'Import Audit History'
+                      : `Step ${activeStepIdx + 1} of ${STEP_LABELS.length} · ${currentStepMeta.label}`}
+                  </div>
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0">
                 <button
                   type="button"
-                  onClick={() => setActiveTab('wizard')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
-                    activeTab === 'wizard'
-                      ? 'bg-[#171717] text-white'
-                      : 'text-[#77766F] hover:text-[#171717]'
-                  }`}
+                  onClick={() =>
+                    setActiveTab(prev => (prev === 'history' ? 'wizard' : 'history'))
+                  }
+                  className="px-2.5 py-1 rounded-lg border border-[#E4E2DA] bg-white text-[11px] font-semibold text-[#171717] cursor-pointer"
                 >
-                  Import Wizard
+                  {activeTab === 'history' ? 'Wizard' : 'History'}
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('history')}
-                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
-                    activeTab === 'history'
-                      ? 'bg-[#171717] text-white'
-                      : 'text-[#77766F] hover:text-[#171717]'
-                  }`}
-                >
-                  <History className="w-3.5 h-3.5" />
-                  <span>Import History</span>
-                </button>
+                {onClose && (
+                  <button
+                    type="button"
+                    onClick={onClose}
+                    aria-label="Close import modal"
+                    className="p-1.5 rounded-lg text-[#57564F] hover:text-[#171717] hover:bg-black/5 cursor-pointer"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {activeTab === 'wizard' && (
+              <div className="grid grid-cols-5 gap-1.5">
+                {STEP_LABELS.map((item, idx) => {
+                  const isCurrent = item.id === step;
+                  const isDone = idx < activeStepIdx || step === 'results';
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      disabled={idx >= activeStepIdx || step === 'results'}
+                      onClick={() => {
+                        if (idx < activeStepIdx && step !== 'results') setStep(item.id);
+                      }}
+                      className={`h-7 rounded-lg text-[11px] font-mono-tabular font-semibold transition-colors ${
+                        isCurrent
+                          ? 'bg-[#171717] text-white'
+                          : isDone
+                          ? 'bg-[#B8F2E6] text-[#171717] cursor-pointer'
+                          : 'bg-white text-[#77766F] border border-[#E4E2DA]'
+                      }`}
+                    >
+                      {isDone && !isCurrent ? '✓' : item.num}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* =========================================================
+              RIGHT WORKSPACE PANE
+             ========================================================= */}
+          <div className="flex-1 flex flex-col min-w-0 min-h-0 bg-white">
+            {/* Desktop Step Header */}
+            <header className="hidden lg:flex items-start justify-between gap-4 px-8 pt-6 pb-4 border-b border-[#E4E2DA] shrink-0">
+              <div className="min-w-0 flex-1">
+                <div className="text-[11px] font-mono-tabular uppercase tracking-wider text-[#77766F]">
+                  {activeTab === 'history'
+                    ? 'Audit Trail'
+                    : `Step ${activeStepIdx + 1} of ${STEP_LABELS.length} · ${currentStepMeta.eyebrow}`}
+                </div>
+                <h2 className="font-serif-editorial text-2xl text-[#171717] font-semibold mt-0.5">
+                  {activeTab === 'history'
+                    ? 'Import History'
+                    : currentStepMeta.heading}
+                </h2>
               </div>
               {onClose && (
                 <button
                   type="button"
                   onClick={onClose}
                   aria-label="Close import modal"
-                  className="p-2 rounded-lg text-[#77766F] hover:text-[#171717] hover:bg-[#F7F6EF] transition-colors cursor-pointer"
+                  className="p-2 rounded-lg text-[#57564F] hover:text-[#171717] hover:bg-[#F7F6EF] transition-colors cursor-pointer shrink-0"
                 >
-                  <X className="w-4.5 h-4.5" />
+                  <X className="w-4 h-4" />
                 </button>
               )}
-            </div>
-          </header>
+            </header>
 
-          {/* Stepper Bar */}
-          {activeTab === 'wizard' && (
-            <div className="px-6 py-3 bg-[#F7F6EF] border-b border-[#E4E2DA] overflow-x-auto">
-              <ol className="flex items-center justify-between gap-2 min-w-[600px]">
-                {STEP_LABELS.map((item, idx) => {
-                  const activeIdx = STEP_LABELS.findIndex(s => s.id === step);
-                  const isCurrent = item.id === step;
-                  const isDone = idx < activeIdx || step === 'results';
-                  return (
-                    <li key={item.id} className="flex items-center gap-2 flex-1 last:flex-none">
-                      <button
-                        type="button"
-                        disabled={idx > activeIdx && !(idx <= 1 && headers.length > 0)}
-                        onClick={() => {
-                          if (idx < activeIdx && step !== 'results') {
-                            setStep(item.id);
-                          }
-                        }}
-                        className={`flex items-center gap-2 text-left transition-colors ${
-                          idx < activeIdx && step !== 'results'
-                            ? 'cursor-pointer'
-                            : 'cursor-default'
-                        }`}
-                      >
-                        <span
-                          className={`w-6 h-6 rounded-full text-[11px] font-mono-tabular font-semibold flex items-center justify-center border ${
-                            isCurrent
-                              ? 'bg-[#171717] text-white border-[#171717]'
-                              : isDone
-                              ? 'bg-[#B8F2E6] text-[#171717] border-[#0F766E]/30'
-                              : 'bg-white text-[#77766F] border-[#E4E2DA]'
-                          }`}
-                        >
-                          {isDone && !isCurrent ? <Check className="w-3.5 h-3.5" /> : item.num}
-                        </span>
-                        <span
-                          className={`text-xs font-medium whitespace-nowrap ${
-                            isCurrent ? 'text-[#171717] font-semibold' : 'text-[#77766F]'
-                          }`}
-                        >
-                          {item.label}
-                        </span>
-                      </button>
-                      {idx < STEP_LABELS.length - 1 && (
-                        <div className="flex-1 h-px bg-[#E4E2DA] mx-1" />
-                      )}
-                    </li>
-                  );
-                })}
-              </ol>
-            </div>
-          )}
-
-          {/* Scrollable Body */}
-          <div className="flex-1 overflow-y-auto p-6 space-y-5">
-            {activeTab === 'history' ? (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <h3 className="font-serif-editorial text-lg font-semibold">
-                      University Import Audit History
-                    </h3>
-                    <p className="text-xs text-[#77766F]">
-                      Record of bulk CSV and Excel imports executed for this institution.
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => void loadImportHistory()}
-                    className="btn-secondary h-8 text-xs"
-                    disabled={historyLoading}
+            {/* Scrollable Body */}
+            <div
+              ref={bodyScrollRef}
+              className="flex-1 overflow-y-auto overflow-x-hidden px-5 sm:px-8 py-6 bg-white"
+            >
+              <AnimatePresence mode="wait">
+                {activeTab === 'history' ? (
+                  <motion.div
+                    key="tab-history"
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -6 }}
+                    transition={{ duration: 0.2, ease: CALM_EASE }}
+                    className="space-y-4"
                   >
-                    <RefreshCw className={`w-3.5 h-3.5 ${historyLoading ? 'animate-spin' : ''}`} />
-                    <span>Refresh</span>
-                  </button>
-                </div>
-
-                {historyError && (
-                  <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900">
-                    {historyError}
-                  </div>
-                )}
-
-                {historyLoading ? (
-                  <div className="sf-card-white p-10 text-center text-xs text-[#77766F]">
-                    Loading import history...
-                  </div>
-                ) : historyEntries.length === 0 ? (
-                  <div className="sf-card-white p-10 text-center space-y-2">
-                    <History className="w-7 h-7 text-[#77766F] mx-auto" />
-                    <p className="text-sm font-medium text-[#171717]">No imports recorded yet</p>
-                    <p className="text-xs text-[#77766F]">
-                      Completed imports will appear here with row counts, duplicate mode, and status.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="sf-card-white overflow-x-auto">
-                    <table className="w-full text-left border-collapse text-xs">
-                      <thead>
-                        <tr className="border-b border-[#E4E2DA] bg-[#F7F6EF] text-[#77766F]">
-                          <th className="py-2.5 px-3 font-medium">Timestamp</th>
-                          <th className="py-2.5 px-3 font-medium">File</th>
-                          <th className="py-2.5 px-3 font-medium">Category</th>
-                          <th className="py-2.5 px-3 font-medium">Admin</th>
-                          <th className="py-2.5 px-3 font-medium">Mode</th>
-                          <th className="py-2.5 px-3 font-medium">Status</th>
-                          <th className="py-2.5 px-3 font-medium text-right">Created</th>
-                          <th className="py-2.5 px-3 font-medium text-right">Updated</th>
-                          <th className="py-2.5 px-3 font-medium text-right">Skipped</th>
-                          <th className="py-2.5 px-3 font-medium text-right">Failed</th>
-                          <th className="py-2.5 px-3 font-medium text-right">Duration</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-[#E4E2DA]">
-                        {historyEntries.map(item => (
-                          <tr key={item.id} className="hover:bg-[#F7F6EF]/60">
-                            <td className="py-2.5 px-3 font-mono-tabular whitespace-nowrap text-[#77766F]">
-                              {new Date(item.createdAt).toLocaleString()}
-                            </td>
-                            <td className="py-2.5 px-3 font-medium text-[#171717]">
-                              {item.fileName}
-                            </td>
-                            <td className="py-2.5 px-3">
-                              {CATEGORY_SCHEMAS[item.category as ImportCategory]?.shortLabel ||
-                                item.category}
-                            </td>
-                            <td className="py-2.5 px-3 text-[#77766F]">{item.userName}</td>
-                            <td className="py-2.5 px-3 capitalize">{item.duplicateMode}</td>
-                            <td className="py-2.5 px-3">
-                              <span
-                                className={`inline-flex items-center px-2 py-0.5 rounded-md border text-[11px] font-medium ${
-                                  item.status === 'completed'
-                                    ? 'bg-[#B8F2E6]/50 border-emerald-700/20 text-emerald-950'
-                                    : item.status === 'partial'
-                                    ? 'bg-amber-50 border-amber-300 text-amber-900'
-                                    : 'bg-rose-50 border-rose-300 text-rose-900'
-                                }`}
-                              >
-                                {item.status}
-                              </span>
-                            </td>
-                            <td className="py-2.5 px-3 text-right font-mono-tabular text-emerald-800 font-medium">
-                              {item.createdCount}
-                            </td>
-                            <td className="py-2.5 px-3 text-right font-mono-tabular text-sky-800">
-                              {item.updatedCount}
-                            </td>
-                            <td className="py-2.5 px-3 text-right font-mono-tabular text-[#77766F]">
-                              {item.skippedCount}
-                            </td>
-                            <td className="py-2.5 px-3 text-right font-mono-tabular text-rose-700">
-                              {item.failedCount}
-                            </td>
-                            <td className="py-2.5 px-3 text-right font-mono-tabular text-[#77766F]">
-                              {item.durationMs}ms
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
-            ) : step === 'category' ? (
-              <div className="space-y-4">
-                <div className="flex flex-wrap items-end justify-between gap-3">
-                  <div>
-                    <h3 className="font-serif-editorial text-lg font-semibold">
-                      1. Choose Academic Data Category
-                    </h3>
-                    <p className="text-xs text-[#77766F]">
-                      Select the dataset you want to import. Each category validates required columns,
-                      data types, unique identifiers, and foreign-key references.
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => void handleDownloadTemplate(category)}
-                    className="btn-secondary h-8 text-xs"
-                  >
-                    <Download className="w-3.5 h-3.5" />
-                    <span>Download {currentSchema.shortLabel} Template</span>
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {CATEGORY_ORDER.map(catId => {
-                    const schema = CATEGORY_SCHEMAS[catId];
-                    const selected = category === catId;
-                    const reqFields = schema.fields.filter(f => f.required);
-                    return (
-                      <button
-                        key={catId}
-                        type="button"
-                        onClick={() => handleSelectCategory(catId)}
-                        className={`text-left p-4 rounded-xl border transition-all cursor-pointer ${
-                          selected
-                            ? 'bg-white border-[#171717] ring-1 ring-[#171717] shadow-xs'
-                            : 'bg-white/80 border-[#E4E2DA] hover:border-[#171717]/40 hover:bg-white'
-                        }`}
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <span className="text-sm font-semibold text-[#171717]">
-                            {schema.title}
-                          </span>
-                          {selected && (
-                            <span className="w-5 h-5 rounded-full bg-[#171717] text-white flex items-center justify-center shrink-0">
-                              <Check className="w-3 h-3" />
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-xs text-[#77766F] mt-1 leading-relaxed">
-                          {schema.description}
-                        </p>
-                        <div className="mt-3 pt-2.5 border-t border-[#E4E2DA] flex flex-wrap items-center justify-between gap-1 text-[11px]">
-                          <span className="text-[#77766F]">
-                            Key:{' '}
-                            <span className="font-mono-tabular text-[#171717]">
-                              {schema.stableKeyLabel}
-                            </span>
-                          </span>
-                          <span className="font-mono-tabular text-[#77766F]">
-                            {reqFields.length > 0
-                              ? `${reqFields.length} required`
-                              : 'Multi-entity'}
-                          </span>
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            ) : step === 'upload' ? (
-              <div className="space-y-4">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <h3 className="font-serif-editorial text-lg font-semibold">
-                      2. Upload {currentSchema.title} CSV or Excel File
-                    </h3>
-                    <p className="text-xs text-[#77766F]">
-                      Required fields:{' '}
-                      <span className="font-medium text-[#171717]">
-                        {currentSchema.fields
-                          .filter(f => f.required)
-                          .map(f => f.label)
-                          .join(', ') || 'At least one entity identifier per row'}
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <span className="text-xs font-mono-tabular text-[#57564F]">
+                        {historyEntries.length} recorded import batch
+                        {historyEntries.length === 1 ? '' : 'es'}
                       </span>
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => void handleDownloadTemplate(category)}
-                    className="btn-secondary h-8 text-xs"
-                  >
-                    <Download className="w-3.5 h-3.5" />
-                    <span>Download CSV Template</span>
-                  </button>
-                </div>
-
-                {parseError && (
-                  <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 flex items-start gap-2.5 text-xs text-rose-900">
-                    <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-                    <div>
-                      <p className="font-semibold">File Could Not Be Parsed</p>
-                      <p className="mt-0.5">{parseError}</p>
-                    </div>
-                  </div>
-                )}
-
-                <div
-                  onDragOver={e => {
-                    e.preventDefault();
-                    setIsDragging(true);
-                  }}
-                  onDragLeave={() => setIsDragging(false)}
-                  onDrop={e => {
-                    e.preventDefault();
-                    setIsDragging(false);
-                    const file = e.dataTransfer.files?.[0];
-                    if (file) void handleFileUpload(file);
-                  }}
-                  className={`sf-card-white p-8 text-center border-2 border-dashed transition-colors ${
-                    isDragging
-                      ? 'border-[#171717] bg-[#F7F6EF]'
-                      : 'border-[#CFCBC0] hover:border-[#171717]/60'
-                  }`}
-                >
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept=".csv,.tsv,.txt,.xlsx"
-                    className="hidden"
-                    onChange={e => {
-                      const f = e.target.files?.[0];
-                      if (f) void handleFileUpload(f);
-                      e.target.value = '';
-                    }}
-                  />
-                  <div className="w-11 h-11 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] flex items-center justify-center mx-auto mb-3">
-                    <Upload className="w-5 h-5 text-[#171717]" />
-                  </div>
-                  <p className="text-sm font-semibold text-[#171717]">
-                    {fileName
-                      ? `Loaded "${fileName}" (${rows.length} rows, ${headers.length} columns)`
-                      : 'Drag and drop your CSV or Excel (.xlsx) file here'}
-                  </p>
-                  <p className="text-xs text-[#77766F] mt-1">
-                    Supports UTF-8 CSV (comma, semicolon, tab-delimited) and .xlsx workbooks up to 5
-                    MB / 10,000 rows.
-                  </p>
-                  <div className="mt-4 flex flex-wrap items-center justify-center gap-2.5">
-                    <button
-                      type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                      className="btn-primary h-9 text-xs"
-                    >
-                      <Upload className="w-3.5 h-3.5" />
-                      <span>{fileName ? 'Replace File' : 'Select File from Computer'}</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setShowPasteBox(prev => !prev)}
-                      className="btn-secondary h-9 text-xs"
-                    >
-                      <span>{showPasteBox ? 'Hide Paste Box' : 'Paste CSV / Spreadsheet Text'}</span>
-                    </button>
-                  </div>
-                </div>
-
-                {showPasteBox && (
-                  <div className="sf-card-white p-4 space-y-3">
-                    <label className="block text-xs font-semibold text-[#171717]">
-                      Paste CSV or Tab-Separated Content (Row 1 must be headers)
-                    </label>
-                    <textarea
-                      value={pasteInput}
-                      onChange={e => setPasteInput(e.target.value)}
-                      rows={6}
-                      placeholder={generateTemplateCsv(category)}
-                      className="w-full p-3 rounded-xl border border-[#E4E2DA] bg-[#F7F6EF] font-mono-tabular text-xs focus:outline-none focus:border-[#171717]"
-                    />
-                    <div className="flex justify-end gap-2">
                       <button
                         type="button"
-                        onClick={handleParsePastedText}
-                        disabled={!pasteInput.trim()}
-                        className="btn-primary h-8 text-xs"
+                        onClick={() => void loadImportHistory()}
+                        className="btn-secondary h-8 text-xs"
+                        disabled={historyLoading}
                       >
-                        Parse Pasted Rows
+                        <RefreshCw
+                          className={`w-3.5 h-3.5 ${historyLoading ? 'animate-spin' : ''}`}
+                        />
+                        <span>Refresh</span>
                       </button>
                     </div>
-                  </div>
-                )}
 
-                {/* Template Column Quick Reference */}
-                <div className="sf-card-white p-4">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-semibold text-[#171717]">
-                      Expected Columns for {currentSchema.title}
-                    </span>
-                    <span className="text-[11px] text-[#77766F]">
-                      Custom column headers can be mapped in the next step
-                    </span>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                    {currentSchema.fields.map(field => (
-                      <div
-                        key={field.key}
-                        className="px-2.5 py-1.5 rounded-lg bg-[#F7F6EF] border border-[#E4E2DA] flex items-center justify-between gap-2 text-[11px]"
-                      >
-                        <span className="font-medium text-[#171717] truncate">
-                          {field.label}
-                          {field.required && <span className="text-rose-600 ml-0.5">*</span>}
-                        </span>
-                        <span className="font-mono-tabular text-[#77766F] shrink-0">
-                          {field.sample}
-                        </span>
+                    {historyError && (
+                      <div className="px-4 py-3 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-950">
+                        {historyError}
                       </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            ) : step === 'mapping' ? (
-              <div className="space-y-4">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <h3 className="font-serif-editorial text-lg font-semibold">
-                      3. Review & Adjust Column Mapping
-                    </h3>
-                    <p className="text-xs text-[#77766F]">
-                      File: <span className="font-medium text-[#171717]">{fileName}</span> ({rows.length}{' '}
-                      data rows). Confirm each spreadsheet header maps cleanly to a SmartGrid field.
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const redetected = detectImportColumnMappings(headers, category);
-                        setColumnMappings(redetected.mapping);
-                      }}
-                      className="btn-secondary h-8 text-xs"
-                    >
-                      <Sparkles className="w-3.5 h-3.5" />
-                      <span>Re-Detect Columns</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                      className="btn-secondary h-8 text-xs"
-                    >
-                      <span>Replace File</span>
-                    </button>
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept=".csv,.tsv,.txt,.xlsx"
-                      className="hidden"
-                      onChange={e => {
-                        const f = e.target.files?.[0];
-                        if (f) void handleFileUpload(f);
-                        e.target.value = '';
-                      }}
-                    />
-                  </div>
-                </div>
+                    )}
 
-                {Object.keys(sheetTables).length > 1 && (
-                  <div className="sf-card-white p-3 flex flex-wrap items-center gap-2 text-xs">
-                    <span className="font-medium text-[#77766F]">Excel Worksheet:</span>
-                    {Object.keys(sheetTables).map(sName => (
+                    {historyLoading ? (
+                      <div className="border border-[#E4E2DA] rounded-xl p-10 text-center text-xs text-[#57564F]">
+                        Loading import history...
+                      </div>
+                    ) : historyEntries.length === 0 ? (
+                      <div className="border border-[#E4E2DA] rounded-xl p-10 text-center space-y-2">
+                        <History className="w-7 h-7 text-[#57564F] mx-auto" />
+                        <p className="text-sm font-semibold text-[#171717]">
+                          No imports recorded yet
+                        </p>
+                        <p className="text-xs text-[#57564F]">
+                          Completed CSV or Excel imports will appear here with row counts, duplicate
+                          mode, and duration.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="border border-[#E4E2DA] rounded-xl overflow-x-auto bg-white">
+                        <table className="w-full text-left border-collapse text-xs">
+                          <thead>
+                            <tr className="border-b border-[#E4E2DA] bg-[#F7F6EF] text-[#57564F]">
+                              <th className="py-2.5 px-3.5 font-semibold">Timestamp</th>
+                              <th className="py-2.5 px-3.5 font-semibold">File</th>
+                              <th className="py-2.5 px-3.5 font-semibold">Category</th>
+                              <th className="py-2.5 px-3.5 font-semibold">Admin</th>
+                              <th className="py-2.5 px-3.5 font-semibold">Mode</th>
+                              <th className="py-2.5 px-3.5 font-semibold">Status</th>
+                              <th className="py-2.5 px-3.5 font-semibold text-right">Created</th>
+                              <th className="py-2.5 px-3.5 font-semibold text-right">Updated</th>
+                              <th className="py-2.5 px-3.5 font-semibold text-right">Skipped</th>
+                              <th className="py-2.5 px-3.5 font-semibold text-right">Failed</th>
+                              <th className="py-2.5 px-3.5 font-semibold text-right">Duration</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-[#E4E2DA]">
+                            {historyEntries.map(item => (
+                              <tr key={item.id} className="hover:bg-[#F7F6EF]/50 transition-colors">
+                                <td className="py-2.5 px-3.5 font-mono-tabular whitespace-nowrap text-[#57564F]">
+                                  {new Date(item.createdAt).toLocaleString()}
+                                </td>
+                                <td className="py-2.5 px-3.5 font-medium text-[#171717]">
+                                  {item.fileName}
+                                </td>
+                                <td className="py-2.5 px-3.5 text-[#171717]">
+                                  {CATEGORY_SCHEMAS[item.category as ImportCategory]?.shortLabel ||
+                                    item.category}
+                                </td>
+                                <td className="py-2.5 px-3.5 text-[#57564F]">{item.userName}</td>
+                                <td className="py-2.5 px-3.5 capitalize text-[#57564F]">
+                                  {item.duplicateMode}
+                                </td>
+                                <td className="py-2.5 px-3.5 font-medium">
+                                  <span
+                                    className={
+                                      item.status === 'completed'
+                                        ? 'text-emerald-800'
+                                        : item.status === 'partial'
+                                        ? 'text-amber-800'
+                                        : 'text-rose-700'
+                                    }
+                                  >
+                                    {item.status}
+                                  </span>
+                                </td>
+                                <td className="py-2.5 px-3.5 text-right font-mono-tabular text-emerald-800 font-semibold">
+                                  {item.createdCount}
+                                </td>
+                                <td className="py-2.5 px-3.5 text-right font-mono-tabular text-sky-800">
+                                  {item.updatedCount}
+                                </td>
+                                <td className="py-2.5 px-3.5 text-right font-mono-tabular text-[#57564F]">
+                                  {item.skippedCount}
+                                </td>
+                                <td className="py-2.5 px-3.5 text-right font-mono-tabular text-rose-700">
+                                  {item.failedCount}
+                                </td>
+                                <td className="py-2.5 px-3.5 text-right font-mono-tabular text-[#57564F]">
+                                  {item.durationMs}ms
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </motion.div>
+                ) : step === 'category' ? (
+                  <motion.div
+                    key="step-category"
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -6 }}
+                    transition={{ duration: 0.2, ease: CALM_EASE }}
+                    className="space-y-5"
+                  >
+                    {/* Toolbar above clean list */}
+                    <div className="flex flex-wrap items-center justify-end gap-3">
                       <button
-                        key={sName}
                         type="button"
-                        onClick={() => handleSwitchExcelSheet(sName)}
-                        className={`px-2.5 py-1 rounded-lg border text-xs cursor-pointer ${
-                          activeSheetName === sName
-                            ? 'bg-[#171717] text-white border-[#171717]'
-                            : 'bg-[#F7F6EF] text-[#171717] border-[#E4E2DA]'
-                        }`}
+                        onClick={() => void handleDownloadTemplate(category)}
+                        className="btn-secondary h-8 text-xs whitespace-nowrap shrink-0"
                       >
-                        {sName} ({sheetTables[sName].rows.length} rows)
+                        <Download className="w-3.5 h-3.5" />
+                        <span>Download {currentSchema.shortLabel} Template</span>
                       </button>
-                    ))}
-                  </div>
-                )}
-
-                {mappingResult && mappingResult.conflictingMappings.length > 0 && (
-                  <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 flex items-start gap-2.5 text-xs text-rose-900">
-                    <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-                    <div>
-                      <p className="font-semibold">Conflicting Target Field Mapping Detected</p>
-                      <p className="mt-0.5">
-                        Multiple CSV columns are mapped to the same field:{' '}
-                        {mappingResult.conflictingMappings
-                          .map(c => `${c.targetField} (${c.headers.join(', ')})`)
-                          .join('; ')}
-                        . Assign each column to a distinct SmartGrid field or Ignore one.
-                      </p>
                     </div>
-                  </div>
-                )}
 
-                {mappingResult && mappingResult.missingRequiredFields.length > 0 && (
-                  <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 flex items-start gap-2.5 text-xs text-rose-900">
-                    <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-                    <div>
-                      <p className="font-semibold">Missing Required Column Mappings</p>
-                      <p className="mt-0.5">
-                        Map the following required fields before running validation:{' '}
-                        <span className="font-semibold">
-                          {mappingResult.missingRequiredFields.map(f => f.label).join(', ')}
-                        </span>
-                      </p>
-                    </div>
-                  </div>
-                )}
-
-                <div className="sf-card-white overflow-x-auto">
-                  <table className="w-full text-left border-collapse text-xs">
-                    <thead>
-                      <tr className="border-b border-[#E4E2DA] bg-[#F7F6EF] text-[#77766F]">
-                        <th className="py-2.5 px-3 font-medium">Uploaded Header</th>
-                        <th className="py-2.5 px-3 font-medium">Sample Values</th>
-                        <th className="py-2.5 px-3 font-medium">Detection Status</th>
-                        <th className="py-2.5 px-3 font-medium">Target SmartGrid Field</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-[#E4E2DA]">
-                      {(mappingResult?.details || []).map((detail: ColumnMappingDetail, colIdx) => {
-                        const sampleVals = rows
-                          .slice(0, 2)
-                          .map(r => r[colIdx])
-                          .filter(Boolean)
-                          .join(' | ');
-                        const isConflict = mappingResult?.conflictingMappings.some(c =>
-                          c.headers.includes(detail.header)
-                        );
+                    {/* Clean Single-Column Hairline Radio List */}
+                    <div
+                      role="radiogroup"
+                      aria-label="Academic Data Category"
+                      className="border border-[#E4E2DA] rounded-xl divide-y divide-[#E4E2DA] bg-white overflow-hidden"
+                    >
+                      {CATEGORY_ORDER.map(catId => {
+                        const schema = CATEGORY_SCHEMAS[catId];
+                        const selected = category === catId;
+                        const reqFields = schema.fields.filter(f => f.required);
                         return (
-                          <tr key={detail.header} className="hover:bg-[#F7F6EF]/60">
-                            <td className="py-2.5 px-3 font-mono-tabular font-medium text-[#171717]">
-                              {detail.header}
-                            </td>
-                            <td className="py-2.5 px-3 text-[#77766F] max-w-[220px] truncate">
-                              {sampleVals || <span className="italic">empty</span>}
-                            </td>
-                            <td className="py-2.5 px-3">
+                          <button
+                            key={catId}
+                            type="button"
+                            role="radio"
+                            aria-checked={selected}
+                            onClick={() => handleSelectCategory(catId)}
+                            className={`w-full px-4 sm:px-5 py-3.5 flex items-center justify-between gap-4 text-left transition-colors cursor-pointer ${
+                              selected ? 'bg-[#F7F6EF]' : 'bg-white hover:bg-[#F7F6EF]/55'
+                            }`}
+                          >
+                            <div className="flex items-center gap-3.5 min-w-0 flex-1">
+                              {/* Accessible Radio Dot */}
                               <span
-                                className={`inline-flex items-center px-2 py-0.5 rounded-md border text-[11px] font-medium ${
-                                  isConflict
-                                    ? 'bg-rose-50 border-rose-300 text-rose-900'
-                                    : detail.confidence === 'exact' ||
-                                      detail.confidence === 'synonym' ||
-                                      detail.confidence === 'manual'
-                                    ? 'bg-[#B8F2E6]/45 border-emerald-700/20 text-emerald-950'
-                                    : detail.confidence === 'uncertain'
-                                    ? 'bg-amber-50 border-amber-300 text-amber-900'
-                                    : 'bg-[#F7F6EF] border-[#E4E2DA] text-[#77766F]'
+                                aria-hidden="true"
+                                className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${
+                                  selected
+                                    ? 'border-[#171717] bg-white'
+                                    : 'border-[#CFCBC0] bg-white'
                                 }`}
-                                title={detail.reason}
                               >
-                                {isConflict
-                                  ? 'Conflict'
-                                  : detail.confidence === 'exact'
-                                  ? 'Exact Match'
-                                  : detail.confidence === 'synonym'
-                                  ? 'Synonym Auto'
-                                  : detail.confidence === 'manual'
-                                  ? 'Manual Override'
-                                  : detail.confidence === 'uncertain'
-                                  ? 'Needs Review'
-                                  : 'Unmapped'}
+                                {selected && (
+                                  <span className="w-2 h-2 rounded-full bg-[#171717]" />
+                                )}
                               </span>
-                            </td>
-                            <td className="py-2 px-3">
-                              <select
-                                aria-label={`Map column ${detail.header}`}
-                                value={detail.targetField}
-                                onChange={e =>
-                                  handleManualColumnChange(detail.header, e.target.value)
-                                }
-                                className={`input-field h-8 text-xs py-1 ${
-                                  isConflict ? 'border-rose-400' : ''
-                                }`}
-                              >
-                                <option value="">-- Ignore / Do Not Import --</option>
-                                {currentSchema.fields.map(field => (
-                                  <option key={field.key} value={field.key}>
-                                    {field.label}
-                                    {field.required ? ' * (Required)' : ''}
-                                  </option>
-                                ))}
-                              </select>
-                            </td>
-                          </tr>
+
+                              <span className="text-sm font-semibold text-[#171717] truncate">
+                                {schema.title}
+                              </span>
+                            </div>
+
+                            <div className="hidden sm:flex items-center gap-6 shrink-0 text-xs font-mono-tabular text-right">
+                              <div className="text-[#57564F]">
+                                Key:{' '}
+                                <span className="text-[#171717] font-medium">
+                                  {schema.stableKeyLabel}
+                                </span>
+                              </div>
+                              <div className="w-24 text-[#57564F]">
+                                {reqFields.length > 0
+                                  ? `${reqFields.length} required`
+                                  : 'Multi-entity'}
+                              </div>
+                            </div>
+                          </button>
                         );
                       })}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            ) : step === 'preview' ? (
-              <div className="space-y-4">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <h3 className="font-serif-editorial text-lg font-semibold">
-                      4. Validation Preview & Duplicate Handling
-                    </h3>
-                    {validationModeNote && (
-                      <p className="text-xs text-[#77766F]">{validationModeNote}</p>
-                    )}
-                  </div>
-                  {validationReport && validationReport.summary.errorRows > 0 && (
-                    <button
-                      type="button"
-                      onClick={handleDownloadErrors}
-                      className="btn-secondary h-8 text-xs border-rose-300 text-rose-900"
-                    >
-                      <Download className="w-3.5 h-3.5" />
-                      <span>Download Error CSV ({validationReport.summary.errorRows})</span>
-                    </button>
-                  )}
-                </div>
-
-                {isValidating && (
-                  <div className="sf-card-white p-8 text-center text-xs text-[#77766F]">
-                    Validating {rows.length} rows against schema types, duplicates, and foreign keys...
-                  </div>
-                )}
-
-                {!isValidating && validationReport && (
-                  <>
-                    {/* Summary KPI Cards */}
-                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
-                      <div className="sf-card-stat">
-                        <p className="text-[11px] text-[#77766F]">Total Rows</p>
-                        <p className="text-xl font-semibold font-mono-tabular mt-0.5">
-                          {validationReport.summary.totalRows}
-                        </p>
-                      </div>
-                      <div className="sf-card-stat">
-                        <p className="text-[11px] text-emerald-800">Ready to Import</p>
-                        <p className="text-xl font-semibold font-mono-tabular text-emerald-900 mt-0.5">
-                          {validationReport.summary.validRows}
-                        </p>
-                      </div>
-                      <div className="sf-card-stat">
-                        <p className="text-[11px] text-amber-800">Warnings</p>
-                        <p className="text-xl font-semibold font-mono-tabular text-amber-900 mt-0.5">
-                          {validationReport.summary.warningRows}
-                        </p>
-                      </div>
-                      <div className="sf-card-stat">
-                        <p className="text-[11px] text-rose-700">Blocking Errors</p>
-                        <p className="text-xl font-semibold font-mono-tabular text-rose-700 mt-0.5">
-                          {validationReport.summary.errorRows}
-                        </p>
-                      </div>
-                      <div className="sf-card-stat">
-                        <p className="text-[11px] text-[#77766F]">Duplicates</p>
-                        <p className="text-xl font-semibold font-mono-tabular mt-0.5">
-                          {validationReport.summary.duplicateRows}
-                        </p>
-                      </div>
-                      <div className="sf-card-stat">
-                        <p className="text-[11px] text-[#77766F]">Issue Breakdown</p>
-                        <p className="text-[11px] font-mono-tabular text-[#171717] mt-1">
-                          Req: {validationReport.summary.missingRequiredCount} · Type:{' '}
-                          {validationReport.summary.invalidTypeCount} · FK:{' '}
-                          {validationReport.summary.invalidFkCount}
-                        </p>
-                      </div>
+                    </div>
+                  </motion.div>
+                ) : step === 'upload' ? (
+                  <motion.div
+                    key="step-upload"
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -6 }}
+                    transition={{ duration: 0.2, ease: CALM_EASE }}
+                    className="space-y-5"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <p className="text-xs text-[#57564F]">
+                        Required fields:{' '}
+                        <span className="font-semibold text-[#171717]">
+                          {currentSchema.fields
+                            .filter(f => f.required)
+                            .map(f => f.label)
+                            .join(', ') || 'At least one entity identifier per row'}
+                        </span>
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => void handleDownloadTemplate(category)}
+                        className="btn-secondary h-8 text-xs whitespace-nowrap shrink-0"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                        <span>Download CSV Template</span>
+                      </button>
                     </div>
 
-                    {/* Duplicate Strategy & Safety Options */}
-                    <div className="sf-card-white p-4 space-y-3">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div>
-                          <p className="text-xs font-semibold text-[#171717]">
-                            Duplicate Record Strategy
-                          </p>
-                          <p className="text-[11px] text-[#77766F]">
-                            Choose how SmartGrid handles rows whose stable identifier already exists
-                            or appears multiple times in the file.
-                          </p>
-                        </div>
-                        <label className="inline-flex items-center gap-2 text-xs text-[#171717] cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={atomicMode}
-                            onChange={e => setAtomicMode(e.target.checked)}
-                            className="rounded border-[#CFCBC0]"
-                          />
-                          <span>Strict Atomic Import (reject entire file if any row fails)</span>
-                        </label>
-                      </div>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                        {[
-                          {
-                            mode: 'skip' as DuplicateHandlingMode,
-                            title: 'Skip Duplicates',
-                            desc: 'Keep existing records untouched and skip conflicting rows.'
-                          },
-                          {
-                            mode: 'update' as DuplicateHandlingMode,
-                            title: 'Update Existing Records',
-                            desc: 'Review exact field changes below and confirm overwriting matches.'
-                          },
-                          {
-                            mode: 'stop' as DuplicateHandlingMode,
-                            title: 'Stop & Resolve Conflicts',
-                            desc: 'Abort entire import if any duplicate or validation error exists.'
-                          }
-                        ].map(opt => (
-                          <button
-                            key={opt.mode}
-                            type="button"
-                            onClick={() => void handleChangeDuplicateMode(opt.mode)}
-                            className={`text-left p-3 rounded-xl border transition-all cursor-pointer ${
-                              duplicateMode === opt.mode
-                                ? 'bg-[#F7F6EF] border-[#171717] ring-1 ring-[#171717]'
-                                : 'bg-white border-[#E4E2DA] hover:border-[#171717]/40'
-                            }`}
-                          >
-                            <div className="flex items-center justify-between">
-                              <span className="text-xs font-semibold text-[#171717]">
-                                {opt.title}
-                              </span>
-                              {duplicateMode === opt.mode && (
-                                <Check className="w-3.5 h-3.5 text-[#171717]" />
-                              )}
-                            </div>
-                            <p className="text-[11px] text-[#77766F] mt-1">{opt.desc}</p>
-                          </button>
-                        ))}
-                      </div>
-
-                      {/* Field-Level Diff Confirmation for Update Mode */}
-                      {duplicateMode === 'update' && validationReport.summary.updateCount > 0 && (
-                        <div className="p-3.5 rounded-xl bg-amber-50/70 border border-amber-200 space-y-2.5">
-                          <div className="flex items-center justify-between gap-2">
-                            <p className="text-xs font-semibold text-amber-950">
-                              Field-Level Diff Preview ({validationReport.summary.updateCount} record
-                              {validationReport.summary.updateCount === 1 ? '' : 's'} will be updated)
-                            </p>
-                          </div>
-                          {validationReport.fieldDiffs.length > 0 && (
-                            <div className="max-h-36 overflow-y-auto bg-white rounded-lg border border-amber-200 divide-y divide-amber-100 text-[11px]">
-                              {validationReport.fieldDiffs.slice(0, 25).map(entry => (
-                                <div
-                                  key={`${entry.row}-${entry.identifier}`}
-                                  className="px-3 py-1.5 flex flex-wrap items-center gap-2"
-                                >
-                                  <span className="font-mono-tabular font-semibold text-[#171717]">
-                                    Row {entry.row} ({entry.identifier})
-                                  </span>
-                                  {entry.diffs.length === 0 ? (
-                                    <span className="text-[#77766F]">
-                                      Matching record values unchanged
-                                    </span>
-                                  ) : (
-                                    entry.diffs.map(d => (
-                                      <span
-                                        key={d.field}
-                                        className="px-1.5 py-0.5 rounded bg-[#F7F6EF] border border-[#E4E2DA] font-mono-tabular"
-                                      >
-                                        {d.label}: "{String(d.before ?? '')}" {'->'} "
-                                        {String(d.after ?? '')}"
-                                      </span>
-                                    ))
-                                  )}
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                          <label className="flex items-center gap-2 text-xs font-medium text-amber-950 cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={confirmUpdates}
-                              onChange={e => setConfirmUpdates(e.target.checked)}
-                            />
-                            <span>
-                              I confirm overwriting {validationReport.summary.updateCount} existing
-                              university record(s) with the updated CSV values.
-                            </span>
-                          </label>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Blocking Banners */}
-                    {validationReport.blockingReason && (
-                      <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 flex items-start gap-2.5 text-xs text-rose-900">
-                        <ShieldAlert className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-                        <div>
-                          <p className="font-semibold">Import Blocked Before Execution</p>
-                          <p className="mt-0.5">{validationReport.blockingReason}</p>
-                        </div>
-                      </div>
-                    )}
-
-                    {atomicMode && validationReport.summary.errorRows > 0 && (
-                      <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 flex items-start gap-2.5 text-xs text-rose-900">
-                        <FileWarning className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-                        <div>
-                          <p className="font-semibold">Strict Atomic Mode Active</p>
-                          <p className="mt-0.5">
-                            Resolve all {validationReport.summary.errorRows} failing row(s) or
-                            uncheck Strict Atomic Import to import only the{' '}
-                            {validationReport.summary.validRows} valid row(s).
-                          </p>
-                        </div>
-                      </div>
-                    )}
-
-                    {commitError && (
-                      <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 flex items-start gap-2.5 text-xs text-rose-900">
+                    {parseError && (
+                      <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 flex items-start gap-2.5 text-xs text-rose-950">
                         <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
                         <div>
-                          <p className="font-semibold">Commit Aborted</p>
-                          <p className="mt-0.5">{commitError}</p>
+                          <p className="font-semibold">File Could Not Be Parsed</p>
+                          <p className="mt-0.5">{parseError}</p>
                         </div>
                       </div>
                     )}
 
-                    {/* Row Filter Bar */}
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        {[
-                          { id: 'all' as RowFilter, label: `All (${validationReport.rows.length})` },
-                          {
-                            id: 'error' as RowFilter,
-                            label: `Errors (${validationReport.summary.errorRows})`
-                          },
-                          {
-                            id: 'warning' as RowFilter,
-                            label: `Warnings (${validationReport.summary.warningRows})`
-                          },
-                          {
-                            id: 'duplicate' as RowFilter,
-                            label: `Duplicates (${validationReport.summary.duplicateRows})`
-                          },
-                          {
-                            id: 'ready' as RowFilter,
-                            label: `Ready (${validationReport.summary.createCount})`
-                          }
-                        ].map(tab => (
+                    {/* Uploading Screen Bar */}
+                    {uploadProgress?.active ? (
+                      <div
+                        role="status"
+                        aria-live="polite"
+                        className="rounded-xl border border-[#E4E2DA] bg-[#F7F6EF]/55 p-8 sm:p-10 space-y-4"
+                      >
+                        <div className="flex items-center justify-between gap-4">
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className="w-10 h-10 rounded-xl bg-[#171717] text-white flex items-center justify-center shrink-0">
+                              <Upload className="w-4 h-4 animate-pulse" />
+                            </div>
+                            <div className="min-w-0">
+                              <div className="text-sm font-semibold text-[#171717] truncate">
+                                {uploadProgress.stage}
+                              </div>
+                              <div className="text-xs font-mono-tabular text-[#57564F] truncate">
+                                {uploadProgress.fileName}
+                              </div>
+                            </div>
+                          </div>
+                          <span className="text-sm font-mono-tabular font-semibold text-[#171717] shrink-0">
+                            {uploadProgress.pct}%
+                          </span>
+                        </div>
+                        <div className="h-2.5 w-full rounded-full bg-[#E4E2DA] overflow-hidden">
+                          <div
+                            className="h-full bg-[#171717] transition-all duration-200"
+                            style={{ width: `${uploadProgress.pct}%` }}
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      /* Clean Dropzone */
+                      <div
+                        onDragOver={e => {
+                          e.preventDefault();
+                          setIsDragging(true);
+                        }}
+                        onDragLeave={() => setIsDragging(false)}
+                        onDrop={e => {
+                          e.preventDefault();
+                          setIsDragging(false);
+                          const file = e.dataTransfer.files?.[0];
+                          if (file) void handleFileUpload(file);
+                        }}
+                        className={`rounded-xl p-8 text-center border-2 border-dashed transition-colors ${
+                          isDragging
+                            ? 'border-[#171717] bg-[#F7F6EF]'
+                            : 'border-[#CFCBC0] bg-[#F7F6EF]/35 hover:border-[#171717]/60'
+                        }`}
+                      >
+                        <input
+                          ref={fileInputRef}
+                          type="file"
+                          accept=".csv,.tsv,.txt,.xlsx"
+                          className="hidden"
+                          onChange={e => {
+                            const f = e.target.files?.[0];
+                            if (f) void handleFileUpload(f);
+                            e.target.value = '';
+                          }}
+                        />
+                        <div className="w-11 h-11 rounded-xl bg-white border border-[#E4E2DA] flex items-center justify-center mx-auto mb-3">
+                          <Upload className="w-5 h-5 text-[#171717]" />
+                        </div>
+                        <p className="text-sm font-semibold text-[#171717]">
+                          {fileName
+                            ? `Loaded "${fileName}" (${rows.length} rows, ${headers.length} columns)`
+                            : 'Drop CSV or Excel (.xlsx) file here'}
+                        </p>
+                        <p className="text-xs font-mono-tabular text-[#57564F] mt-1">
+                          .csv · .tsv · .xlsx · Max 5 MB
+                        </p>
+                        <div className="mt-4 flex flex-wrap items-center justify-center gap-2.5">
                           <button
-                            key={tab.id}
                             type="button"
-                            onClick={() => setRowFilter(tab.id)}
-                            className={`px-3 py-1 rounded-lg border text-xs font-medium cursor-pointer ${
-                              rowFilter === tab.id
-                                ? 'bg-[#171717] text-white border-[#171717]'
-                                : 'bg-white text-[#77766F] border-[#E4E2DA] hover:text-[#171717]'
+                            onClick={() => fileInputRef.current?.click()}
+                            className="btn-primary h-9 text-xs"
+                          >
+                            <Upload className="w-3.5 h-3.5" />
+                            <span>{fileName ? 'Replace File' : 'Select File'}</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setShowPasteBox(prev => !prev)}
+                            className="btn-secondary h-9 text-xs"
+                          >
+                            <span>
+                              {showPasteBox ? 'Hide Paste Box' : 'Paste CSV'}
+                            </span>
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {showPasteBox && !uploadProgress?.active && (
+                      <div className="border border-[#E4E2DA] rounded-xl p-4 space-y-3 bg-[#F7F6EF]/40">
+                        <label className="block text-xs font-semibold text-[#171717]">
+                          Paste CSV Content
+                        </label>
+                        <textarea
+                          value={pasteInput}
+                          onChange={e => setPasteInput(e.target.value)}
+                          rows={6}
+                          placeholder={generateTemplateCsv(category)}
+                          className="w-full p-3 rounded-xl border border-[#E4E2DA] bg-white font-mono-tabular text-xs focus:outline-none focus:border-[#171717]"
+                        />
+                        <div className="flex justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={() => void handleParsePastedText()}
+                            disabled={!pasteInput.trim()}
+                            className="btn-primary h-8 text-xs"
+                          >
+                            Upload Pasted Rows
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Expected Columns Structured Table */}
+                    <div className="border border-[#E4E2DA] rounded-xl overflow-hidden bg-white">
+                      <div className="px-4 py-3 bg-[#F7F6EF] border-b border-[#E4E2DA] flex items-center justify-between gap-2">
+                        <span className="text-xs font-semibold text-[#171717]">
+                          Expected Columns · {currentSchema.shortLabel}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 bg-white">
+                        {currentSchema.fields.map((field, idx) => (
+                          <div
+                            key={field.key}
+                            className={`px-4 py-2.5 flex items-center justify-between gap-3 text-xs border-[#E4E2DA] ${
+                              idx > 0 ? 'border-t' : ''
+                            } ${idx === 1 ? 'md:border-t-0' : ''} ${
+                              idx % 2 === 0 ? 'md:border-r' : ''
                             }`}
                           >
-                            {tab.label}
-                          </button>
+                            <span className="font-medium text-[#171717] truncate">
+                              {field.label}
+                              {field.required && <span className="text-rose-600 ml-1">*</span>}
+                            </span>
+                            <span className="font-mono-tabular text-[#57564F] shrink-0">
+                              {field.sample}
+                            </span>
+                          </div>
                         ))}
                       </div>
-                      <span className="text-[11px] text-[#77766F]">
-                        Showing {Math.min(filteredRows.length, 150)} of {filteredRows.length} rows
-                      </span>
+                    </div>
+                  </motion.div>
+                ) : step === 'mapping' ? (
+                  <motion.div
+                    key="step-mapping"
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -6 }}
+                    transition={{ duration: 0.2, ease: CALM_EASE }}
+                    className="space-y-4"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <p className="text-xs text-[#57564F]">
+                        Source file:{' '}
+                        <span className="font-semibold text-[#171717]">{fileName}</span> ·{' '}
+                        <span className="font-mono-tabular">{rows.length} data rows</span>
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const redetected = detectImportColumnMappings(headers, category);
+                            setColumnMappings(redetected.mapping);
+                          }}
+                          className="btn-secondary h-8 text-xs"
+                        >
+                          <Sparkles className="w-3.5 h-3.5" />
+                          <span>Re-Detect Columns</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => fileInputRef.current?.click()}
+                          className="btn-secondary h-8 text-xs"
+                        >
+                          <span>Replace File</span>
+                        </button>
+                        <input
+                          ref={fileInputRef}
+                          type="file"
+                          accept=".csv,.tsv,.txt,.xlsx"
+                          className="hidden"
+                          onChange={e => {
+                            const f = e.target.files?.[0];
+                            if (f) void handleFileUpload(f);
+                            e.target.value = '';
+                          }}
+                        />
+                      </div>
                     </div>
 
-                    {/* Detailed Row Validation Table */}
-                    <div className="sf-card-white overflow-x-auto max-h-72 overflow-y-auto">
+                    {Object.keys(sheetTables).length > 1 && (
+                      <div className="flex flex-wrap items-center gap-2 text-xs pb-1">
+                        <span className="font-semibold text-[#57564F]">Excel Worksheet:</span>
+                        <div className="inline-flex flex-wrap p-1 rounded-xl bg-[#EDEAE0] border border-[#E4E2DA] gap-1">
+                          {Object.keys(sheetTables).map(sName => (
+                            <button
+                              key={sName}
+                              type="button"
+                              onClick={() => handleSwitchExcelSheet(sName)}
+                              className={`px-3 py-1 rounded-lg text-xs font-medium cursor-pointer transition-colors ${
+                                activeSheetName === sName
+                                  ? 'bg-[#171717] text-white'
+                                  : 'text-[#57564F] hover:text-[#171717]'
+                              }`}
+                            >
+                              {sName} ({sheetTables[sName].rows.length})
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {mappingResult && mappingResult.conflictingMappings.length > 0 && (
+                      <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 flex items-start gap-2.5 text-xs text-rose-950">
+                        <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                        <div>
+                          <p className="font-semibold">Conflicting Target Field Mapping Detected</p>
+                          <p className="mt-0.5">
+                            Multiple CSV columns map to the same field:{' '}
+                            {mappingResult.conflictingMappings
+                              .map(c => `${c.targetField} (${c.headers.join(', ')})`)
+                              .join('; ')}
+                            . Assign each column to a distinct SmartGrid field or ignore duplicates.
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {mappingResult && mappingResult.missingRequiredFields.length > 0 && (
+                      <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 flex items-start gap-2.5 text-xs text-rose-950">
+                        <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                        <div>
+                          <p className="font-semibold">Missing Required Column Mappings</p>
+                          <p className="mt-0.5">
+                            Map the following required fields before running validation:{' '}
+                            <span className="font-semibold">
+                              {mappingResult.missingRequiredFields.map(f => f.label).join(', ')}
+                            </span>
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="border border-[#E4E2DA] rounded-xl overflow-x-auto bg-white">
                       <table className="w-full text-left border-collapse text-xs">
-                        <thead className="sticky top-0 bg-[#F7F6EF] border-b border-[#E4E2DA] text-[#77766F]">
-                          <tr>
-                            <th className="py-2 px-3 font-medium">Row</th>
-                            <th className="py-2 px-3 font-medium">Identifier</th>
-                            <th className="py-2 px-3 font-medium">Status</th>
-                            <th className="py-2 px-3 font-medium">Action</th>
-                            <th className="py-2 px-3 font-medium">Problems & Suggested Fix</th>
+                        <thead>
+                          <tr className="border-b border-[#E4E2DA] bg-[#F7F6EF] text-[#57564F]">
+                            <th className="py-2.5 px-3.5 font-semibold">Uploaded Header</th>
+                            <th className="py-2.5 px-3.5 font-semibold">Sample Values</th>
+                            <th className="py-2.5 px-3.5 font-semibold">Detection</th>
+                            <th className="py-2.5 px-3.5 font-semibold">Target SmartGrid Field</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-[#E4E2DA]">
-                          {filteredRows.slice(0, 150).map(r => (
-                            <tr
-                              key={r.rowNumber}
-                              className={
-                                r.status === 'error'
-                                  ? 'bg-rose-50/40'
-                                  : r.status === 'warning' || r.status === 'duplicate_skip'
-                                  ? 'bg-amber-50/30'
-                                  : 'hover:bg-[#F7F6EF]/50'
-                              }
-                            >
-                              <td className="py-2 px-3 font-mono-tabular text-[#77766F]">
-                                {r.rowNumber}
-                              </td>
-                              <td className="py-2 px-3 font-mono-tabular font-medium text-[#171717]">
-                                {r.identifier}
-                              </td>
-                              <td className="py-2 px-3">
-                                <span
-                                  className={`inline-flex items-center px-2 py-0.5 rounded-md border text-[11px] font-medium ${
-                                    r.status === 'ready'
-                                      ? 'bg-[#B8F2E6]/45 border-emerald-700/20 text-emerald-950'
-                                      : r.status === 'duplicate_update'
-                                      ? 'bg-sky-50 border-sky-200 text-sky-900'
-                                      : r.status === 'duplicate_skip' || r.status === 'warning'
-                                      ? 'bg-amber-50 border-amber-200 text-amber-900'
-                                      : 'bg-rose-50 border-rose-200 text-rose-900'
-                                  }`}
-                                >
-                                  {r.status}
-                                </span>
-                              </td>
-                              <td className="py-2 px-3 capitalize text-[#77766F]">{r.action}</td>
-                              <td className="py-2 px-3 space-y-1">
-                                {r.errors.map((err, eIdx) => (
-                                  <div key={eIdx} className="text-rose-900">
-                                    <span className="font-mono-tabular font-semibold">
-                                      [{err.column}]
-                                    </span>{' '}
-                                    {err.message}{' '}
-                                    <span className="text-[#77766F]">— Fix: {err.suggestion}</span>
-                                  </div>
-                                ))}
-                                {r.warnings.map((w, wIdx) => (
-                                  <div key={wIdx} className="text-amber-900">
-                                    <span className="font-mono-tabular font-semibold">
-                                      [{w.column}]
-                                    </span>{' '}
-                                    {w.message}
-                                  </div>
-                                ))}
-                                {r.errors.length === 0 && r.warnings.length === 0 && (
-                                  <span className="text-[#77766F]">Passed all validation checks</span>
-                                )}
-                              </td>
-                            </tr>
-                          ))}
+                          {(mappingResult?.details || []).map((detail: ColumnMappingDetail, colIdx) => {
+                            const sampleVals = rows
+                              .slice(0, 2)
+                              .map(r => r[colIdx])
+                              .filter(Boolean)
+                              .join(' · ');
+                            const isConflict = mappingResult?.conflictingMappings.some(c =>
+                              c.headers.includes(detail.header)
+                            );
+                            const statusLabel = isConflict
+                              ? 'Conflict'
+                              : detail.confidence === 'exact'
+                              ? 'Exact Match'
+                              : detail.confidence === 'synonym'
+                              ? 'Synonym Auto'
+                              : detail.confidence === 'manual'
+                              ? 'Manual Override'
+                              : detail.confidence === 'uncertain'
+                              ? 'Needs Review'
+                              : 'Unmapped';
+                            const statusColor = isConflict
+                              ? 'text-rose-700 font-semibold'
+                              : detail.confidence === 'exact' ||
+                                detail.confidence === 'synonym' ||
+                                detail.confidence === 'manual'
+                              ? 'text-emerald-800 font-medium'
+                              : detail.confidence === 'uncertain'
+                              ? 'text-amber-800 font-medium'
+                              : 'text-[#77766F]';
+
+                            return (
+                              <tr key={detail.header} className="hover:bg-[#F7F6EF]/45">
+                                <td className="py-2.5 px-3.5 font-mono-tabular font-medium text-[#171717]">
+                                  {detail.header}
+                                </td>
+                                <td className="py-2.5 px-3.5 text-[#57564F] max-w-[220px] truncate">
+                                  {sampleVals || <span className="italic">empty</span>}
+                                </td>
+                                <td className={`py-2.5 px-3.5 whitespace-nowrap ${statusColor}`} title={detail.reason}>
+                                  {statusLabel}
+                                </td>
+                                <td className="py-2 px-3.5">
+                                  <select
+                                    aria-label={`Map column ${detail.header}`}
+                                    value={detail.targetField}
+                                    onChange={e =>
+                                      handleManualColumnChange(detail.header, e.target.value)
+                                    }
+                                    className={`input-field h-8 text-xs py-1 ${
+                                      isConflict ? 'border-rose-400' : ''
+                                    }`}
+                                  >
+                                    <option value="">-- Ignore / Do Not Import --</option>
+                                    {currentSchema.fields.map(field => (
+                                      <option key={field.key} value={field.key}>
+                                        {field.label}
+                                        {field.required ? ' * (Required)' : ''}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </td>
+                              </tr>
+                            );
+                          })}
                         </tbody>
                       </table>
                     </div>
+                  </motion.div>
+                ) : step === 'preview' ? (
+                  <motion.div
+                    key="step-preview"
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -6 }}
+                    transition={{ duration: 0.2, ease: CALM_EASE }}
+                    className="space-y-6"
+                  >
+                    {(validationModeNote ||
+                      (validationReport && validationReport.summary.errorRows > 0)) && (
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        {validationModeNote && (
+                          <p className="text-xs text-[#57564F]">{validationModeNote}</p>
+                        )}
+                        {validationReport && validationReport.summary.errorRows > 0 && (
+                          <button
+                            type="button"
+                            onClick={handleDownloadErrors}
+                            className="btn-secondary h-8 text-xs border-rose-300 text-rose-900 ml-auto"
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                            <span>
+                              Download Error CSV ({validationReport.summary.errorRows})
+                            </span>
+                          </button>
+                        )}
+                      </div>
+                    )}
 
-                    {isCommitting && (
-                      <div className="sf-card-white p-4 space-y-2">
-                        <div className="flex items-center justify-between text-xs font-medium">
-                          <span>{commitProgress.label}</span>
-                          <span className="font-mono-tabular">{commitProgress.pct}%</span>
+                    {isValidating && (
+                      <div
+                        role="status"
+                        aria-live="polite"
+                        className="border border-[#E4E2DA] rounded-xl p-6 space-y-3 bg-[#F7F6EF]/45"
+                      >
+                        <div className="flex items-center justify-between text-xs font-semibold text-[#171717]">
+                          <span>Uploading &amp; validating {rows.length} rows...</span>
+                          <span className="font-mono-tabular text-[#57564F]">Checking</span>
                         </div>
-                        <div className="h-2 rounded-full bg-[#F7F6EF] overflow-hidden border border-[#E4E2DA]">
-                          <div
-                            className="h-full bg-[#171717] transition-all duration-300"
-                            style={{ width: `${commitProgress.pct}%` }}
-                          />
+                        <div className="h-2 w-full rounded-full bg-[#E4E2DA] overflow-hidden">
+                          <div className="h-full w-2/3 bg-[#171717] animate-pulse rounded-full" />
                         </div>
                       </div>
                     )}
-                  </>
-                )}
-              </div>
-            ) : (
-              /* Step 5: Import Results */
-              commitResult && (
-                <div className="space-y-5">
-                  <div className="sf-card-white p-6 flex flex-wrap items-start justify-between gap-4">
-                    <div className="flex items-start gap-3.5">
-                      <div
-                        className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
-                          commitResult.status === 'completed'
-                            ? 'bg-[#B8F2E6] text-[#171717]'
-                            : 'bg-amber-100 text-amber-900'
-                        }`}
-                      >
-                        <CheckCircle2 className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <h3 className="font-serif-editorial text-xl font-semibold text-[#171717]">
-                            Import {commitResult.status === 'completed' ? 'Completed' : 'Finished with Skipped Errors'}
-                          </h3>
-                          {commitResult.idempotentReplay && (
-                            <span className="px-2 py-0.5 rounded-md border border-[#E4E2DA] bg-[#F7F6EF] text-[11px] font-medium">
-                              Idempotent Replay
-                            </span>
+
+                    {!isValidating && validationReport && (
+                      <>
+                        {/* Unified Hairline Summary Metrics Strip */}
+                        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 border border-[#E4E2DA] rounded-xl divide-y sm:divide-y-0 sm:divide-x divide-[#E4E2DA] bg-white overflow-hidden">
+                          <div className="px-4 py-3">
+                            <p className="text-[11px] font-medium text-[#57564F]">Total Rows</p>
+                            <p className="text-xl font-semibold font-mono-tabular text-[#171717] mt-0.5">
+                              {validationReport.summary.totalRows}
+                            </p>
+                          </div>
+                          <div className="px-4 py-3">
+                            <p className="text-[11px] font-medium text-emerald-800">Ready</p>
+                            <p className="text-xl font-semibold font-mono-tabular text-emerald-900 mt-0.5">
+                              {validationReport.summary.validRows}
+                            </p>
+                          </div>
+                          <div className="px-4 py-3">
+                            <p className="text-[11px] font-medium text-amber-800">Warnings</p>
+                            <p className="text-xl font-semibold font-mono-tabular text-amber-900 mt-0.5">
+                              {validationReport.summary.warningRows}
+                            </p>
+                          </div>
+                          <div className="px-4 py-3">
+                            <p className="text-[11px] font-medium text-rose-700">Errors</p>
+                            <p className="text-xl font-semibold font-mono-tabular text-rose-700 mt-0.5">
+                              {validationReport.summary.errorRows}
+                            </p>
+                          </div>
+                          <div className="px-4 py-3">
+                            <p className="text-[11px] font-medium text-[#57564F]">Duplicates</p>
+                            <p className="text-xl font-semibold font-mono-tabular text-[#171717] mt-0.5">
+                              {validationReport.summary.duplicateRows}
+                            </p>
+                          </div>
+                          <div className="px-4 py-3">
+                            <p className="text-[11px] font-medium text-[#57564F]">Breakdown</p>
+                            <p className="text-[11px] font-mono-tabular text-[#171717] mt-1.5">
+                              Req {validationReport.summary.missingRequiredCount} · Type{' '}
+                              {validationReport.summary.invalidTypeCount} · FK{' '}
+                              {validationReport.summary.invalidFkCount}
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Duplicate Strategy — Clean Radio List */}
+                        <div className="space-y-3">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <h3 className="text-sm font-semibold text-[#171717]">
+                              Duplicate Record Handling
+                            </h3>
+                            <label className="inline-flex items-center gap-2 text-xs font-medium text-[#171717] cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={atomicMode}
+                                onChange={e => setAtomicMode(e.target.checked)}
+                                className="w-4 h-4 accent-[#171717] rounded border-[#CFCBC0]"
+                              />
+                              <span>Strict Atomic Import</span>
+                            </label>
+                          </div>
+
+                          <div
+                            role="radiogroup"
+                            aria-label="Duplicate Record Handling Strategy"
+                            className="border border-[#E4E2DA] rounded-xl divide-y divide-[#E4E2DA] bg-white overflow-hidden"
+                          >
+                            {[
+                              {
+                                mode: 'skip' as DuplicateHandlingMode,
+                                title: 'Skip Duplicates'
+                              },
+                              {
+                                mode: 'update' as DuplicateHandlingMode,
+                                title: 'Update Matching Records'
+                              },
+                              {
+                                mode: 'stop' as DuplicateHandlingMode,
+                                title: 'Stop on Duplicates'
+                              }
+                            ].map(opt => {
+                              const selected = duplicateMode === opt.mode;
+                              return (
+                                <button
+                                  key={opt.mode}
+                                  type="button"
+                                  role="radio"
+                                  aria-checked={selected}
+                                  onClick={() => void handleChangeDuplicateMode(opt.mode)}
+                                  className={`w-full px-4 sm:px-5 py-3 flex items-center gap-3.5 text-left transition-colors cursor-pointer ${
+                                    selected ? 'bg-[#F7F6EF]' : 'bg-white hover:bg-[#F7F6EF]/55'
+                                  }`}
+                                >
+                                  <span
+                                    aria-hidden="true"
+                                    className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${
+                                      selected
+                                        ? 'border-[#171717] bg-white'
+                                        : 'border-[#CFCBC0] bg-white'
+                                    }`}
+                                  >
+                                    {selected && (
+                                      <span className="w-2 h-2 rounded-full bg-[#171717]" />
+                                    )}
+                                  </span>
+                                  <span className="text-[13px] font-semibold text-[#171717]">
+                                    {opt.title}
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
+
+                          {/* Field-Level Diff Confirmation for Update Mode */}
+                          {duplicateMode === 'update' && validationReport.summary.updateCount > 0 && (
+                            <div className="p-4 rounded-xl bg-amber-50/70 border border-amber-200 space-y-2.5">
+                              <p className="text-xs font-semibold text-amber-950">
+                                Field-Level Diff Preview ({validationReport.summary.updateCount}{' '}
+                                record{validationReport.summary.updateCount === 1 ? '' : 's'} will be
+                                updated)
+                              </p>
+                              {validationReport.fieldDiffs.length > 0 && (
+                                <div className="max-h-36 overflow-y-auto bg-white rounded-lg border border-amber-200 divide-y divide-amber-100 text-xs">
+                                  {validationReport.fieldDiffs.slice(0, 25).map(entry => (
+                                    <div
+                                      key={`${entry.row}-${entry.identifier}`}
+                                      className="px-3 py-2 flex flex-wrap items-center gap-2"
+                                    >
+                                      <span className="font-mono-tabular font-semibold text-[#171717]">
+                                        Row {entry.row} ({entry.identifier})
+                                      </span>
+                                      {entry.diffs.length === 0 ? (
+                                        <span className="text-[#57564F]">
+                                          Matching record values unchanged
+                                        </span>
+                                      ) : (
+                                        entry.diffs.map(d => (
+                                          <span
+                                            key={d.field}
+                                            className="px-1.5 py-0.5 rounded bg-[#F7F6EF] border border-[#E4E2DA] font-mono-tabular text-[11px]"
+                                          >
+                                            {d.label}: &ldquo;{String(d.before ?? '')}&rdquo; &rarr;
+                                            &ldquo;{String(d.after ?? '')}&rdquo;
+                                          </span>
+                                        ))
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                              <label className="flex items-center gap-2.5 text-xs font-medium text-amber-950 cursor-pointer pt-0.5">
+                                <input
+                                  type="checkbox"
+                                  checked={confirmUpdates}
+                                  onChange={e => setConfirmUpdates(e.target.checked)}
+                                  className="w-4 h-4 accent-[#171717]"
+                                />
+                                <span>
+                                  I confirm overwriting {validationReport.summary.updateCount}{' '}
+                                  existing university record(s) with these updated CSV values.
+                                </span>
+                              </label>
+                            </div>
                           )}
                         </div>
-                        <p className="text-xs text-[#77766F] mt-1">{commitResult.message}</p>
-                        <p className="text-[11px] text-[#77766F] mt-1 flex items-center gap-1.5">
-                          <Clock className="w-3.5 h-3.5" />
-                          <span>
-                            Processed in {commitResult.durationMs}ms · Persistence:{' '}
-                            {commitResult.persistenceMode === 'supabase'
-                              ? 'Supabase PostgreSQL (Verified)'
-                              : 'Local Workspace Storage (Remote Supabase unconfigured or offline)'}
-                          </span>
-                        </p>
-                      </div>
-                    </div>
 
-                    {commitResult.counts.failed > 0 && commitResult.errorCsv && (
+                        {/* Blocking Banners */}
+                        {validationReport.blockingReason && (
+                          <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 flex items-start gap-2.5 text-xs text-rose-950">
+                            <ShieldAlert className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                            <div>
+                              <p className="font-semibold">Import Blocked Before Execution</p>
+                              <p className="mt-0.5">{validationReport.blockingReason}</p>
+                            </div>
+                          </div>
+                        )}
+
+                        {atomicMode && validationReport.summary.errorRows > 0 && (
+                          <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 flex items-start gap-2.5 text-xs text-rose-950">
+                            <FileWarning className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                            <div>
+                              <p className="font-semibold">Strict Atomic Mode Active</p>
+                              <p className="mt-0.5">
+                                Resolve all {validationReport.summary.errorRows} failing row(s) or
+                                uncheck Strict Atomic Import to import only the{' '}
+                                {validationReport.summary.validRows} valid row(s).
+                              </p>
+                            </div>
+                          </div>
+                        )}
+
+                        {commitError && (
+                          <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 flex items-start gap-2.5 text-xs text-rose-950">
+                            <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                            <div>
+                              <p className="font-semibold">Commit Aborted</p>
+                              <p className="mt-0.5">{commitError}</p>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Row Filter Segmented Control + Detailed Row Table */}
+                        <div className="space-y-3">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="inline-flex flex-wrap p-1 rounded-xl bg-[#EDEAE0] border border-[#E4E2DA] gap-1">
+                              {[
+                                {
+                                  id: 'all' as RowFilter,
+                                  label: `All (${validationReport.rows.length})`
+                                },
+                                {
+                                  id: 'error' as RowFilter,
+                                  label: `Errors (${validationReport.summary.errorRows})`
+                                },
+                                {
+                                  id: 'warning' as RowFilter,
+                                  label: `Warnings (${validationReport.summary.warningRows})`
+                                },
+                                {
+                                  id: 'duplicate' as RowFilter,
+                                  label: `Duplicates (${validationReport.summary.duplicateRows})`
+                                },
+                                {
+                                  id: 'ready' as RowFilter,
+                                  label: `Ready (${validationReport.summary.createCount})`
+                                }
+                              ].map(tab => (
+                                <button
+                                  key={tab.id}
+                                  type="button"
+                                  onClick={() => setRowFilter(tab.id)}
+                                  className={`px-3 py-1 rounded-lg text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
+                                    rowFilter === tab.id
+                                      ? 'bg-[#171717] text-white'
+                                      : 'text-[#57564F] hover:text-[#171717]'
+                                  }`}
+                                >
+                                  {tab.label}
+                                </button>
+                              ))}
+                            </div>
+                            <span className="text-xs font-mono-tabular text-[#57564F]">
+                              Showing {Math.min(filteredRows.length, 150)} of {filteredRows.length}{' '}
+                              rows
+                            </span>
+                          </div>
+
+                          <div className="border border-[#E4E2DA] rounded-xl overflow-x-auto max-h-72 overflow-y-auto bg-white">
+                            <table className="w-full text-left border-collapse text-xs">
+                              <thead className="sticky top-0 bg-[#F7F6EF] border-b border-[#E4E2DA] text-[#57564F]">
+                                <tr>
+                                  <th className="py-2.5 px-3 font-semibold">Row</th>
+                                  <th className="py-2.5 px-3 font-semibold">Identifier</th>
+                                  <th className="py-2.5 px-3 font-semibold">Status</th>
+                                  <th className="py-2.5 px-3 font-semibold">Action</th>
+                                  <th className="py-2.5 px-3 font-semibold">
+                                    Validation Details &amp; Suggested Fix
+                                  </th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-[#E4E2DA]">
+                                {filteredRows.slice(0, 150).map(r => (
+                                  <tr
+                                    key={r.rowNumber}
+                                    className={
+                                      r.status === 'error'
+                                        ? 'bg-rose-50/40'
+                                        : r.status === 'warning' || r.status === 'duplicate_skip'
+                                        ? 'bg-amber-50/30'
+                                        : 'hover:bg-[#F7F6EF]/45'
+                                    }
+                                  >
+                                    <td className="py-2 px-3 font-mono-tabular text-[#57564F]">
+                                      {r.rowNumber}
+                                    </td>
+                                    <td className="py-2 px-3 font-mono-tabular font-medium text-[#171717]">
+                                      {r.identifier}
+                                    </td>
+                                    <td className="py-2 px-3 font-medium whitespace-nowrap">
+                                      <span
+                                        className={
+                                          r.status === 'ready'
+                                            ? 'text-emerald-800'
+                                            : r.status === 'duplicate_update'
+                                            ? 'text-sky-800'
+                                            : r.status === 'duplicate_skip' ||
+                                              r.status === 'warning'
+                                            ? 'text-amber-800'
+                                            : 'text-rose-700'
+                                        }
+                                      >
+                                        {r.status}
+                                      </span>
+                                    </td>
+                                    <td className="py-2 px-3 capitalize text-[#57564F]">
+                                      {r.action}
+                                    </td>
+                                    <td className="py-2 px-3 space-y-1">
+                                      {r.errors.map((err, eIdx) => (
+                                        <div key={eIdx} className="text-rose-900">
+                                          <span className="font-mono-tabular font-semibold">
+                                            [{err.column}]
+                                          </span>{' '}
+                                          {err.message}{' '}
+                                          <span className="text-[#57564F]">
+                                            — Fix: {err.suggestion}
+                                          </span>
+                                        </div>
+                                      ))}
+                                      {r.warnings.map((w, wIdx) => (
+                                        <div key={wIdx} className="text-amber-900">
+                                          <span className="font-mono-tabular font-semibold">
+                                            [{w.column}]
+                                          </span>{' '}
+                                          {w.message}
+                                        </div>
+                                      ))}
+                                      {r.errors.length === 0 && r.warnings.length === 0 && (
+                                        <span className="text-[#57564F]">
+                                          Passed all validation checks
+                                        </span>
+                                      )}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+
+                        {isCommitting && (
+                          <div className="border border-[#E4E2DA] rounded-xl p-4 space-y-2 bg-[#F7F6EF]/50">
+                            <div className="flex items-center justify-between text-xs font-medium text-[#171717]">
+                              <span>{commitProgress.label}</span>
+                              <span className="font-mono-tabular">{commitProgress.pct}%</span>
+                            </div>
+                            <div className="h-2 rounded-full bg-[#E4E2DA] overflow-hidden">
+                              <div
+                                className="h-full bg-[#171717] transition-all duration-300"
+                                style={{ width: `${commitProgress.pct}%` }}
+                              />
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </motion.div>
+                ) : (
+                  /* Step 5: Import Results */
+                  commitResult && (
+                    <motion.div
+                      key="step-results"
+                      initial={{ opacity: 0, scale: 0.98 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0 }}
+                      transition={{ duration: 0.25, ease: CALM_EASE }}
+                      className="space-y-6"
+                    >
+                      <div
+                        className={`p-6 rounded-xl border flex flex-wrap items-start justify-between gap-4 ${
+                          commitResult.status === 'completed'
+                            ? 'bg-[#B8F2E6]/30 border-[#8FDCC9]'
+                            : 'bg-amber-50 border-amber-200'
+                        }`}
+                      >
+                        <div className="flex items-start gap-3.5">
+                          <div
+                            className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                              commitResult.status === 'completed'
+                                ? 'bg-[#B8F2E6] text-[#171717]'
+                                : 'bg-amber-100 text-amber-900'
+                            }`}
+                          >
+                            <CheckCircle2 className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <h3 className="font-serif-editorial text-xl font-semibold text-[#171717]">
+                                Import{' '}
+                                {commitResult.status === 'completed'
+                                  ? 'Completed'
+                                  : 'Finished with Skipped Errors'}
+                              </h3>
+                              {commitResult.idempotentReplay && (
+                                <span className="text-xs font-mono-tabular text-[#57564F]">
+                                  · Idempotent Replay
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[13px] text-[#171717] mt-1">{commitResult.message}</p>
+                            <p className="text-xs text-[#57564F] mt-1.5 flex items-center gap-1.5 font-mono-tabular">
+                              <Clock className="w-3.5 h-3.5" />
+                              <span>
+                                Processed in {commitResult.durationMs}ms · Persistence: Supabase
+                                PostgreSQL (Verified)
+                              </span>
+                            </p>
+                          </div>
+                        </div>
+
+                        {commitResult.counts.failed > 0 && commitResult.errorCsv && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const cleanBase = (fileName || category).replace(/\.[^.]+$/, '');
+                              triggerCsvDownload(
+                                `${cleanBase}_errors.csv`,
+                                commitResult.errorCsv
+                              );
+                            }}
+                            className="btn-secondary h-9 text-xs border-rose-300 text-rose-900"
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                            <span>Download Error CSV ({commitResult.counts.failed} rows)</span>
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-2 sm:grid-cols-5 border border-[#E4E2DA] rounded-xl divide-y sm:divide-y-0 sm:divide-x divide-[#E4E2DA] bg-white overflow-hidden">
+                        <div className="px-4 py-4">
+                          <p className="text-xs text-[#57564F]">Total Processed</p>
+                          <p className="text-2xl font-semibold font-mono-tabular text-[#171717] mt-1">
+                            {commitResult.counts.totalRows}
+                          </p>
+                        </div>
+                        <div className="px-4 py-4">
+                          <p className="text-xs text-emerald-800">Created</p>
+                          <p className="text-2xl font-semibold font-mono-tabular text-emerald-900 mt-1">
+                            {commitResult.counts.created}
+                          </p>
+                        </div>
+                        <div className="px-4 py-4">
+                          <p className="text-xs text-sky-800">Updated</p>
+                          <p className="text-2xl font-semibold font-mono-tabular text-sky-900 mt-1">
+                            {commitResult.counts.updated}
+                          </p>
+                        </div>
+                        <div className="px-4 py-4">
+                          <p className="text-xs text-amber-800">Skipped</p>
+                          <p className="text-2xl font-semibold font-mono-tabular text-amber-900 mt-1">
+                            {commitResult.counts.skipped}
+                          </p>
+                        </div>
+                        <div className="px-4 py-4">
+                          <p className="text-xs text-rose-700">Failed</p>
+                          <p className="text-2xl font-semibold font-mono-tabular text-rose-700 mt-1">
+                            {commitResult.counts.failed}
+                          </p>
+                        </div>
+                      </div>
+                    </motion.div>
+                  )
+                )}
+              </AnimatePresence>
+            </div>
+
+            {/* Sticky Footer (Matches Academic Setup Dialogue Panel) */}
+            <footer className="flex flex-wrap items-center justify-between gap-3 px-6 sm:px-8 py-4 border-t border-[#E4E2DA] bg-[#F7F6EF]/60 shrink-0">
+              {activeTab === 'history' ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('wizard')}
+                    className="btn-secondary h-10 px-4 text-xs"
+                  >
+                    <ArrowLeft className="w-3.5 h-3.5" />
+                    <span>Back to Import Wizard</span>
+                  </button>
+                  {onClose && (
+                    <button
+                      type="button"
+                      onClick={onClose}
+                      className="btn-primary h-10 px-5 text-xs"
+                    >
+                      <span>Close</span>
+                    </button>
+                  )}
+                </>
+              ) : step === 'category' ? (
+                <>
+                  <div className="text-xs text-[#57564F] flex items-center gap-1.5">
+                    <Layers className="w-3.5 h-3.5" />
+                    <span>
+                      Selected: <strong className="text-[#171717]">{currentSchema.title}</strong>
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2.5">
+                    {onClose && (
                       <button
                         type="button"
-                        onClick={() => {
-                          const cleanBase = (fileName || category).replace(/\.[^.]+$/, '');
-                          triggerCsvDownload(`${cleanBase}_errors.csv`, commitResult.errorCsv);
-                        }}
-                        className="btn-secondary h-9 text-xs border-rose-300 text-rose-900"
+                        onClick={onClose}
+                        className="btn-secondary h-10 px-4 text-xs"
                       >
-                        <Download className="w-3.5 h-3.5" />
-                        <span>Download Error CSV ({commitResult.counts.failed} rows)</span>
+                        Cancel
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setStep('upload')}
+                      className="btn-primary h-10 px-5 text-xs"
+                    >
+                      <span>Next: Upload CSV / Excel</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </>
+              ) : step === 'upload' ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setStep('category')}
+                    className="btn-secondary h-10 px-4 text-xs"
+                  >
+                    <ArrowLeft className="w-3.5 h-3.5" />
+                    <span>Back</span>
+                  </button>
+                  <div className="flex items-center gap-2.5">
+                    {headers.length > 0 && rows.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setStep('mapping')}
+                        className="btn-primary h-10 px-5 text-xs"
+                      >
+                        <span>Continue to Column Mapping ({rows.length} rows)</span>
+                        <ArrowRight className="w-3.5 h-3.5" />
                       </button>
                     )}
                   </div>
-
-                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-                    <div className="sf-card-stat">
-                      <p className="text-[11px] text-[#77766F]">Total Processed</p>
-                      <p className="text-2xl font-semibold font-mono-tabular mt-1">
-                        {commitResult.counts.totalRows}
-                      </p>
-                    </div>
-                    <div className="sf-card-stat">
-                      <p className="text-[11px] text-emerald-800">Created</p>
-                      <p className="text-2xl font-semibold font-mono-tabular text-emerald-900 mt-1">
-                        {commitResult.counts.created}
-                      </p>
-                    </div>
-                    <div className="sf-card-stat">
-                      <p className="text-[11px] text-sky-800">Updated</p>
-                      <p className="text-2xl font-semibold font-mono-tabular text-sky-900 mt-1">
-                        {commitResult.counts.updated}
-                      </p>
-                    </div>
-                    <div className="sf-card-stat">
-                      <p className="text-[11px] text-amber-800">Skipped</p>
-                      <p className="text-2xl font-semibold font-mono-tabular text-amber-900 mt-1">
-                        {commitResult.counts.skipped}
-                      </p>
-                    </div>
-                    <div className="sf-card-stat">
-                      <p className="text-[11px] text-rose-700">Failed</p>
-                      <p className="text-2xl font-semibold font-mono-tabular text-rose-700 mt-1">
-                        {commitResult.counts.failed}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              )
-            )}
-          </div>
-
-          {/* Sticky Footer */}
-          <footer className="flex flex-wrap items-center justify-between gap-3 px-6 py-4 bg-white border-t border-[#E4E2DA]">
-            {activeTab === 'history' ? (
-              <>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('wizard')}
-                  className="btn-secondary h-9 text-xs"
-                >
-                  <ArrowLeft className="w-3.5 h-3.5" />
-                  <span>Back to Import Wizard</span>
-                </button>
-                {onClose && (
-                  <button type="button" onClick={onClose} className="btn-primary h-9 text-xs">
-                    <span>Close</span>
-                  </button>
-                )}
-              </>
-            ) : step === 'category' ? (
-              <>
-                <div className="text-xs text-[#77766F] flex items-center gap-1.5">
-                  <Layers className="w-3.5 h-3.5" />
-                  <span>Selected: {currentSchema.title}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  {onClose && (
-                    <button type="button" onClick={onClose} className="btn-secondary h-9 text-xs">
-                      Cancel
-                    </button>
-                  )}
+                </>
+              ) : step === 'mapping' ? (
+                <>
                   <button
                     type="button"
                     onClick={() => setStep('upload')}
-                    className="btn-primary h-9 text-xs"
+                    className="btn-secondary h-10 px-4 text-xs"
                   >
-                    <span>Next: Upload CSV / Excel</span>
+                    <ArrowLeft className="w-3.5 h-3.5" />
+                    <span>Back to Upload</span>
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!canAdvanceFromMapping}
+                    onClick={() => void handleProceedToValidation()}
+                    className="btn-primary h-10 px-5 text-xs"
+                  >
+                    <span>Next: Validate &amp; Preview</span>
                     <ArrowRight className="w-3.5 h-3.5" />
                   </button>
-                </div>
-              </>
-            ) : step === 'upload' ? (
-              <>
-                <button
-                  type="button"
-                  onClick={() => setStep('category')}
-                  className="btn-secondary h-9 text-xs"
-                >
-                  <ArrowLeft className="w-3.5 h-3.5" />
-                  <span>Back</span>
-                </button>
-                <div className="flex items-center gap-2">
-                  {headers.length > 0 && rows.length > 0 && (
+                </>
+              ) : step === 'preview' ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setStep('mapping')}
+                    disabled={isCommitting}
+                    className="btn-secondary h-10 px-4 text-xs"
+                  >
+                    <ArrowLeft className="w-3.5 h-3.5" />
+                    <span>Adjust Column Mapping</span>
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!canExecuteCommit}
+                    onClick={() => void handleCommitImport()}
+                    className="btn-primary h-10 px-5 text-xs"
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>
+                      {isCommitting
+                        ? 'Importing...'
+                        : validationReport
+                        ? `Import ${validationReport.summary.validRows} Verified Row${
+                            validationReport.summary.validRows === 1 ? '' : 's'
+                          }`
+                        : 'Run Import'}
+                    </span>
+                  </button>
+                </>
+              ) : (
+                <>
+                  <div className="flex items-center gap-2">
                     <button
                       type="button"
-                      onClick={() => setStep('mapping')}
-                      className="btn-primary h-9 text-xs"
+                      onClick={resetForAnotherImport}
+                      className="btn-secondary h-10 px-4 text-xs"
                     >
-                      <span>Continue to Column Mapping ({rows.length} rows)</span>
-                      <ArrowRight className="w-3.5 h-3.5" />
+                      <Upload className="w-3.5 h-3.5" />
+                      <span>Import Another File</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('history')}
+                      className="btn-secondary h-10 px-4 text-xs"
+                    >
+                      <History className="w-3.5 h-3.5" />
+                      <span>View Import History</span>
+                    </button>
+                  </div>
+                  {onClose && (
+                    <button
+                      type="button"
+                      onClick={onClose}
+                      className="btn-primary h-10 px-5 text-xs"
+                    >
+                      <span>Done</span>
                     </button>
                   )}
-                </div>
-              </>
-            ) : step === 'mapping' ? (
-              <>
-                <button
-                  type="button"
-                  onClick={() => setStep('upload')}
-                  className="btn-secondary h-9 text-xs"
-                >
-                  <ArrowLeft className="w-3.5 h-3.5" />
-                  <span>Back to Upload</span>
-                </button>
-                <button
-                  type="button"
-                  disabled={!canAdvanceFromMapping}
-                  onClick={() => void handleProceedToValidation()}
-                  className="btn-primary h-9 text-xs"
-                >
-                  <span>Next: Validate & Preview</span>
-                  <ArrowRight className="w-3.5 h-3.5" />
-                </button>
-              </>
-            ) : step === 'preview' ? (
-              <>
-                <button
-                  type="button"
-                  onClick={() => setStep('mapping')}
-                  disabled={isCommitting}
-                  className="btn-secondary h-9 text-xs"
-                >
-                  <ArrowLeft className="w-3.5 h-3.5" />
-                  <span>Adjust Column Mapping</span>
-                </button>
-                <button
-                  type="button"
-                  disabled={!canExecuteCommit}
-                  onClick={() => void handleCommitImport()}
-                  className="btn-primary h-9 text-xs"
-                >
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                  <span>
-                    {isCommitting
-                      ? 'Importing...'
-                      : validationReport
-                      ? `Import ${validationReport.summary.validRows} Verified Row${
-                          validationReport.summary.validRows === 1 ? '' : 's'
-                        }`
-                      : 'Run Import'}
-                  </span>
-                </button>
-              </>
-            ) : (
-              <>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={resetForAnotherImport}
-                    className="btn-secondary h-9 text-xs"
-                  >
-                    <Upload className="w-3.5 h-3.5" />
-                    <span>Import Another File</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab('history')}
-                    className="btn-secondary h-9 text-xs"
-                  >
-                    <History className="w-3.5 h-3.5" />
-                    <span>View Import History</span>
-                  </button>
-                </div>
-                {onClose && (
-                  <button type="button" onClick={onClose} className="btn-primary h-9 text-xs">
-                    <span>Done</span>
-                  </button>
-                )}
-              </>
-            )}
-          </footer>
+                </>
+              )}
+            </footer>
+          </div>
         </motion.div>
       </div>
     </MotionConfig>

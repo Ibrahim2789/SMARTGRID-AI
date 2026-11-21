@@ -12,6 +12,8 @@ import {
   AuthenticatedVotingUser,
   solveOptimizationApi,
   compareOptimizationAlgorithmsBackend,
+  fetchInstitutionWorkspace,
+  updateConstraintBackend,
   BackendAlgorithmBenchmarkItem
 } from '../services/votingApi';
 import { showAppPopup } from './ToastPopupHost';
@@ -104,7 +106,7 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
   const [showAdvancedDrawer, setShowAdvancedDrawer] = useState<boolean>(false);
 
   // 4. Solver Engine & Execution State
-  const [solverEngineMode, setSolverEngineMode] = useState<'local' | 'backend_cpsat'>('backend_cpsat');
+  const [solverEngineMode] = useState<'backend_cpsat'>('backend_cpsat');
   const [backendStrategy, setBackendStrategy] = useState<
     'hybrid_dsatur_ga_sa' | 'dsatur_only' | 'ga_only' | 'ga_sa'
   >('hybrid_dsatur_ga_sa');
@@ -383,6 +385,15 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
       return;
     }
 
+    if (!currentUser?.token) {
+      showAppPopup({
+        title: 'Sign-In Required',
+        message: 'Sign in with an institutional administrator session to generate and persist timetables in Supabase.',
+        variant: 'error'
+      });
+      return;
+    }
+
     setIsGenerating(true);
     setSolverCompleted(false);
     setProgress(12);
@@ -401,123 +412,72 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
           } Schedule`
         : `${selectedSemestersLabel} — Custom Cohort Schedule`);
 
-    if (solverEngineMode === 'backend_cpsat') {
-      setTimeout(() => {
-        setProgress(42);
+    setTimeout(() => {
+      setProgress(42);
+      setSolverStepText(
+        `Submitting ${freshSections.length} sessions across ${scopedDepartments.length} department(s) to Python ${backendStrategy.toUpperCase()} solver...`
+      );
+    }, 250);
+
+    const targetInstId =
+      freshStore.institutionProfile?.id ||
+      currentUser.institutionId ||
+      institutionalStore.getCurrentInstitutionId();
+
+    solveOptimizationApi(
+      buildFullBackendPayload(
+        freshStore,
+        freshGroups,
+        freshCourses,
+        freshSections,
+        defaultRunTitle,
+        backendStrategy
+      ),
+      currentUser
+    )
+      .then(async apiRes => {
+        setProgress(82);
         setSolverStepText(
-          `Submitting ${freshSections.length} sessions across ${scopedDepartments.length} department(s) to Python ${backendStrategy.toUpperCase()} solver...`
+          `Applying ${apiRes.metrics.placedCount} session assignments (${apiRes.metrics.solverEngine}) & syncing Supabase...`
         );
-      }, 250);
 
-      solveOptimizationApi(
-        buildFullBackendPayload(
-          freshStore,
-          freshGroups,
-          freshCourses,
-          freshSections,
-          defaultRunTitle,
-          backendStrategy
-        ),
-        currentUser
-      )
-        .then(apiRes => {
-          setProgress(88);
-          setSolverStepText(
-            `Applying ${apiRes.metrics.placedCount} session assignments (${apiRes.metrics.solverEngine})...`
-          );
+        const hasEntriesOrAssignments =
+          (apiRes.entries && apiRes.entries.length > 0) ||
+          (apiRes.assignments && Object.keys(apiRes.assignments).length > 0);
+        if (!hasEntriesOrAssignments) {
+          throw new Error('Optimization engine returned zero session assignments.');
+        }
 
-          const hasEntriesOrAssignments =
-            (apiRes.entries && apiRes.entries.length > 0) ||
-            (apiRes.assignments && Object.keys(apiRes.assignments).length > 0);
-          const res = hasEntriesOrAssignments
-            ? institutionalStore.applyBackendOptimizationResult({
-                assignments: apiRes.assignments || {},
-                entries: apiRes.entries,
-                strategyName: `${defaultRunTitle} (${backendStrategy})`,
-                algorithm: backendStrategy,
-                versionId: apiRes.timetableVersionId,
-                termId: selectedTermsList[0]?.id,
-                fitness: {
-                  totalScore: apiRes.metrics.totalScore,
-                  studentSatisfaction: apiRes.metrics.studentSatisfaction,
-                  instructorSatisfaction: apiRes.metrics.instructorSatisfaction,
-                  roomUtilization: apiRes.metrics.roomUtilization,
-                  compactnessScore: apiRes.metrics.compactnessScore,
-                  fairnessScore: apiRes.metrics.fairnessScore
-                },
-                conflictCount: apiRes.metrics.conflictCount,
-                selectedGroupIds: targetGroupIds
-              })
-            : institutionalStore.runTimetableSolver({
-                termId: selectedTermsList[0]?.id,
-                termIds: selectedTermIds,
-                policyMode: scopeMode === 'department_wise' ? 'department_wise' : 'whole_university',
-                departmentId: scopeMode === 'department_wise' ? selectedDeptId : undefined,
-                selectedGroupIds: targetGroupIds,
-                strategyName: `${defaultRunTitle} (${backendStrategy})`,
-                forceRescheduleAll
-              });
+        const res = institutionalStore.applyBackendOptimizationResult({
+          assignments: apiRes.assignments || {},
+          entries: apiRes.entries,
+          strategyName: `${defaultRunTitle} (${backendStrategy})`,
+          algorithm: backendStrategy,
+          versionId: apiRes.timetableVersionId,
+          termId: selectedTermsList[0]?.id,
+          fitness: {
+            totalScore: apiRes.metrics.totalScore,
+            studentSatisfaction: apiRes.metrics.studentSatisfaction,
+            instructorSatisfaction: apiRes.metrics.instructorSatisfaction,
+            roomUtilization: apiRes.metrics.roomUtilization,
+            compactnessScore: apiRes.metrics.compactnessScore,
+            fairnessScore: apiRes.metrics.fairnessScore
+          },
+          conflictCount: apiRes.metrics.conflictCount,
+          selectedGroupIds: targetGroupIds
+        });
 
-          void institutionalStore.syncToBackend(currentUser);
-          const isFullyValid = res.conflictCount === 0 && res.unplacedCount === 0 && res.scenario.status === 'published';
-          const warningsList = [
-            ...(apiRes.preValidation?.errors || []),
-            ...(apiRes.preValidation?.warnings || [])
-          ];
+        const freshWorkspace = await fetchInstitutionWorkspace(currentUser, targetInstId);
+        institutionalStore.hydrateFromWorkspacePayload(targetInstId, freshWorkspace, currentUser.id);
 
-          setTimeout(() => {
-            setProgress(100);
-            setIsGenerating(false);
-            setSolverCompleted(true);
-            setLastSolverStats({
-              placedCount: res.placedCount,
-              unplacedCount: res.unplacedCount,
-              conflictCount: res.conflictCount,
-              roomUtilization: res.roomUtilization,
-              scenarioName: res.scenario.name,
-              engineLabel: apiRes.metrics.solverEngine,
-              scheduledSemestersLabel: selectedSemestersLabel,
-              status: res.scenario.status,
-              studentGapMinutesAvg: apiRes.metrics.studentGapMinutesAvg,
-              compactnessScore: apiRes.metrics.compactnessScore ?? res.scenario.metrics.studentTransitScore,
-              worstBatchSatisfaction: apiRes.metrics.worstBatchSatisfaction,
-              warnings: warningsList,
-              policyLabel:
-                scopeMode === 'whole_university'
-                  ? 'Whole-University Integrated Policy'
-                  : scopeMode === 'department_wise'
-                  ? `Department-Wise Policy (${
-                      freshStore.departments.find(d => d.id === selectedDeptId)?.name || 'Department'
-                    })`
-                  : `Custom Scope (${freshGroups.length} Sections)`
-            });
-            showAppPopup({
-              title: isFullyValid ? 'Hybrid AI Timetable Generated' : 'Timetable Saved as Draft (Review Required)',
-              message: isFullyValid
-                ? `Placed ${res.placedCount} sessions across ${selectedSemestersLabel} (${res.roomUtilization}% utilization · 0 hard conflicts).`
-                : `Placed ${res.placedCount} sessions (${res.unplacedCount} unplaced, ${res.conflictCount} hard conflicts). Saved as Draft until conflicts are resolved.`,
-              variant: isFullyValid ? 'success' : 'error',
-              actions: [
-                {
-                  label: 'Inspect Timetables',
-                  onClick: () => onNavigate('timetables'),
-                  variant: 'primary'
-                }
-              ]
-            });
-          }, 220);
-        })
-        .catch(() => {
-          const res = institutionalStore.runTimetableSolver({
-            termId: selectedTermsList[0]?.id,
-            termIds: selectedTermIds,
-            policyMode: scopeMode === 'department_wise' ? 'department_wise' : 'whole_university',
-            departmentId: scopeMode === 'department_wise' ? selectedDeptId : undefined,
-            selectedGroupIds: targetGroupIds,
-            strategyName: defaultRunTitle,
-            forceRescheduleAll
-          });
-          const isFullyValid = res.conflictCount === 0 && res.unplacedCount === 0;
+        const isFullyValid =
+          res.conflictCount === 0 && res.unplacedCount === 0 && res.scenario.status === 'published';
+        const warningsList = [
+          ...(apiRes.preValidation?.errors || []),
+          ...(apiRes.preValidation?.warnings || [])
+        ];
+
+        setTimeout(() => {
           setProgress(100);
           setIsGenerating(false);
           setSolverCompleted(true);
@@ -527,20 +487,30 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
             conflictCount: res.conflictCount,
             roomUtilization: res.roomUtilization,
             scenarioName: res.scenario.name,
-            engineLabel: 'TypeScript Combinatorial Engine (Fallback)',
+            engineLabel: apiRes.metrics.solverEngine,
             scheduledSemestersLabel: selectedSemestersLabel,
             status: res.scenario.status,
-            compactnessScore: res.scenario.metrics.studentTransitScore,
+            studentGapMinutesAvg: apiRes.metrics.studentGapMinutesAvg,
+            compactnessScore:
+              apiRes.metrics.compactnessScore ?? res.scenario.metrics.studentTransitScore,
+            worstBatchSatisfaction: apiRes.metrics.worstBatchSatisfaction,
+            warnings: warningsList,
             policyLabel:
               scopeMode === 'whole_university'
                 ? 'Whole-University Integrated Policy'
-                : 'Department-Wise Policy'
+                : scopeMode === 'department_wise'
+                ? `Department-Wise Policy (${
+                    freshStore.departments.find(d => d.id === selectedDeptId)?.name || 'Department'
+                  })`
+                : `Custom Scope (${freshGroups.length} Sections)`
           });
           showAppPopup({
-            title: isFullyValid ? 'Timetable Generated' : 'Draft Saved (Unplaced/Conflicts Detected)',
+            title: isFullyValid
+              ? 'Hybrid AI Timetable Generated & Saved'
+              : 'Timetable Saved as Draft in Supabase (Review Required)',
             message: isFullyValid
-              ? `Placed ${res.placedCount} sessions across ${selectedSemestersLabel} with 0 hard conflicts.`
-              : `Placed ${res.placedCount} sessions (${res.unplacedCount} unplaced, ${res.conflictCount} conflicts). Saved as Draft.`,
+              ? `Placed ${res.placedCount} sessions across ${selectedSemestersLabel} (${res.roomUtilization}% utilization · 0 hard conflicts).`
+              : `Placed ${res.placedCount} sessions (${res.unplacedCount} unplaced, ${res.conflictCount} hard conflicts). Saved as Draft until conflicts are resolved.`,
             variant: isFullyValid ? 'success' : 'error',
             actions: [
               {
@@ -550,75 +520,21 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
               }
             ]
           });
+        }, 220);
+      })
+      .catch(err => {
+        setProgress(0);
+        setIsGenerating(false);
+        setSolverCompleted(false);
+        showAppPopup({
+          title: 'Optimization Run Failed',
+          message:
+            err instanceof Error
+              ? err.message
+              : 'Unable to run or persist timetable optimization in Supabase.',
+          variant: 'error'
         });
-      return;
-    }
-
-    setTimeout(() => {
-      setProgress(48);
-      setSolverStepText(
-        `Scheduling ${freshTiming.labDurationHoursLabel} continuous labs (${freshTiming.labSpanSlots} merged slots) & ${freshTiming.periodLengthMinutes}m lectures across ${freshGroups.length} sections...`
-      );
-    }, 300);
-
-    setTimeout(() => {
-      setProgress(82);
-      setSolverStepText(
-        scopeMode === 'whole_university'
-          ? 'Minimizing student idle gaps & verifying cross-department faculty, lab engineer, room & section constraints...'
-          : 'Minimizing student idle gaps & verifying departmental faculty, lab engineer, room & section constraints...'
-      );
-    }, 620);
-
-    setTimeout(() => {
-      const res = institutionalStore.runTimetableSolver({
-        termId: selectedTermsList[0]?.id,
-        termIds: selectedTermIds,
-        policyMode: scopeMode === 'department_wise' ? 'department_wise' : 'whole_university',
-        departmentId: scopeMode === 'department_wise' ? selectedDeptId : undefined,
-        selectedGroupIds: targetGroupIds,
-        strategyName: defaultRunTitle,
-        forceRescheduleAll
       });
-      const isFullyValid = res.conflictCount === 0 && res.unplacedCount === 0;
-
-      setProgress(100);
-      setIsGenerating(false);
-      setSolverCompleted(true);
-      setLastSolverStats({
-        placedCount: res.placedCount,
-        unplacedCount: res.unplacedCount,
-        conflictCount: res.conflictCount,
-        roomUtilization: res.roomUtilization,
-        scenarioName: res.scenario.name,
-        engineLabel: 'Local Combinatorial Engine',
-        scheduledSemestersLabel: selectedSemestersLabel,
-        status: res.scenario.status,
-        compactnessScore: res.scenario.metrics.studentTransitScore,
-        policyLabel:
-          scopeMode === 'whole_university'
-            ? 'Whole-University Integrated Policy'
-            : scopeMode === 'department_wise'
-            ? `Department-Wise Policy (${
-                freshStore.departments.find(d => d.id === selectedDeptId)?.name || 'Department'
-              })`
-            : `Custom Scope (${freshGroups.length} Sections)`
-      });
-      showAppPopup({
-        title: isFullyValid ? 'Timetable Generated' : 'Draft Saved (Unplaced/Conflicts Detected)',
-        message: isFullyValid
-          ? `Placed ${res.placedCount} sessions across ${selectedSemestersLabel} with 0 conflicts.`
-          : `Placed ${res.placedCount} sessions (${res.unplacedCount} unplaced, ${res.conflictCount} conflicts). Saved as Draft.`,
-        variant: isFullyValid ? 'success' : 'error',
-        actions: [
-          {
-            label: 'Inspect Timetables',
-            onClick: () => onNavigate('timetables'),
-            variant: 'primary'
-          }
-        ]
-      });
-    }, 950);
   };
 
   const handleRunAlgorithmBenchmark = async () => {
@@ -1184,34 +1100,8 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
                     <span>Optimization Engine</span>
                   </span>
                   <span className="text-[11px] font-mono-tabular text-[#77766F]">
-                    {solverEngineMode === 'backend_cpsat'
-                      ? `Python ${backendStrategy}`
-                      : 'Instant Local Solver'}
+                    Python {backendStrategy} · Supabase Persisted
                   </span>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setSolverEngineMode('backend_cpsat')}
-                    className={`h-9 px-3 rounded-lg border text-xs font-semibold transition-colors cursor-pointer ${
-                      solverEngineMode === 'backend_cpsat'
-                        ? 'bg-[#171717] text-white border-[#171717]'
-                        : 'bg-white text-[#171717] border-[#E4E2DA]'
-                    }`}
-                  >
-                    Python Hybrid AI (DSatur + GA + SA)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setSolverEngineMode('local')}
-                    className={`h-9 px-3 rounded-lg border text-xs font-semibold transition-colors cursor-pointer ${
-                      solverEngineMode === 'local'
-                        ? 'bg-[#171717] text-white border-[#171717]'
-                        : 'bg-white text-[#171717] border-[#E4E2DA]'
-                    }`}
-                  >
-                    Instant Local Solver
-                  </button>
                 </div>
 
                 {solverEngineMode === 'backend_cpsat' && (
@@ -1294,9 +1184,28 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
                         <input
                           type="checkbox"
                           checked={rule.enabled}
-                          onChange={e =>
-                            institutionalStore.toggleConstraint(rule.id, e.target.checked)
-                          }
+                          onChange={async e => {
+                            const nextEnabled = e.target.checked;
+                            institutionalStore.toggleConstraint(rule.id, nextEnabled);
+                            if (currentUser?.token) {
+                              try {
+                                await updateConstraintBackend(currentUser, rule.id, {
+                                  enabled: nextEnabled,
+                                  isEnabled: nextEnabled
+                                });
+                              } catch (err) {
+                                institutionalStore.toggleConstraint(rule.id, !nextEnabled);
+                                showAppPopup({
+                                  title: 'Constraint Save Failed',
+                                  message:
+                                    err instanceof Error
+                                      ? err.message
+                                      : 'Could not save constraint state to Supabase.',
+                                  variant: 'error'
+                                });
+                              }
+                            }
+                          }}
                           className="rounded border-[#D5D3CB] text-[#171717]"
                         />
                         <span>{rule.name}</span>
@@ -1312,12 +1221,26 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
                         max={100}
                         step={5}
                         value={rule.weight}
-                        onChange={e =>
-                          institutionalStore.updateConstraintWeight(
-                            rule.id,
-                            parseInt(e.target.value, 10)
-                          )
-                        }
+                        onChange={async e => {
+                          const nextWeight = parseInt(e.target.value, 10);
+                          institutionalStore.updateConstraintWeight(rule.id, nextWeight);
+                          if (currentUser?.token) {
+                            try {
+                              await updateConstraintBackend(currentUser, rule.id, {
+                                weight: nextWeight
+                              });
+                            } catch (err) {
+                              showAppPopup({
+                                title: 'Constraint Save Failed',
+                                message:
+                                  err instanceof Error
+                                    ? err.message
+                                    : 'Could not save constraint weight to Supabase.',
+                                variant: 'error'
+                              });
+                            }
+                          }
+                        }}
                         className="w-full accent-[#171717] cursor-pointer"
                       />
                     )}

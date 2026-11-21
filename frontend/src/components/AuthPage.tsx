@@ -212,23 +212,8 @@ export const AuthPage: React.FC<AuthPageProps> = ({
         }
       })
       .catch(() => {
-        const groups = storeSnapshot.studentGroups;
-        if (groups.length > 0) {
-          setBatches(
-            groups.map(g => ({
-              id: g.id,
-              code: g.code,
-              name: g.name,
-              departmentCode: g.departmentCode || 'GEN',
-              year: g.academicYear || g.year,
-              semester: g.semester || 1
-            }))
-          );
-          setRegBatchId(groups[0].id);
-        } else {
-          setBatches([]);
-          setRegBatchId('__custom__');
-        }
+        setBatches([]);
+        setRegBatchId('__custom__');
       });
   };
 
@@ -510,25 +495,6 @@ export const AuthPage: React.FC<AuthPageProps> = ({
 
       const targetInst = activatedFaculty.institutionId || facInstId;
       institutionalStore.switchInstitution(targetInst);
-
-      const currentCatalog = institutionalStore.get();
-      const existsInCatalog = currentCatalog.instructors.some(
-        i => i.email.toLowerCase() === facEmail.trim().toLowerCase()
-      );
-      if (!existsInCatalog) {
-        const defaultDeptId = currentCatalog.departments[0]?.id || 'dept-gen';
-        institutionalStore.addInstructor({
-          id: `inst-claimed-${Date.now().toString(36)}`,
-          departmentId: defaultDeptId,
-          name: facName.trim(),
-          email: facEmail.trim().toLowerCase(),
-          title: facDepartment.trim() || 'Faculty Member',
-          maxWeeklyHours: 14,
-          maxConsecutiveHours: 3,
-          preferredDays: currentCatalog.timeStructure.workingDays,
-          unavailableSlots: []
-        });
-      }
 
       setAuthSuccessMessage('Faculty account activated. Loading instructor portal...');
       onLogin(activatedFaculty);

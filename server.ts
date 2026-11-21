@@ -4,6 +4,7 @@ import { spawn, ChildProcess } from 'node:child_process';
 import http from 'node:http';
 import path from 'node:path';
 import { createServer as createViteServer } from 'vite';
+import { getLastMigrationStatus, runDatabaseMigrations } from './backend/db_migrate.ts';
 
 const PYTHON_HOST = '127.0.0.1';
 const PYTHON_PORT = Number(process.env.PYTHON_BACKEND_PORT) || 8001;
@@ -127,11 +128,16 @@ process.on('SIGTERM', () => {
 });
 
 async function startServer() {
+  await runDatabaseMigrations();
   await startPythonFastApiBackend();
 
   const app = express();
 
-  // Reverse proxy all /api/* requests directly to the Python FastAPI server on port 8000
+  app.get('/api/database/migration-status', (_req: Request, res: Response) => {
+    res.json(getLastMigrationStatus());
+  });
+
+  // Reverse proxy all /api/* requests directly to the Python FastAPI server on port 8001
   app.use('/api', (req: Request, res: Response) => {
     const targetPath = req.originalUrl || req.url;
     const forwardHeaders: Record<string, string | string[] | undefined> = {
@@ -186,7 +192,9 @@ async function startServer() {
     });
   }
 
-  const PORT = Number(process.env.PORT) || 3000;
+  const PORT = isProd
+    ? Number(process.env.PORT) || 3000
+    : Number(process.env.DEFAULT_APP_PORT) || 3000;
   app.listen(PORT, '0.0.0.0', () => {
     console.log(
       `SmartGrid AI Gateway on http://0.0.0.0:${PORT} -> Proxying /api/* to Python FastAPI Backend on http://${PYTHON_HOST}:${PYTHON_PORT}`

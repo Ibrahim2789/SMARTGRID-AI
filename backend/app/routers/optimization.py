@@ -8,11 +8,15 @@ from typing import Any, Dict, List
 
 from app.database.supabase import SupabaseQueryError, require_supabase_client
 from app.deps import (
+    CATALOG_MANAGER_ROLES,
     get_query_param,
     load_university_optimization_inputs,
     parse_json_body,
     raise_supabase_http_error,
     require_auth_user,
+    safe_insert_optional,
+    scoped_uni_id,
+    write_audit_log,
 )
 from app.optimization.constraints import expand_sections_to_sessions, normalize_rooms_input
 from app.optimization.evaluation import compare_optimization_algorithms
@@ -81,12 +85,15 @@ def _build_timetable_entries(
                     "batch_id": sec.get("studentGroupId"),
                     "section_code": str(sec.get("sectionCode") or "A"),
                     "instructor_id": sec.get("instructorId"),
+                    "lab_engineer_id": sec.get("labEngineerId"),
                     "room_id": str(mt.get("roomId") or room_id),
                     "day_of_week": str(day)[:3],
                     "start_time": str(start_t),
                     "end_time": _compute_end_time(str(start_t), m_dur),
                     "duration_minutes": m_dur,
                     "session_type": stype,
+                    "component_type": "lab" if is_lab else "lecture",
+                    "slot_source": "regular",
                     "is_locked": False,
                 }
             )
@@ -127,9 +134,9 @@ def _build_timetable_entries_from_canonical(
 
 @router.post("/api/optimization/run")
 async def run_optimization(request: Request) -> Dict[str, Any]:
-    auth_user = require_auth_user(request, allowed_roles=["admin", "faculty", "br", "student"])
+    auth_user = require_auth_user(request, allowed_roles=CATALOG_MANAGER_ROLES)
     body = await parse_json_body(request)
-    uni_id = body.get("universityId") or auth_user.get("institutionId") or ""
+    uni_id = scoped_uni_id(auth_user, str(body.get("universityId") or ""))
 
     inputs = load_university_optimization_inputs(uni_id, body)
     hyperparams = body.get("hyperparameters") or {}
@@ -169,7 +176,15 @@ async def run_optimization(request: Request) -> Dict[str, Any]:
 
     client = require_supabase_client()
     try:
-        # 1. Insert timetable_versions FIRST (published ONLY if 0 hard violations)
+        # 1. Archive existing published versions when promoting a new conflict-free schedule
+        if is_feasible:
+            client.update(
+                "timetable_versions",
+                {"institution_id": f"eq.{uni_id}", "status": "eq.published"},
+                {"status": "archived", "updated_at": current_iso},
+            )
+
+        # 2. Insert timetable_versions FIRST (published ONLY if 0 hard violations)
         client.insert(
             "timetable_versions",
             {
@@ -191,28 +206,17 @@ async def run_optimization(request: Request) -> Dict[str, Any]:
             },
         )
 
-        # 2. Insert normalized timetable_entries from canonical entries
+        # 3. Insert normalized timetable_entries from canonical entries
         entries = _build_timetable_entries_from_canonical(
             uni_id=uni_id,
             version_id=version_id,
             canonical_entries=pipeline_result.get("entries") or [],
         )
         if entries:
-            try:
-                client.insert("timetable_entries", entries)
-            except SupabaseQueryError:
-                # Fallback if extended columns aren't migrated yet
-                fallback_entries = [
-                    {
-                        k: v
-                        for k, v in row.items()
-                        if k not in ("lab_engineer_id", "component_type", "slot_source")
-                    }
-                    for row in entries
-                ]
-                client.insert("timetable_entries", fallback_entries)
+            client.insert("timetable_entries", entries)
 
-        # 3. Insert optimization_runs
+        # 4. Insert optimization_runs
+        db_run_status = "completed" if (is_feasible or not getattr(client, "has_column", lambda t, c: True)("timetable_entries", "slot_source")) else "needs_review"
         client.insert(
             "optimization_runs",
             {
@@ -220,12 +224,13 @@ async def run_optimization(request: Request) -> Dict[str, Any]:
                 "institution_id": uni_id,
                 "timetable_version_id": version_id,
                 "algorithm": algorithm,
-                "status": "completed" if is_feasible else "needs_review",
+                "status": db_run_status,
                 "total_sessions": int(pipeline_result.get("totalSessions") or len(inputs["sections"])),
                 "placed_sessions": int(pipeline_result.get("placedSessions") or len(pipeline_result["assignments"])),
                 "hard_constraint_violations": hard_violations,
                 "execution_time_ms": exec_ms,
                 "parameters": {
+                    "runStatus": "completed" if is_feasible else "needs_review",
                     "hyperparameters": hyperparams,
                     "objectiveWeights": objective_weights,
                     "fitnessHistory": hist,
@@ -241,7 +246,7 @@ async def run_optimization(request: Request) -> Dict[str, Any]:
             },
         )
 
-        # 4. Insert optimization_scores
+        # 5. Insert optimization_scores
         batch_breakdown = fb.get("batchSatisfactionByBatch") or fb.get("batchBreakdown") or {}
         least_batch = fb.get("leastSatisfiedBatchScore") or (min(batch_breakdown.values()) if batch_breakdown else float(fb["studentSatisfaction"]))
         client.insert(
@@ -263,7 +268,7 @@ async def run_optimization(request: Request) -> Dict[str, Any]:
             },
         )
 
-        # 5. Persist optimization_poll_traceability rows if any voting polls influenced this run
+        # 6. Persist optimization_poll_traceability rows if any voting polls influenced this run
         if voting_traceability:
             trace_rows = [
                 {
@@ -284,10 +289,17 @@ async def run_optimization(request: Request) -> Dict[str, Any]:
                 }
                 for tr in voting_traceability
             ]
-            try:
-                client.insert("optimization_poll_traceability", trace_rows)
-            except SupabaseQueryError:
-                pass
+            safe_insert_optional(client, "optimization_poll_traceability", trace_rows)
+
+        write_audit_log(
+            client,
+            uni_id,
+            auth_user,
+            "generate",
+            "scenario",
+            version_id,
+            f"Generated {algorithm} schedule '{version_name}' ({hard_violations} hard violations)",
+        )
     except SupabaseQueryError as err:
         raise_supabase_http_error(err)
 
@@ -303,9 +315,9 @@ async def run_optimization(request: Request) -> Dict[str, Any]:
 
 @router.post("/api/optimization/validate")
 async def validate_timetable_endpoint(request: Request) -> Dict[str, Any]:
-    auth_user = require_auth_user(request, allowed_roles=["admin", "faculty", "br", "student"])
+    auth_user = require_auth_user(request)
     body = await parse_json_body(request)
-    uni_id = body.get("universityId") or auth_user.get("institutionId") or ""
+    uni_id = scoped_uni_id(auth_user, str(body.get("universityId") or ""))
     inputs = load_university_optimization_inputs(uni_id, body)
     norm_rooms = normalize_rooms_input(inputs["rooms_raw"])
     sessions = expand_sections_to_sessions(
@@ -334,9 +346,9 @@ async def validate_timetable_endpoint(request: Request) -> Dict[str, Any]:
 
 @router.post("/api/optimization/compare")
 async def compare_optimization(request: Request) -> Dict[str, Any]:
-    auth_user = require_auth_user(request)
+    auth_user = require_auth_user(request, allowed_roles=CATALOG_MANAGER_ROLES)
     body = await parse_json_body(request)
-    uni_id = body.get("universityId") or auth_user.get("institutionId") or ""
+    uni_id = scoped_uni_id(auth_user, str(body.get("universityId") or ""))
     inputs = load_university_optimization_inputs(uni_id, body)
 
     comparison = compare_optimization_algorithms(
@@ -358,7 +370,7 @@ async def compare_optimization(request: Request) -> Dict[str, Any]:
 @router.get("/api/optimization/runs")
 def list_optimization_runs(request: Request) -> Dict[str, Any]:
     auth_user = require_auth_user(request)
-    uni_id = get_query_param(request, "universityId", "") or auth_user.get("institutionId") or ""
+    uni_id = scoped_uni_id(auth_user, get_query_param(request, "universityId", ""))
     client = require_supabase_client()
     try:
         runs = client.select(

@@ -17,7 +17,7 @@ import { AdminVotingManagementPage } from './components/AdminVotingManagementPag
 import { FacultyDashboardPage } from './components/FacultyDashboardPage';
 import { AccountProfilePage } from './components/AccountProfilePage';
 import { UniversityOnboardingModal } from './components/UniversityOnboardingModal';
-import { ToastPopupHost } from './components/ToastPopupHost';
+import { ToastPopupHost, showAppPopup } from './components/ToastPopupHost';
 import {
   AuthenticatedVotingUser,
   verifyBackendSession,
@@ -25,8 +25,7 @@ import {
   markSessionActive,
   isCurrentlySignedOut,
   fetchInstitutionsApi,
-  fetchInstitutionDataApi,
-  fetchTimetablesBackend
+  fetchInstitutionWorkspace
 } from './services/votingApi';
 import { institutionalStore } from './data/store';
 import { resolveUserCohort } from './utils/userTimetableScope';
@@ -226,41 +225,32 @@ export default function App() {
     }
   }, []);
 
-  // Hydrate institution list + institution snapshot from Supabase backend cleanly
+  // Hydrate institution list + full relational Supabase workspace cleanly
   const hydrateBackendWorkspace = useCallback(async (user: AuthenticatedVotingUser | null) => {
     const instId = user?.institutionId || institutionalStore.getCurrentInstitutionId();
     try {
-      const remoteInsts = await fetchInstitutionsApi();
+      const remoteInsts = await fetchInstitutionsApi(user?.token);
       if (remoteInsts.length > 0) {
         institutionalStore.registerRemoteInstitutions(
           remoteInsts.map(r => ({
             ...r,
             campusName: r.campusName || 'Main Campus'
-          }))
+          })),
+          Boolean(user?.token)
         );
       }
-      const snapshot = await fetchInstitutionDataApi(instId);
-      if (snapshot) {
-        institutionalStore.hydrateInstitutionData(instId, snapshot);
-      } else if (user?.token) {
-        const versions = await fetchTimetablesBackend(user, instId).catch(() => []);
-        const published = versions.find(v => v.status === 'published') || versions[0];
-        if (published && published.entries && !Array.isArray(published.entries)) {
-          const entriesObj = published.entries;
-          if (Object.keys(entriesObj).length > 0) {
-            institutionalStore.applyBackendOptimizationResult({
-              assignments: entriesObj,
-              strategyName: published.name || published.version_name || 'Published Backend Schedule',
-              algorithm: published.algorithm_used,
-              versionId: published.id,
-              fitness: published.metrics,
-              conflictCount: published.hard_violations_count
-            });
-          }
-        }
+      if (user?.token && instId) {
+        const workspace = await fetchInstitutionWorkspace(user, instId);
+        institutionalStore.hydrateFromWorkspacePayload(instId, workspace, user.id);
       }
-    } catch {
-      // Graceful local fallback when backend is offline or RLS blocks read
+    } catch (err: any) {
+      if (user?.token) {
+        showAppPopup({
+          variant: 'error',
+          title: 'Workspace Sync Failed',
+          message: err?.message || 'Unable to load institutional workspace from Supabase.'
+        });
+      }
     }
     if (user) {
       syncUserCohortInStore(user);
@@ -370,6 +360,7 @@ export default function App() {
   const handleSignOut = () => {
     isAuthenticatedRef.current = false;
     clearStoredUser();
+    institutionalStore.resetWorkspaceSession();
     setCurrentUser(null);
     setShowAuthPage(false);
     if (window.location.hash) {
@@ -581,6 +572,9 @@ export default function App() {
           onCompleted={newInstId => {
             institutionalStore.switchInstitution(newInstId);
             setPendingOnboarding(null);
+            if (currentUser) {
+              void hydrateBackendWorkspace({ ...currentUser, institutionId: newInstId });
+            }
           }}
         />
       )}

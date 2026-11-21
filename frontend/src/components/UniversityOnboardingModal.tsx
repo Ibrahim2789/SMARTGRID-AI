@@ -34,7 +34,16 @@ import {
   computeAcademicScheduleConfig,
   validateAcademicTimingConfig
 } from '../types/institutional';
-import { getStoredUser, updateUniversitySettingsBackend } from '../services/votingApi';
+import {
+  getStoredUser,
+  updateUniversitySettingsBackend,
+  createSemesterBackend,
+  createDepartmentBackend,
+  createClassroomBackend,
+  createCourseBackend,
+  createInstructorBackend,
+  fetchInstitutionWorkspace
+} from '../services/votingApi';
 import { DataImportWizard } from './DataImportWizard';
 
 interface UniversityOnboardingModalProps {
@@ -1207,11 +1216,21 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
         });
       }
 
-      // Sync saved academy settings to Supabase backend when logged in
+      // Persist saved academy settings, terms, and catalog entities to Supabase backend
       const storedUser = getStoredUser();
       if (storedUser?.token) {
         const targetSyncId = storedUser.institutionId || targetInstId;
-        void updateUniversitySettingsBackend(storedUser, targetSyncId, {
+        await updateUniversitySettingsBackend(storedUser, targetSyncId, {
+          universityName: name.trim(),
+          campusCode: campusCode.trim().toUpperCase() || `${code.toUpperCase()}-MAIN-01`,
+          campusName: campusName.trim() || 'Main Campus',
+          accreditation: accreditation.trim(),
+          registrarName: registrarName.trim(),
+          registrarEmail: registrarEmail.trim(),
+          autoConflictSweep,
+          defaultSessionMinutes: periodLengthMinutes,
+          timetableManagementPolicy,
+          activeTermIds: terms.filter(t => t.status === 'active').map(t => t.id),
           workingDays,
           dayStartTime,
           dayEndTime,
@@ -1219,10 +1238,96 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
           shortBreakMinutes: shortBreakEnabled ? shortBreakMinutes : 0,
           middayBreakEnabled,
           middayBreakStart: middayBreakStartTime,
+          middayBreakStartTime,
           middayBreakDuration: middayBreakDurationMinutes,
+          middayBreakDurationMinutes,
           labDurationMinutes
-        }).catch(() => {});
-        void institutionalStore.syncToBackend(storedUser);
+        });
+
+        for (const t of terms) {
+          await createSemesterBackend(storedUser, {
+            id: t.id,
+            universityId: targetSyncId,
+            name: t.name,
+            code: t.code || t.name.toUpperCase().replace(/[^A-Z0-9]+/g, '-'),
+            academicYear: academicYear.trim(),
+            startDate: t.startDate,
+            endDate: t.endDate,
+            status: t.status,
+            isActive: t.status === 'active'
+          }).catch(() => null);
+        }
+
+        if (current.departments.length === 0 && departments.length > 0) {
+          for (let i = 0; i < departments.length; i++) {
+            const d = departments[i];
+            await createDepartmentBackend(storedUser, {
+              id: `dept-${d.code.toLowerCase()}-${i}`,
+              universityId: targetSyncId,
+              code: d.code,
+              name: d.name,
+              school: d.school,
+              colorHex: i === 0 ? '#1E3A8A' : i === 1 ? '#047857' : '#B45309'
+            }).catch(() => null);
+          }
+        }
+
+        if (afterDepts.rooms.length === 0 && rooms.length > 0) {
+          for (let i = 0; i < rooms.length; i++) {
+            const r = rooms[i];
+            await createClassroomBackend(storedUser, {
+              id: `room-${r.code.toLowerCase()}-${i}`,
+              universityId: targetSyncId,
+              code: r.code,
+              name: `${r.code} (${r.type === 'lab' ? 'Laboratory' : 'Lecture Hall'})`,
+              capacity: r.capacity,
+              type: r.type,
+              equipment:
+                r.type === 'lab'
+                  ? ['Specialized Workstations', 'Safety System']
+                  : ['Projector', 'Whiteboard'],
+              isAccessible: true,
+              isAvailable: true
+            }).catch(() => null);
+          }
+        }
+
+        if (afterDepts.courses.length === 0 && courses.length > 0) {
+          for (let i = 0; i < courses.length; i++) {
+            const c = courses[i];
+            await createCourseBackend(storedUser, {
+              id: `course-${c.code.toLowerCase()}-${i}`,
+              universityId: targetSyncId,
+              departmentId: firstDeptId,
+              code: c.code,
+              title: c.title,
+              creditHours: c.cr,
+              lectureHours: c.isLab ? 0 : defaultLectureHoursPerWeek,
+              labHours: c.isLab ? defaultLabHoursPerWeek : 0,
+              hoursPerWeek: c.isLab ? defaultLabHoursPerWeek : defaultLectureHoursPerWeek,
+              requiredRoomType: c.isLab ? 'lab' : 'lecture'
+            }).catch(() => null);
+          }
+        }
+
+        if (afterDepts.instructors.length === 0 && instructors.length > 0) {
+          for (let i = 0; i < instructors.length; i++) {
+            const inst = instructors[i];
+            await createInstructorBackend(storedUser, {
+              universityId: targetSyncId,
+              departmentId: firstDeptId,
+              name: inst.name,
+              email: inst.email,
+              title: inst.title,
+              maxWeeklyHours: 14,
+              maxConsecutiveHours: 3,
+              preferredDays: workingDays
+            }).catch(() => null);
+          }
+        }
+
+        const freshWorkspace = await fetchInstitutionWorkspace(storedUser, targetSyncId);
+        institutionalStore.hydrateFromWorkspacePayload(targetSyncId, freshWorkspace, storedUser.id);
       }
 
       setIsSubmitting(false);

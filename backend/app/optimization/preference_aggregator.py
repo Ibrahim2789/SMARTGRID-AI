@@ -293,6 +293,29 @@ def aggregate_approved_voting_preferences(
         if not polls:
             return {"batchPreferences": {}, "traceability": [], "excluded": []}
 
+        if any("optimizer_approval_status" not in p for p in polls):
+            meta_rows = client.select(
+                "feedback",
+                filters={"institution_id": f"eq.{institution_id}", "category": "like.poll_meta:%"},
+                order="created_at.desc",
+            )
+            meta_by_poll: Dict[str, Dict[str, Any]] = {}
+            for mr in meta_rows:
+                cat = str(mr.get("category") or "")
+                pid = cat.split("poll_meta:", 1)[1] if cat.startswith("poll_meta:") else ""
+                try:
+                    parsed = json.loads(mr.get("comment") or "")
+                except Exception:
+                    parsed = None
+                if pid and isinstance(parsed, dict) and pid not in meta_by_poll:
+                    meta_by_poll[pid] = parsed
+            for p in polls:
+                m = meta_by_poll.get(p["id"])
+                if m:
+                    for k in ("poll_category", "target_batch_ids", "optimizer_approval_status", "optimizer_rejection_reason"):
+                        if p.get(k) is None and m.get(k) is not None:
+                            p[k] = m[k]
+
         approved_closed_ids = [
             p["id"]
             for p in polls

@@ -1,15 +1,17 @@
 -- ============================================================================
--- SMARTGRID AI — COMPLETE SUPABASE POSTGRESQL SCHEMA & RLS POLICIES
+-- SMARTGRID AI — COMPLETE SUPABASE POSTGRESQL SCHEMA & DEFERRED RLS POLICIES
 -- File: supabase/schema.sql
 -- ============================================================================
 -- Includes:
---   - All 28 normalized academic, resource, optimization, rescheduling,
---     preference, governance voting, and notification tables
+--   - Normalized academic, resource, optimization, rescheduling, preference,
+--     governance voting, traceability, feedback, import history, and audit tables
 --   - UUID & TEXT primary/foreign keys with strict referential integrity
 --   - Check constraints, unique constraints, and composite indexes
 --   - Database helper functions & automatic updated_at triggers
---   - Row Level Security (RLS) enabled with multi-university tenant isolation
---     and role-based access control policies
+--   - NOTE: Row Level Security (RLS) is INTENTIONALLY DISABLED during active
+--     backend-enforced integration (RBAC + institution_id tenant isolation run
+--     on the backend). Future RLS policies are preserved below as commented SQL
+--     for administrator activation later.
 -- ============================================================================
 
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
@@ -769,40 +771,55 @@ CREATE TRIGGER trg_polls_updated_at
     FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
 -- ============================================================================
--- ROW LEVEL SECURITY (RLS) & MULTI-UNIVERSITY TENANT ISOLATION POLICIES
+-- ROW LEVEL SECURITY (RLS) — INTENTIONALLY DISABLED DURING BACKEND INTEGRATION
+-- Additional persistence tables (campuses, buildings,
+-- optimization_poll_traceability, timetable_feedback, import_history,
+-- audit_logs, schedule_proposals) are provisioned via
+-- supabase/migrations/20261120000001_complete_persistence_sync.sql.
+--
+-- Administrator Note: Enable RLS per-table and apply tenant policies below
+-- only after transitioning all direct client access to Supabase Auth JWTs:
+--
+-- ALTER TABLE public.institutions ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE public.institution_data ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE public.campuses ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE public.buildings ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE public.departments ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE public.academic_programs ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE public.semesters ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE public.batches ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE public.students ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE public.instructors ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE public.instructor_availability ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE public.instructor_preferences ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE public.student_preferences ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE public.classrooms ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE public.laboratories ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE public.room_equipment_capacities ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE public.courses ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE public.course_enrollments ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE public.course_sessions ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE public.scheduling_constraints ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE public.timetable_versions ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE public.timetable_entries ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE public.optimization_runs ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE public.optimization_scores ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE public.optimization_poll_traceability ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE public.disruptions ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE public.rescheduling_proposals ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE public.rescheduling_history ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE public.br_assignments ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE public.polls ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE public.poll_options ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE public.poll_votes ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE public.feedback ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE public.timetable_feedback ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE public.schedule_proposals ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE public.import_history ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
 -- ============================================================================
-ALTER TABLE public.institutions ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.institution_data ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.departments ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.academic_programs ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.semesters ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.batches ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.students ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.instructors ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.instructor_availability ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.instructor_preferences ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.student_preferences ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.classrooms ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.laboratories ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.room_equipment_capacities ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.courses ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.course_enrollments ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.course_sessions ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.scheduling_constraints ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.timetable_versions ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.timetable_entries ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.optimization_runs ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.optimization_scores ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.disruptions ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.rescheduling_proposals ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.rescheduling_history ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.br_assignments ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.polls ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.poll_options ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.poll_votes ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.feedback ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
 
 -- 1. Public read access to registered universities and public batch list for onboarding/signup
 DROP POLICY IF EXISTS "Public can view institutions" ON public.institutions;

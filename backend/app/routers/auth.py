@@ -146,22 +146,19 @@ async def request_password_recovery(request: Request) -> Dict[str, Any]:
             )
             uni_name = (inst_row or {}).get("name") or user_row.get("institution") or "your university"
 
-            try:
-                client.insert(
-                    "notifications",
-                    {
-                        "institution_id": uni_id,
-                        "recipient_user_id": None,
-                        "recipient_role": "admin",
-                        "title": f"Password Recovery Requested ({user_row['role'].upper()})",
-                        "message": f"{user_row['name']} ({user_row['email']}) requested a credential recovery check.",
-                        "notification_type": "preference_reminder",
-                        "is_read": False,
-                        "created_at": current_iso,
-                    },
-                )
-            except SupabaseQueryError:
-                pass
+            client.insert(
+                "notifications",
+                {
+                    "institution_id": uni_id,
+                    "recipient_user_id": None,
+                    "recipient_role": "admin",
+                    "title": f"Password Recovery Requested ({user_row['role'].upper()})",
+                    "message": f"{user_row['name']} ({user_row['email']}) requested a credential recovery check.",
+                    "notification_type": "preference_reminder",
+                    "is_read": False,
+                    "created_at": current_iso,
+                },
+            )
 
             if user_row["role"] == "br":
                 return {
@@ -316,20 +313,16 @@ async def register_student(request: Request) -> Dict[str, Any]:
         batch_row = client.select_one(
             "batches",
             filters={"id": f"eq.{clean_batch_id}"},
-            select="id,code,name,institution_id",
+            select="id,code,name,institution_id,semester",
         )
         if not batch_row:
             raise HTTPException(status_code=400, detail={"error": "Selected academic batch was not found."})
 
-        if batch_row.get("institution_id"):
-            batch_inst = client.select_one(
-                "institutions",
-                filters={"id": f"eq.{batch_row['institution_id']}"},
-                select="id,name",
+        if batch_row.get("institution_id") and batch_row["institution_id"] != resolved_inst_id:
+            raise HTTPException(
+                status_code=403,
+                detail={"error": "Selected batch does not belong to the chosen university workspace."},
             )
-            if batch_inst:
-                resolved_inst_id = batch_inst["id"]
-                resolved_inst_name = batch_inst["name"]
 
         existing_email = client.select_one("users", filters={"email": f"ilike.{clean_email}"}, select="id")
         if existing_email:
@@ -370,6 +363,19 @@ async def register_student(request: Request) -> Dict[str, Any]:
                 "credential_hint": None,
                 "institution": resolved_inst_name,
                 "institution_id": resolved_inst_id,
+                "created_at": current_iso,
+            },
+        )
+        client.insert(
+            "students",
+            {
+                "id": f"stu-{uuid.uuid4().hex[:8]}",
+                "user_id": new_student_id,
+                "institution_id": resolved_inst_id,
+                "batch_id": clean_batch_id,
+                "registration_number": clean_reg_no,
+                "section": clean_section,
+                "current_semester": int(batch_row.get("semester") or 1),
                 "created_at": current_iso,
             },
         )
@@ -475,6 +481,40 @@ async def activate_faculty(request: Request) -> Dict[str, Any]:
                     "created_at": now_iso(),
                 },
             )
+
+        existing_inst_prof = client.select_one(
+            "instructors",
+            filters={"institution_id": f"eq.{resolved_inst_id}", "email": f"ilike.{clean_email}"},
+            select="id",
+        )
+        dept_match = client.select_one(
+            "departments",
+            filters={"institution_id": f"eq.{resolved_inst_id}", "or": f"(code.ilike.{clean_dept},name.ilike.{clean_dept})"},
+            select="id",
+        )
+        if existing_inst_prof:
+            client.update(
+                "instructors",
+                {"id": f"eq.{existing_inst_prof['id']}"},
+                {"user_id": faculty_user_id, "name": clean_name},
+            )
+        else:
+            client.insert(
+                "instructors",
+                {
+                    "id": f"inst-fac-{uuid.uuid4().hex[:8]}",
+                    "user_id": faculty_user_id,
+                    "institution_id": resolved_inst_id,
+                    "department_id": dept_match["id"] if dept_match else None,
+                    "name": clean_name,
+                    "email": clean_email,
+                    "designation": "Faculty Member",
+                    "staff_role": "faculty",
+                    "max_weekly_hours": 14,
+                    "max_daily_classes": 3,
+                    "created_at": now_iso(),
+                },
+            )
     except SupabaseQueryError as err:
         raise_supabase_http_error(err)
 
@@ -517,7 +557,7 @@ async def login(request: Request) -> Dict[str, Any]:
     if expected_portal_role:
         actual_role = user_row["role"]
         display_actual = map_role_to_display_role(actual_role)
-        if expected_portal_role == "admin" and actual_role != "admin":
+        if expected_portal_role == "admin" and actual_role not in ("admin", "university_admin", "super_admin", "timetable_manager"):
             raise HTTPException(
                 status_code=403,
                 detail={

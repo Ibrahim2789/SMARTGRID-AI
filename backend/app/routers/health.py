@@ -72,3 +72,87 @@ def database_status() -> Dict[str, Any]:
         "countErrors": count_errors or None,
         "timestamp": now_iso(),
     }
+
+
+@router.get("/api/database/schema-info")
+def database_schema_info() -> Dict[str, Any]:
+    """
+    Safely inspects live Supabase table reachability and row counts across all
+    SmartGrid AI PostgreSQL tables (no secrets, no row contents).
+    """
+    client = get_supabase_client()
+    if client is None:
+        return {"configured": False, "tables": {}}
+
+    expected_tables = [
+        "institutions",
+        "campuses",
+        "buildings",
+        "departments",
+        "academic_programs",
+        "semesters",
+        "batches",
+        "users",
+        "students",
+        "instructors",
+        "instructor_availability",
+        "instructor_preferences",
+        "student_preferences",
+        "classrooms",
+        "laboratories",
+        "room_equipment_capacities",
+        "courses",
+        "course_enrollments",
+        "course_sessions",
+        "scheduling_constraints",
+        "timetable_versions",
+        "timetable_entries",
+        "optimization_runs",
+        "optimization_scores",
+        "optimization_poll_traceability",
+        "disruptions",
+        "rescheduling_proposals",
+        "rescheduling_history",
+        "br_assignments",
+        "polls",
+        "poll_options",
+        "poll_votes",
+        "timetable_feedback",
+        "feedback",
+        "schedule_proposals",
+        "notifications",
+        "import_history",
+        "audit_logs",
+    ]
+
+    tables: Dict[str, Any] = {}
+    reachable_count = 0
+    errors: Dict[str, str] = {}
+
+    for tbl in expected_tables:
+        try:
+            row_count = client.count(tbl)
+            tables[tbl] = {"reachable": True, "rowCount": row_count}
+            reachable_count += 1
+        except SupabaseQueryError as err:
+            tables[tbl] = {
+                "reachable": False,
+                "statusCode": err.status_code,
+                "error": err.message,
+            }
+            errors[tbl] = f"{err.status_code}: {err.message}"
+
+    live_schema = client.get_live_schema()
+    return {
+        "configured": True,
+        "tableCount": len(expected_tables),
+        "reachableCount": reachable_count,
+        "allTablesReachable": reachable_count == len(expected_tables),
+        "openapiSchemaTableCount": len(live_schema),
+        "openapiSchemaError": client.last_schema_error,
+        "tables": tables,
+        "errors": errors or None,
+        "timestamp": now_iso(),
+    }
+
+
