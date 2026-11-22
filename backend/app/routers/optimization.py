@@ -206,7 +206,7 @@ async def run_optimization(request: Request) -> Dict[str, Any]:
             },
         )
 
-        # 3. Insert normalized timetable_entries from canonical entries
+        # 3. Ensure scheduled sections exist in course_sessions & insert normalized timetable_entries
         entries = _build_timetable_entries_from_canonical(
             uni_id=uni_id,
             version_id=version_id,
@@ -214,6 +214,105 @@ async def run_optimization(request: Request) -> Dict[str, Any]:
         )
         if entries:
             client.insert("timetable_entries", entries)
+
+        # Persist auto-generated or missing course_sessions rows and update their assigned slots
+        try:
+            existing_courses = client.select("courses", filters={"institution_id": f"eq.{uni_id}"}, select="id,required_room_type")
+            existing_batches = client.select("batches", filters={"institution_id": f"eq.{uni_id}"}, select="id")
+            existing_instructors = client.select("instructors", filters={"institution_id": f"eq.{uni_id}"}, select="id")
+            existing_sessions = client.select("course_sessions", filters={"institution_id": f"eq.{uni_id}"}, select="id")
+            valid_course_ids = {c["id"] for c in existing_courses}
+            course_req_room = {c["id"]: c.get("required_room_type") or "lecture" for c in existing_courses}
+            valid_batch_ids = {b["id"] for b in existing_batches}
+            valid_instructor_ids = {i["id"] for i in existing_instructors}
+            existing_session_ids = {s["id"] for s in existing_sessions}
+
+            first_entry_by_sec: Dict[str, Dict[str, Any]] = {}
+            for e in entries:
+                cs_id = str(e.get("course_session_id") or "")
+                if cs_id and cs_id not in first_entry_by_sec:
+                    first_entry_by_sec[cs_id] = e
+
+            new_session_rows: List[Dict[str, Any]] = []
+            for sec in inputs.get("sections") or []:
+                sec_id = str(sec.get("id") or "").strip()
+                if not sec_id:
+                    continue
+                matched_entry = first_entry_by_sec.get(sec_id)
+                slot_json = None
+                if matched_entry:
+                    e_is_lab = str(matched_entry.get("session_type") or "").lower() == "lab" or str(matched_entry.get("component_type") or "").lower() == "lab"
+                    slot_json = {
+                        "day": matched_entry.get("day_of_week"),
+                        "startTime24": matched_entry.get("start_time"),
+                        "endTime24": matched_entry.get("end_time"),
+                        "timeSlot": matched_entry.get("start_time"),
+                        "roomId": matched_entry.get("room_id"),
+                        "durationMinutes": int(matched_entry.get("duration_minutes") or (180 if e_is_lab else 50)),
+                        "sessionType": "Lab" if e_is_lab else "Lecture",
+                        "spanSlots": 3 if e_is_lab else 1,
+                        "slotSource": matched_entry.get("slot_source") or "regular",
+                    }
+
+                if sec_id not in existing_session_ids:
+                    c_id = str(sec.get("courseId") or sec.get("course_id") or "")
+                    b_id = str(sec.get("studentGroupId") or sec.get("batchId") or sec.get("batch_id") or "")
+                    if c_id in valid_course_ids and b_id in valid_batch_ids:
+                        s_type_raw = str(sec.get("sessionType") or sec.get("session_type") or "Theory").strip()
+                        is_lab = s_type_raw.lower() == "lab" or str(sec.get("componentType") or "").lower() == "lab"
+                        sess_type = "Lab" if is_lab else ("Tutorial" if s_type_raw.lower() == "tutorial" else "Theory")
+                        comp_type = "lab" if is_lab else ("tutorial" if sess_type == "Tutorial" else "lecture")
+                        raw_req_room = str(sec.get("requiredRoomType") or course_req_room.get(c_id) or ("lab" if is_lab else "lecture")).lower()
+                        req_room = "lab" if is_lab else (raw_req_room if raw_req_room in ("lecture", "lab", "seminar") else "lecture")
+                        inst_id = sec.get("instructorId") or sec.get("instructor_id")
+                        lab_eng_id = sec.get("labEngineerId") or sec.get("lab_engineer_id")
+                        dur_min = max(30, min(300, int(sec.get("durationMinutes") or (180 if is_lab else 50))))
+                        spw_val = max(1, min(6, int(sec.get("sessionsPerWeek") or 1)))
+                        exp_stu = max(1, int(sec.get("enrollment") or sec.get("expectedEnrollment") or 45))
+                        new_session_rows.append(
+                            {
+                                "id": sec_id,
+                                "institution_id": uni_id,
+                                "term_id": body.get("termId") or None,
+                                "course_id": c_id,
+                                "instructor_id": inst_id if inst_id in valid_instructor_ids else None,
+                                "lab_engineer_id": lab_eng_id if lab_eng_id in valid_instructor_ids else None,
+                                "batch_id": b_id,
+                                "shared_group_ids": sec.get("sharedGroupIds") if isinstance(sec.get("sharedGroupIds"), list) else [],
+                                "section_code": str(sec.get("sectionCode") or sec.get("sectionNumber") or "A"),
+                                "session_type": sess_type,
+                                "component_type": comp_type,
+                                "is_atomic_session": bool(sec.get("isAtomicSession", True)),
+                                "span_slots": max(1, int(sec.get("spanSlots") or (3 if is_lab else 1))),
+                                "sessions_per_week": spw_val,
+                                "duration_minutes": dur_min,
+                                "expected_students": exp_stu,
+                                "required_room_type": req_room,
+                                "assigned_day": matched_entry.get("day_of_week") if matched_entry else None,
+                                "assigned_start_time": matched_entry.get("start_time") if matched_entry else None,
+                                "assigned_room_id": matched_entry.get("room_id") if matched_entry else None,
+                                "assigned_slot_json": slot_json,
+                                "is_locked": bool(sec.get("isLocked", False)),
+                                "created_at": current_iso,
+                            }
+                        )
+                        existing_session_ids.add(sec_id)
+                elif matched_entry and slot_json:
+                    client.update(
+                        "course_sessions",
+                        {"id": f"eq.{sec_id}", "institution_id": f"eq.{uni_id}"},
+                        {
+                            "assigned_day": matched_entry.get("day_of_week"),
+                            "assigned_start_time": matched_entry.get("start_time"),
+                            "assigned_room_id": matched_entry.get("room_id"),
+                            "assigned_slot_json": slot_json,
+                        },
+                    )
+            if new_session_rows:
+                client.insert("course_sessions", new_session_rows, upsert=True, on_conflict="id")
+        except Exception:
+            # Never block optimization persistence if optional session sync hits a legacy schema mismatch
+            pass
 
         # 4. Insert optimization_runs
         db_run_status = "completed" if (is_feasible or not getattr(client, "has_column", lambda t, c: True)("timetable_entries", "slot_source")) else "needs_review"

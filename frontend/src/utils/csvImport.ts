@@ -330,42 +330,97 @@ export const CATEGORY_SCHEMAS: Record<ImportCategory, CategorySchemaDef> = {
     id: 'all',
     title: 'All-in-One Master CSV',
     shortLabel: 'All-in-One',
-    description: 'Combined master CSV creating departments, classrooms, labs, courses, instructors, and cohorts together.',
+    description: 'Combined master CSV creating departments, classrooms, labs, instructors, courses, batches & sections, enrollments, and teaching assignments together.',
     stableKeyLabel: 'Entity Identifiers',
     fields: [
-      { key: 'deptCode', label: 'Department Code', group: 'Departments', required: false, type: 'string', sample: 'CS', synonyms: ['dept_code', 'department_code', 'dept', 'department'] },
+      // Departments
+      { key: 'deptCode', label: 'Department Code', group: 'Departments', required: false, type: 'string', sample: 'CS', synonyms: ['dept_code', 'department_code', 'dept', 'department', 'program_code'] },
       { key: 'deptName', label: 'Department Name', group: 'Departments', required: false, type: 'string', sample: 'Computer Science', synonyms: ['dept_name', 'department_name'] },
-      { key: 'school', label: 'School / Faculty', group: 'Departments', required: false, type: 'string', sample: 'School of Computing', synonyms: ['school', 'faculty_name', 'division'] },
-      { key: 'roomCode', label: 'Room / Lab Code', group: 'Rooms & Labs', required: false, type: 'string', sample: 'HALL-101', synonyms: ['room_code', 'room', 'classroom', 'hall', 'lab_code'] },
-      { key: 'roomName', label: 'Room / Lab Name', group: 'Rooms & Labs', required: false, type: 'string', sample: 'Turing Hall', synonyms: ['room_name', 'facility_name'] },
-      { key: 'roomCapacity', label: 'Room Capacity', group: 'Rooms & Labs', required: false, type: 'int', sample: '70', synonyms: ['room_capacity', 'capacity', 'seats'] },
-      { key: 'roomType', label: 'Room Type (lecture/lab)', group: 'Rooms & Labs', required: false, type: 'string', sample: 'lecture', synonyms: ['room_type', 'facility_type'] },
-      { key: 'building', label: 'Building Name', group: 'Rooms & Labs', required: false, type: 'string', sample: 'Block A', synonyms: ['building', 'building_name', 'block'] },
-      { key: 'courseCode', label: 'Course Code', group: 'Courses', required: false, type: 'string', sample: 'CS-101', synonyms: ['course_code', 'course', 'subject_code'] },
-      { key: 'courseTitle', label: 'Course Title', group: 'Courses', required: false, type: 'string', sample: 'Programming Fundamentals', synonyms: ['course_title', 'course_name', 'subject_name'] },
-      { key: 'lectureCredits', label: 'Lecture Credits', group: 'Courses', required: false, type: 'int', sample: '3', synonyms: ['lecture_credits', 'lec_credits'] },
-      { key: 'labCredits', label: 'Lab Credits', group: 'Courses', required: false, type: 'int', sample: '1', synonyms: ['lab_credits', 'practical_credits'] },
-      { key: 'creditHours', label: 'Credit Hours', group: 'Courses', required: false, type: 'int', sample: '3', synonyms: ['credit_hours', 'credits'] },
-      { key: 'isElective', label: 'Is Elective', group: 'Courses', required: false, type: 'bool', sample: 'no', synonyms: ['is_elective', 'elective'] },
-      { key: 'instructorName', label: 'Instructor Name', group: 'Instructors', required: false, type: 'string', sample: 'Dr. Sarah Chen', synonyms: ['instructor_name', 'instructor', 'faculty_name', 'teacher_name', 'teacher', 'professor'] },
-      { key: 'instructorEmail', label: 'Instructor Email', group: 'Instructors', required: false, type: 'email', sample: 'sarah.chen@university.edu', synonyms: ['instructor_email', 'email', 'faculty_email'] },
-      { key: 'staffRole', label: 'Staff Role', group: 'Instructors', required: false, type: 'enum', sample: 'faculty', synonyms: ['staff_role', 'role_type'] },
-      { key: 'maxWeeklyHours', label: 'Max Weekly Hours', group: 'Instructors', required: false, type: 'int', sample: '14', synonyms: ['max_weekly_hours', 'max_hours'] },
-      { key: 'cohortCode', label: 'Cohort / Batch Code', group: 'Batches & Sections', required: false, type: 'string', sample: '2K25-CS-A', synonyms: ['cohort_code', 'batch_code', 'cohort', 'batch', 'section_name', 'class_code'] },
-      { key: 'cohortName', label: 'Cohort Name', group: 'Batches & Sections', required: false, type: 'string', sample: '2K25 CS Section A', synonyms: ['cohort_name', 'batch_name'] },
-      { key: 'cohortSize', label: 'Cohort Size', group: 'Batches & Sections', required: false, type: 'int', sample: '45', synonyms: ['cohort_size', 'size', 'student_count'] },
-      { key: 'semester', label: 'Semester', group: 'Batches & Sections', required: false, type: 'int', sample: '1', synonyms: ['semester', 'sem'] }
+      { key: 'school', label: 'School / Faculty', group: 'Departments', required: false, type: 'string', sample: 'School of Computing', synonyms: ['school', 'faculty', 'faculty_name', 'faculty_group', 'division', 'college'] },
+      { key: 'headOfDepartment', label: 'Head of Department', group: 'Departments', required: false, type: 'string', sample: 'Dr. Alan Turing', synonyms: ['head_of_department', 'hod', 'chair', 'chairperson', 'head'] },
+      { key: 'subDepartments', label: 'Sub-Departments / Tracks', group: 'Departments', required: false, type: 'list', sample: 'Artificial Intelligence; Systems', synonyms: ['sub_departments', 'subdepartments', 'tracks', 'wings'] },
+
+      // Rooms & Labs
+      { key: 'roomCode', label: 'Room / Lab Code', group: 'Rooms & Labs', required: false, type: 'string', sample: 'HALL-101', synonyms: ['room_code', 'room', 'classroom', 'classroom_code', 'hall', 'room_no', 'room_number', 'lab_code', 'laboratory_code', 'facility_code'] },
+      { key: 'roomName', label: 'Room / Lab Name', group: 'Rooms & Labs', required: false, type: 'string', sample: 'Alan Turing Hall', synonyms: ['room_name', 'lab_name', 'hall_name', 'classroom_name', 'laboratory_name', 'facility_name'] },
+      { key: 'roomCapacity', label: 'Room / Lab Capacity', group: 'Rooms & Labs', required: false, type: 'int', sample: '70', synonyms: ['room_capacity', 'capacity', 'seats', 'workstations', 'lab_capacity', 'max_students'] },
+      { key: 'roomType', label: 'Room Type (lecture/seminar/auditorium/lab)', group: 'Rooms & Labs', required: false, type: 'string', sample: 'lecture', synonyms: ['room_type', 'classroom_type', 'facility_type', 'lab_type'] },
+      { key: 'building', label: 'Building Name', group: 'Rooms & Labs', required: false, type: 'string', sample: 'Block A', synonyms: ['building', 'building_name', 'block', 'location'] },
+      { key: 'floor', label: 'Floor Number', group: 'Rooms & Labs', required: false, type: 'int', sample: '1', synonyms: ['floor', 'floor_no', 'level'] },
+      { key: 'labCategory', label: 'Lab Category', group: 'Rooms & Labs', required: false, type: 'string', sample: 'Computing', synonyms: ['lab_category', 'discipline'] },
+      { key: 'roomLabEngineer', label: 'Room / Lab Engineer (email or name)', group: 'Rooms & Labs', required: false, type: 'fk', sample: 'bilal.tariq@university.edu', synonyms: ['room_lab_engineer', 'lab_supervisor', 'supervisor'] },
+      { key: 'equipment', label: 'Room / Lab Equipment', group: 'Rooms & Labs', required: false, type: 'list', sample: 'Projector; Whiteboard', synonyms: ['equipment', 'features', 'amenities', 'facilities', 'resources', 'hardware'] },
+      { key: 'roomIsAvailable', label: 'Room Is Available (yes/no)', group: 'Rooms & Labs', required: false, type: 'bool', sample: 'yes', synonyms: ['is_available', 'room_is_available', 'available', 'active'] },
+
+      // Instructors & Lab Engineers
+      { key: 'instructorName', label: 'Instructor Full Name', group: 'Instructors', required: false, type: 'string', sample: 'Dr. Sarah Chen', synonyms: ['instructor_name', 'instructor', 'faculty_name', 'teacher_name', 'teacher', 'professor', 'lecturer', 'faculty'] },
+      { key: 'instructorEmail', label: 'Instructor Institutional Email', group: 'Instructors', required: false, type: 'email', sample: 'sarah.chen@university.edu', synonyms: ['instructor_email', 'email', 'faculty_email', 'teacher_email', 'email_address', 'mail'] },
+      { key: 'instructorTitle', label: 'Instructor Designation / Title', group: 'Instructors', required: false, type: 'string', sample: 'Associate Professor', synonyms: ['instructor_title', 'designation', 'rank', 'position', 'academic_rank'] },
+      { key: 'staffRole', label: 'Staff Role (faculty/lab_engineer)', group: 'Instructors', required: false, type: 'enum', sample: 'faculty', synonyms: ['staff_role', 'role_type', 'instructor_role'] },
+      { key: 'instructorSubDepartment', label: 'Instructor Sub-Department / Wing', group: 'Instructors', required: false, type: 'string', sample: 'Artificial Intelligence', synonyms: ['instructor_sub_department', 'instructor_subdepartment', 'wing'] },
+      { key: 'maxWeeklyHours', label: 'Max Weekly Hours', group: 'Instructors', required: false, type: 'int', sample: '14', synonyms: ['max_weekly_hours', 'weekly_hours', 'max_hours', 'workload_cap', 'weekly_cap'] },
+      { key: 'maxDailyClasses', label: 'Max Daily Classes', group: 'Instructors', required: false, type: 'int', sample: '3', synonyms: ['max_daily_classes', 'max_lectures_per_day', 'daily_cap', 'max_daily'] },
+      { key: 'qualifiedCourses', label: 'Qualified Course Codes', group: 'Instructors', required: false, type: 'list', sample: 'CS-101; CS-201', synonyms: ['qualified_courses', 'eligible_courses', 'subjects', 'can_teach', 'specializations'] },
+
+      // Courses
+      { key: 'courseCode', label: 'Course Code', group: 'Courses', required: false, type: 'string', sample: 'CS-101', synonyms: ['course_code', 'course', 'subject_code', 'course_id', 'course_no', 'subject_id'] },
+      { key: 'courseTitle', label: 'Course Title', group: 'Courses', required: false, type: 'string', sample: 'Programming Fundamentals', synonyms: ['course_title', 'course_name', 'subject', 'subject_name'] },
+      { key: 'courseType', label: 'Course Type (lecture/lab/lecture_lab)', group: 'Courses', required: false, type: 'enum', sample: 'lecture_lab', synonyms: ['course_type', 'course_mode'] },
+      { key: 'creditHours', label: 'Total Credit Hours', group: 'Courses', required: false, type: 'int', sample: '4', synonyms: ['credit_hours', 'credits', 'credit', 'cr_hrs', 'units'] },
+      { key: 'lectureCredits', label: 'Lecture Credits', group: 'Courses', required: false, type: 'int', sample: '3', synonyms: ['lecture_credits', 'theory_credits', 'lec_credits', 'lec_cr', 'lecture_credit_hours'] },
+      { key: 'labCredits', label: 'Lab Credits', group: 'Courses', required: false, type: 'int', sample: '1', synonyms: ['lab_credits', 'practical_credits', 'lab_cr', 'lab_credit_hours'] },
+      { key: 'labSessionMode', label: 'Lab Session Mode (continuous/split_allowed)', group: 'Courses', required: false, type: 'enum', sample: 'continuous', synonyms: ['lab_session_mode', 'lab_mode'] },
+      { key: 'isCompulsory', label: 'Is Compulsory (yes/no)', group: 'Courses', required: false, type: 'bool', sample: 'yes', synonyms: ['is_compulsory', 'compulsory', 'mandatory', 'core'] },
+      { key: 'isElective', label: 'Is Elective (yes/no)', group: 'Courses', required: false, type: 'bool', sample: 'no', synonyms: ['is_elective', 'elective', 'optional'] },
+      { key: 'electivePoolName', label: 'Elective Pool Name', group: 'Courses', required: false, type: 'string', sample: 'AI Track', synonyms: ['elective_pool', 'elective_pool_name', 'pool_name'] },
+      { key: 'assignedInstructor', label: 'Assigned Course Instructor (email or name)', group: 'Courses', required: false, type: 'fk', sample: 'sarah.chen@university.edu', synonyms: ['assigned_instructor', 'course_instructor'] },
+      { key: 'assignedLabEngineer', label: 'Assigned Lab Engineer (email or name)', group: 'Courses', required: false, type: 'fk', sample: 'bilal.tariq@university.edu', synonyms: ['assigned_lab_engineer', 'lab_engineer', 'lab_engineer_email', 'lab_engineer_name', 'engineer'] },
+      { key: 'requiredEquipment', label: 'Course Required Equipment', group: 'Courses', required: false, type: 'list', sample: 'Projector; Workstations', synonyms: ['required_equipment', 'lab_equipment'] },
+      { key: 'courseSubDepartment', label: 'Course Sub-Department / Track', group: 'Courses', required: false, type: 'string', sample: 'Systems', synonyms: ['course_sub_department', 'sub_department', 'subdepartment', 'track'] },
+
+      // Batches & Sections
+      { key: 'cohortCode', label: 'Cohort / Section Full Code (e.g. 2K24-CS-A)', group: 'Batches & Sections', required: false, type: 'string', sample: '2K25-CS-A', synonyms: ['cohort_code', 'class_code', 'group_code', 'cohort', 'student_group'] },
+      { key: 'batchCode', label: 'Intake / Batch Code (e.g. 2K24)', group: 'Batches & Sections', required: false, type: 'string', sample: '2K25', synonyms: ['batch_code', 'intake', 'batch', 'batch_year', 'cohort_year'] },
+      { key: 'section', label: 'Section of Batch (e.g. A)', group: 'Batches & Sections', required: false, type: 'string', sample: 'A', synonyms: ['section', 'section_letter', 'section_code', 'sections', 'sections_list', 'sec'] },
+      { key: 'cohortName', label: 'Batch / Section Name', group: 'Batches & Sections', required: false, type: 'string', sample: '2K25 CS Section A', synonyms: ['cohort_name', 'batch_name', 'section_name', 'class_name'] },
+      { key: 'cohortSize', label: 'Batch / Section Student Count', group: 'Batches & Sections', required: false, type: 'int', sample: '45', synonyms: ['cohort_size', 'student_count', 'size', 'students', 'headcount'] },
+      { key: 'year', label: 'Academic Year (1-8)', group: 'Batches & Sections', required: false, type: 'int', sample: '1', synonyms: ['year', 'study_year', 'academic_year'] },
+      { key: 'semester', label: 'Semester (1-16)', group: 'Batches & Sections', required: false, type: 'int', sample: '1', synonyms: ['semester', 'sem', 'term_number'] },
+      { key: 'homeRoom', label: 'Home Room Code', group: 'Batches & Sections', required: false, type: 'fk', sample: 'HALL-101', synonyms: ['home_room', 'default_room', 'assigned_room'] },
+
+      // Course Assignments & Enrollments
+      { key: 'sessionType', label: 'Session Type (Theory/Lab/Tutorial)', group: 'Assignments & Enrollments', required: false, type: 'enum', sample: 'Theory', synonyms: ['session_type', 'component_type'] },
+      { key: 'sessionsPerWeek', label: 'Sessions Per Week (1-6)', group: 'Assignments & Enrollments', required: false, type: 'int', sample: '3', synonyms: ['sessions_per_week', 'weekly_sessions', 'frequency'] },
+      { key: 'durationMinutes', label: 'Session Duration Minutes (30-300)', group: 'Assignments & Enrollments', required: false, type: 'int', sample: '50', synonyms: ['duration_minutes', 'duration', 'minutes'] },
+      { key: 'expectedStudents', label: 'Expected Students', group: 'Assignments & Enrollments', required: false, type: 'int', sample: '45', synonyms: ['expected_students', 'enrollment'] },
+      { key: 'requiredRoomType', label: 'Required Room Type (lecture/lab/seminar)', group: 'Assignments & Enrollments', required: false, type: 'enum', sample: 'lecture', synonyms: ['required_room_type'] },
+      { key: 'studentRegistrationNumber', label: 'Student Registration No (optional)', group: 'Assignments & Enrollments', required: false, type: 'fk', sample: '24-CS-001', synonyms: ['registration_number', 'student_registration_number', 'roll_no', 'roll_number', 'student_id', 'reg_no'] }
     ],
     templateHeaders: [
-      'dept_code', 'dept_name', 'school',
-      'room_code', 'room_name', 'room_capacity', 'room_type', 'building',
-      'course_code', 'course_title', 'lecture_credits', 'lab_credits', 'is_elective',
-      'instructor_name', 'instructor_email', 'staff_role', 'max_weekly_hours',
-      'cohort_code', 'cohort_size', 'semester'
+      'dept_code', 'dept_name', 'school', 'head_of_department', 'sub_departments',
+      'room_code', 'room_name', 'room_capacity', 'room_type', 'building', 'floor', 'lab_category', 'room_lab_engineer', 'equipment', 'is_available',
+      'instructor_name', 'instructor_email', 'instructor_title', 'staff_role', 'instructor_sub_department', 'max_weekly_hours', 'max_daily_classes', 'qualified_courses',
+      'course_code', 'course_title', 'course_type', 'credit_hours', 'lecture_credits', 'lab_credits', 'lab_session_mode', 'is_compulsory', 'is_elective', 'elective_pool_name', 'assigned_instructor', 'assigned_lab_engineer', 'required_equipment', 'course_sub_department',
+      'cohort_code', 'batch_code', 'section', 'cohort_name', 'cohort_size', 'year', 'semester', 'home_room',
+      'session_type', 'sessions_per_week', 'duration_minutes', 'expected_students', 'required_room_type', 'registration_number'
     ],
     templateRows: [
-      ['CS', 'Computer Science', 'School of Computing', 'HALL-101', 'Alan Turing Hall', '70', 'lecture', 'Block A', 'CS-101', 'Programming Fundamentals', '3', '1', 'no', 'Dr. Sarah Chen', 'sarah.chen@university.edu', 'faculty', '14', '2K25-CS-A', '45', '1'],
-      ['CS', 'Computer Science', 'School of Computing', 'LAB-201', 'Computing Lab 1', '45', 'lab', 'Lab Complex', 'CS-201', 'Data Structures', '3', '1', 'no', 'Engr. Bilal Tariq', 'bilal.tariq@university.edu', 'lab_engineer', '18', '2K24-CS-A', '42', '3']
+      [
+        'CS', 'Computer Science', 'School of Computing', 'Dr. Alan Turing', 'Artificial Intelligence; Systems',
+        'HALL-101', 'Alan Turing Hall', '70', 'lecture', 'Block A', '1', '', '', 'Projector; Whiteboard', 'yes',
+        'Dr. Sarah Chen', 'sarah.chen@university.edu', 'Associate Professor', 'faculty', 'Artificial Intelligence', '14', '3', 'CS-101; CS-201',
+        'CS-101', 'Programming Fundamentals', 'lecture_lab', '4', '3', '1', 'continuous', 'yes', 'no', '', 'sarah.chen@university.edu', '', 'Projector; Workstations', 'Systems',
+        '2K25-CS-A', '2K25', 'A', '2K25 CS Section A', '45', '1', '1', 'HALL-101',
+        'Theory', '3', '50', '45', 'lecture', ''
+      ],
+      [
+        'CS', 'Computer Science', 'School of Computing', 'Dr. Alan Turing', 'Artificial Intelligence; Systems',
+        'LAB-201', 'Computing Lab 1', '45', 'lab', 'Lab Complex', '2', 'Computing', 'bilal.tariq@university.edu', '45 Workstations; Projector', 'yes',
+        'Engr. Bilal Tariq', 'bilal.tariq@university.edu', 'Senior Lab Engineer', 'lab_engineer', 'Systems', '18', '4', 'CS-101; CS-201',
+        'CS-201', 'Data Structures', 'lecture_lab', '4', '3', '1', 'continuous', 'yes', 'no', '', 'sarah.chen@university.edu', 'bilal.tariq@university.edu', 'Workstations', 'Systems',
+        '2K24-CS-B', '2K24', 'B', '2K24 CS Section B', '42', '2', '3', '',
+        'Lab', '1', '180', '42', 'lab', ''
+      ]
     ]
   }
 };
@@ -1342,17 +1397,25 @@ export function validateImportPreviewLocal(params: {
           mappedData.courseCode ||
           mappedData.instructorName ||
           mappedData.instructorEmail ||
-          mappedData.cohortCode
+          mappedData.cohortCode ||
+          mappedData.batchCode
       );
-      identifier = mappedData.courseCode || mappedData.roomCode || mappedData.cohortCode || mappedData.instructorEmail || mappedData.deptCode || identifier;
+      identifier = mappedData.courseCode || mappedData.roomCode || mappedData.cohortCode || mappedData.batchCode || mappedData.instructorEmail || mappedData.deptCode || identifier;
       if (!hasAnyId) {
-        addErr('courseCode', 'missing_required', 'Row has no department, room, course, instructor, or cohort value.', 'Populate at least one entity.');
+        addErr('courseCode', 'missing_required', 'Row has no department, room, course, instructor, or batch/cohort value.', 'Populate at least one entity.');
       }
       if (mappedData.roomCapacity) {
         try {
           parseStrictInt(mappedData.roomCapacity, 'Room capacity', 1, 2000);
         } catch (e) {
           addErr('roomCapacity', 'invalid_type', (e as Error).message, 'Enter integer 1–2000.');
+        }
+      }
+      if (mappedData.floor) {
+        try {
+          parseStrictInt(mappedData.floor, 'Floor', -5, 100);
+        } catch (e) {
+          addErr('floor', 'invalid_type', (e as Error).message, 'Enter integer -5–100.');
         }
       }
       if (mappedData.cohortSize) {
@@ -1362,14 +1425,77 @@ export function validateImportPreviewLocal(params: {
           addErr('cohortSize', 'invalid_type', (e as Error).message, 'Enter integer 1–1000.');
         }
       }
+      if (mappedData.year) {
+        try {
+          parseStrictInt(mappedData.year, 'Academic year', 1, 8);
+        } catch (e) {
+          addErr('year', 'invalid_type', (e as Error).message, 'Enter integer 1–8.');
+        }
+      }
+      if (mappedData.semester) {
+        try {
+          parseStrictInt(mappedData.semester, 'Semester', 1, 16);
+        } catch (e) {
+          addErr('semester', 'invalid_type', (e as Error).message, 'Enter integer 1–16.');
+        }
+      }
       if (mappedData.instructorEmail && !EMAIL_REGEX.test(mappedData.instructorEmail)) {
         addErr('instructorEmail', 'invalid_type', `Invalid email "${mappedData.instructorEmail}".`, 'Provide valid email.');
+      }
+      if (mappedData.maxWeeklyHours) {
+        try {
+          parseStrictInt(mappedData.maxWeeklyHours, 'Max weekly hours', 1, 45);
+        } catch (e) {
+          addErr('maxWeeklyHours', 'invalid_type', (e as Error).message, 'Enter integer 1–45.');
+        }
+      }
+      if (mappedData.maxDailyClasses) {
+        try {
+          parseStrictInt(mappedData.maxDailyClasses, 'Max daily classes', 1, 10);
+        } catch (e) {
+          addErr('maxDailyClasses', 'invalid_type', (e as Error).message, 'Enter integer 1–10.');
+        }
       }
       if (mappedData.isElective) {
         try {
           parseStrictBool(mappedData.isElective, false);
         } catch (e) {
           addErr('isElective', 'invalid_type', (e as Error).message, 'Use yes/no or true/false.');
+        }
+      }
+      if (mappedData.isCompulsory) {
+        try {
+          parseStrictBool(mappedData.isCompulsory, true);
+        } catch (e) {
+          addErr('isCompulsory', 'invalid_type', (e as Error).message, 'Use yes/no or true/false.');
+        }
+      }
+      if (mappedData.roomIsAvailable) {
+        try {
+          parseStrictBool(mappedData.roomIsAvailable, true);
+        } catch (e) {
+          addErr('roomIsAvailable', 'invalid_type', (e as Error).message, 'Use yes/no or true/false.');
+        }
+      }
+      if (mappedData.sessionsPerWeek) {
+        try {
+          parseStrictInt(mappedData.sessionsPerWeek, 'Sessions per week', 1, 6);
+        } catch (e) {
+          addErr('sessionsPerWeek', 'invalid_type', (e as Error).message, 'Enter integer 1–6.');
+        }
+      }
+      if (mappedData.durationMinutes) {
+        try {
+          parseStrictInt(mappedData.durationMinutes, 'Duration minutes', 30, 300);
+        } catch (e) {
+          addErr('durationMinutes', 'invalid_type', (e as Error).message, 'Enter integer 30–300.');
+        }
+      }
+      if (mappedData.expectedStudents) {
+        try {
+          parseStrictInt(mappedData.expectedStudents, 'Expected students', 1, 1000);
+        } catch (e) {
+          addErr('expectedStudents', 'invalid_type', (e as Error).message, 'Enter integer 1–1000.');
         }
       }
     }
@@ -1597,28 +1723,21 @@ export function buildStorePayloadFromValidatedRows(report: ValidationReport): {
           departments.push({
             code: m.deptCode.toUpperCase(),
             name: m.deptName || m.deptCode,
-            school: m.school || undefined
+            school: m.school || undefined,
+            subDepartments: m.subDepartments ? splitList(m.subDepartments) : undefined
           });
         }
         if (m.roomCode) {
-          const isLab = (m.roomType || '').toLowerCase().includes('lab') || m.roomCode.toLowerCase().includes('lab');
+          const isLab = (m.roomType || '').toLowerCase().includes('lab') || m.roomCode.toLowerCase().includes('lab') || Boolean(m.labCategory && !m.roomType);
           rooms.push({
             code: m.roomCode.toUpperCase(),
             name: m.roomName || m.roomCode,
             capacity: Number(m.roomCapacity) || 50,
-            type: isLab ? 'lab' : 'lecture',
-            buildingName: m.building || undefined
-          });
-        }
-        if (m.courseCode) {
-          courses.push({
-            code: m.courseCode.toUpperCase(),
-            title: m.courseTitle || m.courseCode,
-            creditHours: m.creditHours ? Number(m.creditHours) : undefined,
-            lectureCredits: m.lectureCredits ? Number(m.lectureCredits) : undefined,
-            labCredits: m.labCredits ? Number(m.labCredits) : undefined,
-            isElective: m.isElective ? ['true', 'yes', '1', 'y'].includes(m.isElective.toLowerCase()) : false,
-            departmentKey: m.deptCode || undefined
+            type: isLab ? 'lab' : (m.roomType?.toLowerCase() === 'seminar' ? 'seminar' : 'lecture'),
+            buildingName: m.building || undefined,
+            equipment: m.equipment ? splitList(m.equipment) : undefined,
+            isAvailable: m.roomIsAvailable ? ['true', 'yes', '1', 'y'].includes(m.roomIsAvailable.toLowerCase()) : true,
+            assignedLabEngineerKey: m.roomLabEngineer || undefined
           });
         }
         if (m.instructorName || m.instructorEmail) {
@@ -1627,19 +1746,78 @@ export function buildStorePayloadFromValidatedRows(report: ValidationReport): {
           instructors.push({
             name,
             email,
+            title: m.instructorTitle || undefined,
             staffRole: (m.staffRole || '').toLowerCase().includes('lab') ? 'lab_engineer' : 'faculty',
+            subDepartment: m.instructorSubDepartment || undefined,
+            qualifiedCourseCodes: m.qualifiedCourses ? splitList(m.qualifiedCourses) : undefined,
             maxWeeklyHours: m.maxWeeklyHours ? Number(m.maxWeeklyHours) : undefined,
             departmentKey: m.deptCode || undefined
           });
         }
-        if (m.cohortCode) {
+        if (m.courseCode) {
+          const isElec = m.isElective
+            ? ['true', 'yes', '1', 'y'].includes(m.isElective.toLowerCase())
+            : m.isCompulsory
+            ? !['true', 'yes', '1', 'y'].includes(m.isCompulsory.toLowerCase())
+            : false;
+          courses.push({
+            code: m.courseCode.toUpperCase(),
+            title: m.courseTitle || m.courseCode,
+            creditHours: m.creditHours ? Number(m.creditHours) : undefined,
+            lectureCredits: m.lectureCredits ? Number(m.lectureCredits) : undefined,
+            labCredits: m.labCredits ? Number(m.labCredits) : undefined,
+            isElective: isElec,
+            electivePoolName: m.electivePoolName || undefined,
+            departmentKey: m.deptCode || undefined,
+            subDepartment: m.courseSubDepartment || undefined,
+            assignedInstructorKey: m.assignedInstructor || m.instructorEmail || undefined,
+            assignedLabEngineerKey: m.assignedLabEngineer || undefined,
+            requiredRoomType: m.courseType?.toLowerCase() === 'lab' ? 'lab' : 'lecture',
+            labSessionMode: m.labSessionMode?.toLowerCase() === 'split_allowed' ? 'split_allowed' : 'continuous'
+          });
+        }
+        const cohortRaw = (m.cohortCode || '').toUpperCase();
+        const batchRaw = (m.batchCode || '').toUpperCase();
+        const secRaw = (m.section || '').toUpperCase();
+        const resolvedCohort =
+          cohortRaw ||
+          (batchRaw
+            ? batchRaw.includes('-') && batchRaw.split('-').length >= 3
+              ? batchRaw
+              : `${batchRaw}${m.deptCode && !batchRaw.includes('-') ? `-${m.deptCode.toUpperCase()}` : ''}-${secRaw || 'A'}`
+            : '');
+        if (resolvedCohort) {
           cohorts.push({
-            code: m.cohortCode.toUpperCase(),
+            code: resolvedCohort,
             name: m.cohortName || undefined,
+            batchCode: batchRaw || (resolvedCohort.includes('-') ? resolvedCohort.split('-')[0] : resolvedCohort),
+            section: secRaw || (resolvedCohort.includes('-') ? resolvedCohort.split('-').slice(-1)[0] : 'A'),
             size: m.cohortSize ? Number(m.cohortSize) : 45,
+            year: m.year ? Number(m.year) : undefined,
             semester: m.semester ? Number(m.semester) : undefined,
+            homeRoom: m.homeRoom || undefined,
             departmentKey: m.deptCode || undefined
           });
+        }
+        if (m.courseCode && resolvedCohort) {
+          enrollments.push({
+            courseCode: m.courseCode.toUpperCase(),
+            batchCode: resolvedCohort,
+            section: secRaw || 'A'
+          });
+          const assignInst = m.assignedInstructor || m.instructorEmail || m.instructorName;
+          if (assignInst || m.sessionType || m.sessionsPerWeek) {
+            courseAssignments.push({
+              courseCode: m.courseCode.toUpperCase(),
+              batchCode: resolvedCohort,
+              sectionCode: secRaw || 'A',
+              instructorKey: assignInst || '',
+              labEngineerKey: m.assignedLabEngineer || undefined,
+              sessionType: (m.sessionType || '').toLowerCase() === 'lab' ? 'Lab' : 'Lecture',
+              sessionsPerWeek: m.sessionsPerWeek ? Number(m.sessionsPerWeek) : undefined,
+              expectedStudents: m.expectedStudents ? Number(m.expectedStudents) : undefined
+            });
+          }
         }
       }
     });

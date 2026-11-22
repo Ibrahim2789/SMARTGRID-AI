@@ -160,6 +160,7 @@ export interface Section extends BaseEntity {
   componentType?: SessionComponentType; // 'lecture' | 'lab'
   isAtomicSession?: boolean; // True when session cannot be arbitrarily split
   spanSlots?: number; // 1 for Lecture, 3 for Lab
+  sessionsPerWeek?: number;
   assignedSlot?: SectionSlotAssignment;
   isLocked?: boolean;
 }
@@ -337,6 +338,7 @@ export interface Instructor extends BaseEntity {
 export interface StudentGroup extends BaseEntity {
   id: string;
   programId: string;
+  departmentId?: string;
   termId?: string;
   batchCode?: string;
   name: string;
@@ -1492,6 +1494,7 @@ export interface TimetableScenario extends BaseEntity {
   author: string;
   metrics: TimetableScenarioMetrics;
   assignments: Record<string, SectionSlotAssignment>; // sectionId -> assignment
+  timetableEntries?: Array<Record<string, unknown>>;
 }
 
 export interface AuditLogEntry extends BaseEntity {

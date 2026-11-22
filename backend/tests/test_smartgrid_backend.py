@@ -760,8 +760,92 @@ class SmartGridBackendTests(unittest.TestCase):
         row_invalid = lines[2]
         self.assertFalse(bool(row_invalid[0].strip())) # missing code should fail validation
 
+    def test_17_batch_department_resolution_and_multi_section_generation(self) -> None:
+        """Verify batches/sections without academic_programs map across all sections and persist sessions."""
+        from unittest.mock import patch
+        from app.deps import (
+            resolve_batch_department_id,
+            resolve_matching_batches_for_course,
+            load_university_optimization_inputs,
+        )
+
+        departments = [
+            {"id": "dept-cs", "institution_id": "inst-1", "code": "CS", "name": "Computer Science"},
+            {"id": "dept-ee", "institution_id": "inst-1", "code": "EE", "name": "Electrical Engineering"},
+        ]
+        # Empty programs (SetupFlow does not create academic_programs) and degree-prefixed dept codes
+        batches = [
+            {"id": "b-cs-a", "institution_id": "inst-1", "code": "2K24-BSCS-A", "name": "2K24 BSCS Section A", "department_code": "BSCS", "section": "A", "student_count": 45},
+            {"id": "b-cs-b", "institution_id": "inst-1", "code": "2K24-BSCS-B", "name": "2K24 BSCS Section B", "department_code": "BSCS", "section": "B", "student_count": 42},
+            {"id": "b-ee-a", "institution_id": "inst-1", "code": "2K24-EE-A", "name": "2K24 EE Section A", "department_code": "EE", "section": "A", "student_count": 50},
+        ]
+        courses = [
+            {
+                "id": "crs-cs101",
+                "institution_id": "inst-1",
+                "department_id": "dept-cs",
+                "code": "CS-101",
+                "title": "Programming Fundamentals",
+                "course_type": "lecture_lab",
+                "lecture_credit_hours": 3,
+                "lab_credit_hours": 1,
+                "lecture_hours_per_week": 3,
+                "lab_hours_per_week": 3,
+                "credit_hours": 4,
+                "is_compulsory": True,
+                "assigned_instructor_id": "inst-1",
+                "assigned_lab_engineer_id": "eng-1",
+            }
+        ]
+
+        # Degree prefix BSCS matches department CS without any academic_programs row
+        self.assertEqual(resolve_batch_department_id(batches[0], departments, []), "dept-cs")
+        self.assertEqual(resolve_batch_department_id(batches[1], departments, []), "dept-cs")
+        self.assertEqual(resolve_batch_department_id(batches[2], departments, []), "dept-ee")
+
+        matched_cs = resolve_matching_batches_for_course(courses[0], batches, departments, [])
+        self.assertEqual([b["id"] for b in matched_cs], ["b-cs-a", "b-cs-b"])
+
+        # Stub client to verify load_university_optimization_inputs builds sections for ALL matching batches
+        class _UniStubClient:
+            def select_one(self, table, filters=None, select="*", order=None):
+                if table == "institutions":
+                    return {"id": "inst-1", "name": "NUST", "working_days": ["Mon", "Tue", "Wed", "Thu", "Fri"], "use_voting_preferences": False}
+                return None
+
+            def select(self, table, filters=None, select="*", order=None):
+                mapping = {
+                    "courses": courses,
+                    "course_sessions": [],
+                    "classrooms": [{"id": "rm-1", "code": "CR-101", "name": "CR-101", "room_type": "lecture", "capacity": 60, "is_available": True}, {"id": "rm-lab", "code": "LAB-1", "name": "LAB-1", "room_type": "lab", "capacity": 50, "is_available": True}],
+                    "laboratories": [],
+                    "room_equipment_capacities": [],
+                    "batches": batches,
+                    "instructors": [
+                        {"id": "inst-1", "name": "Dr. Ali", "department_id": "dept-cs", "staff_role": "faculty", "max_weekly_hours": 18, "max_consecutive_hours": 3},
+                        {"id": "eng-1", "name": "Eng. Sara", "department_id": "dept-cs", "staff_role": "lab_engineer", "max_weekly_hours": 18, "max_consecutive_hours": 3},
+                    ],
+                    "departments": departments,
+                    "academic_programs": [],
+                    "student_preferences": [],
+                    "instructor_preferences": [],
+                    "instructor_availability": [],
+                }
+                return mapping.get(table, [])
+
+        with patch("app.deps.require_supabase_client", return_value=_UniStubClient()):
+            inputs = load_university_optimization_inputs("inst-1", {})
+
+        sec_group_ids = {(s["studentGroupId"], s["componentType"]) for s in inputs["sections"]}
+        self.assertIn(("b-cs-a", "lecture"), sec_group_ids)
+        self.assertIn(("b-cs-a", "lab"), sec_group_ids)
+        self.assertIn(("b-cs-b", "lecture"), sec_group_ids)
+        self.assertIn(("b-cs-b", "lab"), sec_group_ids)
+        self.assertNotIn(("b-ee-a", "lecture"), sec_group_ids)
+
 
 if __name__ == "__main__":
     unittest.main()
+
 
 

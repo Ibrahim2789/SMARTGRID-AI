@@ -54,9 +54,9 @@ No fake credentials are embedded in the repository. Follow these steps to provis
 
 ### Step 3: Run the SQL Schema in Supabase SQL Editor
 1. Open the **SQL Editor** in the left sidebar of your Supabase Dashboard and click **New Query**.
-2. Open [`supabase/schema.sql`](./supabase/schema.sql) (also mirrored in `supabase/migrations/20261110000001_initial_smartgrid_schema.sql` and `supabase_schema.sql`).
+2. Open [`supabase/schema.sql`](./supabase/schema.sql).
 3. Paste the entire contents of `supabase/schema.sql` into the Supabase SQL Editor and click **Run**.
-4. Verify in the **Table Editor** that all 28 relational tables (`universities`, `university_settings`, `departments`, `programs`, `semesters`, `batches`, `sections`, `users`, `user_roles`, `br_assignments`, `instructors`, `instructor_availability`, `classrooms`, `classroom_availability`, `courses`, `course_instructors`, `course_sections`, `student_preferences`, `instructor_preferences`, `polls`, `poll_options`, `poll_votes`, `timetable_versions`, `timetable_entries`, `timetable_conflicts`, `optimization_runs`, `optimization_scores`, `disruption_events`, `rescheduling_proposals`, `notifications`, `audit_logs`) and their Row Level Security (RLS) policies are created.
+4. Verify in the **Table Editor** that all SmartGrid AI relational tables (`institutions`, `campuses`, `buildings`, `departments`, `academic_programs`, `semesters`, `batches`, `users`, `students`, `instructors`, `instructor_availability`, `instructor_preferences`, `student_preferences`, `classrooms`, `laboratories`, `room_equipment_capacities`, `courses`, `course_enrollments`, `course_sessions`, `scheduling_constraints`, `timetable_versions`, `timetable_entries`, `optimization_runs`, `optimization_scores`, `optimization_poll_traceability`, `disruptions`, `rescheduling_proposals`, `rescheduling_history`, `br_assignments`, `polls`, `poll_options`, `poll_votes`, `feedback`, `timetable_feedback`, `schedule_proposals`, `import_history`, `audit_logs`, `notifications`) are created.
 
 ### Step 4: Configure Authentication in Supabase
 1. In the Supabase Dashboard, navigate to **Authentication** $\rightarrow$ **Providers** and ensure **Email** provider is enabled.

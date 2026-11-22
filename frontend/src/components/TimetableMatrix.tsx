@@ -1,6 +1,11 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import type { RouteType } from './SmartGridNav';
-import { useInstitutionalData, institutionalStore } from '../data/store';
+import {
+  useInstitutionalData,
+  institutionalStore,
+  doesGroupMatchDepartment,
+  doesCourseMatchDepartment
+} from '../data/store';
 import { buildMatrixSchedule } from '../data/solverAdapter';
 import {
   UNIVERSITY_SLOTS,
@@ -298,15 +303,11 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
     (g.batchCode || g.code.split('-')[0] || '').trim().toUpperCase();
   const getGroupSection = (g: { section?: string; code: string }) =>
     (g.section || g.code.split('-')[2] || 'A').trim().toUpperCase();
-  const groupMatchesDept = (g: { departmentCode?: string; programId: string; code: string }, deptId: string) => {
-    if (deptId === 'all') return true;
-    const deptObj = store.departments.find(d => d.id === deptId);
-    const prog = store.programs.find(p => p.id === g.programId);
-    return (
-      prog?.departmentId === deptId ||
-      (Boolean(deptObj?.code) &&
-        (g.departmentCode || g.code.split('-')[1] || '').toUpperCase() === deptObj!.code.toUpperCase())
-    );
+  const groupMatchesDept = (
+    g: { departmentCode?: string; departmentId?: string; programId: string; code: string },
+    deptId: string
+  ) => {
+    return doesGroupMatchDepartment(g, deptId, store.programs, store.departments);
   };
 
   const availableBatchCodes = Array.from(
@@ -475,7 +476,7 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
             componentType: s.componentType || (isLab ? 'lab' : 'lecture'),
             isAtomicSession: s.isAtomicSession ?? true,
             spanSlots: s.spanSlots || (isLab ? 3 : 1),
-            sessionsPerWeek: 1,
+            sessionsPerWeek: s.isAtomicSession ? 1 : s.sessionsPerWeek,
             enrollment: s.expectedEnrollment || 45,
             isLocked: Boolean(s.isLocked)
           };
@@ -738,7 +739,10 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
     } else if (effectivePerspective === 'room') {
       if (selectedRoomId && cls.roomId !== selectedRoomId) return false;
     } else if (effectivePerspective === 'master' && selectedDeptId !== 'all') {
-      if (cls.departmentId && cls.departmentId !== selectedDeptId) return false;
+      const grp = store.studentGroups.find(g => g.id === cls.studentGroupId);
+      const grpMatch = grp ? doesGroupMatchDepartment(grp, selectedDeptId, store.programs, store.departments) : false;
+      const crsMatch = cls.departmentId === selectedDeptId;
+      if (!grpMatch && !crsMatch) return false;
     }
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
@@ -1141,8 +1145,11 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
     if (effectivePerspective === 'room') return s.assignedSlot.roomId === selectedRoomId;
     if (selectedDeptId !== 'all') {
       const grp = store.studentGroups.find(g => g.id === s.studentGroupId);
-      const prog = store.programs.find(p => p.id === grp?.programId);
-      return prog?.departmentId === selectedDeptId;
+      if (grp && doesGroupMatchDepartment(grp, selectedDeptId, store.programs, store.departments)) {
+        return true;
+      }
+      const crs = store.courses.find(c => c.id === s.courseId);
+      return crs ? doesCourseMatchDepartment(crs, selectedDeptId, store.departments) : false;
     }
     return true;
   });
@@ -2050,27 +2057,27 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
                       idx > 0 ? 'border-l border-[#E4E2DA]' : ''
                     } ${isWeekend ? 'bg-[#F7F6EF]/75 text-[#77766F]' : ''}`}
                   >
-                    <div className="flex items-center justify-between gap-1 min-w-0">
+                    <div className="flex items-center justify-between gap-1.5 min-w-0">
                       <span className="truncate font-semibold">{day}</span>
                       {day === 'Fri' && fri.mode === 'jummah_break' && (
                         <span
-                          className="text-[9.5px] font-sans font-mono-tabular font-normal text-[#77766F] truncate"
+                          className="text-[10px] font-sans font-mono-tabular font-normal text-[#77766F] truncate shrink"
                           title={`Friday Jummah Break: ${fri.jummahBreak.fullRangeLabel}`}
                         >
-                          Jummah {fri.jummahBreak.startTime24}–{fri.jummahBreak.endTime24}
+                          {fri.jummahBreak.startTime24}–{fri.jummahBreak.endTime24}
                         </span>
                       )}
                       {day === 'Fri' && fri.mode === 'morning_only' && (
                         <span
-                          className="text-[9.5px] font-sans font-mono-tabular font-normal text-[#77766F] truncate"
+                          className="text-[10px] font-sans font-mono-tabular font-normal text-[#77766F] truncate shrink"
                           title={`Friday Half-Day: ${fri.operatingHoursLabel}`}
                         >
-                          AM · {fri.closingTime24} Close
+                          AM · {fri.closingTime24}
                         </span>
                       )}
                       {isWeekend && (
-                        <span className="text-[9.5px] font-sans font-normal text-[#77766F] truncate">
-                          Weekend
+                        <span className="text-[10px] font-sans font-normal text-[#77766F] truncate">
+                          Off
                         </span>
                       )}
                     </div>
@@ -2224,12 +2231,13 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
                           top: `${(fri.jummahBreak.startMinutes - timelineStartMins) * PX_PER_MIN}px`,
                           height: `${fri.jummahBreak.durationMinutes * PX_PER_MIN}px`
                         }}
-                        className="absolute inset-x-0 z-10 bg-[#E8D36B]/25 border-y border-[#D4BC4C] flex flex-col items-center justify-center text-center px-2 pointer-events-none"
+                        className="absolute inset-x-0 z-10 bg-[#E8D36B]/20 border-y border-[#D4BC4C] flex flex-col items-center justify-center text-center px-2 pointer-events-none overflow-hidden"
                       >
-                        <div className="text-[10.5px] font-semibold text-[#171717] truncate">
-                          Jummah Prayer Break
+                        <div className="w-full inline-flex items-center justify-center gap-1 text-[10.5px] font-semibold text-[#57564F]">
+                          <Coffee className="w-3 h-3 text-[#171717] shrink-0" />
+                          <span className="truncate">Jummah Break</span>
                         </div>
-                        <span className="text-[9.5px] font-mono-tabular text-[#57564F] truncate">
+                        <span className="w-full text-[9.5px] font-mono-tabular text-[#77766F] truncate">
                           {fri.jummahBreak.startTime24}–{fri.jummahBreak.endTime24}
                         </span>
                       </div>
@@ -2242,13 +2250,13 @@ export const TimetableMatrix: React.FC<TimetableMatrixProps> = ({
                           top: `${(fri.jummahBreak.startMinutes - timelineStartMins) * PX_PER_MIN}px`,
                           height: `${(timelineEndMins - fri.jummahBreak.startMinutes) * PX_PER_MIN}px`
                         }}
-                        className="absolute inset-x-0 z-10 bg-[#F7F6EF]/90 border-t border-dashed border-[#D4D1C7] flex flex-col items-center justify-center text-center px-2 pointer-events-none"
+                        className="absolute inset-x-0 z-10 bg-[#F7F6EF]/90 border-t border-dashed border-[#D4D1C7] flex flex-col items-center justify-center text-center px-2 pointer-events-none overflow-hidden"
                       >
-                        <span className="text-[10.5px] font-semibold text-[#77766F]">
-                          Friday Half-Day Closed
+                        <span className="w-full text-[10.5px] font-semibold text-[#77766F] truncate">
+                          Closed (Jummah)
                         </span>
-                        <span className="text-[9.5px] font-mono-tabular text-[#9E9D96]">
-                          Closed from {fri.closingTime24}
+                        <span className="w-full text-[9.5px] font-mono-tabular text-[#9E9D96] truncate">
+                          From {fri.closingTime24}
                         </span>
                       </div>
                     )}

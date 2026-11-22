@@ -1,6 +1,12 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { SmartGridNav, RouteType } from './SmartGridNav';
-import { useInstitutionalData, institutionalStore, InstitutionalDataStore } from '../data/store';
+import {
+  useInstitutionalData,
+  institutionalStore,
+  InstitutionalDataStore,
+  doesGroupMatchDepartment,
+  doesCourseMatchDepartment
+} from '../data/store';
 import { buildMatrixSchedule } from '../data/solverAdapter';
 import {
   computeAcademicScheduleConfig,
@@ -95,11 +101,44 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
     setScopeMode(configuredPolicy === 'department_wise' ? 'department_wise' : 'whole_university');
   }, [configuredPolicy]);
 
+  const userPickedDeptRef = useRef(false);
   useEffect(() => {
-    if (selectedDeptId === 'all' && store.departments[0]?.id) {
-      setSelectedDeptId(store.departments[0].id);
+    if (store.departments.length === 0) return;
+    const isValid = selectedDeptId !== 'all' && store.departments.some(d => d.id === selectedDeptId);
+    if (!isValid || !userPickedDeptRef.current) {
+      const currentHasGroups =
+        isValid &&
+        store.studentGroups.some(g =>
+          doesGroupMatchDepartment(g, selectedDeptId, store.programs, store.departments)
+        );
+      if (!isValid || !currentHasGroups) {
+        const firstPopulatedDept = store.departments.find(d =>
+          store.studentGroups.some(g =>
+            doesGroupMatchDepartment(g, d, store.programs, store.departments)
+          )
+        );
+        const fallbackId = firstPopulatedDept?.id || store.departments[0].id;
+        if (fallbackId && fallbackId !== selectedDeptId) {
+          setSelectedDeptId(fallbackId);
+        }
+      }
     }
-  }, [store.departments, selectedDeptId]);
+  }, [store.departments, store.studentGroups, store.programs, selectedDeptId]);
+
+  const knownGroupIdsRef = useRef<Set<string>>(new Set(store.studentGroups.map(g => g.id)));
+  useEffect(() => {
+    const validIds = new Set(store.studentGroups.map(g => g.id));
+    const newlyAddedIds = store.studentGroups
+      .filter(g => !knownGroupIdsRef.current.has(g.id))
+      .map(g => g.id);
+    knownGroupIdsRef.current = validIds;
+
+    setSelectedGroupIds(prev => {
+      const preserved = prev.filter(id => validIds.has(id));
+      const merged = Array.from(new Set([...preserved, ...newlyAddedIds]));
+      return merged.length > 0 ? merged : store.studentGroups.map(g => g.id);
+    });
+  }, [store.studentGroups]);
 
   // 3. Progressive Disclosure Toggles
   const [showHierarchyDrawer, setShowHierarchyDrawer] = useState<boolean>(false);
@@ -149,20 +188,21 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
       return store.studentGroups;
     }
     if (scopeMode === 'department_wise') {
-      return store.studentGroups.filter(g => {
-        const prog = store.programs.find(p => p.id === g.programId);
-        return prog?.departmentId === selectedDeptId;
-      });
+      return store.studentGroups.filter(g =>
+        doesGroupMatchDepartment(g, selectedDeptId, store.programs, store.departments)
+      );
     }
     return store.studentGroups.filter(g => selectedGroupIds.includes(g.id));
-  }, [store.studentGroups, store.programs, scopeMode, selectedDeptId, selectedGroupIds]);
+  }, [store.studentGroups, store.programs, store.departments, scopeMode, selectedDeptId, selectedGroupIds]);
 
   const scopedCourses = useMemo(() => {
     if (scopeMode === 'department_wise' && selectedDeptId && selectedDeptId !== 'all') {
-      return store.courses.filter(c => c.departmentId === selectedDeptId);
+      return store.courses.filter(c =>
+        doesCourseMatchDepartment(c, selectedDeptId, store.departments)
+      );
     }
     return store.courses;
-  }, [store.courses, scopeMode, selectedDeptId]);
+  }, [store.courses, store.departments, scopeMode, selectedDeptId]);
 
   const scopedInstructors = useMemo(() => {
     if (scopeMode === 'department_wise' && selectedDeptId && selectedDeptId !== 'all') {
@@ -232,12 +272,10 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
   };
 
   const handleSelectDepartmentQuick = (deptId: string) => {
+    userPickedDeptRef.current = true;
     setSelectedDeptId(deptId);
     const groupsInDept = store.studentGroups
-      .filter(g => {
-        const prog = store.programs.find(p => p.id === g.programId);
-        return prog?.departmentId === deptId;
-      })
+      .filter(g => doesGroupMatchDepartment(g, deptId, store.programs, store.departments))
       .map(g => g.id);
     if (groupsInDept.length > 0) {
       setSelectedGroupIds(groupsInDept);
@@ -334,7 +372,7 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
         componentType: s.componentType || (isLab ? 'lab' : 'lecture'),
         isAtomicSession: s.isAtomicSession ?? true,
         spanSlots: s.spanSlots || (isLab ? 3 : 1),
-        sessionsPerWeek: 1,
+        sessionsPerWeek: s.isAtomicSession ? 1 : s.sessionsPerWeek,
         enrollment: s.expectedEnrollment || 45,
         isLocked: Boolean(s.isLocked)
       };
@@ -360,15 +398,16 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
       scopeMode === 'whole_university'
         ? freshStore.studentGroups
         : scopeMode === 'department_wise'
-        ? freshStore.studentGroups.filter(g => {
-            const prog = freshStore.programs.find(p => p.id === g.programId);
-            return prog?.departmentId === selectedDeptId;
-          })
+        ? freshStore.studentGroups.filter(g =>
+            doesGroupMatchDepartment(g, selectedDeptId, freshStore.programs, freshStore.departments)
+          )
         : freshStore.studentGroups.filter(g => selectedGroupIds.includes(g.id));
 
     const freshCourses =
       scopeMode === 'department_wise' && selectedDeptId && selectedDeptId !== 'all'
-        ? freshStore.courses.filter(c => c.departmentId === selectedDeptId)
+        ? freshStore.courses.filter(c =>
+            doesCourseMatchDepartment(c, selectedDeptId, freshStore.departments)
+          )
         : freshStore.courses;
 
     const freshGroupSet = new Set(freshGroups.map(g => g.id));
@@ -376,10 +415,37 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
       s => freshGroupSet.has(s.studentGroupId) || (s.sharedGroupIds || []).some(gid => freshGroupSet.has(gid))
     );
 
+    if (freshGroups.length === 0) {
+      const activeDeptCode = freshStore.departments.find(d => d.id === selectedDeptId)?.code || 'selected department';
+      showAppPopup({
+        title: 'No Batches or Sections in Scope',
+        message:
+          freshStore.studentGroups.length > 0 && scopeMode === 'department_wise'
+            ? `No batches/sections matched ${activeDeptCode}. Switch to Whole-University scope or assign batches to ${activeDeptCode} in Setup.`
+            : 'Add at least one student batch/section in Setup before generating a timetable.',
+        variant: 'error'
+      });
+      return;
+    }
+
+    if (freshCourses.length === 0 || freshStore.instructors.length === 0 || freshStore.rooms.length === 0) {
+      const missing: string[] = [];
+      if (freshCourses.length === 0) missing.push('courses');
+      if (freshStore.instructors.length === 0) missing.push('faculty/instructors');
+      if (freshStore.rooms.length === 0) missing.push('classrooms/labs');
+      showAppPopup({
+        title: 'Incomplete Institutional Setup',
+        message: `Cannot generate timetable because ${missing.join(', ')} are missing in this scope. Add them in Setup & Import first.`,
+        variant: 'error'
+      });
+      return;
+    }
+
     if (freshSections.length === 0) {
       showAppPopup({
         title: 'No Schedulable Sessions Found',
-        message: 'Add courses, instructors, classrooms, and student batches/sections in Setup before generating a timetable.',
+        message:
+          'Courses exist, but no course-section links matched the selected batches/sections. Ensure courses have non-zero credit hours and match your batches or switch to Whole-University scope.',
         variant: 'error'
       });
       return;
@@ -803,10 +869,9 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
                 <div className="inline-flex flex-wrap items-center gap-1.5">
                   {store.departments.map(dept => {
                     const isDeptSelected = selectedDeptId === dept.id;
-                    const count = store.studentGroups.filter(g => {
-                      const p = store.programs.find(pr => pr.id === g.programId);
-                      return p?.departmentId === dept.id;
-                    }).length;
+                    const count = store.studentGroups.filter(g =>
+                      doesGroupMatchDepartment(g, dept, store.programs, store.departments)
+                    ).length;
                     return (
                       <button
                         key={dept.id}
@@ -824,9 +889,20 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
                   })}
                 </div>
               </div>
-              <span className="text-xs font-mono-tabular font-semibold text-[#171717] shrink-0">
-                {scopedGroups.length} Sections · {scopedSections.length} Sessions
-              </span>
+              <div className="flex items-center gap-3 shrink-0">
+                <span className="text-xs font-mono-tabular font-semibold text-[#171717]">
+                  {scopedGroups.length} Sections · {scopedSections.length} Sessions
+                </span>
+                {scopedGroups.length === 0 && store.studentGroups.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setScopeMode('whole_university')}
+                    className="text-xs font-semibold text-[#171717] underline cursor-pointer"
+                  >
+                    Switch to All ({store.studentGroups.length})
+                  </button>
+                )}
+              </div>
             </>
           )}
 
@@ -966,11 +1042,12 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
                 <tbody className="divide-y divide-[#E4E2DA] bg-white text-xs">
                   {scopedDepartments.map(dept => {
                     const deptPrograms = store.programs.filter(p => p.departmentId === dept.id);
-                    const progIds = new Set(deptPrograms.map(p => p.id));
-                    const deptGroups = scopedGroups.filter(
-                      g => progIds.has(g.programId) || g.departmentCode === dept.code
+                    const deptGroups = scopedGroups.filter(g =>
+                      doesGroupMatchDepartment(g, dept, store.programs, store.departments)
                     );
-                    const deptCourses = store.courses.filter(c => c.departmentId === dept.id);
+                    const deptCourses = store.courses.filter(c =>
+                      doesCourseMatchDepartment(c, dept.id, store.departments)
+                    );
                     const deptFaculty = store.instructors.filter(i => i.departmentId === dept.id);
 
                     return (

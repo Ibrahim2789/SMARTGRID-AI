@@ -2410,19 +2410,13 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
                           </div>
 
                           {/* Friday & Jummah Policy */}
-                          <div className="p-4 rounded-xl border border-[#E4E2DA] bg-white space-y-3.5">
-                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                              <div>
-                                <div className="text-xs font-semibold text-[#171717]">
-                                  Friday Schedule Policy
-                                </div>
-                                <div className="text-[11px] text-[#77766F]">
-                                  Reserve a Jummah prayer window, close early, or match regular
-                                  days.
-                                </div>
+                          <div className="p-4 rounded-xl border border-[#E4E2DA] bg-white space-y-3">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                              <div className="text-xs font-semibold text-[#171717]">
+                                Friday Schedule Policy
                               </div>
 
-                              <div className="grid grid-cols-3 gap-1 p-1 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] shrink-0">
+                              <div className="inline-flex items-center p-1 rounded-xl bg-[#F7F6EF] border border-[#E4E2DA] shrink-0 w-fit">
                                 {(
                                   [
                                     { id: 'jummah_break', label: 'Jummah Break' },
@@ -2436,7 +2430,7 @@ export const UniversityOnboardingModal: React.FC<UniversityOnboardingModalProps>
                                       key={opt.id}
                                       type="button"
                                       onClick={() => setFridayMode(opt.id)}
-                                      className={`relative px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer whitespace-nowrap ${
+                                      className={`relative px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer whitespace-nowrap ${
                                         selected
                                           ? 'text-white'
                                           : 'text-[#57564F] hover:text-[#171717]'

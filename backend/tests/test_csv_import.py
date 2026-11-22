@@ -776,6 +776,120 @@ class CsvImportEndToEndTests(unittest.TestCase):
             st_cross_cat, _ = _dispatch("GET", "/api/courses?universityId=inst-beta", token=tokens["admin"])
             self.assertEqual(st_cross_cat, 403)
 
+    def test_10_all_in_one_master_import_all_fields_including_batch_and_section(self):
+        stub, tokens = self._seed_stub()
+        with patch_all_supabase(stub):
+            # 1. Verify downloadable 'all' template exposes batch_code, section, and full field superset
+            st_t, tmpl = _dispatch("GET", "/api/imports/template?category=all", token=tokens["admin"])
+            self.assertEqual(st_t, 200)
+            hdrs, rows = parse_csv_text(tmpl["csvText"])
+            for expected_col in (
+                "dept_code", "head_of_department", "sub_departments",
+                "room_code", "floor", "lab_category", "room_lab_engineer", "equipment", "is_available",
+                "instructor_title", "staff_role", "instructor_sub_department", "max_daily_classes", "qualified_courses",
+                "course_type", "lab_session_mode", "is_compulsory", "elective_pool_name", "assigned_instructor", "assigned_lab_engineer", "required_equipment", "course_sub_department",
+                "cohort_code", "batch_code", "section", "year", "semester", "home_room",
+                "session_type", "sessions_per_week", "duration_minutes", "expected_students", "required_room_type", "registration_number",
+            ):
+                self.assertIn(expected_col, hdrs)
+            self.assertEqual(len(rows), 2)
+
+            # Template itself validates cleanly with zero errors
+            st_tv, val_tmpl = _dispatch(
+                "POST",
+                "/api/imports/validate",
+                token=tokens["admin"],
+                body={"category": "all", "duplicateMode": "skip", "csvText": tmpl["csvText"]},
+            )
+            self.assertEqual(st_tv, 200, val_tmpl)
+            self.assertEqual(val_tmpl["summary"]["errorRows"], 0, val_tmpl)
+            self.assertTrue(val_tmpl["canProceed"])
+
+            # 2. Import master CSV using batch_code + section (without cohort_code) plus all entity fields
+            master_csv = (
+                "dept_code,dept_name,school,head_of_department,sub_departments,"
+                "room_code,room_name,room_capacity,room_type,building,floor,lab_category,room_lab_engineer,equipment,is_available,"
+                "instructor_name,instructor_email,instructor_title,staff_role,instructor_sub_department,max_weekly_hours,max_daily_classes,qualified_courses,"
+                "course_code,course_title,course_type,credit_hours,lecture_credits,lab_credits,lab_session_mode,is_compulsory,is_elective,elective_pool_name,assigned_instructor,assigned_lab_engineer,required_equipment,course_sub_department,"
+                "batch_code,section,cohort_name,cohort_size,year,semester,home_room,"
+                "session_type,sessions_per_week,duration_minutes,expected_students,required_room_type,registration_number\n"
+                "EE,Electrical Engineering,School of Engineering,Dr. Nikola Tesla,Power Systems; Electronics,"
+                "HALL-301,Tesla Lecture Hall,80,lecture,Block C,3,,,,yes,"
+                "Dr. Ada Lovelace,ada@alpha.edu,Professor,faculty,Electronics,12,3,EE-101; EE-102,"
+                "EE-101,Circuit Analysis,lecture_lab,4,3,1,continuous,yes,no,,ada@alpha.edu,,Projector; Multimeter,Electronics,"
+                "2K26,C,2K26 EE Section C,48,1,2,HALL-301,"
+                "Theory,3,50,48,lecture,\n"
+                "EE,Electrical Engineering,School of Engineering,Dr. Nikola Tesla,Power Systems; Electronics,"
+                "LAB-302,Circuits Lab,40,lab,Eng Lab Block,2,Electronics,bilal@alpha.edu,Oscilloscopes; Signal Generators,yes,"
+                "Engr. Bilal Khan,bilal@alpha.edu,Lab Engineer,lab_engineer,Electronics,18,4,EE-101; EE-102,"
+                "EE-102,Power Electronics,lecture,3,3,0,continuous,no,yes,Power Elective Track,ada@alpha.edu,bilal@alpha.edu,Oscilloscopes,Power Systems,"
+                "2K26,D,2K26 EE Section D,44,1,2,HALL-301,"
+                "Theory,3,50,44,lecture,24-CS-001\n"
+            )
+
+            st_v, val_m = _dispatch(
+                "POST",
+                "/api/imports/validate",
+                token=tokens["admin"],
+                body={"category": "all", "duplicateMode": "skip", "csvText": master_csv},
+            )
+            self.assertEqual(st_v, 200, val_m)
+            self.assertEqual(val_m["summary"]["errorRows"], 0, val_m["rows"])
+            mapped = val_m["mappingInfo"]["mapping"]
+            self.assertEqual(mapped["batch_code"], "batchCode")
+            self.assertEqual(mapped["section"], "section")
+
+            st_c, res_c = _dispatch(
+                "POST",
+                "/api/imports/commit",
+                token=tokens["admin"],
+                body={"category": "all", "duplicateMode": "skip", "fileName": "master_full.csv", "idempotencyKey": "k-all-full-1", "csvText": master_csv},
+            )
+            self.assertEqual(st_c, 200, res_c)
+
+            # Verify Department persisted all fields
+            ee_dept = next(d for d in stub.tables["departments"] if d["code"] == "EE")
+            self.assertEqual(ee_dept["head_of_department"], "Dr. Nikola Tesla")
+            self.assertEqual(ee_dept["sub_departments"], ["Power Systems", "Electronics"])
+
+            # Verify Classroom & Laboratory persisted all fields including lab engineer FK
+            hall_301 = next(r for r in stub.tables["classrooms"] if r["code"] == "HALL-301")
+            self.assertEqual(hall_301["floor"], 3)
+            lab_302 = next(l for l in stub.tables["laboratories"] if l["code"] == "LAB-302")
+            self.assertEqual(lab_302["lab_category"], "Electronics")
+            bilal_row = next(i for i in stub.tables["instructors"] if i["email"] == "bilal@alpha.edu")
+            self.assertEqual(lab_302["assigned_lab_engineer_id"], bilal_row["id"])
+            self.assertEqual(bilal_row["staff_role"], "lab_engineer")
+            self.assertEqual(bilal_row["max_daily_classes"], 4)
+
+            # Verify Courses persisted elective pool, sub_department, equipment, and lab engineer
+            ee_102 = next(c for c in stub.tables["courses"] if c["code"] == "EE-102")
+            self.assertTrue(ee_102["is_elective"])
+            self.assertFalse(ee_102["is_compulsory"])
+            self.assertEqual(ee_102["elective_pool_name"], "Power Elective Track")
+            self.assertEqual(ee_102["assigned_lab_engineer_id"], bilal_row["id"])
+
+            # Verify Batches & Sections persisted distinct sections C & D with batch_code=2K26
+            batch_c = next(b for b in stub.tables["batches"] if b["code"] == "2K26-EE-C")
+            batch_d = next(b for b in stub.tables["batches"] if b["code"] == "2K26-EE-D")
+            self.assertEqual(batch_c["batch_code"], "2K26")
+            self.assertEqual(batch_c["section"], "C")
+            self.assertEqual(batch_c["sections_list"], "C")
+            self.assertEqual(batch_c["home_room"], "HALL-301")
+            self.assertEqual(batch_d["batch_code"], "2K26")
+            self.assertEqual(batch_d["section"], "D")
+            self.assertEqual(batch_d["sections_list"], "D")
+
+            # Verify Enrollments and Course Sessions were created automatically
+            enr_d = [e for e in stub.tables["course_enrollments"] if e["batch_id"] == batch_d["id"]]
+            self.assertEqual(len(enr_d), 1)
+            self.assertEqual(enr_d[0]["section"], "D")
+            self.assertEqual(enr_d[0]["student_id"], "stu-001")
+            sess_c = [s for s in stub.tables["course_sessions"] if s["batch_id"] == batch_c["id"]]
+            self.assertEqual(len(sess_c), 1)
+            self.assertEqual(sess_c[0]["section_code"], "C")
+            self.assertEqual(sess_c[0]["sessions_per_week"], 3)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -984,8 +984,9 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
     const sectionsToCreate = parsedSections.length > 0 ? parsedSections : ['A'];
 
     const matchedDept = store.departments.find(d => d.code.toUpperCase() === cleanDept);
-    const matchedProg =
-      store.programs.find(p => p.departmentId === matchedDept?.id) || store.programs[0];
+    const matchedProg = matchedDept
+      ? store.programs.find(p => p.departmentId === matchedDept.id)
+      : undefined;
     const existingCodes = new Set(store.studentGroups.map(g => g.code.toUpperCase()));
 
     const toCreate = sectionsToCreate
@@ -4194,6 +4195,20 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
                         }}
                         className="input-field"
                       >
+                        {store.departments.length === 0 && (
+                          <option value={groupForm.departmentCode || 'GEN'}>
+                            {groupForm.departmentCode || 'GEN'} — General / No Department Configured
+                          </option>
+                        )}
+                        {store.departments.length > 0 &&
+                          groupForm.departmentCode &&
+                          !store.departments.some(
+                            d => d.code.toUpperCase() === groupForm.departmentCode.toUpperCase()
+                          ) && (
+                            <option value={groupForm.departmentCode}>
+                              {groupForm.departmentCode}
+                            </option>
+                          )}
                         {store.departments.map(d => (
                           <option key={d.id} value={d.code}>
                             {d.code} — {d.name}

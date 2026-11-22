@@ -541,6 +541,95 @@ def build_enriched_polls_for_user(auth_user: Dict[str, Any]) -> List[Dict[str, A
     return enriched_polls
 
 
+def _strip_degree_prefix(code: str) -> str:
+    clean = str(code or "").strip().upper()
+    for prefix in ("BS-", "BE-", "MS-", "ME-", "PHD-", "BSC-", "MSC-", "BS", "BE", "MS", "ME", "PHD", "BSC", "MSC"):
+        if clean.startswith(prefix) and len(clean) > len(prefix):
+            return clean[len(prefix):].lstrip("-")
+    return clean
+
+
+def resolve_batch_department_id(
+    batch: Dict[str, Any],
+    departments: List[Dict[str, Any]],
+    programs: Optional[List[Dict[str, Any]]] = None,
+) -> str:
+    if not departments:
+        return ""
+    dept_by_id = {str(d.get("id") or ""): d for d in departments if d.get("id")}
+    dept_by_code = {str(d.get("code") or "").strip().upper(): d for d in departments if d.get("code")}
+    prog_dept_by_id = {
+        str(p.get("id") or ""): str(p.get("department_id") or "")
+        for p in (programs or [])
+        if p.get("id") and p.get("department_id")
+    }
+
+    b_dept_code = str(batch.get("department_code") or batch.get("departmentCode") or "").strip().upper()
+    b_code_parts = [p for p in str(batch.get("code") or "").upper().replace("_", "-").split("-") if p]
+
+    # 1. Explicit exact department code match takes top priority
+    if b_dept_code and b_dept_code in dept_by_code:
+        return str(dept_by_code[b_dept_code]["id"])
+
+    # 2. Check batch code segments against department codes
+    for part in b_code_parts:
+        if part in dept_by_code:
+            return str(dept_by_code[part]["id"])
+
+    # 3. Check program -> department link if program belongs to a valid department
+    prog_id = str(batch.get("program_id") or batch.get("programId") or "")
+    if prog_id and prog_id in prog_dept_by_id and prog_dept_by_id[prog_id] in dept_by_id:
+        return prog_dept_by_id[prog_id]
+
+    # 4. Degree-prefix equivalence (e.g. BSCS <-> CS)
+    stripped_dept = _strip_degree_prefix(b_dept_code)
+    if stripped_dept:
+        for d in departments:
+            d_code = str(d.get("code") or "").strip().upper()
+            if _strip_degree_prefix(d_code) == stripped_dept:
+                return str(d["id"])
+
+    # 5. Single-department fallback when batch code is GEN/blank
+    if len(departments) == 1 and b_dept_code in ("", "GEN"):
+        return str(departments[0]["id"])
+    return ""
+
+
+def resolve_matching_batches_for_course(
+    course: Dict[str, Any],
+    batches: List[Dict[str, Any]],
+    departments: List[Dict[str, Any]],
+    programs: Optional[List[Dict[str, Any]]] = None,
+) -> List[Dict[str, Any]]:
+    if not batches:
+        return []
+    explicit_batch_id = course.get("assigned_batch_id") or course.get("assignedBatchId")
+    if explicit_batch_id:
+        explicit_batch = next((b for b in batches if b.get("id") == explicit_batch_id), None)
+        if explicit_batch:
+            return [explicit_batch]
+
+    course_dept_id = str(course.get("department_id") or course.get("departmentId") or "").strip()
+    if not course_dept_id:
+        return list(batches)
+
+    matched = [
+        b for b in batches
+        if resolve_batch_department_id(b, departments, programs) == course_dept_id
+    ]
+    if matched:
+        return matched
+
+    if len(departments) <= 1:
+        return list(batches)
+
+    # If no batches matched ANY department (e.g. legacy 'GEN' batch codes), keep all batches eligible
+    any_dept_matched = any(resolve_batch_department_id(b, departments, programs) for b in batches)
+    if not any_dept_matched:
+        return list(batches)
+    return []
+
+
 def load_university_optimization_inputs(
     university_id: str,
     override_body: Optional[Dict[str, Any]] = None,
@@ -603,6 +692,16 @@ def load_university_optimization_inputs(
         )
         db_instructors = (
             client.select("instructors", filters={"institution_id": f"eq.{university_id}"}, order="name.asc")
+            if university_id
+            else []
+        )
+        db_departments = (
+            client.select("departments", filters={"institution_id": f"eq.{university_id}"}, order="code.asc")
+            if university_id
+            else []
+        )
+        db_programs = (
+            client.select("academic_programs", filters={"institution_id": f"eq.{university_id}"})
             if university_id
             else []
         )
@@ -744,58 +843,70 @@ def load_university_optimization_inputs(
             }
         )
         c_sessions = sessions_by_course.get(c["id"], [])
-        if c_sessions:
-            for s in c_sessions:
-                s_type = str(s.get("session_type") or legacy_ctype)
-                s_is_lab = s_type.lower() == "lab" or str(s.get("component_type") or "").lower() == "lab"
-                default_sections.append(
-                    {
-                        "id": s["id"],
-                        "courseId": c["id"],
-                        "courseCode": c["code"],
-                        "instructorId": s.get("instructor_id") or assigned_inst_id,
-                        "labEngineerId": s.get("lab_engineer_id") or assigned_lab_eng_id,
-                        "studentGroupId": s.get("batch_id") or default_batch_id,
-                        "sectionCode": s.get("section_code") or "A",
-                        "sessionType": s_type,
-                        "componentType": s.get("component_type") or ("lab" if s_is_lab else "lecture"),
-                        "sessionsPerWeek": s.get("sessions_per_week"),
-                        "durationMinutes": s.get("duration_minutes"),
-                        "enrollment": int(s.get("expected_students") or 60),
-                    }
-                )
-        else:
-            if lec_cr > 0:
-                default_sections.append(
-                    {
-                        "id": f"sec-{c['id']}-a-lec",
-                        "courseId": c["id"],
-                        "courseCode": c["code"],
-                        "instructorId": assigned_inst_id,
-                        "studentGroupId": default_batch_id,
-                        "sectionCode": "A",
-                        "sessionType": "Theory",
-                        "componentType": "lecture",
-                        "sessionsPerWeek": lec_cr,
-                        "enrollment": 60,
-                    }
-                )
-            if lab_cr > 0:
-                default_sections.append(
-                    {
-                        "id": f"sec-{c['id']}-a-lab",
-                        "courseId": c["id"],
-                        "courseCode": c["code"],
-                        "instructorId": assigned_inst_id,
-                        "labEngineerId": assigned_lab_eng_id,
-                        "studentGroupId": default_batch_id,
-                        "sectionCode": "A",
-                        "sessionType": "Lab",
-                        "componentType": "lab",
-                        "sessionsPerWeek": lab_cr,
-                        "enrollment": 60,
-                    }
-                )
+        covered_pairs: set[tuple[str, str]] = set()
+        for s in c_sessions:
+            s_type = str(s.get("session_type") or legacy_ctype)
+            s_is_lab = s_type.lower() == "lab" or str(s.get("component_type") or "").lower() == "lab"
+            comp_key = "lab" if s_is_lab else "lecture"
+            s_batch_id = str(s.get("batch_id") or default_batch_id)
+            covered_pairs.add((s_batch_id, comp_key))
+            default_sections.append(
+                {
+                    "id": s["id"],
+                    "courseId": c["id"],
+                    "courseCode": c["code"],
+                    "instructorId": s.get("instructor_id") or assigned_inst_id,
+                    "labEngineerId": s.get("lab_engineer_id") or assigned_lab_eng_id,
+                    "studentGroupId": s_batch_id,
+                    "sectionCode": s.get("section_code") or "A",
+                    "sessionType": s_type,
+                    "componentType": s.get("component_type") or comp_key,
+                    "sessionsPerWeek": s.get("sessions_per_week"),
+                    "durationMinutes": s.get("duration_minutes"),
+                    "enrollment": int(s.get("expected_students") or 60),
+                }
+            )
+
+        is_elective = bool(c.get("is_elective", not c.get("is_compulsory", True)))
+        if not is_elective:
+            target_batches = resolve_matching_batches_for_course(c, db_batches, db_departments, db_programs)
+            for b_obj in target_batches:
+                b_id = b_obj["id"]
+                b_sec = str(b_obj.get("section") or "A")
+                b_size = int(b_obj.get("student_count") or 60)
+                if lec_cr > 0 and (b_id, "lecture") not in covered_pairs:
+                    covered_pairs.add((b_id, "lecture"))
+                    default_sections.append(
+                        {
+                            "id": f"sec-{c['id']}-{b_id}-lec",
+                            "courseId": c["id"],
+                            "courseCode": c["code"],
+                            "instructorId": assigned_inst_id,
+                            "studentGroupId": b_id,
+                            "sectionCode": b_sec,
+                            "sessionType": "Theory",
+                            "componentType": "lecture",
+                            "sessionsPerWeek": lec_cr,
+                            "enrollment": b_size,
+                        }
+                    )
+                if lab_cr > 0 and (b_id, "lab") not in covered_pairs:
+                    covered_pairs.add((b_id, "lab"))
+                    default_sections.append(
+                        {
+                            "id": f"sec-{c['id']}-{b_id}-lab",
+                            "courseId": c["id"],
+                            "courseCode": c["code"],
+                            "instructorId": assigned_inst_id,
+                            "labEngineerId": assigned_lab_eng_id,
+                            "studentGroupId": b_id,
+                            "sectionCode": b_sec,
+                            "sessionType": "Lab",
+                            "componentType": "lab",
+                            "sessionsPerWeek": lab_cr,
+                            "enrollment": b_size,
+                        }
+                    )
 
     normalized_rooms: List[Dict[str, Any]] = []
     for r in db_classrooms:
@@ -833,6 +944,7 @@ def load_university_optimization_inputs(
                 "batchId": b["id"],
                 "code": b["code"],
                 "name": b["name"],
+                "departmentId": resolve_batch_department_id(b, db_departments, db_programs),
                 "departmentCode": b.get("department_code") or "",
                 "size": int(b.get("student_count") or 60),
             }

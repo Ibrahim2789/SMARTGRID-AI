@@ -361,15 +361,30 @@ def parse_csv_text(raw_text: str) -> Tuple[List[str], List[List[str]]]:
 def generate_template_csv(category: str) -> str:
     if category == "all":
         headers = [
-            "dept_code", "dept_name", "school",
-            "room_code", "room_name", "room_capacity", "room_type", "building",
-            "course_code", "course_title", "lecture_credits", "lab_credits", "is_elective",
-            "instructor_name", "instructor_email", "staff_role", "max_weekly_hours",
-            "cohort_code", "cohort_size", "semester",
+            "dept_code", "dept_name", "school", "head_of_department", "sub_departments",
+            "room_code", "room_name", "room_capacity", "room_type", "building", "floor", "lab_category", "room_lab_engineer", "equipment", "is_available",
+            "instructor_name", "instructor_email", "instructor_title", "staff_role", "instructor_sub_department", "max_weekly_hours", "max_daily_classes", "qualified_courses",
+            "course_code", "course_title", "course_type", "credit_hours", "lecture_credits", "lab_credits", "lab_session_mode", "is_compulsory", "is_elective", "elective_pool_name", "assigned_instructor", "assigned_lab_engineer", "required_equipment", "course_sub_department",
+            "cohort_code", "batch_code", "section", "cohort_name", "cohort_size", "year", "semester", "home_room",
+            "session_type", "sessions_per_week", "duration_minutes", "expected_students", "required_room_type", "registration_number",
         ]
         rows = [
-            ["CS", "Computer Science", "School of Computing", "HALL-101", "Alan Turing Hall", "70", "lecture", "Block A", "CS-101", "Programming Fundamentals", "3", "1", "no", "Dr. Sarah Chen", "sarah.chen@university.edu", "faculty", "14", "2K25-CS-A", "45", "1"],
-            ["CS", "Computer Science", "School of Computing", "LAB-201", "Computing Lab 1", "45", "lab", "Lab Complex", "CS-201", "Data Structures", "3", "1", "no", "Engr. Bilal Tariq", "bilal.tariq@university.edu", "lab_engineer", "18", "2K24-CS-A", "42", "3"],
+            [
+                "CS", "Computer Science", "School of Computing", "Dr. Alan Turing", "Artificial Intelligence; Systems",
+                "HALL-101", "Alan Turing Hall", "70", "lecture", "Block A", "1", "", "", "Projector; Whiteboard", "yes",
+                "Dr. Sarah Chen", "sarah.chen@university.edu", "Associate Professor", "faculty", "Artificial Intelligence", "14", "3", "CS-101; CS-201",
+                "CS-101", "Programming Fundamentals", "lecture_lab", "4", "3", "1", "continuous", "yes", "no", "", "sarah.chen@university.edu", "", "Projector; Workstations", "Systems",
+                "2K25-CS-A", "2K25", "A", "2K25 CS Section A", "45", "1", "1", "HALL-101",
+                "Theory", "3", "50", "45", "lecture", "",
+            ],
+            [
+                "CS", "Computer Science", "School of Computing", "Dr. Alan Turing", "Artificial Intelligence; Systems",
+                "LAB-201", "Computing Lab 1", "45", "lab", "Lab Complex", "2", "Computing", "bilal.tariq@university.edu", "45 Workstations; Projector", "yes",
+                "Engr. Bilal Tariq", "bilal.tariq@university.edu", "Senior Lab Engineer", "lab_engineer", "Systems", "18", "4", "CS-101; CS-201",
+                "CS-201", "Data Structures", "lecture_lab", "4", "3", "1", "continuous", "yes", "no", "", "sarah.chen@university.edu", "bilal.tariq@university.edu", "Workstations", "Systems",
+                "2K24-CS-B", "2K24", "B", "2K24 CS Section B", "42", "2", "3", "",
+                "Lab", "1", "180", "42", "lab", "",
+            ],
         ]
     else:
         schema = CATEGORY_DEFINITIONS.get(category)
@@ -392,40 +407,71 @@ def generate_template_csv(category: str) -> str:
 
 def _all_category_fields(category: str) -> List[Dict[str, Any]]:
     if category == "all":
-        # Unified superset of core fields for 'all' mode
-        seen: Set[str] = set()
-        merged: List[Dict[str, Any]] = []
-        prefix_map = {
-            "departments": [("code", "deptCode", "Department Code"), ("name", "deptName", "Department Name"), ("school", "school", "School / Faculty"), ("subDepartments", "subDepartments", "Sub-Departments")],
-            "rooms": [("code", "roomCode", "Room / Lab Code"), ("name", "roomName", "Room / Lab Name"), ("capacity", "roomCapacity", "Room Capacity"), ("type", "roomType", "Room Type"), ("building", "building", "Building"), ("equipment", "equipment", "Equipment")],
-            "courses": [("code", "courseCode", "Course Code"), ("title", "courseTitle", "Course Title"), ("creditHours", "creditHours", "Credit Hours"), ("lectureCredits", "lectureCredits", "Lecture Credits"), ("labCredits", "labCredits", "Lab Credits"), ("isElective", "isElective", "Is Elective")],
-            "instructors": [("name", "instructorName", "Instructor Name"), ("email", "instructorEmail", "Instructor Email"), ("title", "instructorTitle", "Designation"), ("staffRole", "staffRole", "Staff Role"), ("maxWeeklyHours", "maxWeeklyHours", "Max Weekly Hours"), ("qualifiedCourses", "qualifiedCourses", "Qualified Courses")],
-            "cohorts": [("code", "cohortCode", "Cohort / Batch Code"), ("name", "cohortName", "Cohort Name"), ("size", "cohortSize", "Student Count"), ("year", "year", "Academic Year"), ("semester", "semester", "Semester"), ("homeRoom", "homeRoom", "Home Room")],
-        }
-        for cat_key, items in prefix_map.items():
-            src_fields = {f["key"]: f for f in CATEGORY_DEFINITIONS[cat_key]["fields"]}
-            for src_key, unified_key, unified_label in items:
-                if unified_key in seen:
-                    continue
-                seen.add(unified_key)
-                base = dict(src_fields[src_key])
-                base["key"] = unified_key
-                base["label"] = unified_label
-                base["required"] = False
-                if unified_key == "deptCode":
-                    base["synonyms"] = ["dept_code", "department_code", "dept", "department"]
-                elif unified_key == "roomCode":
-                    base["synonyms"] = ["room_code", "room", "classroom", "hall", "lab_code"]
-                elif unified_key == "courseCode":
-                    base["synonyms"] = ["course_code", "course", "subject_code"]
-                elif unified_key == "instructorName":
-                    base["synonyms"] = ["instructor_name", "instructor", "faculty_name", "teacher_name", "teacher", "professor"]
-                elif unified_key == "cohortCode":
-                    base["synonyms"] = ["cohort_code", "batch_code", "cohort", "batch", "section_name", "class_code"]
-                elif unified_key == "cohortSize":
-                    base["synonyms"] = ["cohort_size", "size", "student_count", "students"]
-                merged.append(base)
-        return merged
+        # Complete unified superset across all 8 institutional import categories
+        return [
+            # Departments
+            {"key": "deptCode", "label": "Department Code", "group": "Departments", "required": False, "type": "string", "synonyms": ["dept_code", "department_code", "dept", "department", "program_code"]},
+            {"key": "deptName", "label": "Department Name", "group": "Departments", "required": False, "type": "string", "synonyms": ["dept_name", "department_name"]},
+            {"key": "school", "label": "School / Faculty", "group": "Departments", "required": False, "type": "string", "synonyms": ["school", "faculty", "faculty_name", "faculty_group", "division", "college"]},
+            {"key": "headOfDepartment", "label": "Head of Department", "group": "Departments", "required": False, "type": "string", "synonyms": ["head_of_department", "hod", "chair", "chairperson", "head"]},
+            {"key": "subDepartments", "label": "Sub-Departments / Tracks", "group": "Departments", "required": False, "type": "list", "synonyms": ["sub_departments", "subdepartments", "tracks", "wings"]},
+
+            # Rooms & Labs
+            {"key": "roomCode", "label": "Room / Lab Code", "group": "Rooms & Labs", "required": False, "type": "string", "synonyms": ["room_code", "room", "classroom", "classroom_code", "hall", "room_no", "room_number", "lab_code", "laboratory_code", "facility_code"]},
+            {"key": "roomName", "label": "Room / Lab Name", "group": "Rooms & Labs", "required": False, "type": "string", "synonyms": ["room_name", "lab_name", "hall_name", "classroom_name", "laboratory_name", "facility_name"]},
+            {"key": "roomCapacity", "label": "Room / Lab Capacity", "group": "Rooms & Labs", "required": False, "type": "int", "synonyms": ["room_capacity", "capacity", "seats", "workstations", "lab_capacity", "max_students"]},
+            {"key": "roomType", "label": "Room Type (lecture/seminar/auditorium/lab)", "group": "Rooms & Labs", "required": False, "type": "string", "synonyms": ["room_type", "classroom_type", "facility_type", "lab_type"]},
+            {"key": "building", "label": "Building Name", "group": "Rooms & Labs", "required": False, "type": "string", "synonyms": ["building", "building_name", "block", "location"]},
+            {"key": "floor", "label": "Floor Number", "group": "Rooms & Labs", "required": False, "type": "int", "synonyms": ["floor", "floor_no", "level"]},
+            {"key": "labCategory", "label": "Lab Category", "group": "Rooms & Labs", "required": False, "type": "string", "synonyms": ["lab_category", "discipline"]},
+            {"key": "roomLabEngineer", "label": "Room / Lab Engineer (email or name)", "group": "Rooms & Labs", "required": False, "type": "fk:instructor", "synonyms": ["room_lab_engineer", "lab_supervisor", "supervisor"]},
+            {"key": "equipment", "label": "Room / Lab Equipment", "group": "Rooms & Labs", "required": False, "type": "list", "synonyms": ["equipment", "features", "amenities", "facilities", "resources", "hardware"]},
+            {"key": "roomIsAvailable", "label": "Room Is Available (yes/no)", "group": "Rooms & Labs", "required": False, "type": "bool", "synonyms": ["is_available", "room_is_available", "available", "active"]},
+
+            # Instructors & Lab Engineers
+            {"key": "instructorName", "label": "Instructor Full Name", "group": "Instructors", "required": False, "type": "string", "synonyms": ["instructor_name", "instructor", "faculty_name", "teacher_name", "teacher", "professor", "lecturer", "faculty"]},
+            {"key": "instructorEmail", "label": "Instructor Institutional Email", "group": "Instructors", "required": False, "type": "email", "synonyms": ["instructor_email", "email", "faculty_email", "teacher_email", "email_address", "mail"]},
+            {"key": "instructorTitle", "label": "Instructor Designation / Title", "group": "Instructors", "required": False, "type": "string", "synonyms": ["instructor_title", "designation", "rank", "position", "academic_rank"]},
+            {"key": "staffRole", "label": "Staff Role (faculty/lab_engineer)", "group": "Instructors", "required": False, "type": "enum:faculty,lab_engineer", "synonyms": ["staff_role", "role_type", "instructor_role"]},
+            {"key": "instructorSubDepartment", "label": "Instructor Sub-Department / Wing", "group": "Instructors", "required": False, "type": "string", "synonyms": ["instructor_sub_department", "instructor_subdepartment", "wing"]},
+            {"key": "maxWeeklyHours", "label": "Max Weekly Hours", "group": "Instructors", "required": False, "type": "int", "synonyms": ["max_weekly_hours", "weekly_hours", "max_hours", "workload_cap", "weekly_cap"]},
+            {"key": "maxDailyClasses", "label": "Max Daily Classes", "group": "Instructors", "required": False, "type": "int", "synonyms": ["max_daily_classes", "max_lectures_per_day", "daily_cap", "max_daily"]},
+            {"key": "qualifiedCourses", "label": "Qualified Course Codes", "group": "Instructors", "required": False, "type": "list", "synonyms": ["qualified_courses", "eligible_courses", "subjects", "can_teach", "specializations"]},
+
+            # Courses
+            {"key": "courseCode", "label": "Course Code", "group": "Courses", "required": False, "type": "string", "synonyms": ["course_code", "course", "subject_code", "course_id", "course_no", "subject_id"]},
+            {"key": "courseTitle", "label": "Course Title", "group": "Courses", "required": False, "type": "string", "synonyms": ["course_title", "course_name", "subject", "subject_name"]},
+            {"key": "courseType", "label": "Course Type (lecture/lab/lecture_lab)", "group": "Courses", "required": False, "type": "enum:lecture,lab,lecture_lab", "synonyms": ["course_type", "course_mode"]},
+            {"key": "creditHours", "label": "Total Credit Hours", "group": "Courses", "required": False, "type": "int", "synonyms": ["credit_hours", "credits", "credit", "cr_hrs", "units"]},
+            {"key": "lectureCredits", "label": "Lecture Credits", "group": "Courses", "required": False, "type": "int", "synonyms": ["lecture_credits", "theory_credits", "lec_credits", "lec_cr", "lecture_credit_hours"]},
+            {"key": "labCredits", "label": "Lab Credits", "group": "Courses", "required": False, "type": "int", "synonyms": ["lab_credits", "practical_credits", "lab_cr", "lab_credit_hours"]},
+            {"key": "labSessionMode", "label": "Lab Session Mode (continuous/split_allowed)", "group": "Courses", "required": False, "type": "enum:continuous,split_allowed", "synonyms": ["lab_session_mode", "lab_mode"]},
+            {"key": "isCompulsory", "label": "Is Compulsory (yes/no)", "group": "Courses", "required": False, "type": "bool", "synonyms": ["is_compulsory", "compulsory", "mandatory", "core"]},
+            {"key": "isElective", "label": "Is Elective (yes/no)", "group": "Courses", "required": False, "type": "bool", "synonyms": ["is_elective", "elective", "optional"]},
+            {"key": "electivePoolName", "label": "Elective Pool Name", "group": "Courses", "required": False, "type": "string", "synonyms": ["elective_pool", "elective_pool_name", "pool_name"]},
+            {"key": "assignedInstructor", "label": "Assigned Course Instructor (email or name)", "group": "Courses", "required": False, "type": "fk:instructor", "synonyms": ["assigned_instructor", "course_instructor"]},
+            {"key": "assignedLabEngineer", "label": "Assigned Lab Engineer (email or name)", "group": "Courses", "required": False, "type": "fk:instructor", "synonyms": ["assigned_lab_engineer", "lab_engineer", "lab_engineer_email", "lab_engineer_name", "engineer"]},
+            {"key": "requiredEquipment", "label": "Course Required Equipment", "group": "Courses", "required": False, "type": "list", "synonyms": ["required_equipment", "lab_equipment"]},
+            {"key": "courseSubDepartment", "label": "Course Sub-Department / Track", "group": "Courses", "required": False, "type": "string", "synonyms": ["course_sub_department", "sub_department", "subdepartment", "track"]},
+
+            # Batches & Sections
+            {"key": "cohortCode", "label": "Cohort / Section Full Code (e.g. 2K24-CS-A)", "group": "Batches & Sections", "required": False, "type": "string", "synonyms": ["cohort_code", "class_code", "group_code", "cohort", "student_group"]},
+            {"key": "batchCode", "label": "Intake / Batch Code (e.g. 2K24)", "group": "Batches & Sections", "required": False, "type": "string", "synonyms": ["batch_code", "intake", "batch", "batch_year", "cohort_year"]},
+            {"key": "section", "label": "Section of Batch (e.g. A)", "group": "Batches & Sections", "required": False, "type": "string", "synonyms": ["section", "section_letter", "section_code", "sections", "sections_list", "sec"]},
+            {"key": "cohortName", "label": "Batch / Section Name", "group": "Batches & Sections", "required": False, "type": "string", "synonyms": ["cohort_name", "batch_name", "section_name", "class_name"]},
+            {"key": "cohortSize", "label": "Batch / Section Student Count", "group": "Batches & Sections", "required": False, "type": "int", "synonyms": ["cohort_size", "student_count", "size", "students", "headcount"]},
+            {"key": "year", "label": "Academic Year (1–8)", "group": "Batches & Sections", "required": False, "type": "int", "synonyms": ["year", "study_year", "academic_year"]},
+            {"key": "semester", "label": "Semester (1–16)", "group": "Batches & Sections", "required": False, "type": "int", "synonyms": ["semester", "sem", "term_number"]},
+            {"key": "homeRoom", "label": "Home Room Code", "group": "Batches & Sections", "required": False, "type": "fk:room_or_lab", "synonyms": ["home_room", "default_room", "assigned_room"]},
+
+            # Course Assignments & Enrollments
+            {"key": "sessionType", "label": "Session Type (Theory/Lab/Tutorial)", "group": "Assignments & Enrollments", "required": False, "type": "enum:Theory,Lab,Tutorial", "synonyms": ["session_type", "component_type"]},
+            {"key": "sessionsPerWeek", "label": "Sessions Per Week (1–6)", "group": "Assignments & Enrollments", "required": False, "type": "int", "synonyms": ["sessions_per_week", "weekly_sessions", "frequency"]},
+            {"key": "durationMinutes", "label": "Session Duration Minutes (30–300)", "group": "Assignments & Enrollments", "required": False, "type": "int", "synonyms": ["duration_minutes", "duration", "minutes"]},
+            {"key": "expectedStudents", "label": "Expected Students", "group": "Assignments & Enrollments", "required": False, "type": "int", "synonyms": ["expected_students", "enrollment"]},
+            {"key": "requiredRoomType", "label": "Required Room Type (lecture/lab/seminar)", "group": "Assignments & Enrollments", "required": False, "type": "enum:lecture,lab,seminar", "synonyms": ["required_room_type"]},
+            {"key": "studentRegistrationNumber", "label": "Student Registration No (optional)", "group": "Assignments & Enrollments", "required": False, "type": "fk:student", "synonyms": ["registration_number", "student_registration_number", "roll_no", "roll_number", "student_id", "reg_no"]},
+        ]
 
     if category not in CATEGORY_DEFINITIONS:
         raise ValueError(f"Unsupported import category: {category}")
@@ -812,6 +858,9 @@ def validate_and_stage_import(
     staged_inst_by_name: Dict[str, Dict[str, Any]] = dict(ctx["inst_by_name"])
     staged_courses_by_code: Dict[str, Dict[str, Any]] = dict(ctx["course_by_code"])
     staged_batches_by_code: Dict[str, Dict[str, Any]] = dict(ctx["batch_by_code"])
+    staged_enrollment_keys: Set[Tuple[str, str, str, str]] = set(ctx["enrollment_by_key"].keys())
+    staged_session_keys: Set[Tuple[str, str, str, str]] = set(ctx["session_by_key"].keys())
+    in_file_all_entities: Set[str] = set()
 
     # Reverse map from targetKey -> source CSV column name for accurate error attribution
     target_to_src_header = {tgt: hdr for hdr, tgt in active_mapping.items() if tgt}
@@ -1452,33 +1501,41 @@ def validate_and_stage_import(
                         add_warn("code", f"Batch '{code}' already exists; skipped.")
                     else:
                         action = "update"
+                        eff_batch_code = batch_code or (code.split("-")[0] if "-" in code else code)
                         payload = {
                             "name": name,
+                            "batch_code": eff_batch_code,
                             "department_code": dept_raw,
                             "year": year_val,
                             "semester": sem_val,
                             "student_count": size_val,
+                            "section": section,
                             "sections_list": section,
+                            "home_room": home_room_raw or None,
                         }
-                        diffs = _compute_diffs(existing, payload, [("name", "Batch Name"), ("department_code", "Department"), ("year", "Year"), ("semester", "Semester"), ("student_count", "Student Count"), ("sections_list", "Section")])
+                        diffs = _compute_diffs(existing, payload, [("name", "Batch Name"), ("batch_code", "Intake Batch"), ("department_code", "Department"), ("year", "Year"), ("semester", "Semester"), ("student_count", "Student Count"), ("section", "Section"), ("home_room", "Home Room")])
                         field_diffs.append({"row": row_num, "identifier": code, "entity": "Batch & Section", "diffs": diffs})
-                        row_op = {"entity": "batches", "action": "update", "id": existing["id"], "match": {"id": f"eq.{existing['id']}"}, "payload": payload, "before": existing, "batchCode": batch_code or (code.split("-")[0] if "-" in code else code), "homeRoom": home_room_raw}
+                        row_op = {"entity": "batches", "action": "update", "id": existing["id"], "match": {"id": f"eq.{existing['id']}"}, "payload": payload, "before": existing, "batchCode": eff_batch_code, "section": section, "homeRoom": home_room_raw}
                 elif not errors and action == "create":
                     new_id = f"batch-{uuid.uuid4().hex[:8]}"
+                    eff_batch_code = batch_code or (code.split("-")[0] if "-" in code else code)
                     payload = {
                         "id": new_id,
                         "code": code,
+                        "batch_code": eff_batch_code,
                         "name": name,
                         "department_code": dept_raw,
                         "year": year_val,
                         "semester": sem_val,
                         "student_count": size_val,
+                        "section": section,
                         "sections_list": section,
+                        "home_room": home_room_raw or None,
                         "institution_id": institution_id,
                         "created_at": now_iso(),
                     }
                     staged_batches_by_code[code] = payload
-                    row_op = {"entity": "batches", "action": "create", "id": new_id, "payload": payload, "batchCode": batch_code or (code.split("-")[0] if "-" in code else code), "homeRoom": home_room_raw}
+                    row_op = {"entity": "batches", "action": "create", "id": new_id, "payload": payload, "batchCode": eff_batch_code, "section": section, "homeRoom": home_room_raw}
             stable_id = code
 
         elif category == "enrollments":
@@ -1682,166 +1739,636 @@ def validate_and_stage_import(
 
         elif category == "all":
             # Master file: validate and stage any populated entity columns per row
+            # 1) Department fields
             dept_code = mapped_vals.get("deptCode", "").upper()
             dept_name = mapped_vals.get("deptName", "") or dept_code
             school = mapped_vals.get("school", "") or "Engineering & Computing"
+            dept_hod = mapped_vals.get("headOfDepartment", "")
+            sub_depts = split_list_value(mapped_vals.get("subDepartments", ""))
+
+            # 2) Room / Lab fields
             room_code = mapped_vals.get("roomCode", "").upper()
             room_name = mapped_vals.get("roomName", "") or room_code
             room_cap_raw = mapped_vals.get("roomCapacity", "")
             room_type_raw = (mapped_vals.get("roomType", "") or "").lower()
             building = mapped_vals.get("building", "") or "Main Academic Block"
-            course_code = mapped_vals.get("courseCode", "").upper()
-            course_title = mapped_vals.get("courseTitle", "")
-            lec_raw = mapped_vals.get("lectureCredits", "")
-            lab_raw = mapped_vals.get("labCredits", "")
-            cr_raw = mapped_vals.get("creditHours", "")
-            elec_raw = mapped_vals.get("isElective", "")
+            floor_raw = mapped_vals.get("floor", "")
+            lab_cat = mapped_vals.get("labCategory", "") or "Computing"
+            room_lab_eng_raw = mapped_vals.get("roomLabEngineer", "")
+            room_equip = split_list_value(mapped_vals.get("equipment", ""))
+            room_avail_raw = mapped_vals.get("roomIsAvailable", "")
+
+            # 3) Instructor fields
             inst_name = mapped_vals.get("instructorName", "")
             inst_email = mapped_vals.get("instructorEmail", "").lower()
-            inst_title = mapped_vals.get("instructorTitle", "") or "Assistant Professor"
+            inst_title = mapped_vals.get("instructorTitle", "")
             staff_role_raw = (mapped_vals.get("staffRole", "") or "faculty").lower()
+            inst_sub_dept = mapped_vals.get("instructorSubDepartment", "")
             max_wk_raw = mapped_vals.get("maxWeeklyHours", "")
-            cohort_code = mapped_vals.get("cohortCode", "").upper()
-            cohort_name = mapped_vals.get("cohortName", "") or f"Cohort {cohort_code}"
+            max_day_raw = mapped_vals.get("maxDailyClasses", "")
+            qual_courses = [c.upper() for c in split_list_value(mapped_vals.get("qualifiedCourses", ""))]
+
+            # 4) Course fields
+            course_code = mapped_vals.get("courseCode", "").upper()
+            course_title = mapped_vals.get("courseTitle", "")
+            ctype_raw = (mapped_vals.get("courseType", "") or "").lower()
+            cr_raw = mapped_vals.get("creditHours", "")
+            lec_raw = mapped_vals.get("lectureCredits", "")
+            lab_raw = mapped_vals.get("labCredits", "")
+            lab_mode_raw = (mapped_vals.get("labSessionMode", "") or "continuous").lower()
+            comp_raw = mapped_vals.get("isCompulsory", "")
+            elec_raw = mapped_vals.get("isElective", "")
+            pool_name = mapped_vals.get("electivePoolName", "")
+            assigned_inst_raw = mapped_vals.get("assignedInstructor", "")
+            assigned_lab_eng_raw = mapped_vals.get("assignedLabEngineer", "")
+            req_equip = split_list_value(mapped_vals.get("requiredEquipment", ""))
+            course_sub_dept = mapped_vals.get("courseSubDepartment", "")
+
+            # 5) Batch & Section fields
+            cohort_code_raw = mapped_vals.get("cohortCode", "").upper()
+            batch_code_raw = mapped_vals.get("batchCode", "").upper()
+            section_raw = mapped_vals.get("section", "").upper()
+            cohort_name_raw = mapped_vals.get("cohortName", "")
             cohort_size_raw = mapped_vals.get("cohortSize", "")
-            sem_raw = mapped_vals.get("semester", "")
             year_raw = mapped_vals.get("year", "")
+            sem_raw = mapped_vals.get("semester", "")
+            home_room_raw = mapped_vals.get("homeRoom", "").upper()
 
-            if not any([dept_code, room_code, course_code, inst_name, inst_email, cohort_code]):
-                add_err("courseCode", "missing_required", "Row contains no recognizable department, room, course, instructor, or cohort identifier.", "Populate at least one entity identifier on this row.")
+            # 6) Course Assignment & Enrollment fields
+            sess_type_raw = mapped_vals.get("sessionType", "")
+            spw_raw = mapped_vals.get("sessionsPerWeek", "")
+            dur_raw = mapped_vals.get("durationMinutes", "")
+            exp_raw = mapped_vals.get("expectedStudents", "")
+            req_rtype_raw = (mapped_vals.get("requiredRoomType", "") or "").lower()
+            reg_no = mapped_vals.get("studentRegistrationNumber", "").upper()
 
+            # Resolve cohort_code, batch_code, and section seamlessly
+            cohort_code = ""
+            eff_batch_code = ""
+            eff_section = section_raw
+            if cohort_code_raw:
+                cohort_code = cohort_code_raw
+                eff_batch_code = batch_code_raw or (cohort_code.split("-")[0] if "-" in cohort_code else cohort_code)
+                if not eff_section:
+                    eff_section = cohort_code.split("-")[-1] if "-" in cohort_code and len(cohort_code.split("-")) >= 2 else "A"
+            elif batch_code_raw:
+                if "-" in batch_code_raw and len(batch_code_raw.split("-")) >= 3:
+                    cohort_code = batch_code_raw
+                    eff_batch_code = batch_code_raw.split("-")[0]
+                    if not eff_section:
+                        eff_section = batch_code_raw.split("-")[-1]
+                elif "-" in batch_code_raw and len(batch_code_raw.split("-")) == 2:
+                    eff_section = eff_section or "A"
+                    cohort_code = f"{batch_code_raw}-{eff_section}"
+                    eff_batch_code = batch_code_raw.split("-")[0]
+                else:
+                    eff_batch_code = batch_code_raw
+                    eff_section = eff_section or "A"
+                    cohort_code = f"{eff_batch_code}-{dept_code}-{eff_section}" if dept_code else f"{eff_batch_code}-{eff_section}"
+            elif section_raw and (dept_code or year_raw or sem_raw):
+                eff_batch_code = f"SEM{sem_raw}" if sem_raw else f"Y{year_raw or 1}"
+                eff_section = section_raw
+                cohort_code = f"{eff_batch_code}-{dept_code}-{eff_section}" if dept_code else f"{eff_batch_code}-{eff_section}"
+            else:
+                eff_section = eff_section or "A"
+
+            if not any([dept_code, room_code, course_code, inst_name, inst_email, cohort_code, batch_code_raw]):
+                add_err("courseCode", "missing_required", "Row contains no recognizable department, room, course, instructor, or batch/cohort identifier.", "Populate at least one entity identifier on this row.")
+
+            # Validate Room fields
+            room_cap_val = 50
             if room_cap_raw:
                 try:
-                    parse_strict_int(room_cap_raw, "Room capacity", min_val=1, max_val=2000)
+                    room_cap_val = parse_strict_int(room_cap_raw, "Room capacity", min_val=1, max_val=2000)
                 except ValueError as exc:
                     add_err("roomCapacity", "invalid_type", str(exc), "Use integer 1–2000.")
-            if cohort_size_raw:
+            room_floor_val = 1
+            if floor_raw:
                 try:
-                    parse_strict_int(cohort_size_raw, "Cohort size", min_val=1, max_val=1000)
+                    room_floor_val = parse_strict_int(floor_raw, "Floor", min_val=-5, max_val=100)
                 except ValueError as exc:
-                    add_err("cohortSize", "invalid_type", str(exc), "Use integer 1–1000.")
+                    add_err("floor", "invalid_type", str(exc), "Enter a valid floor integer (-5 to 100).")
+            room_is_avail = True
+            if room_avail_raw:
+                try:
+                    room_is_avail = bool(parse_strict_bool(room_avail_raw, default=True))
+                except ValueError as exc:
+                    add_err("roomIsAvailable", "invalid_type", str(exc), "Use yes/no or true/false.")
+            if room_type_raw and room_type_raw not in ("lecture", "classroom", "hall", "theory", "seminar", "tutorial", "auditorium", "amphitheater", "amphitheatre", "studio", "lab", "laboratory", "computing"):
+                add_err("roomType", "invalid_type", f"Unsupported room type '{room_type_raw}'.", "Allowed values: lecture, seminar, auditorium, studio, or lab.")
+
+            # Validate Instructor fields
             if inst_email and not EMAIL_RE.match(inst_email):
                 add_err("instructorEmail", "invalid_type", f"Invalid email '{inst_email}'.", "Use valid email address.")
-            if elec_raw:
+            staff_role = "faculty"
+            if staff_role_raw in ("faculty", "professor", "lecturer", "instructor", "teacher", ""):
+                staff_role = "faculty"
+            elif staff_role_raw in ("lab_engineer", "lab engineer", "engineer", "demonstrator", "ta"):
+                staff_role = "lab_engineer"
+            else:
+                add_err("staffRole", "invalid_type", f"Unsupported staff role '{staff_role_raw}'.", "Allowed values: faculty or lab_engineer.")
+            max_weekly_val = 18 if staff_role == "lab_engineer" else 15
+            if max_wk_raw:
                 try:
-                    parse_strict_bool(elec_raw, default=False)
+                    max_weekly_val = parse_strict_int(max_wk_raw, "Max weekly hours", min_val=1, max_val=45)
                 except ValueError as exc:
-                    add_err("isElective", "invalid_type", str(exc), "Use yes/no or true/false.")
+                    add_err("maxWeeklyHours", "invalid_type", str(exc), "Enter integer 1–45.")
+            max_daily_val = 4
+            if max_day_raw:
+                try:
+                    max_daily_val = parse_strict_int(max_day_raw, "Max daily classes", min_val=1, max_val=10)
+                except ValueError as exc:
+                    add_err("maxDailyClasses", "invalid_type", str(exc), "Enter integer 1–10.")
+
+            # Validate Course fields
+            if ctype_raw and ctype_raw not in ("lecture", "theory", "lab", "lecture_lab", "lecture+lab", "both"):
+                add_err("courseType", "invalid_type", f"Invalid course type '{ctype_raw}'.", "Allowed values: lecture, lab, lecture_lab.")
+            if lab_mode_raw not in ("continuous", "split_allowed"):
+                add_err("labSessionMode", "invalid_type", f"Invalid lab session mode '{lab_mode_raw}'.", "Allowed values: continuous or split_allowed.")
+            lec_cr_val: Optional[int] = None
+            lab_cr_val: Optional[int] = None
+            total_cr_val: Optional[int] = None
+            if lec_raw:
+                try:
+                    lec_cr_val = parse_strict_int(lec_raw, "Lecture credits", min_val=0, max_val=6)
+                except ValueError as exc:
+                    add_err("lectureCredits", "invalid_type", str(exc), "Enter integer 0–6.")
+            if lab_raw:
+                try:
+                    lab_cr_val = parse_strict_int(lab_raw, "Lab credits", min_val=0, max_val=4)
+                except ValueError as exc:
+                    add_err("labCredits", "invalid_type", str(exc), "Enter integer 0–4.")
+            if cr_raw:
+                try:
+                    total_cr_val = parse_strict_int(cr_raw, "Credit hours", min_val=1, max_val=6)
+                except ValueError as exc:
+                    add_err("creditHours", "invalid_type", str(exc), "Enter integer 1–6.")
+            is_compulsory_val = True
+            try:
+                comp_parsed = parse_strict_bool(comp_raw, default=None) if comp_raw else None
+                elec_parsed = parse_strict_bool(elec_raw, default=None) if elec_raw else None
+                if elec_parsed is not None:
+                    is_compulsory_val = not elec_parsed
+                elif comp_parsed is not None:
+                    is_compulsory_val = comp_parsed
+            except ValueError as exc:
+                add_err("isElective" if elec_raw else "isCompulsory", "invalid_type", str(exc), "Use yes/no or true/false.")
+
+            # Validate Batch & Section fields
+            cohort_size_val = 45
+            if cohort_size_raw:
+                try:
+                    cohort_size_val = parse_strict_int(cohort_size_raw, "Cohort size", min_val=1, max_val=1000)
+                except ValueError as exc:
+                    add_err("cohortSize", "invalid_type", str(exc), "Use integer 1–1000.")
+            year_val = 1
+            if year_raw:
+                try:
+                    year_val = parse_strict_int(year_raw, "Academic year", min_val=1, max_val=8)
+                except ValueError as exc:
+                    add_err("year", "invalid_type", str(exc), "Enter integer 1–8.")
+            sem_val = 1
+            if sem_raw:
+                try:
+                    sem_val = parse_strict_int(sem_raw, "Semester", min_val=1, max_val=16)
+                except ValueError as exc:
+                    add_err("semester", "invalid_type", str(exc), "Enter integer 1–16.")
+
+            # Validate Assignment & Enrollment fields
+            sess_type = "Theory"
+            if sess_type_raw:
+                st_low = sess_type_raw.lower()
+                if st_low in ("theory", "lecture"):
+                    sess_type = "Theory"
+                elif st_low == "lab":
+                    sess_type = "Lab"
+                elif st_low == "tutorial":
+                    sess_type = "Tutorial"
+                else:
+                    add_err("sessionType", "invalid_type", f"Invalid session type '{sess_type_raw}'.", "Allowed values: Theory, Lab, Tutorial.")
+            spw_val = 1 if sess_type == "Lab" else 3
+            if spw_raw:
+                try:
+                    spw_val = parse_strict_int(spw_raw, "Sessions per week", min_val=1, max_val=6)
+                except ValueError as exc:
+                    add_err("sessionsPerWeek", "invalid_type", str(exc), "Enter integer 1–6.")
+            dur_val = 180 if sess_type == "Lab" else 50
+            if dur_raw:
+                try:
+                    dur_val = parse_strict_int(dur_raw, "Duration minutes", min_val=30, max_val=300)
+                except ValueError as exc:
+                    add_err("durationMinutes", "invalid_type", str(exc), "Enter integer 30–300.")
+            exp_students_val = cohort_size_val
+            if exp_raw:
+                try:
+                    exp_students_val = parse_strict_int(exp_raw, "Expected students", min_val=1, max_val=1000)
+                except ValueError as exc:
+                    add_err("expectedStudents", "invalid_type", str(exc), "Enter integer 1–1000.")
+            req_rtype_val = req_rtype_raw or ("lab" if sess_type == "Lab" else "lecture")
+            if req_rtype_raw and req_rtype_raw not in ("lecture", "lab", "seminar"):
+                add_err("requiredRoomType", "invalid_type", f"Invalid room type '{req_rtype_raw}'.", "Allowed: lecture, lab, seminar.")
 
             sub_ops: List[Dict[str, Any]] = []
             if not errors:
-                # Stage department if specified
+                # 1) Department
                 active_dept_id = None
                 if dept_code:
                     existing_d = staged_depts_by_code.get(dept_code)
                     if not existing_d:
                         d_id = f"dept-{uuid.uuid4().hex[:8]}"
-                        d_pay = {"id": d_id, "institution_id": institution_id, "code": dept_code, "name": dept_name, "faculty_name": school, "head_of_department": "", "created_at": now_iso()}
+                        d_pay = {
+                            "id": d_id,
+                            "institution_id": institution_id,
+                            "code": dept_code,
+                            "name": dept_name,
+                            "school": school,
+                            "faculty_name": school,
+                            "head_of_department": dept_hod,
+                            "sub_departments": sub_depts,
+                            "created_at": now_iso(),
+                        }
                         staged_depts_by_code[dept_code] = d_pay
-                        sub_ops.append({"entity": "departments", "action": "create", "id": d_id, "payload": d_pay, "code": dept_code})
+                        in_file_all_entities.add(f"dept:{dept_code}")
+                        sub_ops.append({"entity": "departments", "action": "create", "id": d_id, "payload": d_pay, "subDepartments": sub_depts, "code": dept_code})
                         active_dept_id = d_id
                     else:
                         active_dept_id = existing_d["id"]
+                        if duplicate_mode == "update" and f"dept:{dept_code}" not in in_file_all_entities and dept_code in ctx["dept_by_code"]:
+                            in_file_all_entities.add(f"dept:{dept_code}")
+                            d_upd = {
+                                "name": mapped_vals.get("deptName", "") or existing_d.get("name") or dept_code,
+                                "school": mapped_vals.get("school", "") or existing_d.get("school") or school,
+                                "faculty_name": mapped_vals.get("school", "") or existing_d.get("faculty_name") or school,
+                                "head_of_department": dept_hod or existing_d.get("head_of_department") or "",
+                                "sub_departments": sub_depts or existing_d.get("sub_departments") or [],
+                            }
+                            diffs = _compute_diffs(existing_d, d_upd, [("name", "Department Name"), ("faculty_name", "School / Faculty"), ("head_of_department", "Head of Department")])
+                            if diffs:
+                                field_diffs.append({"row": row_num, "identifier": dept_code, "entity": "Department", "diffs": diffs})
+                                sub_ops.append({"entity": "departments", "action": "update", "id": existing_d["id"], "match": {"id": f"eq.{existing_d['id']}"}, "payload": d_upd, "before": existing_d, "subDepartments": sub_depts, "code": dept_code})
 
-                # Stage room or lab
-                if room_code and room_code not in staged_rooms_by_code:
-                    cap = int(room_cap_raw) if room_cap_raw else 50
-                    is_lab_room = "lab" in room_type_raw or "lab" in room_code.lower()
-                    if is_lab_room:
-                        r_id = f"lab-{uuid.uuid4().hex[:8]}"
-                        r_pay = {"id": r_id, "institution_id": institution_id, "department_id": active_dept_id, "code": room_code, "name": room_name, "building": building, "capacity": cap, "lab_category": "Computing", "is_available": True, "created_at": now_iso()}
-                        staged_rooms_by_code[room_code] = r_pay
-                        sub_ops.append({"entity": "laboratories", "action": "create", "id": r_id, "payload": r_pay, "code": room_code})
-                    else:
-                        r_id = f"room-{uuid.uuid4().hex[:8]}"
-                        r_pay = {"id": r_id, "institution_id": institution_id, "code": room_code, "name": room_name, "building": building, "floor": 1, "capacity": cap, "room_type": "lecture", "is_available": True, "created_at": now_iso()}
-                        staged_rooms_by_code[room_code] = r_pay
-                        sub_ops.append({"entity": "classrooms", "action": "create", "id": r_id, "payload": r_pay, "code": room_code})
-
-                # Stage instructor
+                # 2) Instructor (staged before rooms/labs and courses so room_lab_engineer / assigned_instructor can resolve same-row)
                 active_inst_id = None
                 if inst_name or inst_email:
                     eff_email = inst_email or f"{re.sub(r'[^a-z0-9]+', '.', inst_name.lower()).strip('.')}@university.edu"
-                    existing_i = staged_inst_by_email.get(eff_email) or (staged_inst_by_name.get(inst_name.lower()) if inst_name else None)
+                    existing_i = (
+                        staged_inst_by_email.get(eff_email)
+                        if inst_email
+                        else (staged_inst_by_email.get(eff_email) or (staged_inst_by_name.get(inst_name.lower()) if inst_name else None))
+                    )
+                    eff_designation = inst_title or ("Lab Engineer" if staff_role == "lab_engineer" else "Assistant Professor")
                     if not existing_i:
                         i_id = f"inst-fac-{uuid.uuid4().hex[:8]}"
                         i_pay = {
                             "id": i_id,
                             "institution_id": institution_id,
                             "department_id": active_dept_id,
+                            "sub_department": inst_sub_dept or None,
                             "name": inst_name or eff_email.split("@")[0],
                             "email": eff_email,
-                            "designation": inst_title,
-                            "max_weekly_hours": int(max_wk_raw) if max_wk_raw else (18 if "lab" in staff_role_raw else 15),
-                            "max_daily_classes": 4,
-                            "specializations": [],
+                            "designation": eff_designation,
+                            "staff_role": staff_role,
+                            "max_weekly_hours": max_weekly_val,
+                            "max_daily_classes": max_daily_val,
+                            "specializations": qual_courses,
                             "created_at": now_iso(),
                         }
                         staged_inst_by_email[eff_email] = i_pay
                         if inst_name:
                             staged_inst_by_name[inst_name.lower()] = i_pay
-                        sub_ops.append({"entity": "instructors", "action": "create", "id": i_id, "payload": i_pay})
+                        in_file_all_entities.add(f"inst:{eff_email}")
+                        sub_ops.append({"entity": "instructors", "action": "create", "id": i_id, "payload": i_pay, "staffRole": staff_role, "subDepartment": inst_sub_dept, "qualifiedCourses": qual_courses})
                         active_inst_id = i_id
                     else:
                         active_inst_id = existing_i["id"]
+                        if duplicate_mode == "update" and f"inst:{eff_email}" not in in_file_all_entities and eff_email in ctx["inst_by_email"]:
+                            in_file_all_entities.add(f"inst:{eff_email}")
+                            i_upd = {
+                                "name": inst_name or existing_i.get("name"),
+                                "department_id": active_dept_id or existing_i.get("department_id"),
+                                "sub_department": inst_sub_dept or existing_i.get("sub_department"),
+                                "designation": inst_title or existing_i.get("designation") or eff_designation,
+                                "staff_role": staff_role,
+                                "max_weekly_hours": int(max_wk_raw) if max_wk_raw else existing_i.get("max_weekly_hours", max_weekly_val),
+                                "max_daily_classes": int(max_day_raw) if max_day_raw else existing_i.get("max_daily_classes", max_daily_val),
+                                "specializations": qual_courses or existing_i.get("specializations") or [],
+                            }
+                            diffs = _compute_diffs(existing_i, i_upd, [("name", "Full Name"), ("designation", "Designation"), ("staff_role", "Staff Role"), ("max_weekly_hours", "Max Weekly Hours"), ("max_daily_classes", "Max Daily Classes")])
+                            if diffs:
+                                field_diffs.append({"row": row_num, "identifier": eff_email, "entity": "Instructor", "diffs": diffs})
+                                sub_ops.append({"entity": "instructors", "action": "update", "id": existing_i["id"], "match": {"id": f"eq.{existing_i['id']}"}, "payload": i_upd, "before": existing_i, "staffRole": staff_role, "subDepartment": inst_sub_dept, "qualifiedCourses": qual_courses})
 
-                # Stage course
+                # 3) Room or Laboratory
+                if room_code:
+                    room_lab_eng_id = None
+                    if room_lab_eng_raw:
+                        eng_obj = resolve_instructor(room_lab_eng_raw)
+                        if not eng_obj:
+                            add_err("roomLabEngineer", "invalid_fk", f"Room/Lab engineer '{room_lab_eng_raw}' not found.", "Import instructors first or enter an existing instructor email/name.")
+                        else:
+                            room_lab_eng_id = eng_obj["id"]
+
+                    if not errors:
+                        existing_r = staged_rooms_by_code.get(room_code)
+                        is_lab_room = "lab" in room_type_raw or "lab" in room_code.lower() or (bool(mapped_vals.get("labCategory", "")) and not room_type_raw)
+                        norm_room_type = "seminar" if room_type_raw in ("seminar", "tutorial") else ("auditorium" if room_type_raw in ("auditorium", "amphitheater", "amphitheatre") else ("studio" if room_type_raw == "studio" else "lecture"))
+                        if not existing_r:
+                            if is_lab_room:
+                                r_id = f"lab-{uuid.uuid4().hex[:8]}"
+                                r_pay = {
+                                    "id": r_id,
+                                    "institution_id": institution_id,
+                                    "department_id": active_dept_id,
+                                    "code": room_code,
+                                    "name": room_name,
+                                    "building": building,
+                                    "capacity": room_cap_val,
+                                    "lab_category": lab_cat,
+                                    "assigned_lab_engineer_id": room_lab_eng_id,
+                                    "equipment": room_equip,
+                                    "is_available": room_is_avail,
+                                    "created_at": now_iso(),
+                                }
+                                staged_rooms_by_code[room_code] = r_pay
+                                in_file_all_entities.add(f"room:{room_code}")
+                                sub_ops.append({"entity": "laboratories", "action": "create", "id": r_id, "payload": r_pay, "equipment": room_equip, "code": room_code})
+                            else:
+                                r_id = f"room-{uuid.uuid4().hex[:8]}"
+                                r_pay = {
+                                    "id": r_id,
+                                    "institution_id": institution_id,
+                                    "code": room_code,
+                                    "name": room_name,
+                                    "building": building,
+                                    "floor": room_floor_val,
+                                    "capacity": room_cap_val,
+                                    "room_type": norm_room_type,
+                                    "is_available": room_is_avail,
+                                    "created_at": now_iso(),
+                                }
+                                staged_rooms_by_code[room_code] = r_pay
+                                in_file_all_entities.add(f"room:{room_code}")
+                                sub_ops.append({"entity": "classrooms", "action": "create", "id": r_id, "payload": r_pay, "equipment": room_equip, "code": room_code})
+                        elif duplicate_mode == "update" and f"room:{room_code}" not in in_file_all_entities:
+                            if room_code in ctx["lab_by_code"]:
+                                in_file_all_entities.add(f"room:{room_code}")
+                                l_upd = {
+                                    "name": mapped_vals.get("roomName", "") or existing_r.get("name") or room_code,
+                                    "building": mapped_vals.get("building", "") or existing_r.get("building") or building,
+                                    "capacity": int(room_cap_raw) if room_cap_raw else existing_r.get("capacity", room_cap_val),
+                                    "lab_category": mapped_vals.get("labCategory", "") or existing_r.get("lab_category") or lab_cat,
+                                    "department_id": active_dept_id or existing_r.get("department_id"),
+                                    "assigned_lab_engineer_id": room_lab_eng_id or existing_r.get("assigned_lab_engineer_id"),
+                                    "equipment": room_equip or existing_r.get("equipment") or [],
+                                    "is_available": room_is_avail if room_avail_raw else existing_r.get("is_available", True),
+                                }
+                                diffs = _compute_diffs(existing_r, l_upd, [("name", "Lab Name"), ("capacity", "Capacity"), ("lab_category", "Category"), ("is_available", "Available")])
+                                if diffs:
+                                    field_diffs.append({"row": row_num, "identifier": room_code, "entity": "Laboratory", "diffs": diffs})
+                                    sub_ops.append({"entity": "laboratories", "action": "update", "id": existing_r["id"], "match": {"id": f"eq.{existing_r['id']}"}, "payload": l_upd, "before": existing_r, "equipment": room_equip, "code": room_code})
+                            elif room_code in ctx["room_by_code"]:
+                                in_file_all_entities.add(f"room:{room_code}")
+                                r_upd = {
+                                    "name": mapped_vals.get("roomName", "") or existing_r.get("name") or room_code,
+                                    "building": mapped_vals.get("building", "") or existing_r.get("building") or building,
+                                    "floor": int(floor_raw) if floor_raw else existing_r.get("floor", 1),
+                                    "capacity": int(room_cap_raw) if room_cap_raw else existing_r.get("capacity", room_cap_val),
+                                    "room_type": norm_room_type if room_type_raw else existing_r.get("room_type", "lecture"),
+                                    "is_available": room_is_avail if room_avail_raw else existing_r.get("is_available", True),
+                                }
+                                diffs = _compute_diffs(existing_r, r_upd, [("name", "Room Name"), ("floor", "Floor"), ("capacity", "Capacity"), ("room_type", "Room Type"), ("is_available", "Available")])
+                                if diffs:
+                                    field_diffs.append({"row": row_num, "identifier": room_code, "entity": "Classroom", "diffs": diffs})
+                                    sub_ops.append({"entity": "classrooms", "action": "update", "id": existing_r["id"], "match": {"id": f"eq.{existing_r['id']}"}, "payload": r_upd, "before": existing_r, "equipment": room_equip, "code": room_code})
+
+                # Resolve course staff FKs
+                course_inst_id = active_inst_id if (active_inst_id and staff_role != "lab_engineer") else None
+                if assigned_inst_raw:
+                    c_inst_obj = resolve_instructor(assigned_inst_raw)
+                    if not c_inst_obj:
+                        add_err("assignedInstructor", "invalid_fk", f"Assigned instructor '{assigned_inst_raw}' not found.", "Import instructors first or enter a valid email/name.")
+                    else:
+                        course_inst_id = c_inst_obj["id"]
+
+                course_lab_eng_id = active_inst_id if (active_inst_id and staff_role == "lab_engineer") else None
+                if assigned_lab_eng_raw:
+                    c_eng_obj = resolve_instructor(assigned_lab_eng_raw)
+                    if not c_eng_obj:
+                        add_err("assignedLabEngineer", "invalid_fk", f"Assigned lab engineer '{assigned_lab_eng_raw}' not found.", "Import instructors first or enter a valid email/name.")
+                    else:
+                        course_lab_eng_id = c_eng_obj["id"]
+
+                # 4) Course
                 active_course_id = None
-                if course_code:
+                if course_code and not errors:
+                    if lec_cr_val is None and lab_cr_val is None:
+                        base_cr = total_cr_val if total_cr_val is not None else 3
+                        if ctype_raw == "lab":
+                            lec_cr_eff, lab_cr_eff = 0, min(4, base_cr)
+                        elif ctype_raw in ("lecture_lab", "lecture+lab", "both"):
+                            lec_cr_eff, lab_cr_eff = max(1, base_cr - 1), 1
+                        else:
+                            lec_cr_eff, lab_cr_eff = base_cr, 0
+                    else:
+                        lec_cr_eff = lec_cr_val or 0
+                        lab_cr_eff = lab_cr_val or 0
+
+                    if lec_cr_eff + lab_cr_eff <= 0:
+                        add_err("creditHours", "invalid_type", "Course must have at least 1 lecture or lab credit hour.", "Set lecture_credits or lab_credits >= 1.")
+
+                    eff_total_cr = min(6, max(1, total_cr_val or (lec_cr_eff + lab_cr_eff)))
+                    eff_c_type = "lecture_lab" if (lec_cr_eff > 0 and lab_cr_eff > 0) else ("lab" if lab_cr_eff > 0 else "lecture")
+
                     existing_c = staged_courses_by_code.get(course_code)
-                    if not existing_c:
+                    if not existing_c and not errors:
                         c_id = f"crs-{uuid.uuid4().hex[:8]}"
-                        lec_cr = int(lec_raw) if lec_raw else (int(cr_raw) if cr_raw else 3)
-                        lab_cr = int(lab_raw) if lab_raw else 0
-                        c_type = "lecture_lab" if (lec_cr > 0 and lab_cr > 0) else ("lab" if lab_cr > 0 else "lecture")
-                        is_elec = bool(parse_strict_bool(elec_raw, default=False)) if elec_raw else False
                         c_pay = {
                             "id": c_id,
                             "institution_id": institution_id,
                             "department_id": active_dept_id,
+                            "sub_department": course_sub_dept or None,
                             "code": course_code,
                             "title": course_title or course_code,
-                            "credit_hours": max(1, lec_cr + lab_cr),
-                            "lecture_hours_per_week": lec_cr,
-                            "lab_hours_per_week": lab_cr * 3,
-                            "course_type": c_type,
-                            "lecture_credit_hours": lec_cr,
-                            "lab_credit_hours": lab_cr,
-                            "assigned_instructor_id": active_inst_id,
-                            "lab_session_mode": "continuous",
-                            "is_compulsory": not is_elec,
-                            "required_equipment": [],
+                            "credit_hours": eff_total_cr,
+                            "lecture_hours_per_week": lec_cr_eff,
+                            "lab_hours_per_week": lab_cr_eff * 3,
+                            "course_type": eff_c_type,
+                            "lecture_credit_hours": lec_cr_eff,
+                            "lab_credit_hours": lab_cr_eff,
+                            "assigned_instructor_id": course_inst_id,
+                            "assigned_lab_engineer_id": course_lab_eng_id,
+                            "lab_session_mode": lab_mode_raw,
+                            "is_compulsory": is_compulsory_val,
+                            "is_elective": not is_compulsory_val,
+                            "elective_pool_name": pool_name or None,
+                            "required_room_type": "lab" if eff_c_type == "lab" else "lecture",
+                            "required_equipment": req_equip,
                             "created_at": now_iso(),
                         }
                         staged_courses_by_code[course_code] = c_pay
-                        sub_ops.append({"entity": "courses", "action": "create", "id": c_id, "payload": c_pay, "deptCode": dept_code})
+                        in_file_all_entities.add(f"course:{course_code}")
+                        sub_ops.append({"entity": "courses", "action": "create", "id": c_id, "payload": c_pay, "electivePoolName": pool_name, "deptCode": dept_code})
                         active_course_id = c_id
-                    else:
+                    elif existing_c and not errors:
                         active_course_id = existing_c["id"]
+                        if duplicate_mode == "update" and f"course:{course_code}" not in in_file_all_entities and course_code in ctx["course_by_code"]:
+                            in_file_all_entities.add(f"course:{course_code}")
+                            c_upd = {
+                                "title": course_title or existing_c.get("title") or course_code,
+                                "department_id": active_dept_id or existing_c.get("department_id"),
+                                "sub_department": course_sub_dept or existing_c.get("sub_department"),
+                                "credit_hours": eff_total_cr if (lec_raw or lab_raw or cr_raw) else existing_c.get("credit_hours", eff_total_cr),
+                                "lecture_hours_per_week": lec_cr_eff if (lec_raw or lab_raw or cr_raw) else existing_c.get("lecture_hours_per_week", lec_cr_eff),
+                                "lab_hours_per_week": (lab_cr_eff * 3) if (lec_raw or lab_raw or cr_raw) else existing_c.get("lab_hours_per_week", 0),
+                                "course_type": eff_c_type if (ctype_raw or lec_raw or lab_raw) else existing_c.get("course_type", eff_c_type),
+                                "lecture_credit_hours": lec_cr_eff if (lec_raw or lab_raw or cr_raw) else existing_c.get("lecture_credit_hours", lec_cr_eff),
+                                "lab_credit_hours": lab_cr_eff if (lec_raw or lab_raw or cr_raw) else existing_c.get("lab_credit_hours", lab_cr_eff),
+                                "assigned_instructor_id": course_inst_id or existing_c.get("assigned_instructor_id"),
+                                "assigned_lab_engineer_id": course_lab_eng_id or existing_c.get("assigned_lab_engineer_id"),
+                                "lab_session_mode": lab_mode_raw if mapped_vals.get("labSessionMode") else existing_c.get("lab_session_mode", "continuous"),
+                                "is_compulsory": is_compulsory_val if (comp_raw or elec_raw) else existing_c.get("is_compulsory", True),
+                                "is_elective": (not is_compulsory_val) if (comp_raw or elec_raw) else existing_c.get("is_elective", False),
+                                "elective_pool_name": pool_name or existing_c.get("elective_pool_name"),
+                                "required_equipment": req_equip or existing_c.get("required_equipment") or [],
+                            }
+                            diffs = _compute_diffs(existing_c, c_upd, [("title", "Course Title"), ("credit_hours", "Credit Hours"), ("is_compulsory", "Compulsory"), ("elective_pool_name", "Elective Pool")])
+                            if diffs:
+                                field_diffs.append({"row": row_num, "identifier": course_code, "entity": "Course", "diffs": diffs})
+                                sub_ops.append({"entity": "courses", "action": "update", "id": existing_c["id"], "match": {"id": f"eq.{existing_c['id']}"}, "payload": c_upd, "before": existing_c, "electivePoolName": pool_name, "deptCode": dept_code})
 
-                # Stage cohort
-                if cohort_code and cohort_code not in staged_batches_by_code:
-                    b_id = f"batch-{uuid.uuid4().hex[:8]}"
-                    b_pay = {
-                        "id": b_id,
-                        "code": cohort_code,
-                        "name": cohort_name,
-                        "department_code": dept_code or (cohort_code.split("-")[1] if "-" in cohort_code else "GEN"),
-                        "year": int(year_raw) if year_raw else 1,
-                        "semester": int(sem_raw) if sem_raw else 1,
-                        "student_count": int(cohort_size_raw) if cohort_size_raw else 45,
-                        "sections_list": cohort_code.split("-")[-1] if "-" in cohort_code else "A",
-                        "institution_id": institution_id,
-                        "created_at": now_iso(),
-                    }
-                    staged_batches_by_code[cohort_code] = b_pay
-                    sub_ops.append({"entity": "batches", "action": "create", "id": b_id, "payload": b_pay})
+                # 5) Cohort / Batch & Section
+                if home_room_raw and home_room_raw not in staged_rooms_by_code:
+                    add_err("homeRoom", "invalid_fk", f"Home room '{home_room_raw}' does not exist in rooms or laboratories.", "Include room_code or import rooms/labs first.")
 
-                if sub_ops:
-                    row_op = {"entity": "all_bundle", "action": "create", "subOps": sub_ops}
-                else:
-                    action = "skip"
-                    add_warn("courseCode", "All entities on this row already exist; row skipped.")
+                active_batch_id = None
+                if cohort_code and not errors:
+                    existing_b = staged_batches_by_code.get(cohort_code)
+                    resolved_dept_code = dept_code or (cohort_code.split("-")[1] if "-" in cohort_code and len(cohort_code.split("-")) >= 2 else "GEN")
+                    resolved_b_name = cohort_name_raw or (f"{eff_batch_code} {resolved_dept_code} Section {eff_section}".strip() if eff_batch_code else f"Cohort {cohort_code}")
+                    if not existing_b:
+                        b_id = f"batch-{uuid.uuid4().hex[:8]}"
+                        b_pay = {
+                            "id": b_id,
+                            "code": cohort_code,
+                            "batch_code": eff_batch_code or cohort_code,
+                            "name": resolved_b_name,
+                            "department_code": resolved_dept_code,
+                            "year": year_val,
+                            "semester": sem_val,
+                            "student_count": cohort_size_val,
+                            "section": eff_section,
+                            "sections_list": eff_section,
+                            "home_room": home_room_raw or None,
+                            "institution_id": institution_id,
+                            "created_at": now_iso(),
+                        }
+                        staged_batches_by_code[cohort_code] = b_pay
+                        in_file_all_entities.add(f"batch:{cohort_code}")
+                        sub_ops.append({"entity": "batches", "action": "create", "id": b_id, "payload": b_pay, "batchCode": eff_batch_code, "section": eff_section, "homeRoom": home_room_raw})
+                        active_batch_id = b_id
+                    else:
+                        active_batch_id = existing_b["id"]
+                        if duplicate_mode == "update" and f"batch:{cohort_code}" not in in_file_all_entities and cohort_code in ctx["batch_by_code"]:
+                            in_file_all_entities.add(f"batch:{cohort_code}")
+                            b_upd = {
+                                "name": cohort_name_raw or existing_b.get("name") or resolved_b_name,
+                                "batch_code": eff_batch_code or existing_b.get("batch_code") or cohort_code,
+                                "department_code": dept_code or existing_b.get("department_code") or resolved_dept_code,
+                                "year": int(year_raw) if year_raw else existing_b.get("year", 1),
+                                "semester": int(sem_raw) if sem_raw else existing_b.get("semester", 1),
+                                "student_count": int(cohort_size_raw) if cohort_size_raw else existing_b.get("student_count", 45),
+                                "section": section_raw or existing_b.get("section") or eff_section,
+                                "sections_list": section_raw or existing_b.get("sections_list") or eff_section,
+                                "home_room": home_room_raw or existing_b.get("home_room") or None,
+                            }
+                            diffs = _compute_diffs(existing_b, b_upd, [("name", "Batch Name"), ("batch_code", "Batch Code"), ("section", "Section"), ("student_count", "Student Count"), ("semester", "Semester"), ("home_room", "Home Room")])
+                            if diffs:
+                                field_diffs.append({"row": row_num, "identifier": cohort_code, "entity": "Batch & Section", "diffs": diffs})
+                                sub_ops.append({"entity": "batches", "action": "update", "id": existing_b["id"], "match": {"id": f"eq.{existing_b['id']}"}, "payload": b_upd, "before": existing_b, "batchCode": eff_batch_code, "section": eff_section, "homeRoom": home_room_raw})
+
+                # 6) Student Enrollment (when both course and batch are on the row)
+                stu_id_for_enr: Optional[str] = None
+                if reg_no:
+                    stu_obj = ctx["student_by_reg"].get(reg_no)
+                    if not stu_obj:
+                        add_err("studentRegistrationNumber", "invalid_fk", f"Student registration '{reg_no}' does not exist in students directory.", "Add the student first or leave registration_number empty for whole-batch/section enrollment.")
+                    else:
+                        stu_id_for_enr = stu_obj["id"]
+
+                if active_course_id and active_batch_id and not errors:
+                    enr_key = (active_course_id, active_batch_id, eff_section, stu_id_for_enr or "")
+                    if enr_key not in staged_enrollment_keys:
+                        staged_enrollment_keys.add(enr_key)
+                        enr_id = str(uuid.uuid4())
+                        enr_pay = {
+                            "id": enr_id,
+                            "institution_id": institution_id,
+                            "course_id": active_course_id,
+                            "batch_id": active_batch_id,
+                            "student_id": stu_id_for_enr,
+                            "section": eff_section,
+                            "enrolled_at": now_iso(),
+                        }
+                        sub_ops.append({"entity": "course_enrollments", "action": "create", "id": enr_id, "payload": enr_pay, "courseCode": course_code, "batchCode": cohort_code})
+
+                # 7) Course Assignment / Scheduling Session (when course + batch AND instructor or session details are provided)
+                has_session_details = any([sess_type_raw, spw_raw, dur_raw, exp_raw, req_rtype_raw])
+                assign_inst_id = course_inst_id or active_inst_id or (staged_courses_by_code.get(course_code) or {}).get("assigned_instructor_id")
+                assign_lab_eng_id = course_lab_eng_id or (active_inst_id if staff_role == "lab_engineer" else None) or (staged_courses_by_code.get(course_code) or {}).get("assigned_lab_engineer_id")
+                if active_course_id and active_batch_id and (assign_inst_id or has_session_details) and not errors:
+                    s_key = (active_course_id, active_batch_id, eff_section, sess_type.lower())
+                    comp_type = "lab" if sess_type == "Lab" else ("tutorial" if sess_type == "Tutorial" else "lecture")
+                    if s_key not in staged_session_keys:
+                        staged_session_keys.add(s_key)
+                        s_id = f"sec-{uuid.uuid4().hex[:8]}"
+                        s_pay = {
+                            "id": s_id,
+                            "institution_id": institution_id,
+                            "course_id": active_course_id,
+                            "instructor_id": assign_inst_id,
+                            "lab_engineer_id": assign_lab_eng_id,
+                            "batch_id": active_batch_id,
+                            "section_code": eff_section,
+                            "session_type": sess_type,
+                            "component_type": comp_type,
+                            "sessions_per_week": spw_val,
+                            "duration_minutes": dur_val,
+                            "expected_students": exp_students_val,
+                            "required_room_type": req_rtype_val,
+                            "required_equipment": req_equip,
+                            "created_at": now_iso(),
+                        }
+                        sub_ops.append({"entity": "course_sessions", "action": "create", "id": s_id, "payload": s_pay, "courseId": active_course_id, "batchId": active_batch_id, "instructorId": assign_inst_id})
+                    elif duplicate_mode == "update" and s_key in ctx["session_by_key"] and has_session_details:
+                        existing_s = ctx["session_by_key"][s_key]
+                        s_upd = {
+                            "instructor_id": assign_inst_id or existing_s.get("instructor_id"),
+                            "lab_engineer_id": assign_lab_eng_id or existing_s.get("lab_engineer_id"),
+                            "sessions_per_week": spw_val if spw_raw else existing_s.get("sessions_per_week", spw_val),
+                            "duration_minutes": dur_val if dur_raw else existing_s.get("duration_minutes", dur_val),
+                            "expected_students": exp_students_val if exp_raw else existing_s.get("expected_students", exp_students_val),
+                            "required_room_type": req_rtype_val if req_rtype_raw else existing_s.get("required_room_type", req_rtype_val),
+                            "component_type": comp_type,
+                        }
+                        diffs = _compute_diffs(existing_s, s_upd, [("instructor_id", "Instructor ID"), ("sessions_per_week", "Sessions / Week"), ("duration_minutes", "Duration (min)"), ("expected_students", "Expected Students"), ("required_room_type", "Room Type")])
+                        if diffs:
+                            field_diffs.append({"row": row_num, "identifier": f"{course_code} ({cohort_code}-{eff_section})", "entity": "Course Assignment", "diffs": diffs})
+                            sub_ops.append({"entity": "course_sessions", "action": "update", "id": existing_s["id"], "match": {"id": f"eq.{existing_s['id']}"}, "payload": s_upd, "before": existing_s, "courseId": active_course_id, "batchId": active_batch_id, "instructorId": assign_inst_id})
+
+                if not errors:
+                    if sub_ops:
+                        has_create = any(op["action"] == "create" for op in sub_ops)
+                        has_update = any(op["action"] == "update" for op in sub_ops)
+                        bundle_action = "update" if (has_update and not has_create) else "create"
+                        action = "update" if has_update and not has_create else "create"
+                        row_op = {"entity": "all_bundle", "action": bundle_action, "subOps": sub_ops}
+                    else:
+                        duplicate_cnt += 1
+                        if duplicate_mode == "stop":
+                            add_err("courseCode", "duplicate", "All entities on this master row already exist.", "Remove duplicate row or select Skip/Update duplicate mode.")
+                        else:
+                            action = "skip"
+                            add_warn("courseCode", "All entities on this row already exist; row skipped.")
             stable_id = course_code or room_code or cohort_code or inst_email or dept_code or f"row-{row_num}"
 
         # Determine final row status
@@ -2135,7 +2662,7 @@ def commit_staged_import(
     skipped_count = summary["skipCount"]
     failed_count = summary["errorRows"]
 
-    entity_order = ("departments", "classrooms", "laboratories", "instructors", "courses", "batches", "course_enrollments", "course_sessions")
+    entity_order = ("departments", "instructors", "classrooms", "laboratories", "courses", "batches", "course_enrollments", "course_sessions")
     grouped_creates: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
     update_ops: List[Dict[str, Any]] = []
 

@@ -14,6 +14,7 @@ from app.deps import (
     parse_json_body,
     raise_supabase_http_error,
     require_auth_user,
+    resolve_matching_batches_for_course,
     safe_json_loads,
     safe_select_optional,
     scoped_uni_id,
@@ -1478,6 +1479,8 @@ async def auto_generate_sections(request: Request) -> Dict[str, Any]:
     try:
         courses = client.select("courses", filters={"institution_id": f"eq.{uni_id}"})
         batches = client.select("batches", filters={"institution_id": f"eq.{uni_id}"})
+        departments = client.select("departments", filters={"institution_id": f"eq.{uni_id}"})
+        programs = client.select("academic_programs", filters={"institution_id": f"eq.{uni_id}"})
         instructors = client.select("instructors", filters={"institution_id": f"eq.{uni_id}"})
         existing_sessions = client.select("course_sessions", filters={"institution_id": f"eq.{uni_id}"})
 
@@ -1493,57 +1496,62 @@ async def auto_generate_sections(request: Request) -> Dict[str, Any]:
 
         to_insert: List[Dict[str, Any]] = []
         for c in courses:
-            target_batch_id = c.get("assigned_batch_id") or batches[0]["id"]
-            batch_obj = next((b for b in batches if b["id"] == target_batch_id), batches[0])
-            exp_students = max(1, int(batch_obj.get("student_count") or 45))
+            target_batches = resolve_matching_batches_for_course(c, batches, departments, programs)
+            if not target_batches:
+                continue
             lec_cr = int(c.get("lecture_credit_hours") or 0)
             lab_cr = int(c.get("lab_credit_hours") or 0)
             if lec_cr == 0 and lab_cr == 0:
                 lec_cr = max(1, int(c.get("credit_hours") or 3))
 
-            if lec_cr > 0 and (c["id"], target_batch_id, "lecture") not in existing_keys:
-                to_insert.append(
-                    {
-                        "id": f"sec-{uuid.uuid4().hex[:8]}",
-                        "institution_id": uni_id,
-                        "term_id": term_id,
-                        "course_id": c["id"],
-                        "instructor_id": c.get("assigned_instructor_id") or default_faculty,
-                        "batch_id": target_batch_id,
-                        "section_code": str(batch_obj.get("section") or "A"),
-                        "session_type": "Theory",
-                        "component_type": "lecture",
-                        "sessions_per_week": max(1, min(6, lec_cr)),
-                        "duration_minutes": 50,
-                        "expected_students": exp_students,
-                        "required_room_type": c.get("required_room_type") or "lecture",
-                        "created_at": now,
-                    }
-                )
-                existing_keys.add((c["id"], target_batch_id, "lecture"))
-            if lab_cr > 0 and (c["id"], target_batch_id, "lab") not in existing_keys:
-                to_insert.append(
-                    {
-                        "id": f"sec-{uuid.uuid4().hex[:8]}",
-                        "institution_id": uni_id,
-                        "term_id": term_id,
-                        "course_id": c["id"],
-                        "instructor_id": c.get("assigned_instructor_id") or default_faculty,
-                        "lab_engineer_id": c.get("assigned_lab_engineer_id") or default_lab_eng,
-                        "batch_id": target_batch_id,
-                        "section_code": f"{batch_obj.get('section') or 'A'}-Lab",
-                        "session_type": "Lab",
-                        "component_type": "lab",
-                        "sessions_per_week": max(1, min(6, lab_cr)),
-                        "duration_minutes": 180,
-                        "expected_students": exp_students,
-                        "required_room_type": "lab",
-                        "is_atomic_session": True,
-                        "span_slots": 3,
-                        "created_at": now,
-                    }
-                )
-                existing_keys.add((c["id"], target_batch_id, "lab"))
+            for batch_obj in target_batches:
+                target_batch_id = batch_obj["id"]
+                exp_students = max(1, int(batch_obj.get("student_count") or 45))
+                sec_code = str(batch_obj.get("section") or "A")
+
+                if lec_cr > 0 and (c["id"], target_batch_id, "lecture") not in existing_keys:
+                    to_insert.append(
+                        {
+                            "id": f"sec-{uuid.uuid4().hex[:8]}",
+                            "institution_id": uni_id,
+                            "term_id": term_id,
+                            "course_id": c["id"],
+                            "instructor_id": c.get("assigned_instructor_id") or default_faculty,
+                            "batch_id": target_batch_id,
+                            "section_code": sec_code,
+                            "session_type": "Theory",
+                            "component_type": "lecture",
+                            "sessions_per_week": max(1, min(6, lec_cr)),
+                            "duration_minutes": 50,
+                            "expected_students": exp_students,
+                            "required_room_type": c.get("required_room_type") or "lecture",
+                            "created_at": now,
+                        }
+                    )
+                    existing_keys.add((c["id"], target_batch_id, "lecture"))
+                if lab_cr > 0 and (c["id"], target_batch_id, "lab") not in existing_keys:
+                    to_insert.append(
+                        {
+                            "id": f"sec-{uuid.uuid4().hex[:8]}",
+                            "institution_id": uni_id,
+                            "term_id": term_id,
+                            "course_id": c["id"],
+                            "instructor_id": c.get("assigned_instructor_id") or default_faculty,
+                            "lab_engineer_id": c.get("assigned_lab_engineer_id") or default_lab_eng,
+                            "batch_id": target_batch_id,
+                            "section_code": f"{sec_code}-Lab",
+                            "session_type": "Lab",
+                            "component_type": "lab",
+                            "sessions_per_week": max(1, min(6, lab_cr)),
+                            "duration_minutes": 180,
+                            "expected_students": exp_students,
+                            "required_room_type": "lab",
+                            "is_atomic_session": True,
+                            "span_slots": 3,
+                            "created_at": now,
+                        }
+                    )
+                    existing_keys.add((c["id"], target_batch_id, "lab"))
 
         if to_insert:
             client.insert("course_sessions", to_insert)

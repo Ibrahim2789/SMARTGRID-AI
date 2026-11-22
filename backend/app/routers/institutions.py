@@ -17,6 +17,7 @@ from app.deps import (
     parse_json_body,
     raise_supabase_http_error,
     require_auth_user,
+    resolve_batch_department_id,
     safe_delete_optional,
     safe_insert_optional,
     safe_json_loads,
@@ -373,7 +374,7 @@ def _build_workspace_payload(client: Any, inst_id: str) -> Dict[str, Any]:
                 "requiredRoomType": c.get("required_room_type") or ("lab" if ct == "lab" else "lecture"),
                 "assignedInstructorId": c.get("assigned_instructor_id") or (first_lec or {}).get("instructor_id") or "",
                 "assignedLabEngineerId": c.get("assigned_lab_engineer_id") or (first_lab or {}).get("instructor_id") or "",
-                "assignedBatchId": c.get("assigned_batch_id") or (c_sessions[0].get("batch_id") if c_sessions else "") or "",
+                "assignedBatchId": c.get("assigned_batch_id") or "",
                 "semester": c.get("semester_number"),
                 "labSessionMode": c.get("lab_session_mode") or "continuous",
                 "isElective": bool(c.get("is_elective", not c.get("is_compulsory", True))),
@@ -385,12 +386,13 @@ def _build_workspace_payload(client: Any, inst_id: str) -> Dict[str, Any]:
     mapped_groups = []
     for b in batches:
         d_code = str(b.get("department_code") or "").upper()
-        dept_obj = dept_by_code.get(d_code, {})
-        prog_id = b.get("program_id") or prog_by_dept.get(dept_obj.get("id", ""), "")
+        resolved_dept_id = resolve_batch_department_id(b, departments, programs)
+        prog_id = b.get("program_id") or (prog_by_dept.get(resolved_dept_id, "") if resolved_dept_id else "")
         mapped_groups.append(
             {
                 "id": b["id"],
                 "programId": prog_id,
+                "departmentId": resolved_dept_id,
                 "termId": b.get("term_id") or active_term_id,
                 "batchCode": b.get("batch_code") or (b["code"].split("-")[0] if "-" in b["code"] else b["code"]),
                 "name": b["name"],
@@ -435,6 +437,7 @@ def _build_workspace_payload(client: Any, inst_id: str) -> Dict[str, Any]:
                 "componentType": s.get("component_type") or ("lab" if s_is_lab else "lecture"),
                 "isAtomicSession": bool(s.get("is_atomic_session", s_is_lab)),
                 "spanSlots": int(s.get("span_slots") or (3 if s_is_lab else 1)),
+                "sessionsPerWeek": int(s.get("sessions_per_week") or (1 if s_is_lab else 3)),
                 "assignedSlot": slot_json,
                 "isLocked": bool(s.get("is_locked", False)),
             }

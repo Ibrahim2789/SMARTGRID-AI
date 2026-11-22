@@ -54,26 +54,29 @@ export async function runDatabaseMigrations(): Promise<DbMigrationStatus> {
 
   const migrationPath = path.resolve(
     process.cwd(),
-    'supabase/migrations/20261120000001_complete_persistence_sync.sql'
+    'supabase/schema.sql'
   );
   if (!fs.existsSync(migrationPath)) {
     lastMigrationStatus = {
       executed: false,
       succeeded: false,
-      error: 'Migration SQL file missing.',
+      error: 'Schema SQL file (supabase/schema.sql) missing.',
       rlsTablesChecked: 0,
       rlsEnabledCount: 0,
       verifiedTablesCount: 0,
       ranAt: new Date().toISOString()
     };
-    console.error('[DB Migration] Migration file not found.');
+    console.error('[DB Migration] Schema file not found.');
     return lastMigrationStatus;
   }
 
   const sql = fs.readFileSync(migrationPath, 'utf-8');
-  if (/enable\s+row\s+level\s+security/i.test(sql)) {
+  const activeSql = sql
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/--.*$/gm, '');
+  if (/enable\s+row\s+level\s+security/i.test(activeSql)) {
     throw new Error(
-      'Safety check failed: Migration SQL contains ENABLE ROW LEVEL SECURITY, which is prohibited.'
+      'Safety check failed: Schema SQL contains active ENABLE ROW LEVEL SECURITY, which is prohibited.'
     );
   }
 

@@ -477,6 +477,5 @@ def get_database_connection_status() -> Dict[str, Any]:
         "supabaseDbUrlProvided": bool(settings.supabase_db_url),
         "supabaseRestProbe": rest_probe,
         "schemaFile": "supabase/schema.sql",
-        "migrationDirectory": "supabase/migrations/",
         "activePersistenceEngine": "supabase-postgresql",
     }

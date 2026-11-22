@@ -39,6 +39,119 @@ import {
   getStoredUser
 } from '../services/votingApi';
 
+export function stripDegreePrefix(code: string): string {
+  const clean = String(code || '').trim().toUpperCase();
+  const prefixes = ['BS-', 'BE-', 'MS-', 'ME-', 'PHD-', 'BSC-', 'MSC-', 'BS', 'BE', 'MS', 'ME', 'PHD', 'BSC', 'MSC'];
+  for (const prefix of prefixes) {
+    if (clean.startsWith(prefix) && clean.length > prefix.length) {
+      return clean.slice(prefix.length).replace(/^-+/, '');
+    }
+  }
+  return clean;
+}
+
+export function resolveGroupDepartmentId(
+  group: Pick<StudentGroup, 'programId' | 'departmentId' | 'departmentCode' | 'code'>,
+  departments: Department[],
+  programs: Program[]
+): string {
+  if (!departments || departments.length === 0) return '';
+  const deptById = new Map(departments.map(d => [d.id, d]));
+  const deptByCode = new Map(
+    departments.filter(d => d.code).map(d => [d.code.trim().toUpperCase(), d])
+  );
+
+  // 1. Exact departmentCode match
+  const rawDeptCode = String(group.departmentCode || '').trim().toUpperCase();
+  if (rawDeptCode && deptByCode.has(rawDeptCode)) {
+    return deptByCode.get(rawDeptCode)!.id;
+  }
+
+  // 2. Explicit departmentId resolved on group
+  if (group.departmentId && deptById.has(group.departmentId)) {
+    return group.departmentId;
+  }
+
+  // 3. Batch code segments (e.g. '2K24-CS-A' -> 'CS')
+  const parts = String(group.code || '').toUpperCase().replace(/_/g, '-').split('-').filter(Boolean);
+  for (const part of parts) {
+    if (deptByCode.has(part)) {
+      return deptByCode.get(part)!.id;
+    }
+  }
+
+  // 4. Program -> department link
+  if (group.programId) {
+    const prog = programs.find(p => p.id === group.programId);
+    if (prog?.departmentId && deptById.has(prog.departmentId)) {
+      return prog.departmentId;
+    }
+  }
+
+  // 5. Degree-prefix stripped match (e.g. BSCS <-> CS)
+  const stripped = stripDegreePrefix(rawDeptCode);
+  if (stripped) {
+    const matchedDept = departments.find(d => stripDegreePrefix(d.code) === stripped);
+    if (matchedDept) return matchedDept.id;
+  }
+  for (const part of parts) {
+    const strippedPart = stripDegreePrefix(part);
+    if (strippedPart) {
+      const matchedDept = departments.find(d => stripDegreePrefix(d.code) === strippedPart);
+      if (matchedDept) return matchedDept.id;
+    }
+  }
+
+  // 6. Single-department fallback when group department is empty or GEN
+  if (departments.length === 1 && (rawDeptCode === '' || rawDeptCode === 'GEN')) {
+    return departments[0].id;
+  }
+  return '';
+}
+
+export function doesGroupMatchDepartment(
+  group: Pick<StudentGroup, 'programId' | 'departmentId' | 'departmentCode' | 'code'>,
+  dept: Department | string,
+  programs: Program[],
+  allDepartments: Department[]
+): boolean {
+  const deptId = typeof dept === 'string' ? dept : dept.id;
+  if (!deptId || deptId === 'all') return true;
+  const resolved = resolveGroupDepartmentId(group, allDepartments, programs);
+  if (resolved) return resolved === deptId;
+  const deptObj = typeof dept === 'string' ? allDepartments.find(d => d.id === dept) : dept;
+  if (deptObj?.code) {
+    const targetCode = deptObj.code.trim().toUpperCase();
+    const rawDeptCode = String(group.departmentCode || '').trim().toUpperCase();
+    if (
+      rawDeptCode === targetCode ||
+      (rawDeptCode !== '' && stripDegreePrefix(rawDeptCode) === stripDegreePrefix(targetCode))
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+export function doesCourseMatchDepartment(
+  course: Pick<Course, 'departmentId' | 'code'>,
+  deptId: string,
+  allDepartments: Department[]
+): boolean {
+  if (!deptId || deptId === 'all') return true;
+  if (course.departmentId === deptId) return true;
+  if (!course.departmentId && allDepartments.length <= 1) return true;
+  const deptObj = allDepartments.find(d => d.id === deptId);
+  if (!course.departmentId && deptObj?.code) {
+    const prefix = String(course.code || '').toUpperCase().split(/[-_\s]/)[0];
+    return (
+      prefix === deptObj.code.trim().toUpperCase() ||
+      stripDegreePrefix(prefix) === stripDegreePrefix(deptObj.code)
+    );
+  }
+  return false;
+}
+
 const DEFAULT_TIME_STRUCTURE: TimeStructure = {
   id: 'standard-campus-grid',
   name: 'University Standard 9:00 AM – 5:00 PM Academic Grid',
@@ -1933,16 +2046,26 @@ export const institutionalStore = {
         const explicitGroup = currentStore.studentGroups.find(g => g.id === course.assignedBatchId);
         if (explicitGroup) return [explicitGroup];
       }
+      if (!course.departmentId) {
+        return currentStore.studentGroups;
+      }
       const courseDept = currentStore.departments.find(d => d.id === course.departmentId);
-      const matched = currentStore.studentGroups.filter(g => {
-        const prog = currentStore.programs.find(p => p.id === g.programId);
-        if (prog?.departmentId === course.departmentId) return true;
-        if (courseDept?.code && g.departmentCode?.toUpperCase() === courseDept.code.toUpperCase()) return true;
-        const parts = g.code.toUpperCase().split('-');
-        if (courseDept?.code && parts.includes(courseDept.code.toUpperCase())) return true;
-        return false;
-      });
-      return matched.length > 0 ? matched : [currentStore.studentGroups[0]];
+      const matched = currentStore.studentGroups.filter(g =>
+        doesGroupMatchDepartment(
+          g,
+          courseDept || course.departmentId,
+          currentStore.programs,
+          currentStore.departments
+        )
+      );
+      if (matched.length > 0) return matched;
+      if (currentStore.departments.length <= 1) {
+        return currentStore.studentGroups;
+      }
+      const anyDeptMatched = currentStore.studentGroups.some(g =>
+        Boolean(resolveGroupDepartmentId(g, currentStore.departments, currentStore.programs))
+      );
+      return anyDeptMatched ? [] : currentStore.studentGroups;
     };
 
     // Sync explicit course instructor / lab engineer onto existing auto-generated sections so admin updates apply immediately
@@ -3319,8 +3442,15 @@ export const institutionalStore = {
       return best.basePeriod || best.period;
     };
 
+    const wsTerms = Array.isArray(workspace.terms) ? (workspace.terms as AcademicTerm[]) : [];
+    const wsCourses = Array.isArray(workspace.courses) ? (workspace.courses as Course[]) : [];
+    const wsGroups = Array.isArray(workspace.studentGroups) ? (workspace.studentGroups as StudentGroup[]) : [];
+    const activeLabBlocks = computedTs.continuousLabBlocks.length > 0
+      ? computedTs.continuousLabBlocks
+      : VALID_CONTINUOUS_LAB_BLOCKS;
+
     const rawSections = Array.isArray(workspace.sections) ? (workspace.sections as Section[]) : [];
-    const hydratedSections: Section[] = rawSections.map(sec => {
+    const baseSections: Section[] = rawSections.map(sec => {
       if (!sec.assignedSlot) return sec;
       const day = (String(sec.assignedSlot.day || 'Mon').slice(0, 3) as DayOfWeek) || 'Mon';
       const tsStr = String(sec.assignedSlot.timeSlot || sec.assignedSlot.startTime24 || '');
@@ -3355,6 +3485,148 @@ export const institutionalStore = {
         assignments: normalizedAssigns
       };
     });
+
+    // Reconcile the active/latest scenario's timetableEntries onto hydratedSections so multi-meeting
+    // courses and auto-generated sessions always hydrate cleanly from Supabase across reloads.
+    const displayScenario =
+      hydratedScenarios.find(s => s.status === 'published') || hydratedScenarios[0];
+    const displayEntries = Array.isArray(displayScenario?.timetableEntries)
+      ? displayScenario.timetableEntries
+      : [];
+
+    const buildAssignedSlotFromDbEntry = (
+      entry: Record<string, unknown>,
+      fallbackSlot?: SectionSlotAssignment
+    ): SectionSlotAssignment => {
+      const day = (String(entry.day_of_week || entry.day || fallbackSlot?.day || 'Mon').slice(0, 3) as DayOfWeek) || 'Mon';
+      const rawStart = String(entry.start_time || entry.startTime24 || entry.startTime || fallbackSlot?.startTime24 || '09:00');
+      const period = /^\d{1,2}:\d{2}$/.test(rawStart.trim())
+        ? mapPeriodFromStart(day, rawStart)
+        : String(fallbackSlot?.timeSlot || UNIVERSITY_PERIODS[0]);
+      const isLab =
+        String(entry.session_type || '').toLowerCase() === 'lab' ||
+        String(entry.component_type || '').toLowerCase() === 'lab' ||
+        fallbackSlot?.sessionType === 'Lab';
+      const startMinutes = parseTime24ToMinutes(rawStart, 540);
+      const defaultDur = isLab
+        ? computedTs.labDurationMinutes || 180
+        : (getEffectiveSlotDisplayForDay(day, period, computedTs).durationMinutes || computedTs.periodLengthMinutes || 50);
+      const durationMinutes = Number(entry.duration_minutes ?? fallbackSlot?.durationMinutes ?? defaultDur);
+      const endTime24 = String(entry.end_time || fallbackSlot?.endTime24 || minutesToTime24(startMinutes + durationMinutes));
+      const endMinutes = parseTime24ToMinutes(endTime24, startMinutes + durationMinutes);
+      const roomId = String(entry.room_id || fallbackSlot?.roomId || '');
+      const slotSource = (String(entry.slot_source || fallbackSlot?.slotSource || (day === 'Fri' ? 'friday_compressed' : 'regular')) as SectionSlotAssignment['slotSource']);
+
+      if (isLab) {
+        const matchedBlock =
+          getLabBlockByStartPeriod(period, hydratedTimeStructure, day) ||
+          (day === 'Fri' && computedTs.fridaySchedule.continuousLabBlocks[0]) ||
+          activeLabBlocks[0];
+        const span = matchedBlock?.spanSlots || computedTs.labSpanSlots || 3;
+        return {
+          day,
+          timeSlot: matchedBlock?.startPeriod || period,
+          roomId,
+          durationMinutes,
+          sessionType: 'Lab',
+          spanSlots: span,
+          continuousTimeLabel: matchedBlock?.continuousLabel || `${rawStart} – ${endTime24}`,
+          startTime24: rawStart,
+          endTime24,
+          startMinutes,
+          endMinutes,
+          slotSource
+        };
+      }
+
+      return {
+        day,
+        timeSlot: period,
+        roomId,
+        durationMinutes,
+        sessionType: 'Lecture',
+        spanSlots: 1,
+        startTime24: rawStart,
+        endTime24,
+        startMinutes,
+        endMinutes,
+        slotSource
+      };
+    };
+
+    let hydratedSections: Section[] = baseSections;
+    if (displayEntries.length > 0) {
+      const entriesBySessionId = new Map<string, Array<{ idx: number; entry: Record<string, unknown> }>>();
+      displayEntries.forEach((entry, idx) => {
+        const csId = String(entry.course_session_id || '');
+        if (!csId) return;
+        const list = entriesBySessionId.get(csId) || [];
+        list.push({ idx, entry });
+        entriesBySessionId.set(csId, list);
+      });
+
+      const consumedEntryIndices = new Set<number>();
+      const reconciled: Section[] = [];
+
+      baseSections.forEach(sec => {
+        const matched = entriesBySessionId.get(sec.id);
+        if (!matched || matched.length === 0) {
+          reconciled.push(sec);
+          return;
+        }
+        matched.forEach(({ idx, entry }, mIdx) => {
+          consumedEntryIndices.add(idx);
+          const slot = buildAssignedSlotFromDbEntry(entry, sec.assignedSlot);
+          const isLab = slot.sessionType === 'Lab';
+          reconciled.push({
+            ...sec,
+            id: mIdx === 0 ? sec.id : `${sec.id}__m${mIdx}`,
+            sectionNumber: matched.length > 1 ? `${sec.sectionNumber}-M${mIdx + 1}` : sec.sectionNumber,
+            instructorId: String(entry.instructor_id || sec.instructorId || ''),
+            labEngineerId: String(entry.lab_engineer_id || sec.labEngineerId || '') || undefined,
+            sessionType: isLab ? 'Lab' : 'Lecture',
+            componentType: isLab ? 'lab' : 'lecture',
+            isAtomicSession: true,
+            sessionsPerWeek: 1,
+            spanSlots: slot.spanSlots || (isLab ? 3 : 1),
+            assignedSlot: slot
+          });
+        });
+      });
+
+      const defaultTermId = displayScenario?.termId || wsTerms[0]?.id || 'term-default';
+      displayEntries.forEach((entry, idx) => {
+        if (consumedEntryIndices.has(idx)) return;
+        const courseCodeUpper = String(entry.course_code || '').trim().toUpperCase();
+        const matchedCourse = wsCourses.find(c => c.code.trim().toUpperCase() === courseCodeUpper);
+        const batchId = String(entry.batch_id || '');
+        const matchedGroup = wsGroups.find(g => g.id === batchId) || wsGroups[0];
+        if (!matchedCourse || !matchedGroup) return;
+
+        const slot = buildAssignedSlotFromDbEntry(entry);
+        const isLab = slot.sessionType === 'Lab';
+        const csId = String(entry.course_session_id || '');
+        reconciled.push({
+          id: csId ? `${csId}__syn_${idx}` : `sec-syn-${idx}`,
+          courseId: matchedCourse.id,
+          termId: defaultTermId,
+          sectionNumber: String(entry.section_code || matchedGroup.section || 'A'),
+          expectedEnrollment: Math.min(matchedGroup.size || 45, 60),
+          instructorId: String(entry.instructor_id || matchedCourse.assignedInstructorId || ''),
+          labEngineerId: String(entry.lab_engineer_id || matchedCourse.assignedLabEngineerId || '') || undefined,
+          studentGroupId: matchedGroup.id,
+          sessionType: isLab ? 'Lab' : 'Lecture',
+          componentType: isLab ? 'lab' : 'lecture',
+          isAtomicSession: true,
+          sessionsPerWeek: 1,
+          spanSlots: slot.spanSlots || (isLab ? 3 : 1),
+          assignedSlot: slot,
+          isLocked: Boolean(entry.is_locked)
+        });
+      });
+
+      hydratedSections = reconciled;
+    }
 
     const rawFeedback = Array.isArray(workspace.feedbackPolls)
       ? (workspace.feedbackPolls as Array<Record<string, unknown>>)
@@ -3519,12 +3791,14 @@ export const institutionalStore = {
       ? new Set(params.selectedGroupIds)
       : null;
 
-    const entryBySectionId = new Map<string, BackendOptimizationEntry>();
+    const entriesBySectionId = new Map<string, BackendOptimizationEntry[]>();
     if (Array.isArray(params.entries)) {
       params.entries.forEach(entry => {
         const sid = String(entry.sectionId || entry.sessionId || '');
-        if (sid && !entryBySectionId.has(sid)) {
-          entryBySectionId.set(sid, entry);
+        if (sid) {
+          const list = entriesBySectionId.get(sid) || [];
+          list.push(entry);
+          entriesBySectionId.set(sid, list);
         }
       });
     }
@@ -3532,24 +3806,15 @@ export const institutionalStore = {
     let placedCount = 0;
     let unplacedCount = 0;
 
-    const newSections = currentStore.sections.map(sec => {
-      if (targetGroupSet && !targetGroupSet.has(sec.studentGroupId)) {
-        return sec;
-      }
-      const entry = entryBySectionId.get(sec.id);
-      const assign = params.assignments?.[sec.id];
+    const mapSlotForEntry = (
+      sec: Section,
+      entry?: BackendOptimizationEntry,
+      assign?: BackendOptimizationAssignment
+    ): { assignedSlot?: SectionSlotAssignment; isLab: boolean; instructorId: string; labEngineerId?: string } | null => {
       const dayRaw = entry?.day || assign?.day;
       const startTimeRaw = entry?.startTime || assign?.startTime;
       const roomIdRaw = entry?.roomId || assign?.roomId;
-
-      if (!dayRaw || !startTimeRaw) {
-        if (sec.assignedSlot) {
-          placedCount++;
-          return sec;
-        }
-        unplacedCount++;
-        return sec;
-      }
+      if (!dayRaw || !startTimeRaw) return null;
 
       const day = (String(dayRaw).slice(0, 3) as DayOfWeek) || 'Mon';
       const period = this.mapBackendStartTimeToPeriod(day, String(startTimeRaw));
@@ -3570,8 +3835,9 @@ export const institutionalStore = {
       const startTime24 = String(entry?.startTime || assign?.startTime || minutesToTime24(startMins));
       const endTime24 = String(entry?.endTime || assign?.endTime || minutesToTime24(endMins));
       const slotSource = (entry?.slotSource as SectionSlotAssignment['slotSource']) || (day === 'Fri' ? 'friday_compressed' : 'regular');
+      const instructorId = entry?.instructorId || assign?.instructorId || sec.instructorId;
+      const labEngineerId = entry?.labEngineerId || assign?.labEngineerId || sec.labEngineerId;
 
-      placedCount++;
       if (isLab) {
         const matchedBlock =
           getLabBlockByStartPeriod(period, currentStore.timeStructure, day) ||
@@ -3579,18 +3845,15 @@ export const institutionalStore = {
           activeLabBlocks[0];
         const span = matchedBlock?.spanSlots || computedTiming.labSpanSlots || 3;
         return {
-          ...sec,
-          instructorId: entry?.instructorId || assign?.instructorId || sec.instructorId,
-          labEngineerId: entry?.labEngineerId || assign?.labEngineerId || sec.labEngineerId,
-          sessionType: 'Lab' as const,
-          componentType: 'lab' as const,
-          spanSlots: span,
+          isLab: true,
+          instructorId,
+          labEngineerId,
           assignedSlot: {
             day,
             timeSlot: matchedBlock?.startPeriod || period,
             roomId,
             durationMinutes,
-            sessionType: 'Lab' as const,
+            sessionType: 'Lab',
             spanSlots: span,
             continuousTimeLabel: matchedBlock?.continuousLabel || `${startTime24} – ${endTime24}`,
             startTime24,
@@ -3604,17 +3867,15 @@ export const institutionalStore = {
       }
 
       return {
-        ...sec,
-        instructorId: entry?.instructorId || assign?.instructorId || sec.instructorId,
-        sessionType: 'Lecture' as const,
-        componentType: 'lecture' as const,
-        spanSlots: 1,
+        isLab: false,
+        instructorId,
+        labEngineerId,
         assignedSlot: {
           day,
           timeSlot: period,
           roomId,
           durationMinutes,
-          sessionType: 'Lecture' as const,
+          sessionType: 'Lecture',
           spanSlots: 1,
           startTime24,
           endTime24,
@@ -3623,6 +3884,60 @@ export const institutionalStore = {
           slotSource
         }
       };
+    };
+
+    const newSections: Section[] = [];
+    currentStore.sections.forEach(sec => {
+      if (targetGroupSet && !targetGroupSet.has(sec.studentGroupId)) {
+        newSections.push(sec);
+        return;
+      }
+      const matchedEntries = entriesBySectionId.get(sec.id);
+      const assign = params.assignments?.[sec.id];
+
+      if (matchedEntries && matchedEntries.length > 0) {
+        matchedEntries.forEach((entry, mIdx) => {
+          const mapped = mapSlotForEntry(sec, entry, mIdx === 0 ? assign : undefined);
+          if (!mapped || !mapped.assignedSlot) return;
+          placedCount++;
+          newSections.push({
+            ...sec,
+            id: mIdx === 0 ? sec.id : `${sec.id}__m${mIdx}`,
+            sectionNumber: matchedEntries.length > 1 ? `${sec.sectionNumber}-M${mIdx + 1}` : sec.sectionNumber,
+            instructorId: mapped.instructorId,
+            labEngineerId: mapped.labEngineerId,
+            sessionType: mapped.isLab ? 'Lab' : 'Lecture',
+            componentType: mapped.isLab ? 'lab' : 'lecture',
+            isAtomicSession: true,
+            sessionsPerWeek: 1,
+            spanSlots: mapped.assignedSlot.spanSlots || (mapped.isLab ? 3 : 1),
+            assignedSlot: mapped.assignedSlot
+          });
+        });
+        return;
+      }
+
+      const singleMapped = mapSlotForEntry(sec, undefined, assign);
+      if (singleMapped?.assignedSlot) {
+        placedCount++;
+        newSections.push({
+          ...sec,
+          instructorId: singleMapped.instructorId,
+          labEngineerId: singleMapped.labEngineerId,
+          sessionType: singleMapped.isLab ? 'Lab' : 'Lecture',
+          componentType: singleMapped.isLab ? 'lab' : 'lecture',
+          spanSlots: singleMapped.assignedSlot.spanSlots || (singleMapped.isLab ? 3 : 1),
+          assignedSlot: singleMapped.assignedSlot
+        });
+        return;
+      }
+
+      if (sec.assignedSlot) {
+        placedCount++;
+      } else {
+        unplacedCount++;
+      }
+      newSections.push(sec);
     });
 
     const roomUtilization = Number(

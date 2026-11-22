@@ -1680,12 +1680,31 @@ export const DataImportWizard: React.FC<DataImportWizardProps> = ({
                                     }`}
                                   >
                                     <option value="">-- Ignore / Do Not Import --</option>
-                                    {currentSchema.fields.map(field => (
-                                      <option key={field.key} value={field.key}>
-                                        {field.label}
-                                        {field.required ? ' * (Required)' : ''}
-                                      </option>
-                                    ))}
+                                    {(() => {
+                                      const groupNames = Array.from(
+                                        new Set(currentSchema.fields.map(f => f.group))
+                                      );
+                                      if (groupNames.length <= 1) {
+                                        return currentSchema.fields.map(field => (
+                                          <option key={field.key} value={field.key}>
+                                            {field.label}
+                                            {field.required ? ' * (Required)' : ''}
+                                          </option>
+                                        ));
+                                      }
+                                      return groupNames.map(group => (
+                                        <optgroup key={group} label={group}>
+                                          {currentSchema.fields
+                                            .filter(f => f.group === group)
+                                            .map(field => (
+                                              <option key={field.key} value={field.key}>
+                                                {field.label}
+                                                {field.required ? ' * (Required)' : ''}
+                                              </option>
+                                            ))}
+                                        </optgroup>
+                                      ));
+                                    })()}
                                   </select>
                                 </td>
                               </tr>
