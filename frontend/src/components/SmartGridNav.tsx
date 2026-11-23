@@ -19,6 +19,7 @@ import { SmartGridLogo } from './SmartGridLogo';
 export type RouteType =
   | 'home'
   | 'setup'
+  | 'assignments'
   | 'generate'
   | 'timetables'
   | 'feedback'
@@ -85,6 +86,7 @@ export const SmartGridNav: React.FC<SmartGridNavProps> = ({
   }[] = [
     { id: 'home', label: 'Home', icon: Home },
     { id: 'setup', label: 'Data & Setup', icon: Database },
+    { id: 'assignments', label: 'Assignments', icon: UserCheck },
     { id: 'academic-config', label: 'Academic Configuration', icon: Sliders },
     { id: 'generate', label: 'Generate', icon: Sparkles },
     { id: 'timetables', label: 'Timetables', icon: Calendar },

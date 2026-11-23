@@ -1,0 +1,731 @@
+# SmartGrid AI — Complete System-Wide Academic Course, Instructor & Lab Engineer Assignment Implementation
+
+You are working on my existing **SmartGrid AI** application inside Google AI Studio.
+
+Your task is to conduct a complete codebase audit and implement a fully integrated Academic Course, Instructor, and Lab Engineer Assignment System.
+
+**IMPORTANT: This is NOT a request to create one additional admin page.** The assignment workflow affects the entire application. You must inspect and update every dependent part of the frontend, backend, database, APIs, validation logic, timetable generation engine, optimization algorithms, timetable views, reporting, and exports wherever necessary.
+
+Do not implement only the visible interface while leaving the underlying system inconsistent.
+
+---
+
+# 1. First: Understand the Existing Application
+
+Before changing anything:
+
+1. Inspect the entire existing project structure.
+2. Identify the current frontend framework, backend architecture, API structure, database schema, Supabase integration, authentication, and role-based access.
+3. Identify how the application currently stores and manages:
+   - Universities
+   - Departments
+   - Campuses and buildings, if implemented
+   - Academic terms and semesters
+   - Cohorts/batches
+   - Programs
+   - Sections
+   - Courses
+   - Course offerings
+   - Instructors
+   - Lab engineers
+   - Rooms and laboratories
+   - Student enrollments
+   - Course assignments
+   - Timetable sessions
+   - Timetable versions
+4. Find existing pages, components, hooks, services, API endpoints, database tables, and optimization functions related to these entities.
+5. Determine which relationships already exist and which are missing or incorrectly represented.
+6. Identify duplicate functionality, inconsistent terminology, disconnected data flows, hardcoded assumptions, and incomplete implementations.
+
+Do not start by creating new tables or pages without understanding what already exists.
+
+**Preserve the existing application.** Do not rebuild the project, replace its architecture, create parallel systems, or unnecessarily redesign existing pages.
+
+Reuse and improve existing components, APIs, database structures, and services wherever possible.
+
+After the audit, create an implementation plan and then execute it. Do not stop after presenting recommendations.
+
+# 2. Define the Correct Academic Data Relationships
+
+The system must represent the academic structure correctly.
+
+The general hierarchy is:
+
+University → Department → Cohort/Batch → Program → Section
+
+For example:
+
+- University: University A
+- Department: SEECS
+- Cohort: 2K25
+- Program: CS
+- Section: A
+
+The section identifier `2K25-CS-A` represents:
+
+- Cohort Code: 2K25
+- Program Code: CS
+- Section Code: A
+- Section Name: Section A
+
+Important:
+- CS, EE, CE, SE, DS, and AI are examples of program codes, not necessarily separate departments.
+- Do not create a separate department for every program.
+- Do not create a separate cohort for every program or section.
+- A cohort can contain multiple programs, and programs can contain multiple sections.
+- The structure must remain configurable for different universities.
+
+Respect the existing database design if it already represents these relationships correctly.
+
+# 3. Build a Complete Academic Course Assignment Workspace
+
+Create or improve a dedicated admin workspace for managing course offerings and assigning staff.
+
+This must be a functional academic management workflow, not just a visual table.
+
+The workspace should allow administrators to select:
+
+- University
+- Academic term
+- Department
+- Cohort/batch
+- Program
+- Section
+
+Only show relevant records according to the selected scope.
+
+For example, when an admin selects:
+
+Department: SEECS  
+Cohort: 2K25  
+Program: CS  
+Section: A
+
+The system should display the courses offered to that specific section.
+
+The interface must also support viewing assignments across multiple sections and programs without forcing administrators to repeat the same work unnecessarily.
+
+## 3.1 Course Assignment Table
+
+Create a clear, searchable, filterable assignment workspace.
+
+Display relevant information such as:
+
+- Course code
+- Course title
+- Course type
+- Lecture credits
+- Lab credits
+- Total scheduled weekly hours
+- Assigned lecture instructor
+- Assigned lab engineer
+- Assigned laboratory, where applicable
+- Assignment status
+- Validation status
+- Available actions
+
+Use a compact, professional, spreadsheet-like interface.
+
+Avoid excessive cards, unnecessary containers, and crowded layouts.
+
+The administrator should be able to quickly identify:
+
+- Fully assigned courses
+- Courses missing an instructor
+- Courses missing a lab engineer
+- Courses missing a laboratory
+- Courses with invalid assignments
+- Courses ready for timetable generation
+
+Provide search, filters, sorting, and status indicators.
+
+## 3.2 Course Assignment Details
+
+When the administrator selects a course offering, open an appropriate side panel, modal, or detail view.
+
+Display the full course information and assignment controls.
+
+The assignment controls must distinguish between:
+
+**Lecture assignment**
+- Lecture instructor
+- Lecture hours per week
+- Relevant instructor availability
+- Instructor workload
+
+**Lab assignment**
+- Lab engineer
+- Lab hours per week
+- Assigned laboratory
+- Laboratory capacity and equipment
+- Lab engineer availability and workload
+
+A course may have both lecture and laboratory components.
+
+The lecture instructor and lab engineer must be independently assignable.
+
+Do not assume that the same person must perform both roles.
+
+Support multiple lecture instructors or lab engineers only if the existing academic model requires it or the implementation can support it without introducing unnecessary complexity.
+
+# 4. Implement Efficient Bulk Assignment
+
+This is a particularly important requirement.
+
+Administrators may have many courses and sections. Assigning every course individually would be inefficient.
+
+Implement a bulk assignment workspace.
+
+It should allow administrators to:
+
+1. Select a department, term, cohort, and program.
+2. View multiple course offerings together.
+3. Assign instructors to multiple selected offerings.
+4. Assign lab engineers to multiple selected lab offerings.
+5. Assign laboratories to multiple selected lab offerings.
+6. Copy an assignment from one section to another.
+7. Apply an assignment to multiple sections where appropriate.
+8. Filter only unassigned courses.
+9. Filter only laboratory courses.
+10. Filter assignments that have validation errors.
+11. Save changes together with clear confirmation.
+
+Bulk operations must not blindly overwrite existing assignments.
+
+Before overwriting an existing assignment, show the affected offerings and the changes being made.
+
+Provide a preview of bulk changes before committing them.
+
+If an assignment is invalid, explain which records are affected and why.
+
+# 5. Instructor and Lab Engineer Selection
+
+The selection interface must help administrators choose appropriate staff members.
+
+When selecting an instructor, show relevant information such as:
+
+- Name
+- Staff identifier
+- Department
+- Designation or staff role
+- Assigned courses
+- Current weekly workload
+- Maximum weekly workload
+- Availability
+- Existing timetable conflicts
+
+For lab engineers, show:
+
+- Name
+- Staff identifier
+- Department
+- Assigned laboratories or practical courses, where applicable
+- Current weekly workload
+- Maximum weekly workload
+- Availability
+- Existing timetable conflicts
+
+Provide search and filtering.
+
+Do not display irrelevant staff from other universities or unauthorized institutional scopes.
+
+The system must use actual database records rather than hardcoded example staff.
+
+# 6. Assignment Validation Engine
+
+Implement validation at both the interface and backend levels.
+
+Frontend validation should provide immediate feedback.
+
+Backend validation must independently enforce the rules before saving.
+
+Validate the following:
+
+## 6.1 Staff eligibility
+- A lecture instructor must be eligible to teach the assigned course.
+- A lab engineer must be eligible for the laboratory assignment according to the university's configured rules.
+- Staff must belong to the correct institutional scope.
+- Inactive staff must not receive new assignments.
+
+Do not invent qualification rules that do not exist in the project. If eligibility information is missing, provide an appropriate configurable structure or clearly indicate that the rule cannot yet be verified.
+
+## 6.2 Workload
+- Calculate assigned weekly hours.
+- Compare workload against the staff member's maximum permitted hours.
+- Warn when a proposed assignment exceeds the workload limit.
+- Prevent invalid assignments when institutional rules require a strict maximum.
+- Account for existing assignments across all relevant sections and offerings.
+
+Avoid counting the same scheduled hours multiple times.
+
+## 6.3 Availability and scheduling conflicts
+- Check staff availability.
+- Check existing locked or published timetable commitments where relevant.
+- Do not allow overlapping sessions for the same staff member.
+- Revalidate actual time conflicts during timetable generation.
+
+An assignment can be valid academically but still be impossible to schedule. Keep these two validation stages distinct.
+
+## 6.4 Laboratory validation
+- A laboratory course must use a compatible laboratory.
+- Check laboratory capacity.
+- Check equipment and facilities where the database supports them.
+- Check laboratory availability.
+- Prevent overlapping laboratory bookings.
+
+## 6.5 Assignment completeness
+Show clear errors or warnings for missing required assignments.
+
+Do not silently treat incomplete offerings as fully assigned.
+
+# 7. Update the Database and Backend Correctly
+
+Audit the existing database before making schema changes.
+
+Implement any missing relationships needed to represent:
+
+- Course offerings
+- Section-specific course offerings
+- Lecture instructor assignments
+- Lab engineer assignments
+- Laboratory assignments
+- Academic terms
+- Assignment history
+- Assignment status and validation results, if needed
+
+Use the existing database conventions, naming patterns, identifiers, and tenant relationships.
+
+Important requirements:
+
+1. Maintain multi-university data isolation.
+2. Every assignment must belong to the correct institutional scope.
+3. Use proper foreign keys where appropriate.
+4. Prevent duplicate assignments.
+5. Preserve existing records.
+6. Avoid destructive migrations.
+7. Use transactions for operations that update multiple related records.
+8. Add appropriate indexes where necessary.
+9. Make bulk operations safe against partial writes.
+10. Maintain compatibility with existing timetable records and optimization runs.
+
+Do not introduce duplicate tables if equivalent structures already exist.
+
+Do not hardcode university IDs, department IDs, staff IDs, or course IDs.
+
+If migrations are required, create them using the project's existing migration conventions.
+
+Do not claim that a migration has been applied to Supabase unless it has actually been executed and verified.
+
+**Keep Row Level Security disabled as currently requested. Do not enable or modify RLS as part of this task.** Maintain application-level authentication, authorization, and institutional scoping.
+
+# 8. Update the API and Data Flow
+
+Ensure that all frontend operations use the real backend and database.
+
+Implement or improve the necessary API operations for:
+
+- Fetching course offerings by academic scope
+- Fetching eligible instructors
+- Fetching eligible lab engineers
+- Fetching laboratories
+- Saving individual assignments
+- Saving bulk assignments
+- Copying assignments between sections
+- Updating existing assignments
+- Removing assignments with appropriate confirmation
+- Validating assignments
+- Fetching assignment summaries
+- Fetching staff workload information
+- Fetching assignment history, if implemented
+
+Use the existing API patterns.
+
+Handle:
+- Loading states
+- Empty states
+- Validation errors
+- Authorization errors
+- Network failures
+- Duplicate requests
+- Failed bulk operations
+
+Do not use localStorage or hardcoded frontend arrays as a substitute for persisted institutional data.
+
+Do not silently fall back to a local timetable solver or local data when the backend fails.
+
+If the backend is unavailable, display a clear error and preserve the user's unsaved work where possible.
+
+# 9. Integrate Assignments With Timetable Generation
+
+This is one of the most important parts of the implementation.
+
+The timetable optimizer must consume the administrator's saved academic assignments.
+
+The optimizer must not independently choose or randomly replace instructors or lab engineers.
+
+For each course offering:
+
+- The assigned lecture instructor must be used for lecture sessions.
+- The assigned lab engineer must be used for laboratory sessions.
+- The assigned laboratory must be used for the associated lab sessions.
+- The correct course, cohort, program, and section relationships must be preserved.
+
+If an offering is missing a required assignment, report it before optimization.
+
+Do not silently substitute another staff member or laboratory.
+
+## 9.1 Preserve course credit rules
+
+Respect the existing credit-hour model:
+
+- One lecture credit represents one scheduled lecture hour per week.
+- One lab credit represents three scheduled laboratory hours per week.
+- Lecture and lab credits must remain separate.
+- A course with three lecture credits and one lab credit requires three lecture hours and three lab hours per week.
+
+For a one-credit lab, normally schedule a continuous three-hour block unless the university's configured rules permit splitting.
+
+Do not convert laboratory credits into ordinary one-hour lectures.
+
+## 9.2 Preserve hard constraints
+
+The optimizer must respect:
+
+- No instructor overlaps.
+- No lab engineer overlaps.
+- No room or laboratory overlaps.
+- No student section overlaps.
+- Correct laboratory type and equipment.
+- Room capacity.
+- Instructor availability.
+- Lab engineer availability.
+- Required session duration.
+- Course-section relationships.
+- Locked academic assignments.
+
+Hard constraints must never be traded against soft preferences.
+
+An invalid timetable must not be published.
+
+# 10. Integrate With the Existing AI Optimization Algorithms
+
+SmartGrid AI uses a hybrid AI optimization approach, not machine learning.
+
+Preserve the existing algorithm architecture and improve its integration with the academic assignment data.
+
+The intended algorithmic architecture includes:
+
+1. DSatur graph-coloring heuristic for initial conflict-aware time-slot assignment.
+2. Genetic Algorithm for the main timetable optimization.
+3. Simulated Annealing for local refinement.
+4. Tabu Search for adaptive rescheduling and minimizing disruption.
+
+Do not replace these algorithms with machine learning, neural networks, external timetable services, or Google OR-Tools.
+
+Do not rewrite working algorithms unnecessarily.
+
+Update their input models, constraints, and fitness calculations only where required.
+
+Ensure that the optimizer receives accurate instructor, lab engineer, laboratory, course, and section assignments.
+
+The optimizer may choose valid time slots and compatible resources where the existing design permits, but it must not override administrator-assigned staff.
+
+# 11. Staff Workload and Assignment Management
+
+Create or improve a staff assignment overview.
+
+Administrators should be able to see:
+
+- Total number of assigned courses
+- Total lecture hours
+- Total laboratory hours
+- Total weekly assigned hours
+- Maximum permitted hours
+- Remaining workload capacity
+- Courses assigned to each staff member
+- Sections served
+- Missing or conflicting assignments
+
+Provide filters by department, academic term, staff role, and assignment status.
+
+The workload calculation must be based on actual course offerings and their required weekly hours.
+
+Do not count the same course offering more than once.
+
+Make it possible to open a staff member and inspect their assignments.
+
+# 12. Integrate With Other Existing Application Screens
+
+Do not limit changes to the new assignment workspace.
+
+Inspect every screen that depends on academic course and staff relationships.
+
+Update the relevant screens and workflows, including:
+
+## Admin dashboard
+- Show assignment completion statistics.
+- Show missing lecture instructors.
+- Show missing lab engineers.
+- Show invalid assignments.
+- Provide direct navigation to unresolved assignments.
+
+## Academic configuration
+- Ensure course, term, cohort, program, section, and credit-hour settings are consistent.
+- Keep academic configuration separate from timetable generation settings where the existing design requires it.
+
+## Course management
+- Show course offerings and their assignment status.
+- Avoid confusing a course catalog record with a section-specific course offering.
+
+## Staff management
+- Show staff roles correctly.
+- Show assigned courses and workload.
+- Ensure staff availability and workload are available to the assignment workflow.
+
+## Room and laboratory management
+- Show which courses use each laboratory.
+- Reflect laboratory compatibility and availability.
+
+## Timetable generation
+- Prevent generation when mandatory academic assignments are incomplete.
+- Display specific reasons for blocking generation.
+- Allow the admin to navigate directly to the missing assignments.
+
+## Timetable workspace
+- Show the correct assigned instructor and lab engineer.
+- Show the correct room or laboratory.
+- Preserve course and section information.
+
+## Instructor dashboard
+- Show the instructor's actual assigned courses and published sessions.
+- Do not show assignments belonging to another staff member or institution.
+
+## Lab engineer dashboard
+- Show assigned laboratory sessions and their schedules.
+- Reflect the assigned lab engineer rather than incorrectly displaying the lecture instructor.
+
+## Student timetable
+- Display the correct course and instructor information.
+- Preserve section and enrollment relationships.
+
+## Analytics
+- Use actual assignment data for staff workload, course coverage, and resource utilization.
+- Do not calculate analytics from incomplete or fabricated data.
+
+## Timetable exports
+- Ensure PDF, Excel, CSV, and print views use the same canonical timetable data.
+- Preserve instructor, lab engineer, room, laboratory, course, section, and exact session duration.
+
+Only change screens where relevant, but inspect the complete dependency chain.
+
+# 13. Assignment Changes and Timetable Version Safety
+
+Academic assignments may change after a timetable has been generated.
+
+Handle this carefully.
+
+If an instructor, lab engineer, or laboratory is changed:
+
+1. Identify affected course offerings and timetable sessions.
+2. Determine whether the timetable is draft, published, or locked.
+3. Warn the administrator about affected schedules.
+4. Do not silently modify a published timetable.
+5. Preserve previous timetable versions.
+6. Record the assignment change where the existing audit/history architecture supports it.
+7. Require the appropriate regeneration, approval, or republishing process.
+
+For disruption-based rescheduling, use the existing Tabu Search workflow and minimize unnecessary changes.
+
+A staff assignment change must not cause unrelated timetable sessions to be rearranged unnecessarily.
+
+# 14. User Interface and Design Requirements
+
+Follow the existing SmartGrid AI visual identity and design system.
+
+Do not introduce an unrelated theme or redesign the whole application.
+
+The assignment workspace should be:
+
+- Clean
+- Modern
+- Professional
+- Responsive
+- Easy to understand
+- Efficient for large datasets
+- Consistent with the existing admin dashboard
+
+Prefer tables, inline controls, side panels, and focused dialogs over excessive cards.
+
+Avoid:
+- Repeated information
+- Excessive borders and containers
+- Unnecessary one-line cards
+- Overcrowded layouts
+- Too many confirmation dialogs
+- Redundant navigation
+- Decorative elements that reduce usability
+
+Provide useful empty states, loading indicators, success feedback, and actionable error messages.
+
+Ensure that the interface works on the screen sizes supported by the existing application.
+
+# 15. Permissions and Institutional Boundaries
+
+Respect the existing roles and permission system.
+
+At minimum:
+
+- Super Admin: manage institutions according to existing permissions.
+- University Admin: manage academic assignments within their university.
+- Timetable Manager: manage assignments only if permitted by existing role rules.
+- Instructor: view their own assignments.
+- Lab Engineer: view their own laboratory assignments.
+- Student: view relevant published timetable information.
+- Batch Representative: do not gain administrative assignment permissions merely because they can manage polls.
+
+Do not give every authenticated user access to academic assignment operations.
+
+Enforce authorization on the backend, not only by hiding frontend controls.
+
+# 16. Testing and Verification
+
+Do not finish after creating the UI.
+
+Test the complete workflow.
+
+## Database tests
+- Create or retrieve a course offering.
+- Assign a lecture instructor.
+- Assign a lab engineer.
+- Assign a laboratory.
+- Update assignments.
+- Remove assignments.
+- Verify foreign-key relationships.
+- Verify institutional scoping.
+- Verify duplicate prevention.
+
+## Assignment validation tests
+- Valid instructor assignment.
+- Ineligible instructor.
+- Inactive staff member.
+- Workload exceeded.
+- Availability conflict.
+- Duplicate or conflicting assignment.
+- Missing lab engineer.
+- Missing laboratory.
+- Insufficient room capacity.
+- Incompatible laboratory equipment.
+
+## Bulk assignment tests
+- Assign several offerings.
+- Copy assignments between sections.
+- Prevent unintended overwrites.
+- Reject invalid records.
+- Verify transaction behavior.
+
+## Timetable integration tests
+- Generate a timetable using saved assignments.
+- Verify lecture instructors.
+- Verify lab engineers.
+- Verify laboratory allocation.
+- Verify credit-hour requirements.
+- Verify hard constraints.
+- Verify that the optimizer never silently replaces assigned staff.
+- Verify incomplete assignments block generation appropriately.
+
+## Regression tests
+Check that existing functionality remains operational:
+
+- Authentication
+- Role permissions
+- Multi-university separation
+- Course management
+- Staff management
+- Room management
+- Student views
+- Instructor views
+- Lab engineer views
+- Timetable generation
+- Timetable editing
+- Timetable publication
+- Timetable version history
+- Adaptive rescheduling
+- CSV import
+- PDF/Excel/CSV exports
+- Analytics
+
+Use the project's existing test framework.
+
+Run actual tests and report their results.
+
+If live Supabase access is unavailable, distinguish local tests, mocked tests, and live database verification. Do not claim live verification when it was not possible.
+
+# 17. Implementation Discipline
+
+Follow these rules throughout the task:
+
+1. Do not delete existing functionality to make the implementation easier.
+2. Do not create duplicate pages or parallel data models.
+3. Do not replace the current backend architecture.
+4. Do not introduce machine learning.
+5. Do not use hardcoded institutional data.
+6. Do not invent staff, courses, assignments, or database records.
+7. Do not silently change existing academic assignments.
+8. Do not allow the optimizer to override assigned instructors or lab engineers.
+9. Do not introduce breaking changes without updating every dependent component.
+10. Do not claim tests passed unless they were executed.
+11. Do not claim database migrations were applied unless verified.
+12. Do not leave the frontend using mock data while claiming the feature is connected to Supabase.
+13. Do not use localStorage as a replacement for persistent institutional data.
+14. Do not enable RLS.
+15. Preserve the existing SmartGrid AI UI and branding.
+
+If an existing feature is already implemented correctly, retain it rather than rebuilding it.
+
+If an important dependency is missing, implement it in the existing architecture.
+
+If something cannot be completed because of unavailable credentials, database access, or missing data, clearly report the blocker and complete all safe work that can be performed.
+
+# 18. Final Deliverables and Completion Report
+
+After implementation, provide a detailed report containing:
+
+### A. Initial audit
+- Existing architecture found.
+- Existing assignment functionality.
+- Missing or incorrect functionality.
+- Database and API dependencies.
+
+### B. Files changed
+List every created, modified, or deleted file and explain why it changed.
+
+### C. Database changes
+- Tables changed or created.
+- Columns changed or created.
+- Relationships and constraints.
+- Migrations created.
+- Whether migrations were actually applied and verified.
+
+### D. Frontend changes
+List every affected page, component, interaction, and workflow.
+
+### E. Backend changes
+List every affected API endpoint, service, validation rule, and authorization check.
+
+### F. Optimization changes
+Explain how academic assignments are consumed by DSatur, Genetic Algorithm, Simulated Annealing, and Tabu Search, and confirm how assigned staff are protected from automatic replacement.
+
+### G. Testing
+For every test, provide:
+- Command executed.
+- Actual result.
+- Pass/fail count.
+- Any untested areas.
+
+### H. Remaining issues
+List anything incomplete, blocked, or requiring manual configuration.
+
+### I. End-to-end workflow
+Explain how an administrator now goes from course creation to staff assignment, validation, timetable generation, approval, and publication.
+
+**Final requirement:** The goal is a fully integrated academic assignment system across SmartGrid AI, not merely a new assignment page. Make all necessary connected changes, preserve working functionality, and verify the actual implementation before declaring completion.

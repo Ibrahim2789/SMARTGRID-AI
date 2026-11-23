@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 import random
+import time
 from collections import defaultdict
 from typing import Any, Dict, List, Optional, Set, Tuple
 
@@ -195,6 +196,7 @@ def run_simulated_annealing(
     cooling_rate: float = 0.94,
     max_iterations: int = 70,
     seed: int = 42,
+    deadline: Optional[float] = None,
 ) -> Dict[str, Any]:
     rng = random.Random(seed)
     unavail_inst = normalize_unavailable_slots_map(unavailable_instructor_slots, instructors)
@@ -219,6 +221,8 @@ def run_simulated_annealing(
     history: List[float] = [best.fitness_score]
 
     for _ in range(max_iterations):
+        if deadline is not None and time.perf_counter() >= deadline:
+            break
         neighbor = _generate_gap_aware_neighbor(
             current,
             sessions,

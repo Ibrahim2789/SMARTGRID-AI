@@ -23,8 +23,9 @@ from app.optimization.evaluation import compare_optimization_algorithms
 from app.optimization.fitness import _coerce_slot_dict
 from app.optimization.scheduler import run_hybrid_timetable_pipeline
 from app.optimization.validator import validate_timetable_assignments
+from app.services.assignment_validation import validate_sections_for_optimization
 from database import now_iso
-from fastapi_compat import APIRouter, Request
+from fastapi_compat import APIRouter, HTTPException, Request
 
 router = APIRouter(tags=["optimization"])
 
@@ -139,6 +140,25 @@ async def run_optimization(request: Request) -> Dict[str, Any]:
     uni_id = scoped_uni_id(auth_user, str(body.get("universityId") or ""))
 
     inputs = load_university_optimization_inputs(uni_id, body)
+    readiness = validate_sections_for_optimization(
+        uni_id=uni_id,
+        sections=inputs["sections"],
+        courses=inputs["courses"],
+        rooms_raw=inputs["rooms_raw"],
+        instructors=inputs["instructors"],
+    )
+    if not readiness["ready"]:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error": (
+                    f"Cannot generate timetable: {readiness['blockerCount']} course offering(s) "
+                    "have missing or invalid instructor, lab engineer, or laboratory assignments."
+                ),
+                "readiness": readiness,
+            },
+        )
+
     hyperparams = body.get("hyperparameters") or {}
     objective_weights = body.get("weights") or {}
     requested_algo = str(body.get("algorithm") or "hybrid_dsatur_ga_sa").strip()
@@ -206,38 +226,60 @@ async def run_optimization(request: Request) -> Dict[str, Any]:
             },
         )
 
-        # 3. Ensure scheduled sections exist in course_sessions & insert normalized timetable_entries
+        # 3. Validate FKs and insert normalized timetable_entries (chunked in SupabaseRestClient)
+        valid_course_ids: set[str] = set()
+        valid_batch_ids: set[str] = set()
+        valid_instructor_ids: set[str] = set()
+        course_req_room: Dict[str, str] = {}
+        existing_sessions_by_id: Dict[str, Dict[str, Any]] = {}
+        try:
+            existing_courses = client.select("courses", filters={"institution_id": f"eq.{uni_id}"}, select="id,required_room_type")
+            existing_batches = client.select("batches", filters={"institution_id": f"eq.{uni_id}"}, select="id")
+            existing_instructors = client.select("instructors", filters={"institution_id": f"eq.{uni_id}"}, select="id")
+            existing_sessions = client.select(
+                "course_sessions",
+                filters={"institution_id": f"eq.{uni_id}"},
+                select="id,institution_id,course_id,batch_id,section_code,session_type,component_type,sessions_per_week,duration_minutes,expected_students,required_room_type,instructor_id,lab_engineer_id",
+            )
+            valid_course_ids = {c["id"] for c in existing_courses}
+            course_req_room = {c["id"]: c.get("required_room_type") or "lecture" for c in existing_courses}
+            valid_batch_ids = {b["id"] for b in existing_batches}
+            valid_instructor_ids = {i["id"] for i in existing_instructors}
+            existing_sessions_by_id = {s["id"]: s for s in existing_sessions}
+        except Exception:
+            pass
+
         entries = _build_timetable_entries_from_canonical(
             uni_id=uni_id,
             version_id=version_id,
             canonical_entries=pipeline_result.get("entries") or [],
         )
         if entries:
+            for e in entries:
+                if valid_batch_ids and e.get("batch_id") not in valid_batch_ids:
+                    e["batch_id"] = None
+                if valid_instructor_ids:
+                    if e.get("instructor_id") not in valid_instructor_ids:
+                        e["instructor_id"] = None
+                    if e.get("lab_engineer_id") not in valid_instructor_ids:
+                        e["lab_engineer_id"] = None
             client.insert("timetable_entries", entries)
 
-        # Persist auto-generated or missing course_sessions rows and update their assigned slots
+        # Persist auto-generated course_sessions rows and batch-upsert assigned slots (no N+1 PATCHes!)
         try:
-            existing_courses = client.select("courses", filters={"institution_id": f"eq.{uni_id}"}, select="id,required_room_type")
-            existing_batches = client.select("batches", filters={"institution_id": f"eq.{uni_id}"}, select="id")
-            existing_instructors = client.select("instructors", filters={"institution_id": f"eq.{uni_id}"}, select="id")
-            existing_sessions = client.select("course_sessions", filters={"institution_id": f"eq.{uni_id}"}, select="id")
-            valid_course_ids = {c["id"] for c in existing_courses}
-            course_req_room = {c["id"]: c.get("required_room_type") or "lecture" for c in existing_courses}
-            valid_batch_ids = {b["id"] for b in existing_batches}
-            valid_instructor_ids = {i["id"] for i in existing_instructors}
-            existing_session_ids = {s["id"] for s in existing_sessions}
-
             first_entry_by_sec: Dict[str, Dict[str, Any]] = {}
             for e in entries:
                 cs_id = str(e.get("course_session_id") or "")
                 if cs_id and cs_id not in first_entry_by_sec:
                     first_entry_by_sec[cs_id] = e
 
-            new_session_rows: List[Dict[str, Any]] = []
+            upsert_session_rows: List[Dict[str, Any]] = []
+            seen_sec_ids: set[str] = set()
             for sec in inputs.get("sections") or []:
                 sec_id = str(sec.get("id") or "").strip()
-                if not sec_id:
+                if not sec_id or sec_id in seen_sec_ids:
                     continue
+                seen_sec_ids.add(sec_id)
                 matched_entry = first_entry_by_sec.get(sec_id)
                 slot_json = None
                 if matched_entry:
@@ -254,7 +296,8 @@ async def run_optimization(request: Request) -> Dict[str, Any]:
                         "slotSource": matched_entry.get("slot_source") or "regular",
                     }
 
-                if sec_id not in existing_session_ids:
+                existing_row = existing_sessions_by_id.get(sec_id)
+                if existing_row is None:
                     c_id = str(sec.get("courseId") or sec.get("course_id") or "")
                     b_id = str(sec.get("studentGroupId") or sec.get("batchId") or sec.get("batch_id") or "")
                     if c_id in valid_course_ids and b_id in valid_batch_ids:
@@ -269,14 +312,16 @@ async def run_optimization(request: Request) -> Dict[str, Any]:
                         dur_min = max(30, min(300, int(sec.get("durationMinutes") or (180 if is_lab else 50))))
                         spw_val = max(1, min(6, int(sec.get("sessionsPerWeek") or 1)))
                         exp_stu = max(1, int(sec.get("enrollment") or sec.get("expectedEnrollment") or 45))
-                        new_session_rows.append(
+                        upsert_session_rows.append(
                             {
                                 "id": sec_id,
                                 "institution_id": uni_id,
-                                "term_id": body.get("termId") or None,
+                                "term_id": sec.get("termId") or body.get("termId") or None,
+                                "program_id": sec.get("programId") or None,
                                 "course_id": c_id,
                                 "instructor_id": inst_id if inst_id in valid_instructor_ids else None,
                                 "lab_engineer_id": lab_eng_id if lab_eng_id in valid_instructor_ids else None,
+                                "assigned_lab_id": sec.get("assignedLabId") or None,
                                 "batch_id": b_id,
                                 "shared_group_ids": sec.get("sharedGroupIds") if isinstance(sec.get("sharedGroupIds"), list) else [],
                                 "section_code": str(sec.get("sectionCode") or sec.get("sectionNumber") or "A"),
@@ -288,6 +333,7 @@ async def run_optimization(request: Request) -> Dict[str, Any]:
                                 "duration_minutes": dur_min,
                                 "expected_students": exp_stu,
                                 "required_room_type": req_room,
+                                "assignment_status": "assigned",
                                 "assigned_day": matched_entry.get("day_of_week") if matched_entry else None,
                                 "assigned_start_time": matched_entry.get("start_time") if matched_entry else None,
                                 "assigned_room_id": matched_entry.get("room_id") if matched_entry else None,
@@ -296,26 +342,42 @@ async def run_optimization(request: Request) -> Dict[str, Any]:
                                 "created_at": current_iso,
                             }
                         )
-                        existing_session_ids.add(sec_id)
                 elif matched_entry and slot_json:
-                    client.update(
-                        "course_sessions",
-                        {"id": f"eq.{sec_id}", "institution_id": f"eq.{uni_id}"},
+                    upsert_session_rows.append(
                         {
+                            "id": sec_id,
+                            "institution_id": uni_id,
+                            "course_id": existing_row["course_id"],
+                            "batch_id": existing_row["batch_id"],
+                            "instructor_id": existing_row.get("instructor_id"),
+                            "lab_engineer_id": existing_row.get("lab_engineer_id"),
+                            "assigned_lab_id": existing_row.get("assigned_lab_id"),
+                            "section_code": existing_row.get("section_code") or "A",
+                            "session_type": existing_row.get("session_type") or "Theory",
+                            "component_type": existing_row.get("component_type") or "lecture",
+                            "sessions_per_week": int(existing_row.get("sessions_per_week") or 1),
+                            "duration_minutes": int(existing_row.get("duration_minutes") or 50),
+                            "expected_students": int(existing_row.get("expected_students") or 45),
+                            "required_room_type": existing_row.get("required_room_type") or "lecture",
                             "assigned_day": matched_entry.get("day_of_week"),
                             "assigned_start_time": matched_entry.get("start_time"),
                             "assigned_room_id": matched_entry.get("room_id"),
                             "assigned_slot_json": slot_json,
-                        },
+                        }
                     )
-            if new_session_rows:
-                client.insert("course_sessions", new_session_rows, upsert=True, on_conflict="id")
+            if upsert_session_rows:
+                client.insert("course_sessions", upsert_session_rows, upsert=True, on_conflict="id")
         except Exception:
             # Never block optimization persistence if optional session sync hits a legacy schema mismatch
             pass
 
         # 4. Insert optimization_runs
         db_run_status = "completed" if (is_feasible or not getattr(client, "has_column", lambda t, c: True)("timetable_entries", "slot_source")) else "needs_review"
+        snapshot_data = (
+            pipeline_result["assignments"]
+            if len(entries) > 400
+            else (pipeline_result.get("entries") or pipeline_result["assignments"])
+        )
         client.insert(
             "optimization_runs",
             {
@@ -339,7 +401,7 @@ async def run_optimization(request: Request) -> Dict[str, Any]:
                     "votingConfig": voting_config,
                     "votingTraceability": voting_traceability,
                 },
-                "assignments_snapshot": pipeline_result.get("entries") or pipeline_result["assignments"],
+                "assignments_snapshot": snapshot_data,
                 "created_by": auth_user.get("userId"),
                 "created_at": current_iso,
             },

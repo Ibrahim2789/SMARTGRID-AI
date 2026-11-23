@@ -542,6 +542,19 @@ export const AuthenticatedLayout: React.FC<AuthenticatedLayoutProps> = ({
           meta: String(storeSnapshot.courses.length),
           isActive: activeRoute === 'setup' && setupStep === 2,
           onClick: () => openSetup(2)
+        },
+        {
+          id: 'nav-course-assignments',
+          label: 'Course Assignments',
+          icon: UserCheck,
+          meta: `${storeSnapshot.sections.filter(s => !s.instructorId && !(s.sessionType === 'Lab' && s.labEngineerId)).length || 'Ready'}`,
+          metaAccent: storeSnapshot.sections.some(s => !s.instructorId && !(s.sessionType === 'Lab' && s.labEngineerId)),
+          isActive: activeRoute === 'assignments',
+          onClick: () => {
+            setActiveUtilityPanel(null);
+            onNavigate('assignments');
+            setMobileDrawerOpen(false);
+          }
         }
       ]
     },

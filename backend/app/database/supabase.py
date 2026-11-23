@@ -279,6 +279,7 @@ class SupabaseRestClient:
         upsert: bool = False,
         ignore_duplicates: bool = False,
         on_conflict: Optional[str] = None,
+        chunk_size: int = 250,
     ) -> List[Dict[str, Any]]:
         prefer = "return=representation"
         if ignore_duplicates:
@@ -290,24 +291,74 @@ class SupabaseRestClient:
         if on_conflict:
             query["on_conflict"] = on_conflict
 
-        dropped: Set[str] = set()
+        if isinstance(payload, list):
+            if not payload:
+                return []
+            if len(payload) > chunk_size:
+                all_results: List[Dict[str, Any]] = []
+                dropped: Set[str] = set()
+                for idx in range(0, len(payload), chunk_size):
+                    chunk = payload[idx : idx + chunk_size]
+                    current_chunk = self._filter_payload(table, chunk, drop_cols=dropped)
+                    inserted_chunk: List[Dict[str, Any]] = []
+                    for _ in range(16):
+                        try:
+                            _, _, data = self._request(
+                                "POST",
+                                table,
+                                query=query or None,
+                                payload=current_chunk,
+                                prefer=prefer,
+                                timeout=45.0,
+                            )
+                            inserted_chunk = data if isinstance(data, list) else ([] if data is None else [data])
+                            break
+                        except SupabaseQueryError as err:
+                            if err.status_code == 400:
+                                m = _MISSING_COL_RE.search(err.message or "")
+                                if m and m.group(1) not in dropped:
+                                    missing_col = m.group(1)
+                                    dropped.add(missing_col)
+                                    self._drop_cached_column(table, missing_col)
+                                    current_chunk = self._filter_payload(table, chunk, drop_cols=dropped)
+                                    continue
+                            raise
+                    all_results.extend(inserted_chunk)
+                return all_results
+
+        dropped_single: Set[str] = set()
         current_payload = self._filter_payload(table, payload)
+        req_timeout = 45.0 if isinstance(payload, list) else 15.0
         for _ in range(16):
             try:
-                _, _, data = self._request("POST", table, query=query or None, payload=current_payload, prefer=prefer)
+                _, _, data = self._request(
+                    "POST",
+                    table,
+                    query=query or None,
+                    payload=current_payload,
+                    prefer=prefer,
+                    timeout=req_timeout,
+                )
                 return data if isinstance(data, list) else ([] if data is None else [data])
             except SupabaseQueryError as err:
                 if err.status_code == 400:
                     m = _MISSING_COL_RE.search(err.message or "")
-                    if m and m.group(1) not in dropped:
+                    if m and m.group(1) not in dropped_single:
                         missing_col = m.group(1)
-                        dropped.add(missing_col)
+                        dropped_single.add(missing_col)
                         self._drop_cached_column(table, missing_col)
-                        current_payload = self._filter_payload(table, payload, drop_cols=dropped)
+                        current_payload = self._filter_payload(table, payload, drop_cols=dropped_single)
                         continue
                 raise
 
-        _, _, data = self._request("POST", table, query=query or None, payload=current_payload, prefer=prefer)
+        _, _, data = self._request(
+            "POST",
+            table,
+            query=query or None,
+            payload=current_payload,
+            prefer=prefer,
+            timeout=req_timeout,
+        )
         return data if isinstance(data, list) else ([] if data is None else [data])
 
     def update(

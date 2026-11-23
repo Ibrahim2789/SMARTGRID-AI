@@ -3,13 +3,19 @@
 from __future__ import annotations
 
 import random
+import time
 from collections import defaultdict
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from .chromosome import SessionGene, TimetableChromosome
 from .constraints import ScheduleSession, TimeSlotConfig
-from .fitness import evaluate_timetable_fitness, is_slot_blocked, normalize_unavailable_slots_map
-from .graph_coloring import _is_room_compatible, dsatur_construct_schedule
+from .fitness import (
+    evaluate_timetable_fitness,
+    is_slot_blocked,
+    normalize_unavailable_slots_map,
+    preparse_unavailable_map,
+)
+from .graph_coloring import _is_room_compatible, build_conflict_graph, dsatur_construct_schedule
 
 
 def _build_compatible_rooms_map(
@@ -20,13 +26,16 @@ def _build_compatible_rooms_map(
     for sess in sessions:
         comp = [r for r in rooms if _is_room_compatible(sess, r)]
         if not comp:
-            same_kind = [
-                r
-                for r in rooms
-                if r.get("is_available", r.get("isAvailable", True))
-                and (("lab" in str(r.get("type") or r.get("room_type") or "").lower()) == sess.is_lab)
-            ]
-            comp = same_kind or [r for r in rooms if r.get("is_available", r.get("isAvailable", True))] or list(rooms)
+            if sess.is_lab and sess.assigned_lab_id:
+                comp = [r for r in rooms if r.get("id") == sess.assigned_lab_id]
+            else:
+                same_kind = [
+                    r
+                    for r in rooms
+                    if r.get("is_available", r.get("isAvailable", True))
+                    and (("lab" in str(r.get("type") or r.get("room_type") or "").lower()) == sess.is_lab)
+                ]
+                comp = same_kind or [r for r in rooms if r.get("is_available", r.get("isAvailable", True))] or list(rooms)
         comp.sort(
             key=lambda rm: (max(0, int(rm.get("capacity") or 50) - sess.expected_students), str(rm.get("code") or rm["id"]))
         )
@@ -489,6 +498,8 @@ def propose_fairness_swap_or_relocation(
             and s.is_lab == s_bad.is_lab
             and s.duration_minutes == s_bad.duration_minutes
         ]
+        if len(good_candidates) > 80:
+            good_candidates = rng.sample(good_candidates, 80)
         best_swap: Optional[Tuple[float, ScheduleSession, Tuple[str, int, int, List[int]], Tuple[str, int, int, List[int]]]] = None
         if good_candidates:
             scored_goods: List[Tuple[float, ScheduleSession]] = []
@@ -855,10 +866,13 @@ def run_genetic_algorithm(
     population_size: int = 12,
     generations: int = 12,
     seed: int = 42,
+    deadline: Optional[float] = None,
 ) -> Dict[str, Any]:
     rng = random.Random(seed)
     unavail_inst = normalize_unavailable_slots_map(unavailable_instructor_slots, instructors)
     unavail_room = normalize_unavailable_slots_map(unavailable_room_slots, None)
+    parsed_u_inst = preparse_unavailable_map(unavail_inst)
+    parsed_u_room = preparse_unavailable_map(unavail_room)
     comp_map = _build_compatible_rooms_map(sessions, rooms)
 
     population: List[TimetableChromosome] = []
@@ -867,7 +881,11 @@ def run_genetic_algorithm(
         population.append(initial_seed_chromo.clone())
 
     use_dsatur_seeds = seed_with_dsatur or (initial_seed_chromo is not None)
+    shared_graph = build_conflict_graph(sessions) if use_dsatur_seeds else None
+
     for i in range(population_size - len(population)):
+        if deadline is not None and len(population) >= 1 and time.perf_counter() >= deadline:
+            break
         if use_dsatur_seeds:
             chromo = dsatur_construct_schedule(
                 sessions=sessions,
@@ -880,6 +898,11 @@ def run_genetic_algorithm(
                 weights=weights,
                 seed=seed + i,
                 randomize_ties=True,
+                conflict_graph=shared_graph,
+                comp_map_override=comp_map,
+                parsed_unavail_inst=parsed_u_inst,
+                parsed_unavail_room=parsed_u_room,
+                deadline=deadline,
             )
         else:
             chromo = _construct_random_individual(
@@ -912,11 +935,15 @@ def run_genetic_algorithm(
     history: List[float] = [best.fitness_score]
 
     for _gen in range(generations):
+        if deadline is not None and time.perf_counter() >= deadline:
+            break
         next_gen: List[TimetableChromosome] = [population[0].clone()]
         if len(population) > 1:
             next_gen.append(population[1].clone())
 
         while len(next_gen) < population_size:
+            if deadline is not None and time.perf_counter() >= deadline:
+                break
             p1 = min(rng.sample(population, min(3, len(population))), key=lambda c: (c.hard_violations, -c.fitness_score))
             p2 = min(rng.sample(population, min(3, len(population))), key=lambda c: (c.hard_violations, -c.fitness_score))
             if rng.random() < 0.70:

@@ -600,6 +600,7 @@ def resolve_matching_batches_for_course(
     batches: List[Dict[str, Any]],
     departments: List[Dict[str, Any]],
     programs: Optional[List[Dict[str, Any]]] = None,
+    enrolled_batch_ids: Optional[Set[str] | List[str]] = None,
 ) -> List[Dict[str, Any]]:
     if not batches:
         return []
@@ -609,25 +610,51 @@ def resolve_matching_batches_for_course(
         if explicit_batch:
             return [explicit_batch]
 
+    candidate_batches = list(batches)
+    if enrolled_batch_ids:
+        enr_set = {str(bid) for bid in enrolled_batch_ids if bid}
+        if enr_set:
+            enr_matched = [b for b in candidate_batches if str(b.get("id") or "") in enr_set]
+            if enr_matched:
+                return enr_matched
+
     course_dept_id = str(course.get("department_id") or course.get("departmentId") or "").strip()
     if not course_dept_id:
-        return list(batches)
+        matched = list(candidate_batches)
+    else:
+        matched = [
+            b for b in candidate_batches
+            if resolve_batch_department_id(b, departments, programs) == course_dept_id
+        ]
+        if not matched:
+            if len(departments) <= 1:
+                matched = list(candidate_batches)
+            else:
+                any_dept_matched = any(resolve_batch_department_id(b, departments, programs) for b in candidate_batches)
+                matched = list(candidate_batches) if not any_dept_matched else []
 
-    matched = [
-        b for b in batches
-        if resolve_batch_department_id(b, departments, programs) == course_dept_id
-    ]
-    if matched:
-        return matched
+    if not matched:
+        return []
 
-    if len(departments) <= 1:
-        return list(batches)
+    raw_course_sem = course.get("semester_number") if course.get("semester_number") is not None else course.get("semester")
+    if raw_course_sem not in (None, "", 0, "0"):
+        try:
+            course_sem = int(raw_course_sem)
+        except (TypeError, ValueError):
+            course_sem = 0
+        if course_sem > 0:
+            batches_with_sem = [
+                b for b in matched
+                if b.get("semester") not in (None, "", 0, "0")
+            ]
+            if batches_with_sem:
+                sem_matched = [
+                    b for b in batches_with_sem
+                    if str(b.get("semester")).strip().isdigit() and int(b["semester"]) == course_sem
+                ]
+                return sem_matched
 
-    # If no batches matched ANY department (e.g. legacy 'GEN' batch codes), keep all batches eligible
-    any_dept_matched = any(resolve_batch_department_id(b, departments, programs) for b in batches)
-    if not any_dept_matched:
-        return list(batches)
-    return []
+    return matched
 
 
 def load_university_optimization_inputs(
@@ -707,6 +734,20 @@ def load_university_optimization_inputs(
         )
     except SupabaseQueryError as err:
         raise_supabase_http_error(err)
+
+    db_enrollments: List[Dict[str, Any]] = []
+    if university_id:
+        try:
+            db_enrollments = client.select("course_enrollments", filters={"institution_id": f"eq.{university_id}"})
+        except Exception:
+            db_enrollments = []
+
+    enrolled_batches_by_course: Dict[str, Set[str]] = defaultdict(set)
+    for enr in db_enrollments:
+        cid = str(enr.get("course_id") or "")
+        bid = str(enr.get("batch_id") or "")
+        if cid and bid:
+            enrolled_batches_by_course[cid].add(bid)
 
     db_student_prefs = _select_for_uni("student_preferences", {"institution_id": f"eq.{university_id}"})
 
@@ -789,6 +830,8 @@ def load_university_optimization_inputs(
         normalized_instructors.append(
             {
                 **inst,
+                "isActive": bool(inst.get("is_active", True)),
+                "staffCode": inst.get("staff_code") or "",
                 "unavailable_slots": unavail_inst.get(inst["id"], []),
             }
         )
@@ -797,7 +840,6 @@ def load_university_optimization_inputs(
     for s in db_sessions:
         sessions_by_course[s["course_id"]].append(s)
 
-    default_instructor_id = db_instructors[0]["id"] if db_instructors else ""
     default_batch_id = db_batches[0]["id"] if db_batches else ""
 
     normalized_courses: List[Dict[str, Any]] = []
@@ -822,8 +864,8 @@ def load_university_optimization_inputs(
 
         is_pure_lab = course_type == "lab"
         legacy_ctype = "Lab" if is_pure_lab else "Theory"
-        assigned_inst_id = c.get("assigned_instructor_id") or default_instructor_id
-        assigned_lab_eng_id = c.get("assigned_lab_engineer_id")
+        assigned_inst_id = c.get("assigned_instructor_id") or ""
+        assigned_lab_eng_id = c.get("assigned_lab_engineer_id") or ""
 
         normalized_courses.append(
             {
@@ -855,8 +897,12 @@ def load_university_optimization_inputs(
                     "id": s["id"],
                     "courseId": c["id"],
                     "courseCode": c["code"],
-                    "instructorId": s.get("instructor_id") or assigned_inst_id,
-                    "labEngineerId": s.get("lab_engineer_id") or assigned_lab_eng_id,
+                    "termId": s.get("term_id") or "",
+                    "programId": s.get("program_id") or "",
+                    "instructorId": s.get("instructor_id") or assigned_inst_id or "",
+                    "labEngineerId": s.get("lab_engineer_id") or assigned_lab_eng_id or "",
+                    "assignedLabId": s.get("assigned_lab_id") or None,
+                    "assignmentStatus": s.get("assignment_status") or "unassigned",
                     "studentGroupId": s_batch_id,
                     "sectionCode": s.get("section_code") or "A",
                     "sessionType": s_type,
@@ -869,7 +915,17 @@ def load_university_optimization_inputs(
 
         is_elective = bool(c.get("is_elective", not c.get("is_compulsory", True)))
         if not is_elective:
-            target_batches = resolve_matching_batches_for_course(c, db_batches, db_departments, db_programs)
+            if c_sessions:
+                mapped_bids = {str(s.get("batch_id") or "") for s in c_sessions if s.get("batch_id")}
+                target_batches = [b for b in db_batches if b["id"] in mapped_bids]
+            else:
+                target_batches = resolve_matching_batches_for_course(
+                    c,
+                    db_batches,
+                    db_departments,
+                    db_programs,
+                    enrolled_batch_ids=enrolled_batches_by_course.get(c["id"]),
+                )
             for b_obj in target_batches:
                 b_id = b_obj["id"]
                 b_sec = str(b_obj.get("section") or "A")
@@ -881,7 +937,7 @@ def load_university_optimization_inputs(
                             "id": f"sec-{c['id']}-{b_id}-lec",
                             "courseId": c["id"],
                             "courseCode": c["code"],
-                            "instructorId": assigned_inst_id,
+                            "instructorId": assigned_inst_id or "",
                             "studentGroupId": b_id,
                             "sectionCode": b_sec,
                             "sessionType": "Theory",
@@ -897,8 +953,9 @@ def load_university_optimization_inputs(
                             "id": f"sec-{c['id']}-{b_id}-lab",
                             "courseId": c["id"],
                             "courseCode": c["code"],
-                            "instructorId": assigned_inst_id,
-                            "labEngineerId": assigned_lab_eng_id,
+                            "instructorId": assigned_inst_id or "",
+                            "labEngineerId": assigned_lab_eng_id or "",
+                            "assignedLabId": None,
                             "studentGroupId": b_id,
                             "sectionCode": b_sec,
                             "sessionType": "Lab",
@@ -942,10 +999,12 @@ def load_university_optimization_inputs(
             {
                 "id": b["id"],
                 "batchId": b["id"],
-                "code": b["code"],
-                "name": b["name"],
+                "code": b.get("code") or b["id"],
+                "name": b.get("name") or b.get("code") or b["id"],
                 "departmentId": resolve_batch_department_id(b, db_departments, db_programs),
                 "departmentCode": b.get("department_code") or "",
+                "semester": int(b.get("semester") or 1),
+                "section": str(b.get("section") or "A"),
                 "size": int(b.get("student_count") or 60),
             }
         )

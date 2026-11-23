@@ -171,6 +171,10 @@ class TimeSlotConfig:
         if self.lab_span_slots * self.period_length_minutes < self.lab_duration_minutes - 30:
             self.lab_span_slots += 1
 
+        # Memoization caches for tight solver inner loops
+        self._win_cache: Dict[Tuple[str, int, int, bool], Optional[Tuple[int, int, List[int]]]] = {}
+        self._valid_slots_cache: Dict[Tuple[str, int, bool], List[int]] = {}
+
     @classmethod
     def from_dict(cls, raw: Optional[Dict[str, Any]]) -> "TimeSlotConfig":
         if not raw:
@@ -401,6 +405,22 @@ class TimeSlotConfig:
         is_lab: bool = False,
     ) -> Optional[Tuple[int, int, List[int]]]:
         """Return (start_min, end_min, covered_slot_indices) if the block fits cleanly without crossing breaks or closing time."""
+        cache_key = (day, slot_index, duration_minutes, bool(is_lab))
+        cached = self._win_cache.get(cache_key)
+        if cached is not None or cache_key in self._win_cache:
+            return cached
+
+        res = self._compute_session_window_uncached(day, slot_index, duration_minutes, is_lab)
+        self._win_cache[cache_key] = res
+        return res
+
+    def _compute_session_window_uncached(
+        self,
+        day: str,
+        slot_index: int,
+        duration_minutes: int,
+        is_lab: bool = False,
+    ) -> Optional[Tuple[int, int, List[int]]]:
         day_slots = self.get_day_slots(day)
         if not day_slots or slot_index < 0 or slot_index >= len(day_slots):
             return None
@@ -486,13 +506,19 @@ class TimeSlotConfig:
     def get_valid_start_slots_for_session(self, session: "ScheduleSession", day: str) -> List[int]:
         if day == "Fri" and not session.friday_eligible:
             return []
+        cache_key = (day, session.duration_minutes, bool(session.is_lab))
+        cached = self._valid_slots_cache.get(cache_key)
+        if cached is not None:
+            return cached
         day_slots = self.get_day_slots(day)
         if not day_slots:
+            self._valid_slots_cache[cache_key] = []
             return []
         valid: List[int] = []
         for idx in range(len(day_slots)):
             if self.compute_session_window(day, idx, session.duration_minutes, session.is_lab) is not None:
                 valid.append(idx)
+        self._valid_slots_cache[cache_key] = valid
         return valid
 
     def to_metadata(self) -> Dict[str, Any]:
@@ -572,6 +598,7 @@ class ScheduleSession:
     shared_group_ids: List[str] = field(default_factory=list)
     lab_engineer_id: Optional[str] = None
     lab_engineer_name: Optional[str] = None
+    assigned_lab_id: Optional[str] = None
     assigned_instructor_locked: bool = True
     is_split_lab: bool = False
     lecture_credit_hours: int = 3
@@ -668,8 +695,25 @@ def normalize_rooms_input(rooms_raw: List[Any]) -> List[Dict[str, Any]]:
 
 
 def get_compatible_rooms(session: ScheduleSession, rooms: List[Any]) -> List[RoomResource]:
-    """Return rooms compatible with room type, capacity, availability, and equipment, tightest capacity first."""
+    """Return rooms compatible with room type, capacity, availability, equipment, and admin-assigned lab, tightest capacity first."""
     dicts = normalize_rooms_input(rooms)
+    if session.is_lab and session.assigned_lab_id:
+        pinned = [
+            RoomResource(
+                room_id=r["id"],
+                code=r["code"],
+                name=r["name"],
+                capacity=int(r["capacity"]),
+                room_type=r["type"],
+                equipment=list(r.get("equipment") or []),
+                is_available=bool(r["is_available"]),
+                assigned_lab_engineer_id=r.get("assignedLabEngineerId") or r.get("assigned_lab_engineer_id"),
+            )
+            for r in dicts
+            if r["id"] == session.assigned_lab_id and r.get("is_available", True)
+        ]
+        return pinned
+
     compat: List[RoomResource] = []
     req_eq = {str(e).lower() for e in session.required_equipment if e}
     for r in dicts:
@@ -992,6 +1036,17 @@ def expand_sections_to_sessions(
                             slot_idx = s.slot_index
                 pinned_tuple = (pinned["day"], slot_idx, pinned["roomId"])
 
+            assigned_lab_raw = (
+                str(
+                    sec.get("assignedLabId")
+                    or sec.get("assigned_lab_id")
+                    or course.get("assignedLabId")
+                    or course.get("assigned_lab_id")
+                    or ""
+                ).strip()
+                or None
+            )
+
             expanded.append(
                 ScheduleSession(
                     session_id=sess_id,
@@ -1018,13 +1073,13 @@ def expand_sections_to_sessions(
                     required_equipment=list(
                         sec.get("requiredEquipment")
                         or sec.get("required_equipment")
-                        or course.get("requiredEquipment")
-                        or course.get("required_equipment")
+                        or ((course.get("requiredEquipment") or course.get("required_equipment")) if (is_lab or ctype == "lab") else [])
                         or []
                     ),
                     shared_group_ids=list(sec.get("sharedGroupIds") or sec.get("shared_group_ids") or []),
                     lab_engineer_id=lab_eng_id,
                     lab_engineer_name=lab_eng_name,
+                    assigned_lab_id=assigned_lab_raw if is_lab else None,
                     assigned_instructor_locked=True,
                     is_split_lab=is_split_lab,
                     lecture_credit_hours=lec_cr,
@@ -1068,8 +1123,10 @@ def validate_pre_generation_inputs(
         errors.append("Zero teaching slots exist in the configured academic schedule.")
 
     inst_hours: Dict[str, float] = {}
+    group_minutes: Dict[str, int] = {}
     inst_by_id = {i["id"]: i for i in (instructors or []) if i.get("id")}
 
+    room_by_id = {r["id"]: r for r in norm_rooms if r.get("id")}
     for sess in sessions:
         if sess.is_lab:
             if not sess.lab_engineer_id and not sess.instructor_id:
@@ -1080,6 +1137,12 @@ def validate_pre_generation_inputs(
                 errors.append(
                     f"Lab session {sess.course_code} requires a Laboratory room, but zero laboratories are available."
                 )
+            if sess.assigned_lab_id:
+                assigned_lab = room_by_id.get(sess.assigned_lab_id)
+                if not assigned_lab or not assigned_lab.get("is_available", True):
+                    errors.append(
+                        f"Lab session {sess.course_code} ({sess.batch_code}) references unavailable or missing laboratory ({sess.assigned_lab_id})."
+                    )
         else:
             if not sess.instructor_id:
                 errors.append(
@@ -1110,9 +1173,11 @@ def validate_pre_generation_inputs(
                     f"{sess.course_code} requires equipment [{', '.join(sess.required_equipment)}] not matched cleanly in candidate rooms."
                 )
 
-        # Track staff load
+        # Track staff and batch load
         for staff_id in sess.staff_ids:
             inst_hours[staff_id] = inst_hours.get(staff_id, 0.0) + (sess.duration_minutes / 60.0)
+        for gk in sess.student_group_keys:
+            group_minutes[gk] = group_minutes.get(gk, 0) + sess.duration_minutes
 
         # Check Friday pinned slot conflicts
         if sess.is_locked and sess.pinned_slot:
@@ -1130,6 +1195,30 @@ def validate_pre_generation_inputs(
                 warnings.append(
                     f"Staff member {inst.get('name', staff_id)} is assigned {req_hrs:.1f}h/week (cap: {max_cap:.0f}h/week)."
                 )
+
+    weekly_teaching_minutes = sum(
+        (s.end_min - s.start_min)
+        for d in cfg.working_days
+        for s in cfg.get_day_slots(d)
+    )
+    if weekly_teaching_minutes > 0:
+        overloaded_batches = [
+            f"{gk} ({mins / 60.0:.1f}h)"
+            for gk, mins in group_minutes.items()
+            if mins > weekly_teaching_minutes
+        ]
+        if overloaded_batches:
+            sample = ", ".join(overloaded_batches[:4])
+            extra = f" (+{len(overloaded_batches) - 4} more)" if len(overloaded_batches) > 4 else ""
+            warnings.append(
+                f"{len(overloaded_batches)} student batch(es)/section(s) exceed weekly operating hours ({weekly_teaching_minutes / 60.0:.1f}h/week): {sample}{extra}. Ensure courses are tagged with semester or enrollments."
+            )
+        total_demand_minutes = sum(s.duration_minutes for s in sessions)
+        total_supply_minutes = len(avail_rooms) * weekly_teaching_minutes
+        if total_demand_minutes > total_supply_minutes:
+            warnings.append(
+                f"Total session demand ({total_demand_minutes / 60.0:.1f}h) exceeds total weekly room capacity ({total_supply_minutes / 60.0:.1f}h across {len(avail_rooms)} room(s))."
+            )
 
     return {
         "valid": len(errors) == 0,

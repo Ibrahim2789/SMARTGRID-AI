@@ -160,11 +160,12 @@ CATEGORY_DEFINITIONS: Dict[str, Dict[str, Any]] = {
             {"key": "assignedLabEngineer", "label": "Assigned Lab Engineer (email or name)", "required": False, "type": "fk:instructor", "synonyms": ["assigned_lab_engineer", "lab_engineer", "lab_engineer_email"]},
             {"key": "requiredEquipment", "label": "Required Equipment", "required": False, "type": "list", "synonyms": ["required_equipment", "equipment", "lab_equipment"]},
             {"key": "subDepartment", "label": "Sub-Department / Wing", "required": False, "type": "string", "synonyms": ["sub_department", "subdepartment", "track"]},
+            {"key": "semester", "label": "Semester (1–16)", "required": False, "type": "int", "synonyms": ["semester", "course_semester", "semester_number", "sem", "term_number"]},
         ],
-        "templateHeaders": ["code", "title", "department_code", "course_type", "lecture_credits", "lab_credits", "is_elective", "assigned_instructor", "assigned_lab_engineer", "required_equipment"],
+        "templateHeaders": ["code", "title", "department_code", "course_type", "lecture_credits", "lab_credits", "semester", "is_elective", "assigned_instructor", "assigned_lab_engineer", "required_equipment"],
         "templateRows": [
-            ["CS-101", "Programming Fundamentals", "CS", "lecture_lab", "3", "1", "no", "", "", "Projector; Workstations"],
-            ["CS-401", "Artificial Intelligence", "CS", "lecture", "3", "0", "yes", "", "", "Projector"],
+            ["CS-101", "Programming Fundamentals", "CS", "lecture_lab", "3", "1", "1", "no", "", "", "Projector; Workstations"],
+            ["CS-401", "Artificial Intelligence", "CS", "lecture", "3", "0", "7", "yes", "", "", "Projector"],
         ],
     },
     "cohorts": {
@@ -453,6 +454,7 @@ def _all_category_fields(category: str) -> List[Dict[str, Any]]:
             {"key": "assignedLabEngineer", "label": "Assigned Lab Engineer (email or name)", "group": "Courses", "required": False, "type": "fk:instructor", "synonyms": ["assigned_lab_engineer", "lab_engineer", "lab_engineer_email", "lab_engineer_name", "engineer"]},
             {"key": "requiredEquipment", "label": "Course Required Equipment", "group": "Courses", "required": False, "type": "list", "synonyms": ["required_equipment", "lab_equipment"]},
             {"key": "courseSubDepartment", "label": "Course Sub-Department / Track", "group": "Courses", "required": False, "type": "string", "synonyms": ["course_sub_department", "sub_department", "subdepartment", "track"]},
+            {"key": "courseSemester", "label": "Course Semester (1–16)", "group": "Courses", "required": False, "type": "int", "synonyms": ["course_semester", "semester_number", "target_semester"]},
 
             # Batches & Sections
             {"key": "cohortCode", "label": "Cohort / Section Full Code (e.g. 2K24-CS-A)", "group": "Batches & Sections", "required": False, "type": "string", "synonyms": ["cohort_code", "class_code", "group_code", "cohort", "student_group"]},
@@ -861,6 +863,8 @@ def validate_and_stage_import(
     staged_enrollment_keys: Set[Tuple[str, str, str, str]] = set(ctx["enrollment_by_key"].keys())
     staged_session_keys: Set[Tuple[str, str, str, str]] = set(ctx["session_by_key"].keys())
     in_file_all_entities: Set[str] = set()
+    staged_new_course_codes: Set[str] = set()
+    staged_course_inferred_sems: Dict[str, Set[int]] = defaultdict(set)
 
     # Reverse map from targetKey -> source CSV column name for accurate error attribution
     target_to_src_header = {tgt: hdr for hdr, tgt in active_mapping.items() if tgt}
@@ -1282,6 +1286,13 @@ def validate_and_stage_import(
             lab_eng_raw = mapped_vals.get("assignedLabEngineer", "")
             req_equip = split_list_value(mapped_vals.get("requiredEquipment", ""))
             sub_dept = mapped_vals.get("subDepartment", "")
+            course_sem_raw = mapped_vals.get("semester", "")
+            course_sem_val: Optional[int] = None
+            if course_sem_raw:
+                try:
+                    course_sem_val = parse_strict_int(course_sem_raw, "Semester", min_val=1, max_val=16)
+                except ValueError as exc:
+                    add_err("semester", "invalid_type", str(exc), "Enter integer 1–16.")
 
             if not code:
                 add_err("code", "missing_required", "Course code is required.", "Provide a unique course code such as CS-101.")
@@ -1404,8 +1415,9 @@ def validate_and_stage_import(
                             "is_compulsory": is_compulsory,
                             "required_equipment": req_equip,
                             "sub_department": sub_dept or None,
+                            "semester_number": course_sem_val if course_sem_val is not None else existing.get("semester_number"),
                         }
-                        diffs = _compute_diffs(existing, payload, [("title", "Course Title"), ("department_id", "Department ID"), ("credit_hours", "Credit Hours"), ("lecture_credit_hours", "Lecture Credits"), ("lab_credit_hours", "Lab Credits"), ("is_compulsory", "Compulsory")])
+                        diffs = _compute_diffs(existing, payload, [("title", "Course Title"), ("department_id", "Department ID"), ("credit_hours", "Credit Hours"), ("lecture_credit_hours", "Lecture Credits"), ("lab_credit_hours", "Lab Credits"), ("semester_number", "Semester"), ("is_compulsory", "Compulsory")])
                         field_diffs.append({"row": row_num, "identifier": code, "entity": "Course", "diffs": diffs})
                         row_op = {"entity": "courses", "action": "update", "id": existing["id"], "match": {"id": f"eq.{existing['id']}"}, "payload": payload, "before": existing, "electivePoolName": pool_name, "deptCode": dept_raw.upper()}
                 elif not errors and action == "create":
@@ -1428,6 +1440,7 @@ def validate_and_stage_import(
                         "is_compulsory": is_compulsory,
                         "required_equipment": req_equip,
                         "sub_department": sub_dept or None,
+                        "semester_number": course_sem_val,
                         "created_at": now_iso(),
                     }
                     staged_courses_by_code[code] = payload
@@ -1783,6 +1796,7 @@ def validate_and_stage_import(
             assigned_lab_eng_raw = mapped_vals.get("assignedLabEngineer", "")
             req_equip = split_list_value(mapped_vals.get("requiredEquipment", ""))
             course_sub_dept = mapped_vals.get("courseSubDepartment", "")
+            course_sem_raw = mapped_vals.get("courseSemester", "")
 
             # 5) Batch & Section fields
             cohort_code_raw = mapped_vals.get("cohortCode", "").upper()
@@ -1933,6 +1947,12 @@ def validate_and_stage_import(
                     sem_val = parse_strict_int(sem_raw, "Semester", min_val=1, max_val=16)
                 except ValueError as exc:
                     add_err("semester", "invalid_type", str(exc), "Enter integer 1–16.")
+            course_sem_val: Optional[int] = None
+            if course_sem_raw:
+                try:
+                    course_sem_val = parse_strict_int(course_sem_raw, "Course semester", min_val=1, max_val=16)
+                except ValueError as exc:
+                    add_err("courseSemester", "invalid_type", str(exc), "Enter integer 1–16.")
 
             # Validate Assignment & Enrollment fields
             sess_type = "Theory"
@@ -2179,9 +2199,13 @@ def validate_and_stage_import(
                     eff_total_cr = min(6, max(1, total_cr_val or (lec_cr_eff + lab_cr_eff)))
                     eff_c_type = "lecture_lab" if (lec_cr_eff > 0 and lab_cr_eff > 0) else ("lab" if lab_cr_eff > 0 else "lecture")
 
+                    eff_course_sem = course_sem_val if course_sem_val is not None else (sem_val if sem_raw else None)
                     existing_c = staged_courses_by_code.get(course_code)
                     if not existing_c and not errors:
                         c_id = f"crs-{uuid.uuid4().hex[:8]}"
+                        if eff_course_sem is not None:
+                            staged_course_inferred_sems[course_code].add(eff_course_sem)
+                        staged_new_course_codes.add(course_code)
                         c_pay = {
                             "id": c_id,
                             "institution_id": institution_id,
@@ -2203,6 +2227,7 @@ def validate_and_stage_import(
                             "elective_pool_name": pool_name or None,
                             "required_room_type": "lab" if eff_c_type == "lab" else "lecture",
                             "required_equipment": req_equip,
+                            "semester_number": eff_course_sem,
                             "created_at": now_iso(),
                         }
                         staged_courses_by_code[course_code] = c_pay
@@ -2211,6 +2236,10 @@ def validate_and_stage_import(
                         active_course_id = c_id
                     elif existing_c and not errors:
                         active_course_id = existing_c["id"]
+                        if course_code in staged_new_course_codes and eff_course_sem is not None and course_sem_val is None:
+                            staged_course_inferred_sems[course_code].add(eff_course_sem)
+                            if len(staged_course_inferred_sems[course_code]) > 1:
+                                existing_c["semester_number"] = None
                         if duplicate_mode == "update" and f"course:{course_code}" not in in_file_all_entities and course_code in ctx["course_by_code"]:
                             in_file_all_entities.add(f"course:{course_code}")
                             c_upd = {
@@ -2230,8 +2259,9 @@ def validate_and_stage_import(
                                 "is_elective": (not is_compulsory_val) if (comp_raw or elec_raw) else existing_c.get("is_elective", False),
                                 "elective_pool_name": pool_name or existing_c.get("elective_pool_name"),
                                 "required_equipment": req_equip or existing_c.get("required_equipment") or [],
+                                "semester_number": eff_course_sem if (course_sem_val is not None) else existing_c.get("semester_number"),
                             }
-                            diffs = _compute_diffs(existing_c, c_upd, [("title", "Course Title"), ("credit_hours", "Credit Hours"), ("is_compulsory", "Compulsory"), ("elective_pool_name", "Elective Pool")])
+                            diffs = _compute_diffs(existing_c, c_upd, [("title", "Course Title"), ("credit_hours", "Credit Hours"), ("semester_number", "Semester"), ("is_compulsory", "Compulsory"), ("elective_pool_name", "Elective Pool")])
                             if diffs:
                                 field_diffs.append({"row": row_num, "identifier": course_code, "entity": "Course", "diffs": diffs})
                                 sub_ops.append({"entity": "courses", "action": "update", "id": existing_c["id"], "match": {"id": f"eq.{existing_c['id']}"}, "payload": c_upd, "before": existing_c, "electivePoolName": pool_name, "deptCode": dept_code})

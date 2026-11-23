@@ -843,6 +843,703 @@ class SmartGridBackendTests(unittest.TestCase):
         self.assertIn(("b-cs-b", "lab"), sec_group_ids)
         self.assertNotIn(("b-ee-a", "lecture"), sec_group_ids)
 
+    def test_18_semester_enrollment_scoping_and_chunked_insert(self) -> None:
+        """Verify semester scoping, explicit course_enrollments, partial session restriction, and 250-row chunked inserts."""
+        from unittest.mock import patch
+        from app.database.supabase import SupabaseRestClient
+        from app.deps import load_university_optimization_inputs, resolve_matching_batches_for_course
+
+        departments = [
+            {"id": "dept-cs", "institution_id": "inst-1", "code": "CS", "name": "Computer Science"},
+        ]
+        batches = [
+            {"id": "b-s1-a", "institution_id": "inst-1", "code": "FA25-BSCS-1A", "name": "FA25 BSCS 1A", "department_id": "dept-cs", "semester": 1, "section": "A", "student_count": 45},
+            {"id": "b-s1-b", "institution_id": "inst-1", "code": "FA25-BSCS-1B", "name": "FA25 BSCS 1B", "department_id": "dept-cs", "semester": 1, "section": "B", "student_count": 45},
+            {"id": "b-s3-a", "institution_id": "inst-1", "code": "FA24-BSCS-3A", "name": "FA24 BSCS 3A", "department_id": "dept-cs", "semester": 3, "section": "A", "student_count": 45},
+            {"id": "b-s5-a", "institution_id": "inst-1", "code": "FA23-BSCS-5A", "name": "FA23 BSCS 5A", "department_id": "dept-cs", "semester": 5, "section": "A", "student_count": 45},
+        ]
+        course_sem1 = {
+            "id": "crs-pf",
+            "institution_id": "inst-1",
+            "department_id": "dept-cs",
+            "code": "CS-101",
+            "title": "Programming Fundamentals",
+            "course_type": "lecture",
+            "lecture_credit_hours": 3,
+            "lab_credit_hours": 0,
+            "credit_hours": 3,
+            "semester_number": 1,
+            "is_compulsory": True,
+            "assigned_instructor_id": "inst-1",
+        }
+
+        # 1. Semester scoping prevents multiplying a Sem-1 course into Sem-3 / Sem-5 batches
+        sem1_matched = resolve_matching_batches_for_course(course_sem1, batches, departments, [])
+        self.assertEqual([b["id"] for b in sem1_matched], ["b-s1-a", "b-s1-b"])
+
+        # 2. Explicit course_enrollments restricts even further to only enrolled batch IDs
+        enrolled_matched = resolve_matching_batches_for_course(
+            course_sem1,
+            batches,
+            departments,
+            [],
+            enrolled_batch_ids={"b-s1-a"},
+        )
+        self.assertEqual([b["id"] for b in enrolled_matched], ["b-s1-a"])
+
+        # 3. Existing partial course_sessions for a non-elective scopes generation strictly to those mapped batches
+        course_existing = {
+            "id": "crs-db",
+            "institution_id": "inst-1",
+            "department_id": "dept-cs",
+            "code": "CS-202",
+            "title": "Database Systems",
+            "course_type": "lecture",
+            "lecture_credit_hours": 3,
+            "lab_credit_hours": 0,
+            "credit_hours": 3,
+            "is_compulsory": True,
+            "assigned_instructor_id": "inst-1",
+        }
+
+        class _PartialSessionsStub:
+            def select_one(self, table, filters=None, select="*", order=None):
+                if table == "institutions":
+                    return {"id": "inst-1", "name": "COMSATS", "working_days": ["Mon", "Tue", "Wed", "Thu", "Fri"], "use_voting_preferences": False}
+                return None
+
+            def select(self, table, filters=None, select="*", order=None):
+                mapping = {
+                    "courses": [course_sem1, course_existing],
+                    "course_sessions": [
+                        {
+                            "id": "sec-db-3a",
+                            "course_id": "crs-db",
+                            "batch_id": "b-s3-a",
+                            "section_code": "A",
+                            "session_type": "lecture",
+                            "component_type": "lecture",
+                            "instructor_id": "inst-1",
+                            "sessions_per_week": 3,
+                        }
+                    ],
+                    "course_enrollments": [{"course_id": "crs-pf", "batch_id": "b-s1-a"}],
+                    "classrooms": [{"id": "rm-1", "code": "CR-101", "name": "CR-101", "room_type": "lecture", "capacity": 60, "is_available": True}],
+                    "laboratories": [],
+                    "room_equipment_capacities": [],
+                    "batches": batches,
+                    "instructors": [{"id": "inst-1", "name": "Dr. Ali", "department_id": "dept-cs", "staff_role": "faculty", "max_weekly_hours": 18, "max_consecutive_hours": 3}],
+                    "departments": departments,
+                    "academic_programs": [],
+                    "student_preferences": [],
+                    "instructor_preferences": [],
+                    "instructor_availability": [],
+                }
+                return mapping.get(table, [])
+
+        with patch("app.deps.require_supabase_client", return_value=_PartialSessionsStub()):
+            inputs = load_university_optimization_inputs("inst-1", {})
+
+        pf_batches = {s["studentGroupId"] for s in inputs["sections"] if s["courseId"] == "crs-pf"}
+        db_batches = {s["studentGroupId"] for s in inputs["sections"] if s["courseId"] == "crs-db"}
+        self.assertEqual(pf_batches, {"b-s1-a"})
+        self.assertEqual(db_batches, {"b-s3-a"})
+
+        # 4. Chunked SupabaseRestClient.insert splits 600 rows into 250 / 250 / 100 chunks
+        client = SupabaseRestClient("https://demo.supabase.co", "sb_secret_test")
+        chunk_sizes: list[int] = []
+
+        def fake_request(method, path, query=None, payload=None, prefer=None, timeout=15.0):
+            if method == "POST":
+                assert isinstance(payload, list)
+                chunk_sizes.append(len(payload))
+                return 201, {}, payload
+            return 200, {}, []
+
+        rows_600 = [{"id": f"row-{i}"} for i in range(600)]
+        with (
+            patch.object(client, "get_table_columns", return_value={"id"}),
+            patch.object(client, "_request", side_effect=fake_request),
+        ):
+            res_rows = client.insert("timetable_entries", rows_600, chunk_size=250)
+
+        self.assertEqual(chunk_sizes, [250, 250, 100])
+        self.assertEqual(len(res_rows), 600)
+
+    def test_19_large_scale_solver_performance(self) -> None:
+        """Benchmark hybrid DSatur+GA+SA solver on ~2,000 sessions across 40 batches within strict wall-clock bounds."""
+        import time
+
+        cfg = TimeSlotConfig()
+        courses = []
+        sections = []
+        student_groups = []
+        instructors = [{"id": f"inst-{i}", "name": f"Prof {i}", "staffRole": "faculty"} for i in range(60)]
+        rooms_raw = [
+            {"id": f"rm-lec-{i}", "code": f"LH-{100 + i}", "name": f"LH-{100 + i}", "type": "lecture", "capacity": 80, "isAvailable": True}
+            for i in range(45)
+        ] + [
+            {"id": f"rm-lab-{i}", "code": f"LAB-{200 + i}", "name": f"LAB-{200 + i}", "type": "lab", "capacity": 80, "isAvailable": True}
+            for i in range(15)
+        ]
+
+        # 40 batches * (16 3-credit lectures -> 48 lecture sessions + 2 labs -> 2 lab sessions) = 2,000 sessions
+        for b_idx in range(40):
+            bid = f"batch-{b_idx}"
+            student_groups.append({"id": bid, "batchId": bid, "code": f"B-{b_idx}", "size": 50})
+            for c_idx in range(16):
+                cid = f"crs-{b_idx}-{c_idx}"
+                iid = f"inst-{(b_idx * 3 + c_idx) % 60}"
+                courses.append({
+                    "id": cid,
+                    "code": f"C-{b_idx}-{c_idx}",
+                    "title": f"Course {b_idx}-{c_idx}",
+                    "courseType": "lecture",
+                    "lectureCredits": 3,
+                    "labCredits": 0,
+                    "credits": 3,
+                    "assignedInstructorId": iid,
+                })
+                sections.append({
+                    "id": f"sec-{cid}",
+                    "courseId": cid,
+                    "courseCode": f"C-{b_idx}-{c_idx}",
+                    "instructorId": iid,
+                    "studentGroupId": bid,
+                    "sectionCode": "A",
+                    "sessionType": "Theory",
+                    "componentType": "lecture",
+                    "enrollment": 50,
+                })
+            for l_idx in range(2):
+                cid = f"clab-{b_idx}-{l_idx}"
+                iid = f"inst-{(b_idx * 5 + l_idx) % 60}"
+                courses.append({
+                    "id": cid,
+                    "code": f"L-{b_idx}-{l_idx}",
+                    "title": f"Lab {b_idx}-{l_idx}",
+                    "courseType": "lab",
+                    "lectureCredits": 0,
+                    "labCredits": 1,
+                    "credits": 1,
+                    "assignedInstructorId": iid,
+                })
+                sections.append({
+                    "id": f"sec-{cid}",
+                    "courseId": cid,
+                    "courseCode": f"L-{b_idx}-{l_idx}",
+                    "instructorId": iid,
+                    "studentGroupId": bid,
+                    "sectionCode": "A",
+                    "sessionType": "Lab",
+                    "componentType": "lab",
+                    "enrollment": 50,
+                })
+
+        t_start = time.perf_counter()
+        res = run_hybrid_timetable_pipeline(
+            sections=sections,
+            courses=courses,
+            rooms_raw=rooms_raw,
+            student_groups=student_groups,
+            instructors=instructors,
+            time_config=cfg,
+            algorithm="hybrid_dsatur_ga_sa",
+        )
+        elapsed = time.perf_counter() - t_start
+
+        self.assertEqual(res["totalSessions"], 2000)
+        self.assertGreater(res["placedSessions"], 0)
+        self.assertEqual(res["placedSessions"], len(res["entries"]))
+        self.assertLess(elapsed, 15.0, f"Large-scale solve took too long: {elapsed:.2f}s")
+
+    @staticmethod
+    def _make_fake_supabase_and_req():
+        import asyncio
+        import json
+        from copy import deepcopy
+        from types import SimpleNamespace
+
+        class _FakeStatefulSupabase:
+            def __init__(self, fail_update_on_call: int | None = None):
+                self.fail_update_on_call = fail_update_on_call
+                self.update_calls = 0
+                self.tables = {
+                    "institutions": [
+                        {
+                            "id": "uni-1",
+                            "name": "National University",
+                            "code": "NU",
+                            "working_days": ["Mon", "Tue", "Wed", "Thu", "Fri"],
+                            "day_start_time": "09:00",
+                            "day_end_time": "17:00",
+                            "period_length_minutes": 50,
+                            "short_break_minutes": 10,
+                            "midday_break_enabled": True,
+                            "midday_break_start": "13:00",
+                            "midday_break_duration": 60,
+                            "lab_duration_minutes": 180,
+                        }
+                    ],
+                    "departments": [
+                        {"id": "dept-cs", "institution_id": "uni-1", "code": "CS", "name": "Computer Science"},
+                    ],
+                    "academic_programs": [
+                        {"id": "prog-bscs", "institution_id": "uni-1", "department_id": "dept-cs", "code": "BSCS", "name": "BS Computer Science"},
+                    ],
+                    "semesters": [
+                        {"id": "term-f26", "institution_id": "uni-1", "name": "Fall 2026", "status": "active"},
+                    ],
+                    "batches": [
+                        {"id": "b-cs-a", "institution_id": "uni-1", "program_id": "prog-bscs", "term_id": "term-f26", "code": "2K25-CS-A", "name": "2K25 CS A", "batch_code": "2K25", "department_code": "BSCS", "section": "A", "student_count": 45, "semester": 1},
+                        {"id": "b-cs-b", "institution_id": "uni-1", "program_id": "prog-bscs", "term_id": "term-f26", "code": "2K25-CS-B", "name": "2K25 CS B", "batch_code": "2K25", "department_code": "BSCS", "section": "B", "student_count": 45, "semester": 1},
+                    ],
+                    "courses": [
+                        {"id": "crs-ds", "institution_id": "uni-1", "department_id": "dept-cs", "code": "CS-201", "title": "Data Structures", "course_type": "lecture_lab", "lecture_credit_hours": 3, "lab_credit_hours": 1, "credit_hours": 4, "semester_number": 1, "is_compulsory": True, "required_equipment": ["Computers"]},
+                        {"id": "crs-db", "institution_id": "uni-1", "department_id": "dept-cs", "code": "CS-202", "title": "Database Systems", "course_type": "lecture", "lecture_credit_hours": 3, "lab_credit_hours": 0, "credit_hours": 3, "semester_number": 1, "is_compulsory": True, "required_equipment": []},
+                        {"id": "crs-os", "institution_id": "uni-1", "department_id": "dept-cs", "code": "CS-301", "title": "Operating Systems", "course_type": "lecture", "lecture_credit_hours": 3, "lab_credit_hours": 0, "credit_hours": 3, "semester_number": 1, "is_compulsory": True, "required_equipment": []},
+                    ],
+                    "instructors": [
+                        {"id": "inst-fac1", "institution_id": "uni-1", "user_id": "u-fac-1", "department_id": "dept-cs", "staff_code": "FAC-101", "name": "Dr. Ada Lovelace", "email": "ada@nu.edu", "designation": "Professor", "staff_role": "faculty", "is_active": True, "max_weekly_hours": 6, "max_consecutive_hours": 3, "qualified_course_ids": ["crs-ds", "crs-db"]},
+                        {"id": "inst-fac2", "institution_id": "uni-1", "user_id": "u-fac-2", "department_id": "dept-cs", "staff_code": "FAC-102", "name": "Dr. Alan Turing", "email": "alan@nu.edu", "designation": "Associate Professor", "staff_role": "faculty", "is_active": True, "max_weekly_hours": 16, "max_consecutive_hours": 3, "qualified_course_ids": []},
+                        {"id": "inst-eng1", "institution_id": "uni-1", "user_id": "u-eng-1", "department_id": "dept-cs", "staff_code": "LAB-201", "name": "Eng. Grace Hopper", "email": "grace@nu.edu", "designation": "Lab Engineer", "staff_role": "lab_engineer", "is_active": True, "max_weekly_hours": 18, "max_consecutive_hours": 3, "qualified_course_ids": []},
+                        {"id": "inst-inactive", "institution_id": "uni-1", "department_id": "dept-cs", "staff_code": "FAC-999", "name": "Prof. Retired", "email": "retired@nu.edu", "designation": "Professor", "staff_role": "faculty", "is_active": False, "max_weekly_hours": 12, "max_consecutive_hours": 3, "qualified_course_ids": []},
+                    ],
+                    "classrooms": [
+                        {"id": "rm-lh1", "institution_id": "uni-1", "code": "LH-101", "name": "LH-101", "room_type": "lecture", "capacity": 80, "is_available": True},
+                        {"id": "lab-1", "institution_id": "uni-1", "code": "LAB-1", "name": "General Lab 1", "room_type": "lab", "capacity": 60, "equipment": ["Computers"], "is_available": True},
+                        {"id": "lab-2", "institution_id": "uni-1", "code": "LAB-2", "name": "GPU Spec Lab 2", "room_type": "lab", "capacity": 60, "equipment": ["Computers"], "is_available": True},
+                        {"id": "lab-small", "institution_id": "uni-1", "code": "LAB-S", "name": "Tiny Lab", "room_type": "lab", "capacity": 15, "equipment": ["Computers"], "is_available": True},
+                        {"id": "lab-offline", "institution_id": "uni-1", "code": "LAB-OFF", "name": "Offline Lab", "room_type": "lab", "capacity": 60, "is_available": False},
+                    ],
+                    "laboratories": [
+                        {"id": "lab-1", "institution_id": "uni-1", "code": "LAB-1", "name": "General Lab 1", "capacity": 60, "is_available": True},
+                        {"id": "lab-2", "institution_id": "uni-1", "code": "LAB-2", "name": "GPU Spec Lab 2", "capacity": 60, "is_available": True},
+                        {"id": "lab-small", "institution_id": "uni-1", "code": "LAB-S", "name": "Tiny Lab", "capacity": 15, "is_available": True},
+                        {"id": "lab-offline", "institution_id": "uni-1", "code": "LAB-OFF", "name": "Offline Lab", "capacity": 60, "is_available": False},
+                    ],
+                    "room_equipment_capacities": [
+                        {"id": "eq-1", "institution_id": "uni-1", "room_id": "lab-1", "equipment_name": "Computers"},
+                        {"id": "eq-2", "institution_id": "uni-1", "room_id": "lab-2", "equipment_name": "Computers"},
+                        {"id": "eq-3", "institution_id": "uni-1", "room_id": "lab-small", "equipment_name": "Computers"},
+                    ],
+                    "course_sessions": [],
+                    "course_enrollments": [],
+                    "timetable_versions": [],
+                    "timetable_entries": [],
+                    "instructor_availability": [],
+                    "instructor_preferences": [],
+                    "student_preferences": [],
+                    "users": [
+                        {"id": "u-student", "institution_id": "uni-1", "name": "Student One", "email": "stu@nu.edu", "role": "student", "is_active": True, "batch_id": "b-cs-a"},
+                        {"id": "u-br", "institution_id": "uni-1", "name": "BR One", "email": "br@nu.edu", "role": "br", "is_active": True, "batch_id": "b-cs-a"},
+                        {"id": "u-eng-1", "institution_id": "uni-1", "name": "Eng. Grace Hopper", "email": "grace@nu.edu", "role": "faculty", "is_active": True},
+                    ],
+                    "br_assignments": [
+                        {"id": "bra-1", "user_id": "u-br", "batch_id": "b-cs-a", "gender_role": "male", "is_active": True},
+                    ],
+                    "audit_logs": [],
+                }
+
+            def _match(self, row, filters):
+                if not filters:
+                    return True
+                for k, v in filters.items():
+                    val = str(v)
+                    if val.startswith("eq."):
+                        if str(row.get(k) or "") != val[3:]:
+                            return False
+                return True
+
+            def select(self, table, filters=None, select="*", order=None, limit=None):
+                rows = [deepcopy(r) for r in self.tables.get(table, []) if self._match(r, filters)]
+                return rows[:limit] if limit else rows
+
+            def select_one(self, table, filters=None, select="*", order=None):
+                rows = self.select(table, filters=filters)
+                return rows[0] if rows else None
+
+            def insert(self, table, payload, chunk_size=250, upsert=False, on_conflict=None):
+                items = payload if isinstance(payload, list) else [payload]
+                inserted = []
+                for it in items:
+                    row = deepcopy(it)
+                    self.tables.setdefault(table, []).append(row)
+                    inserted.append(deepcopy(row))
+                return inserted
+
+            def update(self, table, filters, patch):
+                if table == "course_sessions" and self.fail_update_on_call is not None:
+                    self.update_calls += 1
+                    if self.update_calls == self.fail_update_on_call:
+                        from app.database.supabase import SupabaseQueryError
+                        raise SupabaseQueryError(503, "Simulated transient Supabase failure")
+                updated = []
+                for r in self.tables.get(table, []):
+                    if self._match(r, filters):
+                        r.update(deepcopy(patch))
+                        updated.append(deepcopy(r))
+                return updated
+
+            def delete(self, table, filters):
+                before = len(self.tables.get(table, []))
+                self.tables[table] = [r for r in self.tables.get(table, []) if not self._match(r, filters)]
+                return before - len(self.tables[table])
+
+            def get_table_columns(self, table):
+                return set()
+
+            def has_column(self, table, column):
+                return True
+
+        def make_req(method="GET", url="/", body=None, query=None):
+            raw = json.dumps(body).encode("utf-8") if body is not None else b""
+
+            async def _body():
+                return raw
+
+            async def _json():
+                return json.loads(raw.decode("utf-8")) if raw else {}
+
+            return SimpleNamespace(
+                method=method,
+                url=url,
+                headers={"content-type": "application/json"},
+                query_params=query or {},
+                path_params={},
+                body=_body,
+                json=_json,
+            )
+
+        return _FakeStatefulSupabase, make_req, asyncio.run
+
+    def test_20_assignment_sync_and_workspace_no_fake_staff(self) -> None:
+        from unittest.mock import patch
+        from app.routers.assignments import get_assignment_workspace, sync_course_offerings
+
+        FakeClient, make_req, run_async = self._make_fake_supabase_and_req()
+        client = FakeClient()
+        admin_auth = {"userId": "u-admin", "role": "admin", "systemRole": "admin", "institutionId": "uni-1"}
+
+        with (
+            patch("app.routers.assignments.require_auth_user", return_value=admin_auth),
+            patch("app.routers.assignments.require_supabase_client", return_value=client),
+        ):
+            sync_res = run_async(sync_course_offerings(make_req("POST", body={"universityId": "uni-1"})))
+            self.assertGreaterEqual(sync_res["createdCount"], 6)
+            # Verify no fake staff or default lab was substituted on materialized rows
+            for row in client.tables["course_sessions"]:
+                self.assertIsNone(row.get("instructor_id"))
+                self.assertIsNone(row.get("lab_engineer_id"))
+                self.assertIsNone(row.get("assigned_lab_id"))
+
+            ws = get_assignment_workspace(make_req("GET", query={"universityId": "uni-1", "cohortCode": "2K25"}))
+            self.assertEqual(ws["summary"]["totalOfferings"], 6)
+            self.assertEqual(ws["summary"]["unassignedCount"], 6)
+            self.assertEqual(ws["summary"]["completeCount"], 0)
+            self.assertEqual(ws["hierarchy"]["programs"][0]["code"], "BSCS")
+
+    def test_21_assignment_validation_422_rules_and_workload_cap(self) -> None:
+        from unittest.mock import patch
+        from app.routers.assignments import sync_course_offerings, update_single_offering_assignment
+        from fastapi_compat import HTTPException
+
+        FakeClient, make_req, run_async = self._make_fake_supabase_and_req()
+        client = FakeClient()
+        admin_auth = {"userId": "u-admin", "role": "admin", "systemRole": "admin", "institutionId": "uni-1"}
+
+        with (
+            patch("app.routers.assignments.require_auth_user", return_value=admin_auth),
+            patch("app.routers.assignments.require_supabase_client", return_value=client),
+        ):
+            run_async(sync_course_offerings(make_req("POST", body={"universityId": "uni-1"})))
+            ds_a_id = "term-f26::crs-ds::b-cs-a::A"
+            os_a_id = "term-f26::crs-os::b-cs-a::A"
+            db_a_id = "term-f26::crs-db::b-cs-a::A"
+
+            # 1. Inactive staff rejected with 422
+            with self.assertRaises(HTTPException) as ctx1:
+                run_async(update_single_offering_assignment(os_a_id, make_req("PUT", body={"universityId": "uni-1", "instructorId": "inst-inactive"})))
+            self.assertEqual(ctx1.exception.status_code, 422)
+
+            # 2. Lab engineer cannot be assigned as theory instructor (422)
+            with self.assertRaises(HTTPException) as ctx2:
+                run_async(update_single_offering_assignment(os_a_id, make_req("PUT", body={"universityId": "uni-1", "instructorId": "inst-eng1"})))
+            self.assertEqual(ctx2.exception.status_code, 422)
+
+            # 3. Faculty member restricted by qualified_course_ids cannot teach unlisted crs-os (422)
+            with self.assertRaises(HTTPException) as ctx3:
+                run_async(update_single_offering_assignment(os_a_id, make_req("PUT", body={"universityId": "uni-1", "instructorId": "inst-fac1"})))
+            self.assertEqual(ctx3.exception.status_code, 422)
+
+            # 4. Undersized lab and offline lab rejected (422)
+            with self.assertRaises(HTTPException) as ctx4:
+                run_async(update_single_offering_assignment(ds_a_id, make_req("PUT", body={"universityId": "uni-1", "instructorId": "inst-fac1", "labEngineerId": "inst-eng1", "assignedLabId": "lab-small"})))
+            self.assertEqual(ctx4.exception.status_code, 422)
+            with self.assertRaises(HTTPException) as ctx5:
+                run_async(update_single_offering_assignment(ds_a_id, make_req("PUT", body={"universityId": "uni-1", "instructorId": "inst-fac1", "labEngineerId": "inst-eng1", "assignedLabId": "lab-offline"})))
+            self.assertEqual(ctx5.exception.status_code, 422)
+
+            # 5. Valid assignment saves cleanly and tracks weekly load (inst-fac1 has cap=6, crs-ds adds 3h)
+            ok = run_async(update_single_offering_assignment(ds_a_id, make_req("PUT", body={"universityId": "uni-1", "instructorId": "inst-fac1", "labEngineerId": "inst-eng1", "assignedLabId": "lab-2"})))
+            self.assertEqual(ok["validation"]["status"], "assigned")
+
+            # 6. Cross-institution / missing offering returns 404
+            with self.assertRaises(HTTPException) as ctx_miss:
+                run_async(update_single_offering_assignment("term-f26::other::b::A", make_req("PUT", body={"universityId": "uni-1", "instructorId": "inst-fac2"})))
+            self.assertEqual(ctx_miss.exception.status_code, 404)
+
+            # 7. Adding crs-db (3h) to inst-fac1 (cap=6 -> 6h) fits, whereas adding a third 3h offering fails cap -> override works
+            ok2 = run_async(update_single_offering_assignment(db_a_id, make_req("PUT", body={"universityId": "uni-1", "instructorId": "inst-fac1"})))
+            self.assertEqual(ok2["validation"]["status"], "assigned")
+
+            ds_b_id = "term-f26::crs-ds::b-cs-b::B"
+            with self.assertRaises(HTTPException) as ctx_cap:
+                run_async(update_single_offering_assignment(ds_b_id, make_req("PUT", body={"universityId": "uni-1", "instructorId": "inst-fac1", "labEngineerId": "inst-eng1", "assignedLabId": "lab-1"})))
+            self.assertEqual(ctx_cap.exception.status_code, 422)
+
+            override_ok = run_async(update_single_offering_assignment(ds_b_id, make_req("PUT", body={"universityId": "uni-1", "instructorId": "inst-fac1", "labEngineerId": "inst-eng1", "assignedLabId": "lab-1", "allowWorkloadOverride": True})))
+            self.assertEqual(override_ok["validation"]["status"], "assigned")
+
+    def test_22_single_edit_409_published_impact_clear_and_audit_log(self) -> None:
+        from unittest.mock import patch
+        from app.routers.assignments import (
+            clear_offering_assignments,
+            get_assignment_history,
+            sync_course_offerings,
+            update_single_offering_assignment,
+        )
+        from fastapi_compat import HTTPException
+
+        FakeClient, make_req, run_async = self._make_fake_supabase_and_req()
+        client = FakeClient()
+        admin_auth = {"userId": "u-admin", "name": "Registrar", "role": "admin", "systemRole": "admin", "institutionId": "uni-1"}
+
+        with (
+            patch("app.routers.assignments.require_auth_user", return_value=admin_auth),
+            patch("app.routers.assignments.require_supabase_client", return_value=client),
+        ):
+            run_async(sync_course_offerings(make_req("POST", body={"universityId": "uni-1"})))
+            os_a_id = "term-f26::crs-os::b-cs-a::A"
+            run_async(update_single_offering_assignment(os_a_id, make_req("PUT", body={"universityId": "uni-1", "instructorId": "inst-fac2"})))
+
+            # Attach published timetable version referencing this course_session
+            os_row = next(r for r in client.tables["course_sessions"] if r["course_id"] == "crs-os" and r["batch_id"] == "b-cs-a")
+            client.tables["timetable_versions"].append({"id": "ttv-pub-1", "institution_id": "uni-1", "name": "Fall 2026 Live", "status": "published"})
+            client.tables["timetable_entries"].append({
+                "id": "tte-1", "institution_id": "uni-1", "timetable_version_id": "ttv-pub-1",
+                "course_session_id": os_row["id"], "course_code": "CS-301", "batch_id": "b-cs-a",
+                "instructor_id": "inst-fac2", "day_of_week": "Mon", "start_time": "09:00", "end_time": "09:50", "room_id": "rm-lh1",
+            })
+
+            # Clearing without confirmation -> 409
+            with self.assertRaises(HTTPException) as ctx409:
+                run_async(clear_offering_assignments(make_req("POST", body={"universityId": "uni-1", "offeringId": os_a_id})))
+            self.assertEqual(ctx409.exception.status_code, 409)
+            self.assertTrue(ctx409.exception.detail["requiresConfirmation"])
+
+            # Confirming impact clears assignment & writes audit log
+            cleared = run_async(clear_offering_assignments(make_req("POST", body={"universityId": "uni-1", "offeringId": os_a_id, "confirmTimetableImpact": True})))
+            self.assertEqual(cleared["clearedCount"], 1)
+            hist = get_assignment_history(make_req("GET", query={"universityId": "uni-1"}))
+            self.assertTrue(any(h["action"] == "clear" and h["entity_type"] == "assignment" for h in hist["history"]))
+
+    def test_23_bulk_preview_apply_overwrite_and_rollback(self) -> None:
+        from unittest.mock import patch
+        from app.database.supabase import SupabaseQueryError
+        from app.routers.assignments import (
+            apply_bulk_assignment,
+            preview_bulk_assignment,
+            sync_course_offerings,
+            update_single_offering_assignment,
+        )
+        from fastapi_compat import HTTPException
+
+        FakeClient, make_req, run_async = self._make_fake_supabase_and_req()
+        client = FakeClient()
+        admin_auth = {"userId": "u-admin", "role": "admin", "systemRole": "admin", "institutionId": "uni-1"}
+
+        with (
+            patch("app.routers.assignments.require_auth_user", return_value=admin_auth),
+            patch("app.routers.assignments.require_supabase_client", return_value=client),
+        ):
+            run_async(sync_course_offerings(make_req("POST", body={"universityId": "uni-1"})))
+            os_a_id = "term-f26::crs-os::b-cs-a::A"
+            os_b_id = "term-f26::crs-os::b-cs-b::B"
+            db_a_id = "term-f26::crs-db::b-cs-a::A"
+
+            # Pre-assign os-a to fac2; preview bulk assigning inst-fac2 with overwriteExisting=False skips os-a
+            run_async(update_single_offering_assignment(os_a_id, make_req("PUT", body={"universityId": "uni-1", "instructorId": "inst-fac2"})))
+            # Change os-a to inst-fac1 on db-a so overwrite detection triggers when assigning fac2 across both
+            run_async(update_single_offering_assignment(db_a_id, make_req("PUT", body={"universityId": "uni-1", "instructorId": "inst-fac1"})))
+
+            preview = run_async(preview_bulk_assignment(make_req("POST", body={
+                "universityId": "uni-1",
+                "offeringIds": [db_a_id, os_b_id],
+                "instructorId": "inst-fac2",
+                "overwriteExisting": False,
+            })))
+            self.assertEqual(preview["overwriteCount"], 1)
+            self.assertEqual(preview["applicableCount"], 1)
+
+            # Test compensating rollback when Supabase update raises error on 2nd write
+            client.fail_update_on_call = 2
+            with self.assertRaises(HTTPException):
+                run_async(apply_bulk_assignment(make_req("POST", body={
+                    "universityId": "uni-1",
+                    "offeringIds": [db_a_id, os_b_id],
+                    "instructorId": "inst-fac2",
+                    "overwriteExisting": True,
+                })))
+            client.fail_update_on_call = None
+            # db-a must be rolled back cleanly to inst-fac1!
+            db_a_row = next(r for r in client.tables["course_sessions"] if r["course_id"] == "crs-db" and r["batch_id"] == "b-cs-a")
+            self.assertEqual(db_a_row["instructor_id"], "inst-fac1")
+
+            # Clean retry with overwriteExisting=True succeeds
+            applied = run_async(apply_bulk_assignment(make_req("POST", body={
+                "universityId": "uni-1",
+                "offeringIds": [db_a_id, os_b_id],
+                "instructorId": "inst-fac2",
+                "overwriteExisting": True,
+            })))
+            self.assertEqual(applied["appliedCount"], 2)
+
+    def test_24_copy_section_and_rbac_student_br_faculty_isolation(self) -> None:
+        from unittest.mock import patch
+        from app.deps import require_auth_user
+        from app.routers.assignments import (
+            copy_section_assignments,
+            get_assignment_workspace,
+            get_my_staff_assignments,
+            sync_course_offerings,
+            update_single_offering_assignment,
+        )
+        from fastapi_compat import HTTPException
+
+        FakeClient, make_req, run_async = self._make_fake_supabase_and_req()
+        client = FakeClient()
+        admin_auth = {"userId": "u-admin", "role": "admin", "systemRole": "admin", "institutionId": "uni-1"}
+
+        with (
+            patch("app.routers.assignments.require_auth_user", return_value=admin_auth),
+            patch("app.routers.assignments.require_supabase_client", return_value=client),
+        ):
+            run_async(sync_course_offerings(make_req("POST", body={"universityId": "uni-1"})))
+            run_async(update_single_offering_assignment(
+                "term-f26::crs-ds::b-cs-a::A",
+                make_req("PUT", body={"universityId": "uni-1", "instructorId": "inst-fac2", "labEngineerId": "inst-eng1", "assignedLabId": "lab-2"}),
+            ))
+            copy_res = run_async(copy_section_assignments(make_req("POST", body={
+                "universityId": "uni-1",
+                "sourceSectionId": "b-cs-a",
+                "targetSectionIds": ["b-cs-b"],
+            })))
+            self.assertEqual(copy_res["copiedCount"], 1)
+
+        # RBAC check: student & br strictly denied (403) on BOTH workspace and my-load
+        for denied_role in ("student", "br"):
+            with (
+                patch("app.deps.verify_auth_token", return_value={"userId": f"u-{denied_role}"}),
+                patch("app.deps.require_supabase_client", return_value=client),
+                patch("app.routers.assignments.require_supabase_client", return_value=client),
+            ):
+                req = make_req("GET", query={"universityId": "uni-1"})
+                req.headers["authorization"] = "Bearer fake-token"
+                with self.assertRaises(HTTPException) as err_ws:
+                    get_assignment_workspace(req)
+                self.assertEqual(err_ws.exception.status_code, 403)
+                with self.assertRaises(HTTPException) as err_ml:
+                    get_my_staff_assignments(req)
+                self.assertEqual(err_ml.exception.status_code, 403)
+
+        # RBAC check: lab_engineer / faculty denied on workspace (403), allowed read-only own load on /my-load (200)
+        with (
+            patch("app.deps.verify_auth_token", return_value={"userId": "u-eng-1", "email": "grace@nu.edu"}),
+            patch("app.deps.require_supabase_client", return_value=client),
+            patch("app.routers.assignments.require_supabase_client", return_value=client),
+        ):
+            req = make_req("GET", query={"universityId": "uni-1"})
+            req.headers["authorization"] = "Bearer fake-token"
+            with self.assertRaises(HTTPException) as err_fac_ws:
+                get_assignment_workspace(req)
+            self.assertEqual(err_fac_ws.exception.status_code, 403)
+
+            my_load = get_my_staff_assignments(req)
+            self.assertEqual(my_load["instructor"]["id"], "inst-eng1")
+            self.assertEqual(len(my_load["offerings"]), 2)
+            self.assertTrue(all(o["labEngineerId"] == "inst-eng1" for o in my_load["offerings"]))
+
+    def test_25_optimization_prevalidation_422_and_assigned_lab_id_enforcement(self) -> None:
+        from unittest.mock import patch
+        from app.routers.optimization import run_optimization
+        from fastapi_compat import HTTPException
+
+        FakeClient, make_req, run_async = self._make_fake_supabase_and_req()
+        client = FakeClient()
+        admin_auth = {"userId": "u-admin", "role": "admin", "systemRole": "admin", "institutionId": "uni-1"}
+
+        # 1. Missing instructor/lab engineer blocks optimization with HTTP 422 before solver runs
+        bad_payload = {
+            "universityId": "uni-1",
+            "courses": client.tables["courses"][:1],
+            "classrooms": client.tables["classrooms"][:3],
+            "studentGroups": client.tables["batches"][:1],
+            "instructors": client.tables["instructors"],
+            "sections": [
+                {"id": "s-lec-1", "courseId": "crs-ds", "studentGroupId": "b-cs-a", "sessionType": "Theory", "componentType": "lecture", "instructorId": ""},
+                {"id": "s-lab-1", "courseId": "crs-ds", "studentGroupId": "b-cs-a", "sessionType": "Lab", "componentType": "lab", "assignedLabId": "lab-2"},
+            ],
+        }
+        with (
+            patch("app.routers.optimization.require_auth_user", return_value=admin_auth),
+            patch("app.routers.optimization.require_supabase_client", return_value=client),
+            patch("app.deps.require_supabase_client", return_value=client),
+            patch("app.optimization.preference_aggregator.require_supabase_client", return_value=client),
+        ):
+            with self.assertRaises(HTTPException) as ctx422:
+                run_async(run_optimization(make_req("POST", body=bad_payload)))
+            self.assertEqual(ctx422.exception.status_code, 422)
+            self.assertGreaterEqual(ctx422.exception.detail["readiness"]["blockerCount"], 1)
+
+        # 2. With valid instructor + lab engineer + specific assignedLabId='lab-2', ALL algorithms respect lab-2
+        good_sections = [
+            {"id": "s-lec-1", "courseId": "crs-ds", "studentGroupId": "b-cs-a", "sessionType": "Theory", "componentType": "lecture", "instructorId": "inst-fac2"},
+            {"id": "s-lab-1", "courseId": "crs-ds", "studentGroupId": "b-cs-a", "sessionType": "Lab", "componentType": "lab", "instructorId": "inst-fac2", "labEngineerId": "inst-eng1", "assignedLabId": "lab-2"},
+        ]
+        for algo in ("dsatur_only", "ga_only", "ga_sa", "hybrid_dsatur_ga_sa"):
+            res = run_hybrid_timetable_pipeline(
+                sections=good_sections,
+                courses=client.tables["courses"][:1],
+                rooms_raw=client.tables["classrooms"],
+                student_groups=client.tables["batches"][:1],
+                instructors=client.tables["instructors"],
+                algorithm=algo,
+            )
+            self.assertEqual(res["hardConstraintViolations"], 0, f"Hard clash on {algo}")
+            lab_entries = [e for e in res["entries"] if e["isLab"]]
+            self.assertEqual(len(lab_entries), 1)
+            self.assertEqual(lab_entries[0]["roomId"], "lab-2", f"{algo} failed to respect assignedLabId=lab-2")
+
+        # 3. Validator flags hard violation if a lab with assignedLabId='lab-2' is forced into 'lab-1'
+        cfg = TimeSlotConfig()
+        sessions = expand_sections_to_sessions(
+            sections=good_sections,
+            courses=client.tables["courses"][:1],
+            rooms=client.tables["classrooms"],
+            instructors=client.tables["instructors"],
+            time_config=cfg,
+        )
+        lab_session = next(s for s in sessions if s.is_lab)
+        lec_sessions = [s for s in sessions if not s.is_lab]
+        bad_assign = {
+            lab_session.session_id: ("Mon", "09:00", "lab-1"),
+            **{s.session_id: (["Tue", "Wed", "Thu"][idx % 3], "09:00", "rm-lh1") for idx, s in enumerate(lec_sessions)},
+        }
+        v_report = validate_timetable_assignments(bad_assign, sessions, client.tables["classrooms"], cfg)
+        self.assertFalse(v_report.is_valid)
+        self.assertTrue(any(v.violation_type == "assigned_lab_mismatch" or "lab-2" in v.message.lower() for v in v_report.violations))
+
 
 if __name__ == "__main__":
     unittest.main()

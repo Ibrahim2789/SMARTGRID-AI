@@ -48,6 +48,34 @@ def get_analytics_overview(request: Request) -> Dict[str, Any]:
     summary_metrics = params.get("summaryMetrics") or {}
     hist = params.get("fitnessHistory") or []
 
+    assignment_readiness: Dict[str, Any] = {}
+    staff_workload_summary: list[Dict[str, Any]] = []
+    try:
+        from app.services.assignment_validation import (
+            build_assignment_workspace_payload,
+            load_institution_assignment_context,
+        )
+
+        ctx = load_institution_assignment_context(client, uni_id)
+        ws = build_assignment_workspace_payload(ctx)
+        assignment_readiness = ws.get("summary") or {}
+        staff_workload_summary = [
+            {
+                "id": s["id"],
+                "name": s["name"],
+                "staffRole": s["staffRole"],
+                "departmentCode": s["departmentCode"],
+                "currentWeeklyHours": s["currentWeeklyHours"],
+                "maxWeeklyHours": s["maxWeeklyHours"],
+                "utilizationPct": s["utilizationPct"],
+                "assignedCoursesCount": s["assignedCoursesCount"],
+            }
+            for s in (ws.get("staffDirectory") or [])
+        ]
+    except Exception:
+        assignment_readiness = {}
+        staff_workload_summary = []
+
     return {
         "universityId": uni_id,
         "catalogSummary": {
@@ -57,6 +85,8 @@ def get_analytics_overview(request: Request) -> Dict[str, Any]:
             "instructors": total_instructors,
             "studentVotesCast": total_votes,
         },
+        "assignmentReadiness": assignment_readiness,
+        "staffWorkloadSummary": staff_workload_summary,
         "latestOptimizationRun": {
             "id": latest_run["id"] if latest_run else None,
             "algorithmPipeline": latest_run["algorithm"] if latest_run else "hybrid_dsatur_ga_sa",

@@ -2,17 +2,21 @@
 
 from __future__ import annotations
 
+import heapq
 import random
+import time
 from collections import defaultdict
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from .chromosome import SessionGene, TimetableChromosome
 from .constraints import ScheduleSession, TimeSlotConfig, format_minutes_24h, normalize_rooms_input
-from .fitness import is_slot_blocked, normalize_unavailable_slots_map
+from .fitness import is_parsed_slot_blocked, is_slot_blocked, normalize_unavailable_slots_map, preparse_unavailable_map
 
 
 def _is_room_compatible(session: ScheduleSession, room: Dict[str, Any]) -> bool:
     if not room.get("is_available", room.get("isAvailable", True)):
+        return False
+    if session.is_lab and session.assigned_lab_id and room.get("id") != session.assigned_lab_id:
         return False
     r_type = str(room.get("type") or room.get("room_type") or "lecture").lower()
     if session.is_lab and "lab" not in r_type:
@@ -56,18 +60,27 @@ def _is_room_blocked(
 
 
 def build_conflict_graph(sessions: List[ScheduleSession]) -> Dict[str, Set[str]]:
-    """Build adjacency matrix connecting sessions sharing student cohorts, instructor, or lab engineer."""
-    graph: Dict[str, Set[str]] = {s.session_id: set() for s in sessions}
-    n = len(sessions)
-    for i in range(n):
-        a = sessions[i]
-        a_staff = set(a.staff_ids)
-        a_groups = set(a.student_group_keys)
-        for j in range(i + 1, n):
-            b = sessions[j]
-            if (a_staff & set(b.staff_ids)) or (a_groups & set(b.student_group_keys)):
-                graph[a.session_id].add(b.session_id)
-                graph[b.session_id].add(a.session_id)
+    """Build adjacency matrix connecting sessions sharing student cohorts, instructor, or lab engineer in O(N + E)."""
+    by_staff: Dict[str, List[str]] = defaultdict(list)
+    by_group: Dict[str, List[str]] = defaultdict(list)
+    graph: Dict[str, Set[str]] = {}
+    for s in sessions:
+        sid = s.session_id
+        graph[sid] = set()
+        for st_id in s.staff_ids:
+            if st_id:
+                by_staff[st_id].append(sid)
+        for gk in s.student_group_keys:
+            if gk:
+                by_group[gk].append(sid)
+    for bucket in list(by_staff.values()) + list(by_group.values()):
+        if len(bucket) <= 1:
+            continue
+        b_set = set(bucket)
+        for sid in bucket:
+            graph[sid].update(b_set)
+    for sid, nbs in graph.items():
+        nbs.discard(sid)
     return graph
 
 
@@ -209,6 +222,11 @@ def dsatur_construct_schedule(
     weights: Optional[Dict[str, float]] = None,
     seed: Optional[int] = None,
     randomize_ties: bool = False,
+    conflict_graph: Optional[Dict[str, Set[str]]] = None,
+    comp_map_override: Optional[Dict[str, List[Dict[str, Any]]]] = None,
+    parsed_unavail_inst: Optional[Dict[str, Any]] = None,
+    parsed_unavail_room: Optional[Dict[str, Any]] = None,
+    deadline: Optional[float] = None,
 ) -> TimetableChromosome:
     """Construct an initial conflict-free, student-compact timetable using DSatur ordering."""
     rng = random.Random(seed)
@@ -216,14 +234,22 @@ def dsatur_construct_schedule(
     time_config = time_config or TimeSlotConfig()
     rooms = normalize_rooms_input(rooms)
 
-    unavail_inst = normalize_unavailable_slots_map(unavailable_instructor_slots, instructors)
-    unavail_room = normalize_unavailable_slots_map(unavailable_room_slots, None)
+    if parsed_unavail_inst is not None:
+        p_unavail_inst = parsed_unavail_inst
+    else:
+        unavail_inst = normalize_unavailable_slots_map(unavailable_instructor_slots, instructors)
+        p_unavail_inst = preparse_unavailable_map(unavail_inst)
+
+    if parsed_unavail_room is not None:
+        p_unavail_room = parsed_unavail_room
+    else:
+        unavail_room = normalize_unavailable_slots_map(unavailable_room_slots, None)
+        p_unavail_room = preparse_unavailable_map(unavail_room)
 
     w = weights or {}
     gap_w = max(0.25, float(w.get("student_gap_minimization", 0.35)) / 0.35)
     pref_w = max(0.25, float(w.get("preferences", 0.15)) / 0.15)
     raw_fair = max(0.0, float(w.get("student_fairness", 0.25)))
-    fair_w = raw_fair / 0.25
 
     prefs_by_batch: Dict[str, Dict[str, Any]] = {}
     for sp in student_preferences or []:
@@ -231,7 +257,7 @@ def dsatur_construct_schedule(
         if b_id and b_id not in prefs_by_batch:
             prefs_by_batch[b_id] = sp
 
-    graph = build_conflict_graph(sessions)
+    graph = conflict_graph if conflict_graph is not None else build_conflict_graph(sessions)
     sess_by_id = {s.session_id: s for s in sessions}
     session_order = {s.session_id: idx for idx, s in enumerate(sessions)}
 
@@ -336,19 +362,25 @@ def dsatur_construct_schedule(
         remaining_ids.add(sess.session_id)
 
     # Pre-filter compatible rooms
-    compatible_rooms_by_session: Dict[str, List[Dict[str, Any]]] = {}
-    for sid in sorted(remaining_ids, key=lambda x: session_order[x]):
-        sess = sess_by_id[sid]
-        comp = [r for r in rooms if _is_room_compatible(sess, r)]
-        if not comp:
-            same_kind = [
-                r for r in rooms
-                if r.get("is_available", r.get("isAvailable", True))
-                and (("lab" in str(r.get("type") or r.get("room_type") or "").lower()) == sess.is_lab)
-            ]
-            comp = same_kind or [r for r in rooms if r.get("is_available", r.get("isAvailable", True))] or list(rooms)
-        comp.sort(key=lambda rm: (max(0, int(rm.get("capacity") or 50) - sess.expected_students), str(rm.get("code") or rm["id"])))
-        compatible_rooms_by_session[sid] = comp
+    if comp_map_override is not None:
+        compatible_rooms_by_session = comp_map_override
+    else:
+        compatible_rooms_by_session = {}
+        for sid in sorted(remaining_ids, key=lambda x: session_order[x]):
+            sess = sess_by_id[sid]
+            comp = [r for r in rooms if _is_room_compatible(sess, r)]
+            if not comp:
+                if sess.is_lab and sess.assigned_lab_id:
+                    comp = [r for r in rooms if r.get("id") == sess.assigned_lab_id]
+                else:
+                    same_kind = [
+                        r for r in rooms
+                        if r.get("is_available", r.get("isAvailable", True))
+                        and (("lab" in str(r.get("type") or r.get("room_type") or "").lower()) == sess.is_lab)
+                    ]
+                    comp = same_kind or [r for r in rooms if r.get("is_available", r.get("isAvailable", True))] or list(rooms)
+            comp.sort(key=lambda rm: (max(0, int(rm.get("capacity") or 50) - sess.expected_students), str(rm.get("code") or rm["id"])))
+            compatible_rooms_by_session[sid] = comp
 
     saturation: Dict[str, int] = {sid: 0 for sid in remaining_ids}
     for sid in remaining_ids:
@@ -356,8 +388,7 @@ def dsatur_construct_schedule(
             if nb in chromo.genes:
                 saturation[sid] += 1
 
-    # 2. DSatur iterative placement with deterministic tie-breaking and scarcity-moderated preference quotas
-    # Count per-window lecture demand vs non-free-day room-slot supply so moderation only activates on genuine contention
+    # 2. DSatur iterative placement with heapq lazy-deletion, O(1) active batch counts, and scarcity-moderated preference quotas
     lec_rooms_cnt = max(1, sum(1 for r in rooms if r.get("is_available", r.get("isAvailable", True)) and "lab" not in str(r.get("type") or r.get("room_type") or "").lower()))
     morn_demand = sum(
         1 for sid in remaining_ids
@@ -378,47 +409,72 @@ def dsatur_construct_schedule(
     morn_contested = morn_demand > int(morn_slots_avail * 0.85)
     aft_contested = aft_demand > int(aft_slots_avail * 0.85)
 
-    while remaining_ids:
-        remaining_batches = {sess_by_id[s].batch_id for s in remaining_ids}
-        min_batch_hardship = min((batch_hardship[b] for b in remaining_batches), default=0.0)
+    eligible_days_true = list(time_config.working_days)
+    eligible_days_false = [d for d in time_config.working_days if d != "Fri"]
 
-        next_sid = max(
-            remaining_ids,
-            key=lambda sid: (
-                saturation[sid],
-                1 if sess_by_id[sid].is_lab else 0,
-                sess_by_id[sid].duration_minutes,
-                len(graph[sid]),
-                -len(compatible_rooms_by_session[sid]),
-                -session_order[sid],
+    remaining_batch_counts: Dict[str, int] = defaultdict(int)
+    heap: List[Tuple[int, int, int, int, int, int, str]] = []
+    for sid in remaining_ids:
+        s_obj = sess_by_id[sid]
+        remaining_batch_counts[s_obj.batch_id] += 1
+        heapq.heappush(
+            heap,
+            (
+                -saturation[sid],
+                -(1 if s_obj.is_lab else 0),
+                -s_obj.duration_minutes,
+                -len(graph[sid]),
+                len(compatible_rooms_by_session.get(sid, rooms)),
+                session_order[sid],
+                sid,
             ),
         )
+    active_batches: Set[str] = {b for b, cnt in remaining_batch_counts.items() if cnt > 0}
+
+    while remaining_ids:
+        next_sid: Optional[str] = None
+        while heap:
+            neg_sat, _, _, _, _, _, cand_sid = heapq.heappop(heap)
+            if cand_sid in remaining_ids and -neg_sat == saturation[cand_sid]:
+                next_sid = cand_sid
+                break
+        if next_sid is None:
+            break
+
         sess = sess_by_id[next_sid]
         remaining_ids.remove(next_sid)
 
+        min_batch_hardship = min((batch_hardship[b] for b in active_batches), default=0.0) if active_batches else 0.0
         excess_hardship = max(0.0, batch_hardship[sess.batch_id] - min_batch_hardship)
         fair_urgency_mult = 1.0 + (0.20 * min(1.5, raw_fair) * min(2.0, excess_hardship) if raw_fair > 0.0 else 0.0)
         tot_b = max(1, batch_total_sessions[sess.batch_id])
         my_pref_ratio = batch_pref_granted[sess.batch_id] / tot_b
-        peer_min_ratio = min(
-            (batch_pref_granted[b] / max(1, batch_total_sessions[b]) for b in remaining_batches if b != sess.batch_id),
-            default=my_pref_ratio,
-        )
         b_pref_win = (prefs_by_batch.get(sess.batch_id) or {}).get("preferred_time_window")
         sess_contested = (b_pref_win == "morning" and morn_contested) or (b_pref_win == "afternoon" and aft_contested)
-        if raw_fair > 0.0 and sess_contested and my_pref_ratio >= 0.50 and my_pref_ratio > peer_min_ratio + 0.10:
-            # Attenuate excess scarce window claims smoothly as student_fairness rises without disabling preference/compactness
-            window_pref_scale = max(0.35, 1.0 - min(1.0, raw_fair) * (0.40 + 0.50 * (my_pref_ratio - peer_min_ratio)))
+        if raw_fair > 0.0 and sess_contested and my_pref_ratio >= 0.50:
+            peer_min_ratio = min(
+                (batch_pref_granted[b] / max(1, batch_total_sessions[b]) for b in active_batches if b != sess.batch_id),
+                default=my_pref_ratio,
+            )
+            if my_pref_ratio > peer_min_ratio + 0.10:
+                window_pref_scale = max(0.35, 1.0 - min(1.0, raw_fair) * (0.40 + 0.50 * (my_pref_ratio - peer_min_ratio)))
+            else:
+                window_pref_scale = 1.0
         else:
             window_pref_scale = 1.0
 
-        candidate_rooms = list(compatible_rooms_by_session[next_sid])
+        remaining_batch_counts[sess.batch_id] -= 1
+        if remaining_batch_counts[sess.batch_id] <= 0:
+            active_batches.discard(sess.batch_id)
+
+        candidate_rooms = list(compatible_rooms_by_session.get(next_sid, rooms))
         if randomize_ties:
             rng.shuffle(candidate_rooms)
 
-        eligible_days_list = [d for d in time_config.working_days if not (d == "Fri" and not sess.friday_eligible)]
+        eligible_days_list = eligible_days_true if sess.friday_eligible else eligible_days_false
         eligible_days_count = len(eligible_days_list)
         best_choice: Optional[Tuple[float, str, int, str, int, int, List[int]]] = None
+        fast_mode = deadline is not None and time.perf_counter() >= deadline
 
         for day in eligible_days_list:
             valid_slots = time_config.get_valid_start_slots_for_session(sess, day)
@@ -434,7 +490,7 @@ def dsatur_construct_schedule(
                 # Check staff clashes & unavailability
                 if any(_interval_overlaps_any(st_m, en_m, staff_busy[(st_id, day)]) for st_id in sess.staff_ids):
                     continue
-                if _is_staff_blocked(sess, day, st_m, en_m, cov, unavail_inst):
+                if any(is_parsed_slot_blocked(p_unavail_inst.get(st_id), day, st_m, en_m, cov) for st_id in sess.staff_ids):
                     continue
 
                 # Check student cohort clashes
@@ -442,29 +498,33 @@ def dsatur_construct_schedule(
                     continue
 
                 # Compute slot-level heuristic ONCE outside the room loop
-                slot_h = _student_slot_heuristic_score(
-                    sess,
-                    day,
-                    st_m,
-                    en_m,
-                    time_config,
-                    group_busy,
-                    course_day_used,
-                    group_days_active,
-                    prefs_by_batch,
-                    eligible_days_count,
-                    gap_weight=gap_w,
-                    pref_weight=pref_w,
-                    fair_urgency_mult=fair_urgency_mult,
-                    window_pref_scale=window_pref_scale,
-                )
+                if fast_mode:
+                    slot_h = 0.0
+                else:
+                    slot_h = _student_slot_heuristic_score(
+                        sess,
+                        day,
+                        st_m,
+                        en_m,
+                        time_config,
+                        group_busy,
+                        course_day_used,
+                        group_days_active,
+                        prefs_by_batch,
+                        eligible_days_count,
+                        gap_weight=gap_w,
+                        pref_weight=pref_w,
+                        fair_urgency_mult=fair_urgency_mult,
+                        window_pref_scale=window_pref_scale,
+                    )
 
                 # Pick tightest available compatible room
+                checked_free = 0
                 for room in candidate_rooms:
                     r_id = room["id"]
                     if _interval_overlaps_any(st_m, en_m, room_busy[(r_id, day)]):
                         continue
-                    if _is_room_blocked(r_id, day, st_m, en_m, cov, unavail_room):
+                    if is_parsed_slot_blocked(p_unavail_room.get(r_id), day, st_m, en_m, cov):
                         continue
 
                     cap = int(room.get("capacity") or 50)
@@ -474,9 +534,17 @@ def dsatur_construct_schedule(
 
                     if best_choice is None or h_score < best_choice[0]:
                         best_choice = (h_score, day, slot_idx, r_id, st_m, en_m, cov)
-                    if not randomize_ties:
+                    if not randomize_ties or fast_mode:
                         # candidate_rooms is sorted tightest-fit first, so first free room is optimal for this slot
                         break
+                    checked_free += 1
+                    if checked_free >= 3:
+                        break
+
+                if fast_mode and best_choice is not None:
+                    break
+            if fast_mode and best_choice is not None:
+                break
 
         if best_choice is not None:
             _, b_day, b_slot, b_room, st_m, en_m, cov = best_choice
@@ -509,6 +577,19 @@ def dsatur_construct_schedule(
         for nb in graph[next_sid]:
             if nb in remaining_ids:
                 saturation[nb] += 1
+                nb_obj = sess_by_id[nb]
+                heapq.heappush(
+                    heap,
+                    (
+                        -saturation[nb],
+                        -(1 if nb_obj.is_lab else 0),
+                        -nb_obj.duration_minutes,
+                        -len(graph[nb]),
+                        len(compatible_rooms_by_session.get(nb, rooms)),
+                        session_order[nb],
+                        nb,
+                    ),
+                )
 
     return chromo
 

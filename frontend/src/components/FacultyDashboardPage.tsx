@@ -14,10 +14,18 @@ import {
   AuthenticatedVotingUser,
   saveInstructorPreferenceBackend,
   updateInstructorAvailabilityBackend,
-  fetchInstructorPreferencesBackend
+  fetchInstructorPreferencesBackend,
+  fetchMyStaffAssignmentsApi
 } from '../services/votingApi';
 import { RouteType } from './SmartGridNav';
-import { DayOfWeek, computeAcademicScheduleConfig, getLabBlockByStartPeriod, getEffectiveSlotDisplayForDay } from '../types/institutional';
+import {
+  AssignmentOfferingDTO,
+  DayOfWeek,
+  StaffWorkloadDTO,
+  computeAcademicScheduleConfig,
+  getLabBlockByStartPeriod,
+  getEffectiveSlotDisplayForDay
+} from '../types/institutional';
 import { resolveFacultyInstructor } from '../utils/userTimetableScope';
 import { showAppPopup } from './ToastPopupHost';
 
@@ -43,9 +51,18 @@ export const FacultyDashboardPage: React.FC<FacultyDashboardPageProps> = ({
   // Strictly match faculty record from master store (never fall back to another instructor)
   const matchedInstructor = resolveFacultyInstructor(currentUser, store.instructors);
 
-  // Assigned sections in master schedule
-  const assignedSections = store.sections.filter(s => s.instructorId === matchedInstructor?.id);
+  // Assigned sections in master schedule (matches both Lecture Instructor and Lab Engineer)
+  const assignedSections = matchedInstructor
+    ? store.sections.filter(
+        s => s.instructorId === matchedInstructor.id || s.labEngineerId === matchedInstructor.id
+      )
+    : [];
   const scheduledSessions = assignedSections.filter(s => Boolean(s.assignedSlot));
+
+  const [myLoadData, setMyLoadData] = useState<{
+    instructor: StaffWorkloadDTO | null;
+    offerings: AssignmentOfferingDTO[];
+  } | null>(null);
 
   // Teaching Preferences State
   const [preferredDays, setPreferredDays] = useState<DayOfWeek[]>(
@@ -67,6 +84,18 @@ export const FacultyDashboardPage: React.FC<FacultyDashboardPageProps> = ({
   const [newBlockDay, setNewBlockDay] = useState<DayOfWeek>('Fri');
   const [newBlockSlot, setNewBlockSlot] = useState<string>(computedTiming.periods[0] || '09:00 – 09:50');
   const [newBlockReason, setNewBlockReason] = useState<string>('Faculty Board Meeting');
+
+  useEffect(() => {
+    if (!currentUser?.token) return;
+    fetchMyStaffAssignmentsApi(currentUser, currentUser.institutionId)
+      .then(res => {
+        setMyLoadData({
+          instructor: res.instructor,
+          offerings: res.offerings || []
+        });
+      })
+      .catch(() => {});
+  }, [currentUser?.id, currentUser?.token, currentUser?.institutionId]);
 
   useEffect(() => {
     if (!matchedInstructor || !currentUser?.token) return;
@@ -91,10 +120,27 @@ export const FacultyDashboardPage: React.FC<FacultyDashboardPageProps> = ({
       .catch(() => {});
   }, [matchedInstructor?.id, currentUser?.token]);
 
-  // Stats calculation
-  const lectureCount = assignedSections.filter(s => s.sessionType === 'Lecture' || (!s.spanSlots || s.spanSlots === 1)).length;
-  const labCount = assignedSections.filter(s => s.sessionType === 'Lab' || (s.spanSlots && s.spanSlots > 1)).length;
-  const totalWeeklyTeachingHours = lectureCount * 1 + labCount * 3;
+  // Stats calculation (prefers authoritative backend workload without double counting)
+  const myStaffId = myLoadData?.instructor?.id || matchedInstructor?.id;
+  const lectureCount = myLoadData
+    ? (myLoadData.offerings || []).filter(o => o.requiresLecture && o.instructorId === myStaffId).length
+    : assignedSections.filter(
+        s =>
+          s.instructorId === matchedInstructor?.id &&
+          s.sessionType !== 'Lab' &&
+          (!s.spanSlots || s.spanSlots === 1)
+      ).length;
+  const labCount = myLoadData
+    ? (myLoadData.offerings || []).filter(
+        o => o.requiresLab && (o.labEngineerId === myStaffId || o.instructorId === myStaffId)
+      ).length
+    : assignedSections.filter(
+        s => s.sessionType === 'Lab' || (s.spanSlots && s.spanSlots > 1)
+      ).length;
+  const labDurationHours = Math.max(1, Math.round((computedTiming.labDurationMinutes || 180) / 60));
+  const totalWeeklyTeachingHours =
+    myLoadData?.instructor?.currentWeeklyHours ?? lectureCount * 1 + labCount * labDurationHours;
+  const effectiveCapHours = myLoadData?.instructor?.maxWeeklyHours ?? maxWeeklyHours;
 
   const handleToggleDay = (day: DayOfWeek) => {
     if (preferredDays.includes(day)) {
@@ -218,7 +264,11 @@ export const FacultyDashboardPage: React.FC<FacultyDashboardPageProps> = ({
       <header className="flex flex-col md:flex-row md:items-end justify-between gap-4 pb-4 border-b border-[#E4E2DA]">
         <div className="space-y-1">
           <div className="flex items-center gap-2 text-xs text-[#77766F]">
-            <span>{matchedInstructor?.title || 'Professor'}</span>
+            <span>
+              {matchedInstructor?.staffRole === 'lab_engineer'
+                ? 'Lab Engineer'
+                : matchedInstructor?.title || 'Professor'}
+            </span>
             <span>·</span>
             <span>{currentUser.email}</span>
           </div>
@@ -245,7 +295,7 @@ export const FacultyDashboardPage: React.FC<FacultyDashboardPageProps> = ({
             <Clock className="w-3.5 h-3.5 text-[#77766F]" />
           </div>
           <div className="font-serif-editorial text-2xl text-[#171717] font-mono-tabular">
-            {totalWeeklyTeachingHours} <span className="text-xs font-sans text-[#77766F] font-normal">/ {maxWeeklyHours} hrs</span>
+            {totalWeeklyTeachingHours} <span className="text-xs font-sans text-[#77766F] font-normal">/ {effectiveCapHours} hrs</span>
           </div>
         </div>
 
@@ -306,9 +356,75 @@ export const FacultyDashboardPage: React.FC<FacultyDashboardPageProps> = ({
         </button>
       </div>
 
-      {/* 4. Tab Content: My Weekly Schedule */}
+      {/* 4. Tab Content: My Weekly Schedule & Official Assigned Course Offerings */}
       {activeTab === 'schedule' && (
-        <div className="space-y-4">
+        <div className="space-y-5">
+          {myLoadData && myLoadData.offerings.length > 0 && (
+            <div className="sf-card-white overflow-hidden">
+              <div className="px-5 py-4 border-b border-[#E4E2DA] flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <h2 className="font-serif-editorial text-xl text-[#171717]">
+                    Assigned Course Offerings
+                  </h2>
+                  <p className="text-xs text-[#77766F]">
+                    Read-only semester allocation summary across Lecture Instructor &amp; Lab Engineer roles.
+                  </p>
+                </div>
+                <span className="text-xs font-mono-tabular text-[#57564F]">
+                  {myLoadData.offerings.length} course{myLoadData.offerings.length === 1 ? '' : 's'} · {totalWeeklyTeachingHours} hrs/wk
+                </span>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-[#F7F6EF] border-b border-[#E4E2DA] text-[11px] font-semibold uppercase tracking-wider text-[#77766F]">
+                      <th className="py-2.5 px-4">Course</th>
+                      <th className="py-2.5 px-4">Section</th>
+                      <th className="py-2.5 px-4">Assigned Role</th>
+                      <th className="py-2.5 px-4">Pinned Laboratory</th>
+                      <th className="py-2.5 px-4 text-right">Weekly Load</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#E4E2DA] text-xs">
+                    {myLoadData.offerings.map(off => {
+                      const staffId = myLoadData.instructor?.id || matchedInstructor?.id;
+                      const isLecRole = off.instructorId === staffId && off.requiresLecture;
+                      const isLabRole = off.labEngineerId === staffId && off.requiresLab;
+                      const roleLabel =
+                        isLecRole && isLabRole
+                          ? 'Lecture Instructor & Lab Engineer'
+                          : isLabRole
+                          ? 'Lab Engineer'
+                          : 'Lecture Instructor';
+                      return (
+                        <tr key={off.id} className="hover:bg-[#F7F6EF]/60 transition-colors">
+                          <td className="py-2.5 px-4">
+                            <span className="font-mono-tabular font-semibold text-[#171717] mr-2">
+                              {off.courseCode}
+                            </span>
+                            <span className="text-[#57564F]">{off.courseTitle}</span>
+                          </td>
+                          <td className="py-2.5 px-4 font-mono-tabular text-[#171717]">
+                            {off.batchCode || off.sectionCode}
+                          </td>
+                          <td className="py-2.5 px-4 text-[#171717] font-medium">
+                            {roleLabel}
+                          </td>
+                          <td className="py-2.5 px-4 text-[#57564F] font-mono-tabular">
+                            {off.assignedLabName || '—'}
+                          </td>
+                          <td className="py-2.5 px-4 text-right font-mono-tabular text-[#171717]">
+                            {off.totalWeeklyHours} hrs
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
           <div className="sf-card-white overflow-hidden">
             <div className="p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#E4E2DA]">
               <h2 className="font-serif-editorial text-xl text-[#171717]">
@@ -354,7 +470,7 @@ export const FacultyDashboardPage: React.FC<FacultyDashboardPageProps> = ({
                   <thead>
                     <tr className="bg-[#F7F6EF] border-b border-[#E4E2DA] text-[11px] font-semibold uppercase tracking-wider text-[#77766F]">
                       <th className="py-3 px-4">Course Code &amp; Name</th>
-                      <th className="py-3 px-4">Type</th>
+                      <th className="py-3 px-4">Type &amp; Role</th>
                       <th className="py-3 px-4">Batch &amp; Section</th>
                       <th className="py-3 px-4">Day &amp; Time Window</th>
                       <th className="py-3 px-4">Classroom / Lab</th>
@@ -367,6 +483,7 @@ export const FacultyDashboardPage: React.FC<FacultyDashboardPageProps> = ({
                       const cohort = store.studentGroups.find(g => g.id === sec.studentGroupId);
                       const room = store.rooms.find(r => r.id === sec.assignedSlot?.roomId);
                       const isLab = sec.sessionType === 'Lab' || (sec.spanSlots && sec.spanSlots > 1);
+                      const isLabEngineerOnSec = matchedInstructor && sec.labEngineerId === matchedInstructor.id && sec.instructorId !== matchedInstructor.id;
                       const slotDay = sec.assignedSlot?.day || 'Mon';
                       const basePeriod = sec.assignedSlot?.timeSlot || '';
                       const effSlot = getEffectiveSlotDisplayForDay(slotDay, basePeriod, computedTiming);
@@ -399,7 +516,7 @@ export const FacultyDashboardPage: React.FC<FacultyDashboardPageProps> = ({
                             <span className="inline-flex items-center gap-1.5 font-medium text-[#171717]">
                               <span className={`w-1.5 h-1.5 rounded-full ${isLab ? 'bg-[#9C52B5]' : 'bg-[#2C7A7B]'}`} />
                               {isLab
-                                ? `Lab (${effMinutes === computedTiming.labDurationMinutes ? computedTiming.labDurationHoursLabel : `${effMinutes}m`})`
+                                ? `Lab (${effMinutes === computedTiming.labDurationMinutes ? computedTiming.labDurationHoursLabel : `${effMinutes}m`})${isLabEngineerOnSec ? ' · Lab Eng' : ''}`
                                 : `Lecture (${effMinutes}m)`}
                             </span>
                           </td>

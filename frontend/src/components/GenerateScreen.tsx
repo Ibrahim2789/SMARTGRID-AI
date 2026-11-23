@@ -16,6 +16,8 @@ import {
 import { exportTimetableToGoogleSheetsWorkbook } from '../utils/googleSheetsExport';
 import {
   AuthenticatedVotingUser,
+  AssignmentApiError,
+  fetchAssignmentWorkspaceApi,
   solveOptimizationApi,
   compareOptimizationAlgorithmsBackend,
   fetchInstitutionWorkspace,
@@ -45,7 +47,8 @@ import {
   Calendar,
   ShieldCheck,
   CheckCircle2,
-  AlertTriangle
+  AlertTriangle,
+  UserCheck
 } from 'lucide-react';
 
 interface GenerateScreenProps {
@@ -159,6 +162,16 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
   const [solverStepText, setSolverStepText] = useState('Initializing solver...');
   const [solverCompleted, setSolverCompleted] = useState(false);
   const [isExportingSheets, setIsExportingSheets] = useState(false);
+  const [backendReadinessBlockers, setBackendReadinessBlockers] = useState<
+    Array<{ courseCode?: string; sectionCode?: string; reason?: string }>
+  >([]);
+  const [assignmentSummary, setAssignmentSummary] = useState<{
+    totalOfferings: number;
+    generationReadyCount: number;
+    missingInstructorCount: number;
+    missingLabEngineerCount: number;
+    invalidCount: number;
+  } | null>(null);
   const [lastSolverStats, setLastSolverStats] = useState<{
     placedCount: number;
     unplacedCount: number;
@@ -217,6 +230,117 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
       s => groupSet.has(s.studentGroupId) || (s.sharedGroupIds || []).some(gid => groupSet.has(gid))
     );
   }, [store.sections, scopedGroups]);
+
+  // Fetch live server-side readiness stats for current scope
+  useEffect(() => {
+    if (!currentUser?.token) return;
+    let cancelled = false;
+    const targetInstId =
+      store.institutionProfile?.id ||
+      currentUser.institutionId ||
+      institutionalStore.getCurrentInstitutionId();
+    fetchAssignmentWorkspaceApi(currentUser, {
+      universityId: targetInstId,
+      departmentId: scopeMode === 'department_wise' ? selectedDeptId : undefined
+    })
+      .then(res => {
+        if (cancelled) return;
+        setAssignmentSummary({
+          totalOfferings: res.summary.totalOfferings,
+          generationReadyCount: res.summary.generationReadyCount,
+          missingInstructorCount: res.summary.missingInstructorCount,
+          missingLabEngineerCount: res.summary.missingLabEngineerCount,
+          invalidCount: res.summary.invalidCount
+        });
+      })
+      .catch(() => {
+        // Non-fatal; local client blockers still protect generation
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    currentUser,
+    store.institutionProfile?.id,
+    scopeMode,
+    selectedDeptId,
+    store.sections.length
+  ]);
+
+  const localReadinessBlockers = useMemo(() => {
+    const blockers: Array<{ courseCode: string; sectionCode: string; reason: string }> = [];
+    const courseById = new Map(store.courses.map(c => [c.id, c]));
+    const instById = new Map(store.instructors.map(i => [i.id, i]));
+    const roomById = new Map(store.rooms.map(r => [r.id, r]));
+
+    scopedSections.forEach(s => {
+      const crs = courseById.get(s.courseId);
+      const code = crs?.code || s.courseId;
+      const secCode = s.sectionNumber || 'A';
+      const isLab =
+        s.sessionType === 'Lab' ||
+        s.componentType === 'lab' ||
+        Boolean(s.spanSlots && s.spanSlots > 1);
+
+      if (isLab) {
+        const staffId = s.labEngineerId || s.instructorId;
+        if (!staffId) {
+          blockers.push({
+            courseCode: code,
+            sectionCode: secCode,
+            reason: 'Missing assigned Lab Engineer for laboratory session'
+          });
+        } else {
+          const st = instById.get(staffId);
+          if (st && st.isActive === false) {
+            blockers.push({
+              courseCode: code,
+              sectionCode: secCode,
+              reason: `Assigned Lab Engineer (${st.name}) is inactive`
+            });
+          }
+        }
+        if (s.assignedLabId) {
+          const lab = roomById.get(s.assignedLabId);
+          if (lab && !lab.isAvailable) {
+            blockers.push({
+              courseCode: code,
+              sectionCode: secCode,
+              reason: `Assigned laboratory ${lab.code} is unavailable`
+            });
+          }
+        }
+      } else {
+        if (!s.instructorId) {
+          blockers.push({
+            courseCode: code,
+            sectionCode: secCode,
+            reason: 'Missing assigned Lecture Instructor'
+          });
+        } else {
+          const st = instById.get(s.instructorId);
+          if (st && st.isActive === false) {
+            blockers.push({
+              courseCode: code,
+              sectionCode: secCode,
+              reason: `Assigned instructor (${st.name}) is inactive`
+            });
+          }
+        }
+      }
+      if (s.assignmentStatus === 'invalid' && s.validationErrors?.length) {
+        blockers.push({
+          courseCode: code,
+          sectionCode: secCode,
+          reason: s.validationErrors[0].message
+        });
+      }
+    });
+    return blockers;
+  }, [scopedSections, store.courses, store.instructors, store.rooms]);
+
+  const effectiveBlockers =
+    backendReadinessBlockers.length > 0 ? backendReadinessBlockers : localReadinessBlockers;
 
   // Extract distinct academic semester numbers (1st, 2nd, 3rd...) and batch cohorts (2K22, 2K23...) from scoped groups
   const distinctAcademicSemesters = useMemo(() => {
@@ -301,6 +425,8 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
       departmentId: i.departmentId,
       subDepartment: i.subDepartment,
       staffRole: i.staffRole || 'faculty',
+      staffCode: i.staffCode,
+      isActive: i.isActive !== false,
       qualifiedCourseIds: i.qualifiedCourseIds || [],
       maxWeeklyHours: i.maxWeeklyHours,
       maxConsecutiveHours: i.maxConsecutiveHours,
@@ -365,6 +491,8 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
         courseId: s.courseId,
         instructorId: s.instructorId,
         labEngineerId: s.labEngineerId,
+        assignedLabId: s.assignedLabId,
+        programId: s.programId,
         studentGroupId: s.studentGroupId,
         sharedGroupIds: s.sharedGroupIds || [],
         sectionCode: s.sectionNumber || 'A',
@@ -592,6 +720,14 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
         setProgress(0);
         setIsGenerating(false);
         setSolverCompleted(false);
+        if (err instanceof AssignmentApiError && err.status === 422 && err.data?.readiness) {
+          const readiness = err.data.readiness as {
+            blockers?: Array<{ courseCode?: string; sectionCode?: string; reason?: string }>;
+          };
+          if (Array.isArray(readiness.blockers)) {
+            setBackendReadinessBlockers(readiness.blockers);
+          }
+        }
         showAppPopup({
           title: 'Optimization Run Failed',
           message:
@@ -1370,6 +1506,70 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
             </div>
           </div>
 
+          {/* Pre-Generation Staff & Laboratory Readiness Check */}
+          <div
+            className={`p-3.5 rounded-xl border text-xs space-y-2 ${
+              effectiveBlockers.length > 0
+                ? 'bg-[#FFF6D6] border-[#E8D36B]'
+                : 'bg-[#F7F6EF] border-[#E4E2DA]'
+            }`}
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span className="font-semibold text-[#171717] inline-flex items-center gap-1.5">
+                {effectiveBlockers.length > 0 ? (
+                  <AlertTriangle className="w-3.5 h-3.5 text-amber-700 shrink-0" />
+                ) : (
+                  <CheckCircle2 className="w-3.5 h-3.5 text-[#1B5E20] shrink-0" />
+                )}
+                <span>Staff &amp; Lab Assignment Readiness</span>
+              </span>
+              {assignmentSummary && (
+                <span className="font-mono-tabular text-[11px] font-semibold text-[#57564F]">
+                  {assignmentSummary.generationReadyCount}/{assignmentSummary.totalOfferings} Ready
+                </span>
+              )}
+            </div>
+
+            {effectiveBlockers.length > 0 ? (
+              <>
+                <p className="text-[11.5px] text-[#57564F] leading-snug">
+                  <strong className="text-[#171717]">{effectiveBlockers.length}</strong> session blocker(s) must be assigned or fixed before optimization can run (no fake default instructors are substituted):
+                </p>
+                <ul className="space-y-1 max-h-28 overflow-y-auto text-[11px] text-[#171717] font-mono-tabular">
+                  {effectiveBlockers.slice(0, 6).map((b, i) => (
+                    <li key={i} className="truncate">
+                      • {b.courseCode} ({b.sectionCode}): <span className="font-sans text-[#57564F]">{b.reason}</span>
+                    </li>
+                  ))}
+                  {effectiveBlockers.length > 6 && (
+                    <li className="text-[#57564F] font-sans">
+                      + {effectiveBlockers.length - 6} more offering blocker(s)
+                    </li>
+                  )}
+                </ul>
+                <button
+                  type="button"
+                  onClick={() => onNavigate('assignments')}
+                  className="w-full py-2 px-3 rounded-lg bg-[#171717] hover:bg-black text-white text-xs font-medium inline-flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <UserCheck className="w-3.5 h-3.5" />
+                  <span>Open Course Assignments Workspace</span>
+                </button>
+              </>
+            ) : (
+              <div className="flex items-center justify-between gap-2 text-[11px] text-[#57564F]">
+                <span>All scoped courses have valid instructors, lab engineers &amp; pinned lab constraints.</span>
+                <button
+                  type="button"
+                  onClick={() => onNavigate('assignments')}
+                  className="text-[#171717] font-semibold hover:underline shrink-0 cursor-pointer"
+                >
+                  Review
+                </button>
+              </div>
+            )}
+          </div>
+
           {isGenerating ? (
             <div className="space-y-2.5 py-2">
               <div className="flex items-center justify-between text-xs font-semibold text-[#171717]">
@@ -1390,7 +1590,8 @@ export const GenerateScreen: React.FC<GenerateScreenProps> = ({
             <button
               type="button"
               onClick={handleStartGeneration}
-              className="btn-primary w-full h-11 text-sm font-semibold justify-center cursor-pointer"
+              disabled={effectiveBlockers.length > 0}
+              className="btn-primary w-full h-11 text-sm font-semibold justify-center cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed"
             >
               <Play className="w-4 h-4 fill-current" />
               <span>

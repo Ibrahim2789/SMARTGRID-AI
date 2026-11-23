@@ -265,6 +265,8 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
     name: '',
     title: 'Associate Professor',
     staffRole: 'faculty' as StaffRole,
+    staffCode: '',
+    isActive: true,
     departmentId: store.departments[0]?.id || 'dept-cs',
     subDepartment: '',
     qualifiedCourseIds: [] as string[],
@@ -286,7 +288,7 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
 
   const [sectionForm, setSectionForm] = useState({
     courseId: store.courses[0]?.id || '',
-    instructorId: store.instructors[0]?.id || '',
+    instructorId: '',
     studentGroupId: store.studentGroups[0]?.id || '',
     sessionType: 'Lecture' as 'Lecture' | 'Lab',
     sharedGroupIds: [] as string[],
@@ -802,6 +804,8 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
         name: inst.name,
         title: inst.title || (inst.staffRole === 'lab_engineer' ? 'Lab Engineer' : 'Professor'),
         staffRole: inst.staffRole || 'faculty',
+        staffCode: inst.staffCode || '',
+        isActive: inst.isActive !== false,
         departmentId: inst.departmentId,
         subDepartment: inst.subDepartment || '',
         qualifiedCourseIds: [...(inst.qualifiedCourseIds || [])],
@@ -813,6 +817,8 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
         name: '',
         title: 'Associate Professor',
         staffRole: 'faculty',
+        staffCode: '',
+        isActive: true,
         departmentId: store.departments[0]?.id || 'dept-cs',
         subDepartment: '',
         qualifiedCourseIds: [],
@@ -855,6 +861,8 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
       title: defaultTitle,
       designation: defaultTitle,
       staffRole: instructorForm.staffRole,
+      staffCode: instructorForm.staffCode.trim() || undefined,
+      isActive: instructorForm.isActive,
       qualifiedCourseIds: instructorForm.qualifiedCourseIds,
       maxWeeklyHours: Number(instructorForm.maxWeeklyHours)
     };
@@ -2089,18 +2097,20 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
                       .map(course => {
                         const dept = store.departments.find(d => d.id === course.departmentId);
                         const courseSections = store.sections.filter(s => s.courseId === course.id);
-                        const qualifiedStaff = store.instructors.filter(i =>
-                          i.qualifiedCourseIds?.includes(course.id)
-                        );
                         const primaryInst =
                           store.instructors.find(i => i.id === course.assignedInstructorId) ||
-                          store.instructors.find(i => i.id === courseSections[0]?.instructorId) ||
-                          qualifiedStaff.find(i => i.staffRole !== 'lab_engineer') ||
-                          qualifiedStaff[0];
+                          store.instructors.find(
+                            i =>
+                              i.id ===
+                              courseSections.find(s => s.sessionType !== 'Lab')?.instructorId
+                          );
                         const primaryLabEng =
                           store.instructors.find(i => i.id === course.assignedLabEngineerId) ||
-                          store.instructors.find(i => i.id === courseSections.find(s => s.sessionType === 'Lab')?.labEngineerId) ||
-                          qualifiedStaff.find(i => i.staffRole === 'lab_engineer');
+                          store.instructors.find(
+                            i =>
+                              i.id ===
+                              courseSections.find(s => s.sessionType === 'Lab')?.labEngineerId
+                          );
                         const primaryGroup =
                           store.studentGroups.find(g => g.id === course.assignedBatchId) ||
                           store.studentGroups.find(g => g.id === courseSections[0]?.studentGroupId);
@@ -2437,7 +2447,9 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
                       .slice((instructorPage - 1) * PAGE_SIZE, instructorPage * PAGE_SIZE)
                       .map(inst => {
                         const dept = store.departments.find(d => d.id === inst.departmentId);
-                        const instSections = store.sections.filter(s => s.instructorId === inst.id);
+                        const instSections = store.sections.filter(
+                          s => s.instructorId === inst.id || s.labEngineerId === inst.id
+                        );
                         const assignedHours = instSections.reduce(
                           (acc, s) =>
                             acc + (s.sessionType === 'Lab' || (s.spanSlots && s.spanSlots > 1) ? 3 : 1),
@@ -2456,8 +2468,14 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
                                 <span className="ml-2 text-[11px] font-medium text-[#57564F]">
                                   · {isLabEng ? 'Lab Engineer' : 'Faculty'}
                                 </span>
+                                {inst.isActive === false && (
+                                  <span className="ml-2 text-[11px] font-semibold text-[#8B1E1E]">
+                                    · Inactive
+                                  </span>
+                                )}
                               </div>
                               <div className="text-[11px] text-[#77766F]">
+                                {inst.staffCode ? `${inst.staffCode} · ` : ''}
                                 {inst.title || (isLabEng ? 'Lab Engineer' : 'Faculty')} · {inst.email}
                               </div>
                             </td>
@@ -4080,16 +4098,37 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
                       })()}
                     </div>
                   </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-[#171717] mb-1.5">Max Weekly Hours</label>
-                    <input
-                      type="number"
-                      min="1"
-                      value={instructorForm.maxWeeklyHours}
-                      onChange={e => setInstructorForm({ ...instructorForm, maxWeeklyHours: Number(e.target.value) })}
-                      className="input-field font-mono-tabular"
-                    />
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-[#171717] mb-1.5">Max Weekly Hours</label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={instructorForm.maxWeeklyHours}
+                        onChange={e => setInstructorForm({ ...instructorForm, maxWeeklyHours: Number(e.target.value) })}
+                        className="input-field font-mono-tabular"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-[#171717] mb-1.5">Staff / Employee Code</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. FAC-104"
+                        value={instructorForm.staffCode}
+                        onChange={e => setInstructorForm({ ...instructorForm, staffCode: e.target.value })}
+                        className="input-field font-mono-tabular"
+                      />
+                    </div>
                   </div>
+                  <label className="flex items-center gap-2 text-xs text-[#171717] cursor-pointer pt-1">
+                    <input
+                      type="checkbox"
+                      checked={instructorForm.isActive}
+                      onChange={e => setInstructorForm({ ...instructorForm, isActive: e.target.checked })}
+                      className="rounded border-[#D5D3CB] text-[#171717]"
+                    />
+                    <span>Active staff member (eligible for course &amp; lab assignments)</span>
+                  </label>
 
                   {/* Qualified / Eligible Subjects Picker */}
                   <div className="pt-2 border-t border-[#E4E2DA] space-y-2">

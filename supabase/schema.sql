@@ -333,6 +333,8 @@ CREATE TABLE IF NOT EXISTS public.instructors (
     email TEXT NOT NULL,
     designation TEXT NOT NULL DEFAULT 'Assistant Professor',
     staff_role TEXT NOT NULL DEFAULT 'faculty' CHECK (staff_role IN ('faculty', 'lab_engineer')),
+    staff_code TEXT,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
     max_weekly_hours INTEGER NOT NULL DEFAULT 18 CHECK (max_weekly_hours BETWEEN 1 AND 45),
     max_daily_classes INTEGER NOT NULL DEFAULT 4 CHECK (max_daily_classes BETWEEN 1 AND 10),
     specializations TEXT[] DEFAULT ARRAY[]::TEXT[],
@@ -343,6 +345,7 @@ CREATE TABLE IF NOT EXISTS public.instructors (
 );
 
 CREATE INDEX IF NOT EXISTS idx_instructors_institution ON public.instructors(institution_id);
+CREATE INDEX IF NOT EXISTS idx_instructors_role_active ON public.instructors(institution_id, staff_role, is_active);
 
 -- ============================================================================
 -- 11. INSTRUCTOR AVAILABILITY
@@ -522,8 +525,10 @@ CREATE TABLE IF NOT EXISTS public.course_sessions (
     institution_id TEXT NOT NULL REFERENCES public.institutions(id) ON DELETE CASCADE,
     course_id TEXT NOT NULL REFERENCES public.courses(id) ON DELETE CASCADE,
     term_id TEXT,
+    program_id TEXT REFERENCES public.academic_programs(id) ON DELETE SET NULL,
     instructor_id TEXT REFERENCES public.instructors(id) ON DELETE SET NULL,
     lab_engineer_id TEXT REFERENCES public.instructors(id) ON DELETE SET NULL,
+    assigned_lab_id TEXT REFERENCES public.laboratories(id) ON DELETE SET NULL,
     batch_id TEXT NOT NULL REFERENCES public.batches(id) ON DELETE CASCADE,
     shared_group_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
     section_code TEXT NOT NULL DEFAULT 'A',
@@ -537,6 +542,10 @@ CREATE TABLE IF NOT EXISTS public.course_sessions (
     expected_students INTEGER NOT NULL DEFAULT 50 CHECK (expected_students > 0),
     required_room_type TEXT NOT NULL DEFAULT 'lecture' CHECK (required_room_type IN ('lecture', 'lab', 'seminar')),
     required_equipment TEXT[] DEFAULT ARRAY[]::TEXT[],
+    assignment_status TEXT NOT NULL DEFAULT 'unassigned' CHECK (assignment_status IN ('unassigned', 'partial', 'assigned', 'invalid')),
+    validation_errors JSONB NOT NULL DEFAULT '[]'::jsonb,
+    assigned_by TEXT,
+    assigned_at TIMESTAMPTZ,
     assigned_day TEXT,
     assigned_start_time TEXT,
     assigned_room_id TEXT,
@@ -546,6 +555,9 @@ CREATE TABLE IF NOT EXISTS public.course_sessions (
 );
 
 CREATE INDEX IF NOT EXISTS idx_course_sessions_institution ON public.course_sessions(institution_id);
+CREATE INDEX IF NOT EXISTS idx_course_sessions_scope ON public.course_sessions(institution_id, term_id, course_id, batch_id, component_type);
+CREATE INDEX IF NOT EXISTS idx_course_sessions_staff ON public.course_sessions(institution_id, instructor_id, lab_engineer_id);
+CREATE INDEX IF NOT EXISTS idx_course_sessions_assigned_lab ON public.course_sessions(institution_id, assigned_lab_id);
 
 -- ============================================================================
 -- 20. SCHEDULING CONSTRAINTS
@@ -1026,6 +1038,8 @@ ALTER TABLE IF EXISTS public.batches
 
 ALTER TABLE IF EXISTS public.instructors
     ADD COLUMN IF NOT EXISTS staff_role TEXT NOT NULL DEFAULT 'faculty',
+    ADD COLUMN IF NOT EXISTS staff_code TEXT,
+    ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE,
     ADD COLUMN IF NOT EXISTS sub_department TEXT,
     ADD COLUMN IF NOT EXISTS max_daily_classes INTEGER NOT NULL DEFAULT 4,
     ADD COLUMN IF NOT EXISTS specializations TEXT[] DEFAULT ARRAY[]::TEXT[],
@@ -1034,6 +1048,8 @@ ALTER TABLE IF EXISTS public.instructors
 ALTER TABLE IF EXISTS public.instructors DROP CONSTRAINT IF EXISTS instructors_staff_role_check;
 ALTER TABLE IF EXISTS public.instructors ADD CONSTRAINT instructors_staff_role_check
     CHECK (staff_role IN ('faculty', 'lab_engineer'));
+
+CREATE INDEX IF NOT EXISTS idx_instructors_role_active ON public.instructors(institution_id, staff_role, is_active);
 
 ALTER TABLE IF EXISTS public.instructor_preferences
     ADD COLUMN IF NOT EXISTS max_weekly_hours INTEGER DEFAULT 14;
@@ -1090,12 +1106,18 @@ ALTER TABLE IF EXISTS public.courses ADD CONSTRAINT courses_lab_session_mode_che
 
 ALTER TABLE IF EXISTS public.course_sessions
     ADD COLUMN IF NOT EXISTS term_id TEXT,
+    ADD COLUMN IF NOT EXISTS program_id TEXT REFERENCES public.academic_programs(id) ON DELETE SET NULL,
     ADD COLUMN IF NOT EXISTS lab_engineer_id TEXT REFERENCES public.instructors(id) ON DELETE SET NULL,
+    ADD COLUMN IF NOT EXISTS assigned_lab_id TEXT REFERENCES public.laboratories(id) ON DELETE SET NULL,
     ADD COLUMN IF NOT EXISTS component_type TEXT NOT NULL DEFAULT 'lecture',
     ADD COLUMN IF NOT EXISTS lab_split_allowed BOOLEAN NOT NULL DEFAULT FALSE,
     ADD COLUMN IF NOT EXISTS shared_group_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
     ADD COLUMN IF NOT EXISTS is_atomic_session BOOLEAN NOT NULL DEFAULT FALSE,
     ADD COLUMN IF NOT EXISTS span_slots INTEGER NOT NULL DEFAULT 1,
+    ADD COLUMN IF NOT EXISTS assignment_status TEXT NOT NULL DEFAULT 'unassigned',
+    ADD COLUMN IF NOT EXISTS validation_errors JSONB NOT NULL DEFAULT '[]'::jsonb,
+    ADD COLUMN IF NOT EXISTS assigned_by TEXT,
+    ADD COLUMN IF NOT EXISTS assigned_at TIMESTAMPTZ,
     ADD COLUMN IF NOT EXISTS assigned_day TEXT,
     ADD COLUMN IF NOT EXISTS assigned_start_time TEXT,
     ADD COLUMN IF NOT EXISTS assigned_room_id TEXT,
@@ -1105,6 +1127,14 @@ ALTER TABLE IF EXISTS public.course_sessions
 ALTER TABLE IF EXISTS public.course_sessions DROP CONSTRAINT IF EXISTS course_sessions_component_type_check;
 ALTER TABLE IF EXISTS public.course_sessions ADD CONSTRAINT course_sessions_component_type_check
     CHECK (component_type IN ('lecture', 'lab', 'tutorial'));
+
+ALTER TABLE IF EXISTS public.course_sessions DROP CONSTRAINT IF EXISTS course_sessions_assignment_status_check;
+ALTER TABLE IF EXISTS public.course_sessions ADD CONSTRAINT course_sessions_assignment_status_check
+    CHECK (assignment_status IN ('unassigned', 'partial', 'assigned', 'invalid'));
+
+CREATE INDEX IF NOT EXISTS idx_course_sessions_scope ON public.course_sessions(institution_id, term_id, course_id, batch_id, component_type);
+CREATE INDEX IF NOT EXISTS idx_course_sessions_staff ON public.course_sessions(institution_id, instructor_id, lab_engineer_id);
+CREATE INDEX IF NOT EXISTS idx_course_sessions_assigned_lab ON public.course_sessions(institution_id, assigned_lab_id);
 
 ALTER TABLE IF EXISTS public.scheduling_constraints
     ADD COLUMN IF NOT EXISTS code TEXT,

@@ -1921,11 +1921,6 @@ export const institutionalStore = {
         const matchedInst = link.instructorName
           ? nextInstructors.find(i => i.name.toLowerCase() === link.instructorName!.trim().toLowerCase())
           : undefined;
-        const fallbackInst =
-          matchedInst ||
-          nextInstructors.find(i => i.departmentId === course.departmentId) ||
-          nextInstructors[0];
-        if (!fallbackInst) return;
         const isLab = Boolean(link.isLab || course.requiredRoomType === 'lab');
         const sessionType = isLab ? 'Lab' : 'Lecture';
         const pairKey = `${course.id}::${group.id}::${sessionType}`;
@@ -1939,7 +1934,9 @@ export const institutionalStore = {
             termId: activeTerm.id,
             sectionNumber: isLab ? '01-Lab' : '01-Lec',
             expectedEnrollment: Math.min(group.size, isLab ? 35 : 55),
-            instructorId: fallbackInst.id,
+            instructorId: isLab ? '' : (matchedInst?.id || ''),
+            labEngineerId: isLab ? (matchedInst?.id || undefined) : undefined,
+            assignmentStatus: matchedInst ? 'assigned' : 'unassigned',
             studentGroupId: group.id,
             sessionType,
             spanSlots: isLab ? 3 : 1
@@ -2003,7 +2000,7 @@ export const institutionalStore = {
         terms: [activeTerm, ...currentStore.terms]
       };
     }
-    if (currentStore.courses.length === 0 || currentStore.studentGroups.length === 0 || currentStore.instructors.length === 0) {
+    if (currentStore.courses.length === 0 || currentStore.studentGroups.length === 0) {
       return 0;
     }
 
@@ -2011,34 +2008,15 @@ export const institutionalStore = {
     const newSections: Section[] = [...currentStore.sections];
     const now = Date.now();
 
-    // Note: teacher sub-departments (inter-departments) are organizational only and do NOT split or constrain timetables.
-    // Admin-assigned instructor / lab engineer on Course MUST strictly take precedence and never be overridden.
-    const pickStaffForCourse = (course: Course, isLab: boolean, idx: number): Instructor | undefined => {
+    // Only honor explicit admin-assigned staff on the Course; NEVER auto-assign random or default instructors/lab engineers.
+    const pickStaffForCourse = (course: Course, isLab: boolean): Instructor | undefined => {
       if (isLab && course.assignedLabEngineerId) {
-        const explicitEng = currentStore.instructors.find(i => i.id === course.assignedLabEngineerId);
-        if (explicitEng) return explicitEng;
+        return currentStore.instructors.find(i => i.id === course.assignedLabEngineerId && i.isActive !== false);
       }
       if (!isLab && course.assignedInstructorId) {
-        const explicitInst = currentStore.instructors.find(i => i.id === course.assignedInstructorId);
-        if (explicitInst) return explicitInst;
+        return currentStore.instructors.find(i => i.id === course.assignedInstructorId && i.isActive !== false);
       }
-
-      const targetRole: StaffRole = isLab ? 'lab_engineer' : 'faculty';
-      const roleMatched = currentStore.instructors.filter(
-        i => (i.staffRole || 'faculty') === targetRole
-      );
-      const pool = roleMatched.length > 0 ? roleMatched : currentStore.instructors;
-
-      // 1. Explicitly qualified for this course + matching role
-      const qualified = pool.filter(i => i.qualifiedCourseIds?.includes(course.id));
-      if (qualified.length > 0) return qualified[idx % qualified.length];
-
-      // 2. Same department + matching role
-      const deptMatched = pool.filter(i => i.departmentId === course.departmentId);
-      if (deptMatched.length > 0) return deptMatched[idx % deptMatched.length];
-
-      // 3. Fallback to role pool or any instructor
-      return pool[idx % pool.length] || currentStore.instructors[idx % currentStore.instructors.length];
+      return undefined;
     };
 
     const resolveGroupsForCoreCourse = (course: Course): StudentGroup[] => {
@@ -2046,26 +2024,44 @@ export const institutionalStore = {
         const explicitGroup = currentStore.studentGroups.find(g => g.id === course.assignedBatchId);
         if (explicitGroup) return [explicitGroup];
       }
+      if (course.enrolledBatchIds && course.enrolledBatchIds.length > 0) {
+        const enrSet = new Set(course.enrolledBatchIds);
+        const enrGroups = currentStore.studentGroups.filter(g => enrSet.has(g.id));
+        if (enrGroups.length > 0) return enrGroups;
+      }
+
+      let matched: StudentGroup[];
       if (!course.departmentId) {
-        return currentStore.studentGroups;
+        matched = currentStore.studentGroups;
+      } else {
+        const courseDept = currentStore.departments.find(d => d.id === course.departmentId);
+        const deptMatched = currentStore.studentGroups.filter(g =>
+          doesGroupMatchDepartment(
+            g,
+            courseDept || course.departmentId,
+            currentStore.programs,
+            currentStore.departments
+          )
+        );
+        if (deptMatched.length > 0) {
+          matched = deptMatched;
+        } else if (currentStore.departments.length <= 1) {
+          matched = currentStore.studentGroups;
+        } else {
+          const anyDeptMatched = currentStore.studentGroups.some(g =>
+            Boolean(resolveGroupDepartmentId(g, currentStore.departments, currentStore.programs))
+          );
+          matched = anyDeptMatched ? [] : currentStore.studentGroups;
+        }
       }
-      const courseDept = currentStore.departments.find(d => d.id === course.departmentId);
-      const matched = currentStore.studentGroups.filter(g =>
-        doesGroupMatchDepartment(
-          g,
-          courseDept || course.departmentId,
-          currentStore.programs,
-          currentStore.departments
-        )
-      );
-      if (matched.length > 0) return matched;
-      if (currentStore.departments.length <= 1) {
-        return currentStore.studentGroups;
+
+      if (course.semester && course.semester > 0 && matched.length > 0) {
+        const groupsWithSem = matched.filter(g => (g.semester || 0) > 0);
+        if (groupsWithSem.length > 0) {
+          return groupsWithSem.filter(g => g.semester === course.semester);
+        }
       }
-      const anyDeptMatched = currentStore.studentGroups.some(g =>
-        Boolean(resolveGroupDepartmentId(g, currentStore.departments, currentStore.programs))
-      );
-      return anyDeptMatched ? [] : currentStore.studentGroups;
+      return matched;
     };
 
     // Sync explicit course instructor / lab engineer onto existing auto-generated sections so admin updates apply immediately
@@ -2077,7 +2073,7 @@ export const institutionalStore = {
         newSections[sIdx] = {
           ...sec,
           labEngineerId: course.assignedLabEngineerId,
-          instructorId: sec.instructorId || course.assignedInstructorId || course.assignedLabEngineerId
+          instructorId: sec.instructorId || course.assignedInstructorId || ''
         };
       } else if (!secIsLab && course.assignedInstructorId && sec.instructorId !== course.assignedInstructorId) {
         newSections[sIdx] = {
@@ -2124,8 +2120,8 @@ export const institutionalStore = {
         const sharedGroupIds = enrolledGroups.length > 1 ? enrolledGroups.slice(1).map(g => g.id) : undefined;
         const totalEnrolled = enrolledGroups.reduce((acc, g) => acc + g.size, 0);
 
-        const lecInst = lecCredits > 0 ? pickStaffForCourse(course, false, idx) : undefined;
-        if (lecCredits > 0 && lecInst) {
+        const lecInst = lecCredits > 0 ? pickStaffForCourse(course, false) : undefined;
+        if (lecCredits > 0) {
           const lecSlots = Math.min(6, lecCredits);
           for (let lIdx = 0; lIdx < lecSlots; lIdx++) {
             newSections.push({
@@ -2134,7 +2130,8 @@ export const institutionalStore = {
               termId: activeTerm.id,
               sectionNumber: lecSlots > 1 ? `01-Lec-${lIdx + 1}` : '01-Lec',
               expectedEnrollment: Math.min(totalEnrolled, 60),
-              instructorId: lecInst.id,
+              instructorId: lecInst?.id || '',
+              assignmentStatus: lecInst ? 'assigned' : 'unassigned',
               studentGroupId: primaryGroup.id,
               sharedGroupIds,
               sessionType: 'Lecture',
@@ -2146,34 +2143,44 @@ export const institutionalStore = {
           }
         }
         if (labCredits > 0 || course.requiredRoomType === 'studio') {
-          const labEng = pickStaffForCourse(course, true, idx);
-          if (labEng) {
-            const labBlocksCount = Math.max(1, Math.min(3, labCredits || 1));
-            for (let bIdx = 0; bIdx < labBlocksCount; bIdx++) {
-              newSections.push({
-                id: `sec-auto-lab-${now}-${idx}-${bIdx}`,
-                courseId: course.id,
-                termId: activeTerm.id,
-                sectionNumber: labBlocksCount > 1 ? `01-Lab-${bIdx + 1}` : '01-Lab',
-                expectedEnrollment: Math.min(totalEnrolled, 40),
-                instructorId: labEng.id,
-                labEngineerId: labEng.id,
-                studentGroupId: primaryGroup.id,
-                sharedGroupIds,
-                sessionType: 'Lab',
-                componentType: 'lab',
-                isAtomicSession: true,
-                spanSlots: 3
-              });
-              createdCount++;
-            }
+          const labEng = pickStaffForCourse(course, true);
+          const labBlocksCount = Math.max(1, Math.min(3, labCredits || 1));
+          for (let bIdx = 0; bIdx < labBlocksCount; bIdx++) {
+            newSections.push({
+              id: `sec-auto-lab-${now}-${idx}-${bIdx}`,
+              courseId: course.id,
+              termId: activeTerm.id,
+              sectionNumber: labBlocksCount > 1 ? `01-Lab-${bIdx + 1}` : '01-Lab',
+              expectedEnrollment: Math.min(totalEnrolled, 40),
+              instructorId: lecInst?.id || '',
+              labEngineerId: labEng?.id,
+              assignmentStatus: labEng ? 'partial' : 'unassigned',
+              studentGroupId: primaryGroup.id,
+              sharedGroupIds,
+              sessionType: 'Lab',
+              componentType: 'lab',
+              isAtomicSession: true,
+              spanSlots: 3
+            });
+            createdCount++;
           }
         }
         return;
       }
 
-      // Core course: generate independent sections for EVERY section (A, B, C...) of matching field/batch
-      const targetGroups = resolveGroupsForCoreCourse(course);
+      // Core course: generate independent sections for matching semester/enrolled cohorts (never cross-multiply onto unrelated semesters)
+      const existingExplicitForCourse = newSections.filter(
+        s => s.courseId === course.id && !s.id.startsWith('sec-auto-')
+      );
+      const explicitGroupIds = new Set<string>();
+      existingExplicitForCourse.forEach(s => {
+        if (s.studentGroupId) explicitGroupIds.add(s.studentGroupId);
+        s.sharedGroupIds?.forEach(gid => explicitGroupIds.add(gid));
+      });
+      const targetGroups =
+        explicitGroupIds.size > 0
+          ? currentStore.studentGroups.filter(g => explicitGroupIds.has(g.id))
+          : resolveGroupsForCoreCourse(course);
       targetGroups.forEach((group, gIdx) => {
         const hasLectureSections = newSections.some(
           s =>
@@ -2190,8 +2197,8 @@ export const institutionalStore = {
         );
         const secTag = group.section || `0${gIdx + 1}`;
 
-        const lecInst = lecCredits > 0 ? pickStaffForCourse(course, false, idx + gIdx) : undefined;
-        if (lecCredits > 0 && !hasLectureSections && lecInst) {
+        const lecInst = lecCredits > 0 ? pickStaffForCourse(course, false) : undefined;
+        if (lecCredits > 0 && !hasLectureSections) {
           const lecSlots = Math.min(6, lecCredits);
           for (let lIdx = 0; lIdx < lecSlots; lIdx++) {
             newSections.push({
@@ -2200,8 +2207,10 @@ export const institutionalStore = {
               termId: activeTerm.id,
               sectionNumber: lecSlots > 1 ? `${secTag}-Lec-${lIdx + 1}` : `${secTag}-Lec`,
               expectedEnrollment: Math.min(group.size, 60),
-              instructorId: lecInst.id,
+              instructorId: lecInst?.id || '',
+              assignmentStatus: lecInst ? 'assigned' : 'unassigned',
               studentGroupId: group.id,
+              programId: group.programId,
               sessionType: 'Lecture',
               componentType: 'lecture',
               isAtomicSession: true,
@@ -2212,26 +2221,26 @@ export const institutionalStore = {
         }
 
         if ((labCredits > 0 || course.requiredRoomType === 'studio') && !hasLabSections) {
-          const labEng = pickStaffForCourse(course, true, idx + gIdx);
-          if (labEng) {
-            const labBlocksCount = Math.max(1, Math.min(3, labCredits || 1));
-            for (let bIdx = 0; bIdx < labBlocksCount; bIdx++) {
-              newSections.push({
-                id: `sec-auto-lab-${now}-${idx}-${gIdx}-${bIdx}`,
-                courseId: course.id,
-                termId: activeTerm.id,
-                sectionNumber: labBlocksCount > 1 ? `${secTag}-Lab-${bIdx + 1}` : `${secTag}-Lab`,
-                expectedEnrollment: Math.min(group.size, 40),
-                instructorId: labEng.id,
-                labEngineerId: labEng.id,
-                studentGroupId: group.id,
-                sessionType: 'Lab',
-                componentType: 'lab',
-                isAtomicSession: true,
-                spanSlots: 3
-              });
-              createdCount++;
-            }
+          const labEng = pickStaffForCourse(course, true);
+          const labBlocksCount = Math.max(1, Math.min(3, labCredits || 1));
+          for (let bIdx = 0; bIdx < labBlocksCount; bIdx++) {
+            newSections.push({
+              id: `sec-auto-lab-${now}-${idx}-${gIdx}-${bIdx}`,
+              courseId: course.id,
+              termId: activeTerm.id,
+              sectionNumber: labBlocksCount > 1 ? `${secTag}-Lab-${bIdx + 1}` : `${secTag}-Lab`,
+              expectedEnrollment: Math.min(group.size, 40),
+              instructorId: lecInst?.id || '',
+              labEngineerId: labEng?.id,
+              assignmentStatus: labEng ? 'partial' : 'unassigned',
+              studentGroupId: group.id,
+              programId: group.programId,
+              sessionType: 'Lab',
+              componentType: 'lab',
+              isAtomicSession: true,
+              spanSlots: 3
+            });
+            createdCount++;
           }
         }
       });
@@ -3584,6 +3593,7 @@ export const institutionalStore = {
             sectionNumber: matched.length > 1 ? `${sec.sectionNumber}-M${mIdx + 1}` : sec.sectionNumber,
             instructorId: String(entry.instructor_id || sec.instructorId || ''),
             labEngineerId: String(entry.lab_engineer_id || sec.labEngineerId || '') || undefined,
+            assignedLabId: sec.assignedLabId || (isLab && entry.room_id ? String(entry.room_id) : undefined),
             sessionType: isLab ? 'Lab' : 'Lecture',
             componentType: isLab ? 'lab' : 'lecture',
             isAtomicSession: true,
@@ -3614,6 +3624,8 @@ export const institutionalStore = {
           expectedEnrollment: Math.min(matchedGroup.size || 45, 60),
           instructorId: String(entry.instructor_id || matchedCourse.assignedInstructorId || ''),
           labEngineerId: String(entry.lab_engineer_id || matchedCourse.assignedLabEngineerId || '') || undefined,
+          assignedLabId: isLab && entry.room_id ? String(entry.room_id) : undefined,
+          programId: matchedGroup.programId,
           studentGroupId: matchedGroup.id,
           sessionType: isLab ? 'Lab' : 'Lecture',
           componentType: isLab ? 'lab' : 'lecture',
@@ -3906,6 +3918,7 @@ export const institutionalStore = {
             sectionNumber: matchedEntries.length > 1 ? `${sec.sectionNumber}-M${mIdx + 1}` : sec.sectionNumber,
             instructorId: mapped.instructorId,
             labEngineerId: mapped.labEngineerId,
+            assignedLabId: sec.assignedLabId || (mapped.isLab ? mapped.assignedSlot.roomId : undefined),
             sessionType: mapped.isLab ? 'Lab' : 'Lecture',
             componentType: mapped.isLab ? 'lab' : 'lecture',
             isAtomicSession: true,
@@ -3924,6 +3937,7 @@ export const institutionalStore = {
           ...sec,
           instructorId: singleMapped.instructorId,
           labEngineerId: singleMapped.labEngineerId,
+          assignedLabId: sec.assignedLabId || (singleMapped.isLab ? singleMapped.assignedSlot.roomId : undefined),
           sessionType: singleMapped.isLab ? 'Lab' : 'Lecture',
           componentType: singleMapped.isLab ? 'lab' : 'lecture',
           spanSlots: singleMapped.assignedSlot.spanSlots || (singleMapped.isLab ? 3 : 1),

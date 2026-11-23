@@ -5,6 +5,7 @@ import { AuthPage } from './components/AuthPage';
 import { AuthenticatedLayout } from './components/AuthenticatedLayout';
 import { HomeScreen } from './components/HomeScreen';
 import { SetupFlow } from './components/SetupFlow';
+import { CourseAssignmentsWorkspace } from './components/CourseAssignmentsWorkspace';
 import { GenerateScreen } from './components/GenerateScreen';
 import { TimetableMatrix } from './components/TimetableMatrix';
 import { FeedbackScreen } from './components/FeedbackScreen';
@@ -33,6 +34,7 @@ import { resolveUserCohort } from './utils/userTimetableScope';
 const VALID_ROUTES: RouteType[] = [
   'home',
   'setup',
+  'assignments',
   'generate',
   'timetables',
   'feedback',
@@ -80,6 +82,7 @@ const FACULTY_ALLOWED_ROUTES: RouteType[] = [
 const ADMIN_ALLOWED_ROUTES: RouteType[] = [
   'home',
   'setup',
+  'assignments',
   'generate',
   'timetables',
   'feedback',
@@ -443,6 +446,13 @@ export default function App() {
           onStepChange={setSetupStep}
           onNavigate={handleNavigate}
           currentUser={currentUser}
+        />
+      )}
+
+      {isAdmin && effectiveRoute === 'assignments' && (
+        <CourseAssignmentsWorkspace
+          currentUser={currentUser}
+          onNavigate={handleNavigate}
         />
       )}
 

@@ -133,6 +133,7 @@ def _build_workspace_payload(client: Any, inst_id: str) -> Dict[str, Any]:
     inst_avails = client.select("instructor_availability", filters={"institution_id": f"eq.{inst_id}"})
     inst_prefs = client.select("instructor_preferences", filters={"institution_id": f"eq.{inst_id}"})
     batches = client.select("batches", filters={"institution_id": f"eq.{inst_id}"}, order="code.asc")
+    enrollments = safe_select_optional(client, "course_enrollments", filters={"institution_id": f"eq.{inst_id}"})
     sessions = client.select("course_sessions", filters={"institution_id": f"eq.{inst_id}"}, order="created_at.asc")
     constraints = client.select("scheduling_constraints", filters={"institution_id": f"eq.{inst_id}"}, order="created_at.asc")
     versions = client.select("timetable_versions", filters={"institution_id": f"eq.{inst_id}"}, order="created_at.desc", limit=25)
@@ -322,6 +323,8 @@ def _build_workspace_payload(client: Any, inst_id: str) -> Dict[str, Any]:
                 "departmentId": ins.get("department_id") or "",
                 "subDepartment": ins.get("sub_department") or "",
                 "staffRole": ins.get("staff_role") or "faculty",
+                "staffCode": ins.get("staff_code") or "",
+                "isActive": bool(ins.get("is_active", True)),
                 "qualifiedCourseIds": safe_json_loads(ins.get("qualified_course_ids"), []),
                 "name": ins["name"],
                 "email": ins["email"],
@@ -338,6 +341,13 @@ def _build_workspace_payload(client: Any, inst_id: str) -> Dict[str, Any]:
     for s in sessions:
         if s.get("course_id"):
             sessions_by_course[s["course_id"]].append(s)
+
+    enrolled_by_course: Dict[str, List[str]] = defaultdict(list)
+    for enr in enrollments:
+        cid = str(enr.get("course_id") or "")
+        bid = str(enr.get("batch_id") or "")
+        if cid and bid and bid not in enrolled_by_course[cid]:
+            enrolled_by_course[cid].append(bid)
 
     mapped_courses = []
     for c in courses:
@@ -373,8 +383,9 @@ def _build_workspace_payload(client: Any, inst_id: str) -> Dict[str, Any]:
                 "labHours": lab_h,
                 "requiredRoomType": c.get("required_room_type") or ("lab" if ct == "lab" else "lecture"),
                 "assignedInstructorId": c.get("assigned_instructor_id") or (first_lec or {}).get("instructor_id") or "",
-                "assignedLabEngineerId": c.get("assigned_lab_engineer_id") or (first_lab or {}).get("instructor_id") or "",
+                "assignedLabEngineerId": c.get("assigned_lab_engineer_id") or (first_lab or {}).get("lab_engineer_id") or (first_lab or {}).get("instructor_id") or "",
                 "assignedBatchId": c.get("assigned_batch_id") or "",
+                "enrolledBatchIds": enrolled_by_course.get(c["id"], []),
                 "semester": c.get("semester_number"),
                 "labSessionMode": c.get("lab_session_mode") or "continuous",
                 "isElective": bool(c.get("is_elective", not c.get("is_compulsory", True))),
@@ -427,10 +438,14 @@ def _build_workspace_payload(client: Any, inst_id: str) -> Dict[str, Any]:
                 "id": s["id"],
                 "courseId": s["course_id"],
                 "termId": s.get("term_id") or active_term_id,
+                "programId": s.get("program_id") or "",
                 "sectionNumber": s.get("section_code") or "A",
                 "expectedEnrollment": int(s.get("expected_students") or 60),
                 "instructorId": s.get("instructor_id") or "",
                 "labEngineerId": s.get("lab_engineer_id") or "",
+                "assignedLabId": s.get("assigned_lab_id") or "",
+                "assignmentStatus": s.get("assignment_status") or "unassigned",
+                "validationErrors": safe_json_loads(s.get("validation_errors"), []),
                 "studentGroupId": s.get("batch_id") or "",
                 "sharedGroupIds": safe_json_loads(s.get("shared_group_ids"), []),
                 "sessionType": "Lab" if s_is_lab else "Lecture",

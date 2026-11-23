@@ -121,6 +121,7 @@ export interface Course extends BaseEntity {
   assignedInstructorId?: string; // Admin-assigned Lecture Instructor (strictly honored)
   assignedLabEngineerId?: string; // Admin-assigned Lab Engineer (strictly honored)
   assignedBatchId?: string;
+  enrolledBatchIds?: string[];
   semester?: number;
   labSessionMode?: LabSessionMode; // 'continuous' (default 3h block) | 'split_allowed' (e.g. 1.5h + 1.5h)
   isElective?: boolean;
@@ -161,6 +162,10 @@ export interface Section extends BaseEntity {
   isAtomicSession?: boolean; // True when session cannot be arbitrarily split
   spanSlots?: number; // 1 for Lecture, 3 for Lab
   sessionsPerWeek?: number;
+  programId?: string;
+  assignedLabId?: string;
+  assignmentStatus?: 'unassigned' | 'partial' | 'assigned' | 'invalid';
+  validationErrors?: Array<{ code: string; field: string; message: string }>;
   assignedSlot?: SectionSlotAssignment;
   isLocked?: boolean;
 }
@@ -325,6 +330,8 @@ export interface Instructor extends BaseEntity {
   departmentId: string;
   subDepartment?: string; // Internal division/track inside their department
   staffRole?: StaffRole; // 'faculty' for lectures (1cr=1hr), 'lab_engineer' for 3hr labs (1cr=3hr)
+  staffCode?: string;
+  isActive?: boolean;
   qualifiedCourseIds?: string[]; // Courses this instructor/lab engineer is qualified to teach/supervise
   name: string;
   email: string;
@@ -1503,7 +1510,7 @@ export interface AuditLogEntry extends BaseEntity {
   userId: string;
   userName: string;
   action: AuditAction;
-  entityType: 'term' | 'campus' | 'building' | 'room' | 'department' | 'program' | 'course' | 'section' | 'instructor' | 'group' | 'time' | 'constraint' | 'scenario';
+  entityType: 'term' | 'campus' | 'building' | 'room' | 'department' | 'program' | 'course' | 'section' | 'instructor' | 'group' | 'time' | 'constraint' | 'scenario' | 'assignment';
   entityId: string;
   summary: string;
   previousValue?: string;
@@ -1521,3 +1528,229 @@ export interface SetupReadinessItem {
   severity: 'error' | 'warning' | 'info';
   actionRoute?: string;
 }
+
+export interface AssignmentIssueDTO {
+  code: string;
+  field: string;
+  message: string;
+}
+
+export interface AssignmentTimetableImpactDTO {
+  hasPublishedImpact: boolean;
+  hasDraftImpact: boolean;
+  hasLockedSlot: boolean;
+  affectedEntriesCount: number;
+  affectedVersions: Array<{
+    versionId: string;
+    name: string;
+    status: string;
+  }>;
+}
+
+export interface AssignmentValidationResultDTO {
+  valid: boolean;
+  staffReady: boolean;
+  status: 'unassigned' | 'partial' | 'assigned' | 'invalid';
+  errors: AssignmentIssueDTO[];
+  warnings: AssignmentIssueDTO[];
+  missingFields: string[];
+  timetableImpact: AssignmentTimetableImpactDTO;
+}
+
+export interface AssignmentOfferingDTO {
+  id: string;
+  primarySessionId: string;
+  lectureSessionId: string | null;
+  labSessionId: string | null;
+  termId: string;
+  termName: string;
+  departmentId: string;
+  departmentCode: string;
+  departmentName: string;
+  cohortCode: string;
+  programId: string;
+  programCode: string;
+  programName: string;
+  batchId: string;
+  batchCode: string;
+  sectionCode: string;
+  sectionLabel: string;
+  courseId: string;
+  courseCode: string;
+  courseTitle: string;
+  courseType: CourseType;
+  creditHours: number;
+  lectureCredits: number;
+  labCredits: number;
+  lectureHours: number;
+  labHours: number;
+  totalWeeklyHours: number;
+  expectedStudents: number;
+  requiredEquipment: string[];
+  requiresLecture: boolean;
+  requiresLab: boolean;
+  instructorId: string | null;
+  instructorName: string;
+  instructorCode: string;
+  labEngineerId: string | null;
+  labEngineerName: string;
+  labEngineerCode: string;
+  assignedLabId: string | null;
+  assignedLabCode: string;
+  assignedLabName: string;
+  assignmentStatus: 'unassigned' | 'partial' | 'assigned' | 'invalid';
+  staffReady: boolean;
+  valid: boolean;
+  validationErrors: AssignmentIssueDTO[];
+  validationWarnings: AssignmentIssueDTO[];
+  missingFields: string[];
+  timetableImpact: AssignmentTimetableImpactDTO;
+  isLocked: boolean;
+  assignedBy?: string | null;
+  assignedAt?: string | null;
+}
+
+export interface StaffWorkloadDTO {
+  id: string;
+  name: string;
+  email: string;
+  staffCode: string;
+  departmentId: string;
+  departmentCode: string;
+  departmentName: string;
+  designation: string;
+  staffRole: StaffRole;
+  isActive: boolean;
+  qualifiedCourseIds: string[];
+  specializations: string[];
+  maxWeeklyHours: number;
+  maxDailyClasses: number;
+  currentLectureHours: number;
+  currentLabHours: number;
+  currentWeeklyHours: number;
+  remainingCapacityHours: number;
+  utilizationPct: number;
+  assignedCoursesCount: number;
+  assignedSections: string[];
+  assignedCourses: string[];
+  assignedOfferings: Array<{
+    offeringId: string;
+    courseId: string;
+    courseCode: string;
+    courseTitle: string;
+    sectionLabel: string;
+    role: string;
+    hours: number;
+  }>;
+  unavailableSlots: Array<{ day: string; startTime: string; endTime: string }>;
+  committedPublishedSlots: Array<{ day: string; startTime: string; endTime: string; courseCode: string; sectionCode: string }>;
+}
+
+export interface AssignmentLaboratoryDTO {
+  id: string;
+  code: string;
+  name: string;
+  building: string;
+  departmentId: string;
+  departmentCode: string;
+  capacity: number;
+  labCategory: string;
+  equipment: string[];
+  isAvailable: boolean;
+  isAccessible: boolean;
+  assignedLabEngineerId: string | null;
+  assignedCoursesCount: number;
+}
+
+export interface AssignmentWorkspaceSummaryDTO {
+  totalOfferings: number;
+  completeCount: number;
+  generationReadyCount: number;
+  missingInstructorCount: number;
+  missingLabEngineerCount: number;
+  missingLaboratoryCount: number;
+  invalidCount: number;
+  partialCount: number;
+  unassignedCount: number;
+  labOfferingsCount: number;
+  unsyncedOfferingsCount: number;
+}
+
+export interface AssignmentWorkspaceResponseDTO {
+  universityId: string;
+  offerings: AssignmentOfferingDTO[];
+  summary: AssignmentWorkspaceSummaryDTO;
+  staffDirectory: StaffWorkloadDTO[];
+  laboratories: AssignmentLaboratoryDTO[];
+  hierarchy: {
+    terms: Array<{ id: string; code: string; name: string }>;
+    departments: Array<{ id: string; code: string; name: string }>;
+    cohorts: string[];
+    programs: Array<{ id: string; code: string; name: string; departmentId: string }>;
+    sections: Array<{
+      id: string;
+      code: string;
+      name: string;
+      sectionCode: string;
+      departmentId: string;
+      cohortCode: string;
+      programId: string;
+      studentCount: number;
+    }>;
+  };
+}
+
+export interface BulkPreviewRowDTO {
+  offeringId: string;
+  courseCode: string;
+  courseTitle: string;
+  sectionLabel: string;
+  previousInstructorName: string;
+  nextInstructorName: string;
+  previousLabEngineerName: string;
+  nextLabEngineerName: string;
+  previousLabName: string;
+  nextLabName: string;
+  changedFields: string[];
+  overwriteFields: string[];
+  skippedReasons: string[];
+  valid: boolean;
+  errors: AssignmentIssueDTO[];
+  warnings: AssignmentIssueDTO[];
+  timetableImpact: AssignmentTimetableImpactDTO;
+}
+
+export interface BulkPreviewResponseDTO {
+  universityId: string;
+  missingIds: string[];
+  previewRows: BulkPreviewRowDTO[];
+  applicableCount: number;
+  overwriteCount: number;
+  invalidCount: number;
+  publishedImpactCount: number;
+  staffWorkloadAfterBulk: Record<string, StaffWorkloadDTO>;
+}
+
+export interface CopySectionPreviewItemDTO {
+  offeringId: string;
+  courseCode: string;
+  sectionLabel: string;
+  changedFields: string[];
+  overwriteFields: string[];
+  valid: boolean;
+  errors: AssignmentIssueDTO[];
+  timetableImpact: AssignmentTimetableImpactDTO;
+}
+
+export interface CopySectionResponseDTO {
+  previewOnly?: boolean;
+  matchedOfferings?: number;
+  willApplyCount?: number;
+  overwriteCount?: number;
+  invalidCount?: number;
+  publishedImpactCount?: number;
+  items?: CopySectionPreviewItemDTO[];
+  message?: string;
+  copiedCount?: number;
+}
+

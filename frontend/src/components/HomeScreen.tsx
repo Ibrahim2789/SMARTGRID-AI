@@ -18,7 +18,8 @@ import {
   Layers,
   GraduationCap,
   FlaskConical,
-  Download
+  Download,
+  UserCheck
 } from 'lucide-react';
 import { exportTimetableToGoogleSheetsWorkbook } from '../utils/googleSheetsExport';
 import {
@@ -109,10 +110,25 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
             name: g.name,
             size: g.size
           })),
+          instructors: store.instructors.map(i => ({
+            id: i.id,
+            name: i.name,
+            email: i.email,
+            departmentId: i.departmentId,
+            staffRole: i.staffRole || 'faculty',
+            isActive: i.isActive !== false,
+            maxWeeklyHours: i.maxWeeklyHours,
+            maxConsecutiveHours: i.maxConsecutiveHours,
+            qualifiedCourseIds: i.qualifiedCourseIds || [],
+            unavailableSlots: i.unavailableSlots || []
+          })),
+          timeStructure: store.timeStructure as unknown as Record<string, unknown>,
           sections: store.sections.map(s => ({
             id: s.id,
             courseId: s.courseId,
             instructorId: s.instructorId,
+            labEngineerId: s.labEngineerId,
+            assignedLabId: s.assignedLabId,
             studentGroupId: s.studentGroupId,
             sectionCode: s.sectionNumber || 'A',
             sessionType: s.sessionType === 'Lab' ? 'Lab' : 'Theory',
@@ -190,6 +206,14 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                 <span>
                   {isQuickSolving ? 'Solving Timetable...' : 'Generate Full Timetable'}
                 </span>
+              </button>
+
+              <button
+                onClick={() => onNavigate('assignments')}
+                className="btn-secondary h-10 px-4 text-xs sm:text-sm"
+              >
+                <UserCheck className="w-4 h-4" />
+                <span>Course Assignments</span>
               </button>
 
               <button
@@ -458,13 +482,32 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                   sub: `${lectureSectionsCount} Lectures (${activeTiming.periodLengthMinutes}m) · ${labSectionsCount} Labs (${labHoursLabel}h)`,
                   icon: FlaskConical,
                   step: 5
+                },
+                {
+                  label: 'Course Staff & Lab Allocations',
+                  count: store.sections.filter(s =>
+                    s.sessionType === 'Lab'
+                      ? Boolean(s.labEngineerId || s.instructorId)
+                      : Boolean(s.instructorId)
+                  ).length,
+                  unit: `of ${store.sections.length} Ready`,
+                  sub: `${store.sections.filter(s =>
+                    s.sessionType === 'Lab' ? !(s.labEngineerId || s.instructorId) : !s.instructorId
+                  ).length} Unassigned Offerings`,
+                  icon: UserCheck,
+                  route: 'assignments' as RouteType,
+                  step: 5
                 }
               ].map(item => {
                 const Icon = item.icon;
                 return (
                   <tr
                     key={item.label}
-                    onClick={() => onOpenSetupStep(item.step)}
+                    onClick={() =>
+                      'route' in item && item.route
+                        ? onNavigate(item.route)
+                        : onOpenSetupStep(item.step)
+                    }
                     className="hover:bg-[#F7F6EF]/70 transition-colors cursor-pointer group"
                   >
                     <td className="py-3 px-6">
@@ -484,7 +527,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                     <td className="py-3 px-4 text-[#57564F]">{item.sub}</td>
                     <td className="py-3 px-6 text-right">
                       <span className="inline-flex items-center gap-1 text-xs font-semibold text-[#171717] group-hover:translate-x-0.5 transition-transform">
-                        <span>Manage</span>
+                        <span>{'route' in item && item.route ? 'Assign' : 'Manage'}</span>
                         <ArrowRight className="w-3.5 h-3.5" />
                       </span>
                     </td>

@@ -1,3 +1,11 @@
+import type {
+  AssignmentValidationResultDTO,
+  AssignmentWorkspaceResponseDTO,
+  BulkPreviewResponseDTO,
+  CopySectionResponseDTO,
+  StaffWorkloadDTO
+} from '../types/institutional';
+
 export type VotingRole = 'Registrar' | 'Admin' | 'BR' | 'Student' | 'Faculty';
 export type BrGenderRole = 'male' | 'female';
 export type PollStatus = 'Pending' | 'Approved' | 'Rejected' | 'Published' | 'Closed';
@@ -421,6 +429,18 @@ export async function ensureBackendToken(
   throw new Error('Authentication token missing. Please sign in again.');
 }
 
+export class AssignmentApiError extends Error {
+  status: number;
+  data: Record<string, unknown>;
+
+  constructor(message: string, status: number, data: Record<string, unknown>) {
+    super(message);
+    this.name = 'AssignmentApiError';
+    this.status = status;
+    this.data = data;
+  }
+}
+
 async function authorizedFetch<T>(
   url: string,
   currentUser: AuthenticatedVotingUser,
@@ -445,7 +465,16 @@ async function authorizedFetch<T>(
     throw new Error('Session changed or signed out.');
   }
   if (!res.ok) {
-    throw new Error(data.error || `Request failed (${res.status})`);
+    const rawDetail =
+      data && typeof data === 'object' && 'detail' in data && typeof data.detail === 'object' && data.detail !== null
+        ? (data.detail as Record<string, unknown>)
+        : (data as Record<string, unknown>);
+    const message =
+      (typeof rawDetail?.error === 'string' && rawDetail.error) ||
+      (typeof data?.error === 'string' && data.error) ||
+      (typeof data?.detail === 'string' && data.detail) ||
+      `Request failed (${res.status})`;
+    throw new AssignmentApiError(message, res.status, rawDetail || {});
   }
   return data as T;
 }
@@ -1013,6 +1042,28 @@ export interface BackendAnalyticsOverviewDTO {
     instructors: number;
     studentVotesCast: number;
   };
+  assignmentReadiness?: {
+    totalOfferings?: number;
+    completeCount?: number;
+    generationReadyCount?: number;
+    missingInstructorCount?: number;
+    missingLabEngineerCount?: number;
+    missingLaboratoryCount?: number;
+    invalidCount?: number;
+    partialCount?: number;
+    unassignedCount?: number;
+    unsyncedOfferingsCount?: number;
+  };
+  staffWorkloadSummary?: Array<{
+    id: string;
+    name: string;
+    staffRole: 'faculty' | 'lab_engineer';
+    departmentCode: string;
+    currentWeeklyHours: number;
+    maxWeeklyHours: number;
+    utilizationPct: number;
+    assignedCoursesCount: number;
+  }>;
   latestOptimizationRun: {
     id: string | null;
     algorithmPipeline: string;
@@ -1982,6 +2033,316 @@ export async function solveOptimizationApi(
     assignments: result.assignments
   };
 }
+
+// =========================================================================
+// Course, Instructor, Lab Engineer & Laboratory Assignment Workspace APIs
+// =========================================================================
+
+export async function fetchAssignmentWorkspaceApi(
+  user: AuthenticatedVotingUser,
+  filters?: {
+    universityId?: string;
+    termId?: string;
+    departmentId?: string;
+    cohortCode?: string;
+    programId?: string;
+    sectionId?: string;
+    status?: string;
+    componentType?: string;
+    search?: string;
+  }
+): Promise<AssignmentWorkspaceResponseDTO> {
+  const params = new URLSearchParams();
+  if (filters?.universityId || user.institutionId) {
+    params.set('universityId', String(filters?.universityId || user.institutionId));
+  }
+  if (filters?.termId) params.set('termId', filters.termId);
+  if (filters?.departmentId) params.set('departmentId', filters.departmentId);
+  if (filters?.cohortCode) params.set('cohortCode', filters.cohortCode);
+  if (filters?.programId) params.set('programId', filters.programId);
+  if (filters?.sectionId) params.set('sectionId', filters.sectionId);
+  if (filters?.status) params.set('status', filters.status);
+  if (filters?.componentType) params.set('componentType', filters.componentType);
+  if (filters?.search) params.set('search', filters.search);
+  return authorizedFetch<AssignmentWorkspaceResponseDTO>(
+    `/api/assignments/workspace?${params.toString()}`,
+    user
+  );
+}
+
+export async function syncAssignmentOfferingsApi(
+  user: AuthenticatedVotingUser,
+  payload?: {
+    universityId?: string;
+    termId?: string;
+    departmentId?: string;
+    courseIds?: string[];
+  }
+): Promise<{ message: string; createdCount: number }> {
+  return authorizedFetch<{ message: string; createdCount: number }>(
+    '/api/assignments/sync-offerings',
+    user,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        universityId: payload?.universityId || user.institutionId,
+        termId: payload?.termId,
+        departmentId: payload?.departmentId,
+        courseIds: payload?.courseIds
+      })
+    }
+  );
+}
+
+export async function validateOfferingAssignmentApi(
+  user: AuthenticatedVotingUser,
+  payload: {
+    universityId?: string;
+    offeringId: string;
+    instructorId?: string | null;
+    labEngineerId?: string | null;
+    assignedLabId?: string | null;
+    allowWorkloadOverride?: boolean;
+  }
+): Promise<
+  AssignmentValidationResultDTO & {
+    offeringId: string;
+    updatedWorkloadPreview?: {
+      instructor?: StaffWorkloadDTO | null;
+      labEngineer?: StaffWorkloadDTO | null;
+    };
+  }
+> {
+  return authorizedFetch(
+    '/api/assignments/validate',
+    user,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        universityId: payload.universityId || user.institutionId,
+        offeringId: payload.offeringId,
+        instructorId: payload.instructorId ?? null,
+        labEngineerId: payload.labEngineerId ?? null,
+        assignedLabId: payload.assignedLabId ?? null,
+        allowWorkloadOverride: Boolean(payload.allowWorkloadOverride)
+      })
+    }
+  );
+}
+
+export async function saveOfferingAssignmentApi(
+  user: AuthenticatedVotingUser,
+  offeringId: string,
+  payload: {
+    universityId?: string;
+    instructorId?: string | null;
+    labEngineerId?: string | null;
+    assignedLabId?: string | null;
+    allowWorkloadOverride?: boolean;
+    confirmTimetableImpact?: boolean;
+  }
+): Promise<{
+  message: string;
+  offeringId: string;
+  validation: AssignmentValidationResultDTO;
+}> {
+  return authorizedFetch(
+    `/api/assignments/offerings/${encodeURIComponent(offeringId)}`,
+    user,
+    {
+      method: 'PUT',
+      body: JSON.stringify({
+        universityId: payload.universityId || user.institutionId,
+        ...payload
+      })
+    }
+  );
+}
+
+export async function previewBulkAssignmentApi(
+  user: AuthenticatedVotingUser,
+  payload: {
+    universityId?: string;
+    offeringIds: string[];
+    instructorId?: string | null;
+    labEngineerId?: string | null;
+    assignedLabId?: string | null;
+    overwriteExisting?: boolean;
+    allowWorkloadOverride?: boolean;
+  }
+): Promise<BulkPreviewResponseDTO> {
+  return authorizedFetch<BulkPreviewResponseDTO>(
+    '/api/assignments/bulk/preview',
+    user,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        universityId: payload.universityId || user.institutionId,
+        offeringIds: payload.offeringIds,
+        instructorId: payload.instructorId || null,
+        labEngineerId: payload.labEngineerId || null,
+        assignedLabId: payload.assignedLabId || null,
+        overwriteExisting: Boolean(payload.overwriteExisting),
+        allowWorkloadOverride: Boolean(payload.allowWorkloadOverride)
+      })
+    }
+  );
+}
+
+export async function applyBulkAssignmentApi(
+  user: AuthenticatedVotingUser,
+  payload: {
+    universityId?: string;
+    offeringIds: string[];
+    instructorId?: string | null;
+    labEngineerId?: string | null;
+    assignedLabId?: string | null;
+    overwriteExisting?: boolean;
+    allowWorkloadOverride?: boolean;
+    confirmTimetableImpact?: boolean;
+  }
+): Promise<{
+  message: string;
+  appliedCount: number;
+  skippedOverwriteCount: number;
+}> {
+  return authorizedFetch(
+    '/api/assignments/bulk/apply',
+    user,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        universityId: payload.universityId || user.institutionId,
+        offeringIds: payload.offeringIds,
+        instructorId: payload.instructorId || null,
+        labEngineerId: payload.labEngineerId || null,
+        assignedLabId: payload.assignedLabId || null,
+        overwriteExisting: Boolean(payload.overwriteExisting),
+        allowWorkloadOverride: Boolean(payload.allowWorkloadOverride),
+        confirmTimetableImpact: Boolean(payload.confirmTimetableImpact)
+      })
+    }
+  );
+}
+
+export async function copySectionAssignmentsApi(
+  user: AuthenticatedVotingUser,
+  payload: {
+    universityId?: string;
+    sourceSectionId: string;
+    targetSectionIds: string[];
+    previewOnly?: boolean;
+    overwriteExisting?: boolean;
+    allowWorkloadOverride?: boolean;
+    confirmTimetableImpact?: boolean;
+  }
+): Promise<CopySectionResponseDTO> {
+  return authorizedFetch<CopySectionResponseDTO>(
+    '/api/assignments/copy-section',
+    user,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        universityId: payload.universityId || user.institutionId,
+        sourceSectionId: payload.sourceSectionId,
+        targetSectionIds: payload.targetSectionIds,
+        previewOnly: Boolean(payload.previewOnly),
+        overwriteExisting: Boolean(payload.overwriteExisting),
+        allowWorkloadOverride: Boolean(payload.allowWorkloadOverride),
+        confirmTimetableImpact: Boolean(payload.confirmTimetableImpact)
+      })
+    }
+  );
+}
+
+export async function clearOfferingAssignmentApi(
+  user: AuthenticatedVotingUser,
+  payload: {
+    universityId?: string;
+    offeringIds: string[];
+    fields?: Array<'instructorId' | 'labEngineerId' | 'assignedLabId'>;
+    confirmTimetableImpact?: boolean;
+  }
+): Promise<{ message: string; clearedCount: number }> {
+  return authorizedFetch(
+    '/api/assignments/clear',
+    user,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        universityId: payload.universityId || user.institutionId,
+        offeringIds: payload.offeringIds,
+        fields: payload.fields,
+        confirmTimetableImpact: Boolean(payload.confirmTimetableImpact)
+      })
+    }
+  );
+}
+
+export async function fetchStaffWorkloadOverviewApi(
+  user: AuthenticatedVotingUser,
+  filters?: {
+    universityId?: string;
+    departmentId?: string;
+    staffRole?: string;
+    search?: string;
+  }
+): Promise<{
+  universityId: string;
+  staff: StaffWorkloadDTO[];
+  totals: {
+    totalStaff: number;
+    activeStaff: number;
+    overloadedCount: number;
+    unassignedStaffCount: number;
+  };
+}> {
+  const params = new URLSearchParams();
+  if (filters?.universityId || user.institutionId) {
+    params.set('universityId', String(filters?.universityId || user.institutionId));
+  }
+  if (filters?.departmentId) params.set('departmentId', filters.departmentId);
+  if (filters?.staffRole) params.set('staffRole', filters.staffRole);
+  if (filters?.search) params.set('search', filters.search);
+  return authorizedFetch(`/api/assignments/workload?${params.toString()}`, user);
+}
+
+export async function fetchAssignmentHistoryApi(
+  user: AuthenticatedVotingUser,
+  universityId?: string
+): Promise<{
+  universityId: string;
+  history: Array<{
+    id: string;
+    actor_name?: string;
+    actor_role?: string;
+    action: string;
+    entity_type: string;
+    entity_id: string;
+    summary: string;
+    previous_value?: string;
+    new_value?: string;
+    created_at: string;
+  }>;
+}> {
+  const uni = universityId || user.institutionId;
+  const q = uni ? `?universityId=${encodeURIComponent(uni)}` : '';
+  return authorizedFetch(`/api/assignments/history${q}`, user);
+}
+
+export async function fetchMyStaffAssignmentsApi(
+  user: AuthenticatedVotingUser,
+  universityId?: string
+): Promise<{
+  universityId: string;
+  instructor: StaffWorkloadDTO | null;
+  offerings: import('../types/institutional').AssignmentOfferingDTO[];
+}> {
+  const uni = universityId || user.institutionId;
+  const q = uni ? `?universityId=${encodeURIComponent(uni)}` : '';
+  return authorizedFetch(`/api/assignments/my-load${q}`, user);
+}
+
 
 
 

@@ -26,17 +26,20 @@ import {
   X,
   BarChart3,
   Activity,
-  History
+  History,
+  UserCheck
 } from 'lucide-react';
 import { showAppPopup } from './ToastPopupHost';
 import {
   getStoredUser,
   AuthenticatedVotingUser,
+  BackendAnalyticsOverviewDTO,
   createFeedbackProposalBackend,
   voteFeedbackProposalBackend,
   restoreTimetableBackend,
   updateConstraintBackend,
-  fetchInstitutionWorkspace
+  fetchInstitutionWorkspace,
+  fetchAnalyticsOverviewBackend
 } from '../services/votingApi';
 
 interface FeedbackScreenProps {
@@ -90,6 +93,20 @@ export const FeedbackScreen: React.FC<FeedbackScreenProps> = ({ onNavigate, curr
   const [roomTypeFilter, setRoomTypeFilter] = useState<'ALL' | 'lecture' | 'lab'>('ALL');
   const [roomSortBy, setRoomSortBy] = useState<'occupancy' | 'code' | 'capacity'>('occupancy');
   const [expandedRoomId, setExpandedRoomId] = useState<string | null>(null);
+  const [backendAnalytics, setBackendAnalytics] = useState<BackendAnalyticsOverviewDTO | null>(null);
+
+  useEffect(() => {
+    if (activeTab !== 'analytics') return;
+    const authUser = currentUser?.token ? (currentUser as AuthenticatedVotingUser) : getStoredUser();
+    if (!authUser?.token) return;
+    const instId =
+      store.institutionProfile?.id ||
+      authUser.institutionId ||
+      institutionalStore.getCurrentInstitutionId();
+    fetchAnalyticsOverviewBackend(authUser, instId)
+      .then(setBackendAnalytics)
+      .catch(() => {});
+  }, [activeTab, currentUser?.token, store.institutionProfile?.id]);
 
   // =========================================================================
   // SCREEN 2 STATE: OPTIMIZATION RESULTS EXPANDABLE SECTIONS
@@ -982,6 +999,156 @@ export const FeedbackScreen: React.FC<FeedbackScreenProps> = ({ onNavigate, curr
                 </tbody>
               </table>
             </div>
+          </section>
+
+          {/* 4. Course Staff & Laboratory Assignment Readiness + Staff Workload Overview */}
+          <section className="sf-card-white overflow-hidden">
+            <div className="px-5 py-4 border-b border-[#E4E2DA] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h2 className="font-serif-editorial text-xl text-[#171717]">
+                  Course Assignment Readiness &amp; Staff Workload
+                </h2>
+                <p className="text-xs text-[#77766F]">
+                  Live offering coverage and weekly teaching caps across Faculty &amp; Lab Engineers.
+                </p>
+              </div>
+              {(!currentUser?.systemRole ||
+                ['admin', 'registrar', 'coordinator', 'university_admin', 'super_admin', 'timetable_manager'].includes(
+                  String(currentUser.systemRole).toLowerCase()
+                )) && (
+                <button
+                  type="button"
+                  onClick={() => onNavigate('assignments')}
+                  className="btn-secondary h-8 px-3 text-xs shrink-0 inline-flex items-center gap-1.5"
+                >
+                  <UserCheck className="w-3.5 h-3.5" />
+                  <span>Manage Assignments</span>
+                </button>
+              )}
+            </div>
+
+            {(() => {
+              const readiness = backendAnalytics?.assignmentReadiness;
+              const staffRows = backendAnalytics?.staffWorkloadSummary || [];
+              const totalOff = readiness?.totalOfferings ?? store.sections.length;
+              const assignedOff =
+                readiness?.completeCount ??
+                store.sections.filter(s => Boolean(s.instructorId) && (s.sessionType !== 'Lab' || Boolean(s.labEngineerId))).length;
+              const unassignedOff =
+                readiness?.unassignedCount ??
+                store.sections.filter(s => !s.instructorId).length;
+              const invalidOff = readiness?.invalidCount ?? 0;
+              const readinessPct =
+                totalOff > 0
+                  ? Math.round(((readiness?.generationReadyCount ?? assignedOff) / totalOff) * 100)
+                  : 100;
+
+              return (
+                <div className="divide-y divide-[#E4E2DA]">
+                  <div className="grid grid-cols-2 lg:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x divide-[#E4E2DA]">
+                    <div className="px-5 py-3.5">
+                      <div className="text-[11px] font-medium text-[#77766F]">Solver Readiness</div>
+                      <div className="font-serif-editorial text-2xl text-[#171717] font-mono-tabular mt-0.5">
+                        {readinessPct}%
+                      </div>
+                    </div>
+                    <div className="px-5 py-3.5">
+                      <div className="text-[11px] font-medium text-[#77766F]">Fully Assigned Offerings</div>
+                      <div className="font-serif-editorial text-2xl text-[#171717] font-mono-tabular mt-0.5">
+                        {assignedOff} <span className="text-xs font-sans text-[#77766F]">/ {totalOff}</span>
+                      </div>
+                    </div>
+                    <div className="px-5 py-3.5">
+                      <div className="text-[11px] font-medium text-[#77766F]">Unassigned Offerings</div>
+                      <div className={`font-serif-editorial text-2xl font-mono-tabular mt-0.5 ${unassignedOff > 0 ? 'text-[#8B5E00]' : 'text-[#171717]'}`}>
+                        {unassignedOff}
+                      </div>
+                    </div>
+                    <div className="px-5 py-3.5">
+                      <div className="text-[11px] font-medium text-[#77766F]">Validation Blockers</div>
+                      <div className={`font-serif-editorial text-2xl font-mono-tabular mt-0.5 ${invalidOff > 0 ? 'text-[#8B1E1E]' : 'text-[#171717]'}`}>
+                        {invalidOff}
+                      </div>
+                    </div>
+                  </div>
+
+                  {staffRows.length > 0 && (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left border-collapse">
+                        <thead>
+                          <tr className="bg-[#F7F6EF] border-b border-[#E4E2DA] text-[11px] font-semibold uppercase tracking-wider text-[#77766F]">
+                            <th className="py-2.5 px-5">Staff Member</th>
+                            <th className="py-2.5 px-4">Role</th>
+                            <th className="py-2.5 px-4">Courses</th>
+                            <th className="py-2.5 px-4">Weekly Load</th>
+                            <th className="py-2.5 px-4 w-48">Utilization</th>
+                            <th className="py-2.5 px-5 text-right">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-[#E4E2DA] text-xs">
+                          {staffRows.slice(0, 12).map(st => {
+                            const isOverloaded = st.currentWeeklyHours > st.maxWeeklyHours;
+                            const isNearCap = !isOverloaded && st.utilizationPct >= 85;
+                            const isIdle = st.currentWeeklyHours === 0;
+                            const statusColor = isOverloaded
+                              ? 'text-[#8B1E1E]'
+                              : isNearCap
+                              ? 'text-[#8B5E00]'
+                              : isIdle
+                              ? 'text-[#77766F]'
+                              : 'text-[#1B5E20]';
+                            const statusLabel = isOverloaded
+                              ? 'Overloaded'
+                              : isNearCap
+                              ? 'Near Cap'
+                              : isIdle
+                              ? 'Idle'
+                              : 'Balanced';
+                            return (
+                              <tr key={st.id} className="hover:bg-[#F7F6EF]/60 transition-colors">
+                                <td className="py-2.5 px-5 font-semibold text-[#171717]">
+                                  {st.name}
+                                  {st.departmentCode && (
+                                    <span className="ml-2 text-[11px] font-mono-tabular font-normal text-[#77766F]">
+                                      {st.departmentCode}
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="py-2.5 px-4 text-[#57564F]">
+                                  {st.staffRole === 'lab_engineer' ? 'Lab Engineer' : 'Faculty'}
+                                </td>
+                                <td className="py-2.5 px-4 font-mono-tabular text-[#57564F]">
+                                  {st.assignedCoursesCount}
+                                </td>
+                                <td className="py-2.5 px-4 font-mono-tabular text-[#171717]">
+                                  {st.currentWeeklyHours} / {st.maxWeeklyHours} hrs
+                                </td>
+                                <td className="py-2.5 px-4">
+                                  <div className="flex items-center gap-2">
+                                    <div className="flex-1 h-2 rounded-full bg-[#F7F6EF] border border-[#E4E2DA] overflow-hidden">
+                                      <div
+                                        className="h-full bg-[#171717] rounded-full"
+                                        style={{ width: `${Math.min(100, Math.max(0, st.utilizationPct))}%` }}
+                                      />
+                                    </div>
+                                    <span className="font-mono-tabular text-[#171717] w-9 text-right">
+                                      {st.utilizationPct}%
+                                    </span>
+                                  </div>
+                                </td>
+                                <td className={`py-2.5 px-5 text-right font-semibold ${statusColor}`}>
+                                  {statusLabel}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </section>
         </div>
       )}

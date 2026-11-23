@@ -931,6 +931,8 @@ def list_instructors(request: Request) -> Dict[str, Any]:
                 "department_code": dept_by_id.get(r.get("department_id") or "", "BSCS"),
                 "specialization": specs[0] if specs else "",
                 "staffRole": r.get("staff_role") or "faculty",
+                "staffCode": r.get("staff_code") or "",
+                "isActive": bool(r.get("is_active", True)),
                 "subDepartment": r.get("sub_department") or "",
                 "qualifiedCourseIds": safe_json_loads(r.get("qualified_course_ids"), []),
                 "max_lectures_per_day": r.get("max_daily_classes", 3),
@@ -987,6 +989,8 @@ async def create_instructor(request: Request) -> Dict[str, Any]:
                 "email": email,
                 "designation": body.get("title") or body.get("designation") or "Professor",
                 "staff_role": staff_role,
+                "staff_code": str(body.get("staffCode") or "").strip() or None,
+                "is_active": bool(body.get("isActive", True)),
                 "sub_department": str(body.get("subDepartment") or "") or None,
                 "qualified_course_ids": qual_ids,
                 "specializations": specializations,
@@ -1042,6 +1046,10 @@ async def update_instructor(instId: str, request: Request) -> Dict[str, Any]:
             patch["sub_department"] = str(body["subDepartment"] or "") or None
         if "staffRole" in body:
             patch["staff_role"] = "lab_engineer" if body["staffRole"] == "lab_engineer" else "faculty"
+        if "staffCode" in body:
+            patch["staff_code"] = str(body["staffCode"] or "").strip() or None
+        if "isActive" in body:
+            patch["is_active"] = bool(body["isActive"])
         if "title" in body or "designation" in body:
             patch["designation"] = str(body.get("title") or body.get("designation") or "Professor")
         if "maxWeeklyHours" in body:
@@ -1368,9 +1376,11 @@ async def create_section(request: Request) -> Dict[str, Any]:
                 "id": sec_id,
                 "institution_id": uni_id,
                 "term_id": body.get("termId") or None,
+                "program_id": body.get("programId") or None,
                 "course_id": course_id,
                 "instructor_id": body.get("instructorId") or None,
                 "lab_engineer_id": body.get("labEngineerId") or None,
+                "assigned_lab_id": body.get("assignedLabId") or None,
                 "batch_id": batch_id,
                 "section_code": str(body.get("sectionNumber") or body.get("sectionCode") or "A"),
                 "session_type": sess_type,
@@ -1483,26 +1493,44 @@ async def auto_generate_sections(request: Request) -> Dict[str, Any]:
         programs = client.select("academic_programs", filters={"institution_id": f"eq.{uni_id}"})
         instructors = client.select("instructors", filters={"institution_id": f"eq.{uni_id}"})
         existing_sessions = client.select("course_sessions", filters={"institution_id": f"eq.{uni_id}"})
+        try:
+            enrollments = client.select("course_enrollments", filters={"institution_id": f"eq.{uni_id}"})
+        except Exception:
+            enrollments = []
 
         if not courses or not batches:
             return {"message": "Need at least one course and one batch to generate sections.", "createdCount": 0}
+
+        enrolled_by_course: Dict[str, List[str]] = {}
+        for enr in enrollments:
+            cid = str(enr.get("course_id") or "")
+            bid = str(enr.get("batch_id") or "")
+            if cid and bid:
+                enrolled_by_course.setdefault(cid, []).append(bid)
 
         existing_keys = {
             (s.get("course_id"), s.get("batch_id"), str(s.get("component_type") or "lecture"))
             for s in existing_sessions
         }
-        default_faculty = next((i["id"] for i in instructors if (i.get("staff_role") or "faculty") == "faculty"), instructors[0]["id"] if instructors else None)
-        default_lab_eng = next((i["id"] for i in instructors if i.get("staff_role") == "lab_engineer"), default_faculty)
 
         to_insert: List[Dict[str, Any]] = []
         for c in courses:
-            target_batches = resolve_matching_batches_for_course(c, batches, departments, programs)
+            target_batches = resolve_matching_batches_for_course(
+                c,
+                batches,
+                departments,
+                programs,
+                enrolled_batch_ids=enrolled_by_course.get(c["id"]),
+            )
             if not target_batches:
                 continue
             lec_cr = int(c.get("lecture_credit_hours") or 0)
             lab_cr = int(c.get("lab_credit_hours") or 0)
             if lec_cr == 0 and lab_cr == 0:
                 lec_cr = max(1, int(c.get("credit_hours") or 3))
+
+            explicit_inst = c.get("assigned_instructor_id") or None
+            explicit_eng = c.get("assigned_lab_engineer_id") or None
 
             for batch_obj in target_batches:
                 target_batch_id = batch_obj["id"]
@@ -1515,8 +1543,9 @@ async def auto_generate_sections(request: Request) -> Dict[str, Any]:
                             "id": f"sec-{uuid.uuid4().hex[:8]}",
                             "institution_id": uni_id,
                             "term_id": term_id,
+                            "program_id": batch_obj.get("program_id") or None,
                             "course_id": c["id"],
-                            "instructor_id": c.get("assigned_instructor_id") or default_faculty,
+                            "instructor_id": explicit_inst,
                             "batch_id": target_batch_id,
                             "section_code": sec_code,
                             "session_type": "Theory",
@@ -1525,6 +1554,7 @@ async def auto_generate_sections(request: Request) -> Dict[str, Any]:
                             "duration_minutes": 50,
                             "expected_students": exp_students,
                             "required_room_type": c.get("required_room_type") or "lecture",
+                            "assignment_status": "assigned" if explicit_inst else "unassigned",
                             "created_at": now,
                         }
                     )
@@ -1535,11 +1565,12 @@ async def auto_generate_sections(request: Request) -> Dict[str, Any]:
                             "id": f"sec-{uuid.uuid4().hex[:8]}",
                             "institution_id": uni_id,
                             "term_id": term_id,
+                            "program_id": batch_obj.get("program_id") or None,
                             "course_id": c["id"],
-                            "instructor_id": c.get("assigned_instructor_id") or default_faculty,
-                            "lab_engineer_id": c.get("assigned_lab_engineer_id") or default_lab_eng,
+                            "instructor_id": explicit_inst,
+                            "lab_engineer_id": explicit_eng,
                             "batch_id": target_batch_id,
-                            "section_code": f"{sec_code}-Lab",
+                            "section_code": sec_code,
                             "session_type": "Lab",
                             "component_type": "lab",
                             "sessions_per_week": max(1, min(6, lab_cr)),
@@ -1548,6 +1579,7 @@ async def auto_generate_sections(request: Request) -> Dict[str, Any]:
                             "required_room_type": "lab",
                             "is_atomic_session": True,
                             "span_slots": 3,
+                            "assignment_status": "partial" if explicit_eng else "unassigned",
                             "created_at": now,
                         }
                     )

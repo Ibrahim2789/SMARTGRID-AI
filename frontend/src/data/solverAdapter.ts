@@ -134,7 +134,7 @@ export function buildMatrixSchedule(store: InstitutionalDataStore): {
       sec.sectionNumber.toLowerCase().includes('lab');
 
     const resolvedLabEngId = isLab
-      ? sec.labEngineerId || course?.assignedLabEngineerId || room?.assignedLabEngineerId || ''
+      ? sec.labEngineerId || course?.assignedLabEngineerId || ''
       : '';
     const labEngineer = resolvedLabEngId
       ? store.instructors.find(i => i.id === resolvedLabEngId)
@@ -143,7 +143,7 @@ export function buildMatrixSchedule(store: InstitutionalDataStore): {
     const code = course?.code || 'CRS-101';
     const title = course?.title || 'Academic Seminar';
     const roomCode = room?.code || 'Hall A1';
-    const profName = instructor?.name || 'Staff Faculty';
+    const profName = instructor?.name || 'Unassigned Instructor';
     const labEngineerName = labEngineer?.name;
     const cohortCode =
       sharedGroups.length > 0

@@ -219,6 +219,18 @@ def validate_timetable_assignments(
                         ),
                     )
                 )
+            if sess.is_lab and sess.assigned_lab_id and gene.room_id != sess.assigned_lab_id:
+                violations.append(
+                    ConstraintViolation(
+                        violation_type="assigned_lab_mismatch",
+                        severity="hard",
+                        session_ids=[sess.session_id],
+                        message=(
+                            f"Lab session {sess.course_code} ({sess.batch_code}) must use administrator-assigned "
+                            f"laboratory {sess.assigned_lab_id}, got {room.get('code', gene.room_id)}."
+                        ),
+                    )
+                )
             if sess.required_equipment:
                 room_eq = {str(e).lower() for e in (room.get("equipment") or [])}
                 req_eq = {str(e).lower() for e in sess.required_equipment if e}

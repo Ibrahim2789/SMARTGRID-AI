@@ -228,7 +228,7 @@ export function buildCanonicalExportModel(params: {
           componentType: isLab ? 'lab' : 'lecture',
           isSplitLab: Boolean(cls.isSplitLab),
           slotSource,
-          instructorName: cls.prof || 'Assigned Faculty',
+          instructorName: cls.prof || 'Unassigned Instructor',
           labEngineerName: isLab ? cls.labEngineerName : cls.labEngineerName,
           roomCode: cls.room,
           cohortCode: cls.cohort,
