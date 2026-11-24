@@ -187,7 +187,7 @@ async def run_optimization(request: Request) -> Dict[str, Any]:
     hist = pipeline_result.get("fitnessHistory") or [fb["totalScore"]]
     hard_violations = int(pipeline_result["hardConstraintViolations"])
     is_feasible = bool(pipeline_result.get("feasible")) and hard_violations == 0
-    version_status = "published" if is_feasible else "draft"
+    version_status = "draft"
     exec_ms = float(pipeline_result["executionTimeMs"])
     version_name = body.get("versionName") or f"Hybrid AI Schedule ({current_iso[:10]})"
 
@@ -196,15 +196,7 @@ async def run_optimization(request: Request) -> Dict[str, Any]:
 
     client = require_supabase_client()
     try:
-        # 1. Archive existing published versions when promoting a new conflict-free schedule
-        if is_feasible:
-            client.update(
-                "timetable_versions",
-                {"institution_id": f"eq.{uni_id}", "status": "eq.published"},
-                {"status": "archived", "updated_at": current_iso},
-            )
-
-        # 2. Insert timetable_versions FIRST (published ONLY if 0 hard violations)
+        # 1. Insert timetable_versions FIRST (always as draft for administrative review; never auto-publishing or auto-archiving existing published versions)
         client.insert(
             "timetable_versions",
             {
@@ -212,7 +204,7 @@ async def run_optimization(request: Request) -> Dict[str, Any]:
                 "institution_id": uni_id,
                 "name": version_name,
                 "version_number": "1.0.0",
-                "status": version_status,
+                "status": "draft",
                 "algorithm_used": algorithm,
                 "hard_violations_count": hard_violations,
                 "overall_fitness_score": float(fb["totalScore"]),
@@ -221,7 +213,7 @@ async def run_optimization(request: Request) -> Dict[str, Any]:
                 "room_utilization_score": float(fb["roomUtilization"]),
                 "fairness_score": float(fb["fairnessScore"]),
                 "created_by": auth_user.get("userId"),
-                "published_at": current_iso if is_feasible else None,
+                "published_at": None,
                 "created_at": current_iso,
             },
         )
