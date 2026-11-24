@@ -24,6 +24,7 @@ from app.optimization.fitness import _coerce_slot_dict
 from app.optimization.scheduler import run_hybrid_timetable_pipeline
 from app.optimization.validator import validate_timetable_assignments
 from app.services.assignment_validation import validate_sections_for_optimization
+from .timetables import _generate_and_store_validation_report
 from database import now_iso
 from fastapi_compat import APIRouter, HTTPException, Request
 
@@ -453,6 +454,10 @@ async def run_optimization(request: Request) -> Dict[str, Any]:
             version_id,
             f"Generated {algorithm} schedule '{version_name}' ({hard_violations} hard violations)",
         )
+        try:
+            _generate_and_store_validation_report(client, uni_id, version_id)
+        except Exception:
+            pass
     except SupabaseQueryError as err:
         raise_supabase_http_error(err)
 

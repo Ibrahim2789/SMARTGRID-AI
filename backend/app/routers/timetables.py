@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import uuid
 from collections import defaultdict
 from datetime import datetime, timedelta
 from typing import Any, Dict, List
@@ -12,16 +13,22 @@ from app.deps import (
     CATALOG_MANAGER_ROLES,
     assert_institution_access,
     get_query_param,
+    load_university_optimization_inputs,
     parse_json_body,
     raise_supabase_http_error,
     require_auth_user,
+    safe_insert_optional,
     scoped_uni_id,
     write_audit_log,
 )
+from app.optimization.constraints import expand_sections_to_sessions, normalize_rooms_input
+from app.optimization.fitness import _coerce_slot_dict
+from app.optimization.validator import validate_timetable_assignments
 from database import now_iso
 from fastapi_compat import APIRouter, HTTPException, Request
 
 router = APIRouter(tags=["timetables"])
+
 
 
 def _compute_end_time(start_hhmm: str, duration_minutes: int) -> str:
@@ -366,3 +373,193 @@ def delete_timetable_version(versionId: str, request: Request) -> Dict[str, Any]
     except SupabaseQueryError as err:
         raise_supabase_http_error(err)
     return {"message": f"Timetable version '{existing['name']}' deleted."}
+
+
+def _generate_and_store_validation_report(client: Any, uni_id: str, version_id: str) -> Dict[str, Any]:
+    version_row = client.select_one("timetable_versions", filters={"id": f"eq.{version_id}"})
+    if not version_row:
+        return {}
+
+    entries = client.select("timetable_entries", filters={"timetable_version_id": f"eq.{version_id}"})
+    inputs = load_university_optimization_inputs(uni_id, {})
+    norm_rooms = normalize_rooms_input(inputs["rooms_raw"])
+    sessions = expand_sections_to_sessions(
+        courses=inputs["courses"],
+        sections=inputs["sections"],
+        rooms=norm_rooms,
+        instructors=inputs["instructors"],
+        time_config=inputs["time_config"],
+    )
+
+    candidate_assignments = {}
+    for e in entries:
+        sid = str(e.get("course_session_id") or "")
+        if sid:
+            candidate_assignments[sid] = (e.get("day_of_week"), e.get("start_time"), e.get("room_id"))
+
+    report = validate_timetable_assignments(
+        candidate_assignments,
+        sessions,
+        norm_rooms,
+        inputs["time_config"],
+        instructors=inputs["instructors"],
+        unavailable_instructor_slots=_coerce_slot_dict(inputs["unavailable_instructor_slots"]),
+        unavailable_room_slots=_coerce_slot_dict(inputs["unavailable_room_slots"]),
+    )
+
+    total_req = len(sessions)
+    total_sch = len(entries)
+    total_unsched = max(0, total_req - total_sch)
+    hard_count = report.hard_violation_count
+
+    sec_conf = sum(1 for v in report.violations if "group" in v.violation_type or "section" in v.violation_type)
+    inst_conf = sum(1 for v in report.violations if "instructor" in v.violation_type)
+    le_conf = sum(1 for v in report.violations if "lab_engineer" in v.violation_type)
+    room_conf = sum(1 for v in report.violations if "room" in v.violation_type)
+    dur_conf = sum(1 for v in report.violations if "duration" in v.violation_type or "operating" in v.violation_type)
+
+    status = "VALID"
+    if total_unsched > 0:
+        status = "INCOMPLETE"
+    elif hard_count > 0:
+        status = "INVALID"
+    elif len(report.violations) > 0:
+        status = "VALID WITH WARNINGS"
+
+    current_iso = now_iso()
+    report_id = f"tvr-{uuid.uuid4().hex[:10]}"
+
+    report_dict = report.to_dict()
+    db_row = {
+        "id": report_id,
+        "institution_id": uni_id,
+        "timetable_version_id": version_id,
+        "validation_status": status,
+        "total_required_sessions": total_req,
+        "total_scheduled_sessions": total_sch,
+        "total_unscheduled_sessions": total_unsched,
+        "section_conflict_count": sec_conf,
+        "instructor_conflict_count": inst_conf,
+        "lab_engineer_conflict_count": le_conf,
+        "room_conflict_count": room_conf,
+        "invalid_duration_count": dur_conf,
+        "credit_hour_fulfillment": report_dict.get("creditSummary", {}),
+        "staff_assignment_integrity": {"assignedInstructors": len(inputs["instructors"]), "scheduledSessions": total_sch},
+        "total_hard_violations": hard_count,
+        "total_warnings": len(report.violations),
+        "validation_timestamp": current_iso,
+        "report_data": report_dict,
+        "created_at": current_iso,
+    }
+
+    existing_rep = client.select_one("timetable_validation_reports", filters={"timetable_version_id": f"eq.{version_id}"})
+    if existing_rep:
+        client.update("timetable_validation_reports", {"id": f"eq.{existing_rep['id']}"}, db_row)
+        db_row["id"] = existing_rep["id"]
+    else:
+        client.insert("timetable_validation_reports", [db_row])
+
+    return db_row
+
+
+@router.get("/api/timetables/validation-reports")
+def list_validation_reports(request: Request) -> Dict[str, Any]:
+    auth_user = require_auth_user(request)
+    uni_id = scoped_uni_id(auth_user, get_query_param(request, "universityId", ""))
+    client = require_supabase_client()
+    try:
+        reports = client.select(
+            "timetable_validation_reports",
+            filters={"institution_id": f"eq.{uni_id}"},
+            order="validation_timestamp.desc",
+            limit=50,
+        )
+        versions = client.select("timetable_versions", filters={"institution_id": f"eq.{uni_id}"}, select="id,name,status,overall_fitness_score,hard_violations_count,created_at")
+    except SupabaseQueryError as err:
+        raise_supabase_http_error(err)
+
+    version_map = {v["id"]: v for v in versions}
+
+    enriched = []
+    total_gen = len(reports)
+    fully_valid = 0
+    with_issues = 0
+    incomplete = 0
+    latest_ts = None
+
+    for r in reports:
+        if not latest_ts:
+            latest_ts = r.get("validation_timestamp")
+        st = r.get("validation_status")
+        if st == "VALID":
+            fully_valid += 1
+        elif st in ("INVALID", "VALID WITH WARNINGS"):
+            with_issues += 1
+        elif st == "INCOMPLETE":
+            incomplete += 1
+
+        v_info = version_map.get(r.get("timetable_version_id")) or {}
+        enriched.append({
+            **r,
+            "versionName": v_info.get("name", "Timetable Version"),
+            "versionStatus": v_info.get("status", "draft"),
+            "fitnessScore": v_info.get("overall_fitness_score", 0),
+        })
+
+    return {
+        "reports": enriched,
+        "summary": {
+            "totalGenerated": total_gen,
+            "fullyValid": fully_valid,
+            "withIssues": with_issues,
+            "incomplete": incomplete,
+            "latestTimestamp": latest_ts or now_iso(),
+        }
+    }
+
+
+@router.get("/api/timetables/{versionId}/validation")
+def get_timetable_validation_report(versionId: str, request: Request) -> Dict[str, Any]:
+    auth_user = require_auth_user(request)
+    uni_id = scoped_uni_id(auth_user, get_query_param(request, "universityId", ""))
+    client = require_supabase_client()
+    try:
+        version_row = client.select_one("timetable_versions", filters={"id": f"eq.{versionId}"})
+        if not version_row:
+            raise HTTPException(status_code=404, detail={"error": "Timetable version not found."})
+        assert_institution_access(auth_user, version_row.get("institution_id"))
+
+        rep = client.select_one("timetable_validation_reports", filters={"timetable_version_id": f"eq.{versionId}"})
+        if not rep:
+            rep = _generate_and_store_validation_report(client, version_row["institution_id"], versionId)
+    except SupabaseQueryError as err:
+        raise_supabase_http_error(err)
+
+    return {"report": rep}
+
+
+@router.post("/api/timetables/{versionId}/validate")
+def run_timetable_validation(versionId: str, request: Request) -> Dict[str, Any]:
+    auth_user = require_auth_user(request, allowed_roles=CATALOG_MANAGER_ROLES)
+    client = require_supabase_client()
+    try:
+        version_row = client.select_one("timetable_versions", filters={"id": f"eq.{versionId}"})
+        if not version_row:
+            raise HTTPException(status_code=404, detail={"error": "Timetable version not found."})
+        assert_institution_access(auth_user, version_row.get("institution_id"))
+
+        rep = _generate_and_store_validation_report(client, version_row["institution_id"], versionId)
+        write_audit_log(
+            client,
+            version_row["institution_id"],
+            auth_user,
+            "validate",
+            "scenario",
+            versionId,
+            f"Executed validation check for timetable version '{version_row['name']}' (Status: {rep.get('validation_status')})",
+        )
+    except SupabaseQueryError as err:
+        raise_supabase_http_error(err)
+
+    return {"message": "Validation check completed.", "report": rep}
+

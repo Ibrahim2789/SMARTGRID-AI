@@ -17,6 +17,7 @@ import { BrDashboardPage } from './components/BrDashboardPage';
 import { AdminVotingManagementPage } from './components/AdminVotingManagementPage';
 import { FacultyDashboardPage } from './components/FacultyDashboardPage';
 import { AccountProfilePage } from './components/AccountProfilePage';
+import { ValidationReportsPage } from './components/ValidationReportsPage';
 import { UniversityOnboardingModal } from './components/UniversityOnboardingModal';
 import { ToastPopupHost, showAppPopup } from './components/ToastPopupHost';
 import {
@@ -37,6 +38,7 @@ const VALID_ROUTES: RouteType[] = [
   'assignments',
   'generate',
   'timetables',
+  'validation-reports',
   'feedback',
   'academic-config',
   'settings',
@@ -85,6 +87,7 @@ const ADMIN_ALLOWED_ROUTES: RouteType[] = [
   'assignments',
   'generate',
   'timetables',
+  'validation-reports',
   'feedback',
   'academic-config',
   'settings',
@@ -458,6 +461,10 @@ export default function App() {
 
       {isAdmin && effectiveRoute === 'generate' && (
         <GenerateScreen onNavigate={handleNavigate} currentUser={currentUser} />
+      )}
+
+      {isAdmin && effectiveRoute === 'validation-reports' && (
+        <ValidationReportsPage currentUser={currentUser} />
       )}
 
       {isAdmin && effectiveRoute === 'feedback' && (

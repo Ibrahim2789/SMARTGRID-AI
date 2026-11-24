@@ -609,6 +609,37 @@ CREATE TABLE IF NOT EXISTS public.timetable_versions (
 CREATE INDEX IF NOT EXISTS idx_timetable_versions_inst_status ON public.timetable_versions(institution_id, status);
 
 -- ============================================================================
+-- 21.1 TIMETABLE VALIDATION REPORTS
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS public.timetable_validation_reports (
+    id TEXT PRIMARY KEY DEFAULT ('tvr-' || gen_random_uuid()::text),
+    institution_id TEXT NOT NULL REFERENCES public.institutions(id) ON DELETE CASCADE,
+    timetable_version_id TEXT NOT NULL REFERENCES public.timetable_versions(id) ON DELETE CASCADE,
+    optimization_run_id TEXT REFERENCES public.optimization_runs(id) ON DELETE SET NULL,
+    academic_term_id TEXT,
+    validation_status TEXT NOT NULL DEFAULT 'INVALID' CHECK (validation_status IN ('VALID', 'VALID WITH WARNINGS', 'INVALID', 'INCOMPLETE', 'VALIDATION FAILED')),
+    total_required_sessions INTEGER NOT NULL DEFAULT 0,
+    total_scheduled_sessions INTEGER NOT NULL DEFAULT 0,
+    total_unscheduled_sessions INTEGER NOT NULL DEFAULT 0,
+    section_conflict_count INTEGER NOT NULL DEFAULT 0,
+    instructor_conflict_count INTEGER NOT NULL DEFAULT 0,
+    lab_engineer_conflict_count INTEGER NOT NULL DEFAULT 0,
+    room_conflict_count INTEGER NOT NULL DEFAULT 0,
+    invalid_duration_count INTEGER NOT NULL DEFAULT 0,
+    credit_hour_fulfillment JSONB NOT NULL DEFAULT '{}'::jsonb,
+    staff_assignment_integrity JSONB NOT NULL DEFAULT '{}'::jsonb,
+    total_hard_violations INTEGER NOT NULL DEFAULT 0,
+    total_warnings INTEGER NOT NULL DEFAULT 0,
+    validation_timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    report_data JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_timetable_validation_reports_inst ON public.timetable_validation_reports(institution_id, validation_timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_timetable_validation_reports_version ON public.timetable_validation_reports(timetable_version_id);
+
+
+-- ============================================================================
 -- 22. TIMETABLE ENTRIES
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS public.timetable_entries (

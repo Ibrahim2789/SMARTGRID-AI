@@ -2343,6 +2343,77 @@ export async function fetchMyStaffAssignmentsApi(
   return authorizedFetch(`/api/assignments/my-load${q}`, user);
 }
 
+export interface ValidationReportDTO {
+  id: string;
+  institution_id: string;
+  timetable_version_id: string;
+  validation_status: 'VALID' | 'VALID WITH WARNINGS' | 'INVALID' | 'INCOMPLETE' | 'VALIDATION FAILED';
+  total_required_sessions: number;
+  total_scheduled_sessions: number;
+  total_unscheduled_sessions: number;
+  section_conflict_count: number;
+  instructor_conflict_count: number;
+  lab_engineer_conflict_count: number;
+  room_conflict_count: number;
+  invalid_duration_count: number;
+  credit_hour_fulfillment: Record<string, any>;
+  staff_assignment_integrity: Record<string, any>;
+  total_hard_violations: number;
+  total_warnings: number;
+  validation_timestamp: string;
+  report_data: {
+    isValid: boolean;
+    hardViolationCount: number;
+    violations: Array<{
+      type: string;
+      severity: string;
+      sessionIds: string[];
+      message: string;
+    }>;
+    creditSummary: Record<string, any>;
+  };
+  versionName?: string;
+  versionStatus?: string;
+  fitnessScore?: number;
+}
+
+export interface ValidationOverviewDTO {
+  totalGenerated: number;
+  fullyValid: number;
+  withIssues: number;
+  incomplete: number;
+  latestTimestamp: string;
+}
+
+export async function fetchValidationReportsApi(
+  user: AuthenticatedVotingUser,
+  universityId?: string
+): Promise<{ reports: ValidationReportDTO[]; summary: ValidationOverviewDTO }> {
+  const uni = universityId || user.institutionId;
+  const q = uni ? `?universityId=${encodeURIComponent(uni)}` : '';
+  return authorizedFetch(`/api/timetables/validation-reports${q}`, user);
+}
+
+export async function fetchTimetableValidationReportApi(
+  user: AuthenticatedVotingUser,
+  versionId: string,
+  universityId?: string
+): Promise<{ report: ValidationReportDTO }> {
+  const uni = universityId || user.institutionId;
+  const q = uni ? `?universityId=${encodeURIComponent(uni)}` : '';
+  return authorizedFetch(`/api/timetables/${encodeURIComponent(versionId)}/validation${q}`, user);
+}
+
+export async function runTimetableValidationApi(
+  user: AuthenticatedVotingUser,
+  versionId: string
+): Promise<{ message: string; report: ValidationReportDTO }> {
+  return authorizedFetch(`/api/timetables/${encodeURIComponent(versionId)}/validate`, user, {
+    method: 'POST'
+  });
+}
+
+
 
 
 

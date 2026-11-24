@@ -11,7 +11,8 @@ import {
   Menu,
   X,
   ChevronDown,
-  UserCheck
+  UserCheck,
+  ShieldCheck
 } from 'lucide-react';
 import { useInstitutionalData, institutionalStore } from '../data/store';
 import { SmartGridLogo } from './SmartGridLogo';
@@ -25,6 +26,7 @@ export type RouteType =
   | 'feedback'
   | 'academic-config'
   | 'settings'
+  | 'validation-reports'
   | 'student-dashboard'
   | 'student-preferences'
   | 'student-voting'
@@ -90,6 +92,7 @@ export const SmartGridNav: React.FC<SmartGridNavProps> = ({
     { id: 'academic-config', label: 'Academic Configuration', icon: Sliders },
     { id: 'generate', label: 'Generate', icon: Sparkles },
     { id: 'timetables', label: 'Timetables', icon: Calendar },
+    { id: 'validation-reports', label: 'Validation & Reports', icon: ShieldCheck },
     { id: 'feedback', label: 'Feedback & Insights', icon: BarChart3 },
     { id: 'settings', label: 'Settings', icon: Settings }
   ];
